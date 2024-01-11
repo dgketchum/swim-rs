@@ -6,6 +6,15 @@ __pycache__/
 # C extensions
 *.so
 
+# ==================================================
+# dgketchum exclusions
+.idea
+examples/flux/pest
+examples/flynn/pest
+examples/tongue/pest
+
+# =================================================
+
 # Distribution / packaging
 .Python
 build/
