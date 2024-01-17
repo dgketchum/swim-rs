@@ -85,8 +85,8 @@ def corrected_gridmet_clustered(fields, gridmet_points, fields_join, gridmet_csv
 
     convert_to_wgs84 = lambda x, y: pyproj.Transformer.from_crs('EPSG:5071', 'EPSG:4326').transform(x, y)
 
-    gridmet_pts = gpd.read_file(gridmet_points)
     fields = gpd.read_file(fields)
+    gridmet_pts = gpd.read_file(gridmet_points)
 
     rasters = []
     for v in ['eto', 'etr']:

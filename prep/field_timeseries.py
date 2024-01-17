@@ -41,7 +41,10 @@ def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_di
 
 
 if __name__ == '__main__':
+
     d = '/media/research/IrrigationGIS/et-demands'
+    if not os.path.exists(d):
+        d = d = '/home/dgketchum/data/IrrigationGIS'
 
     project = 'flux'
     project_ws = os.path.join(d, 'examples', project)
