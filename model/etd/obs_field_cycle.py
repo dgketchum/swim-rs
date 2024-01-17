@@ -12,10 +12,10 @@ import os
 import numpy as np
 import pandas as pd
 
-from fieldET import compute_field_et
-from fieldET.initialize_obs_crop_cycle import InitializeObsCropCycle
-from fieldET import obs_kcb_daily
-from fieldET import calculate_height
+from model.etd import compute_field_et
+from model.etd.initialize_obs_crop_cycle import InitializeObsCropCycle
+from model.etd import obs_kcb_daily
+from model.etd import calculate_height
 
 OUTPUT_FMT = ['capture',
               'et_act',
@@ -33,6 +33,7 @@ OUTPUT_FMT = ['capture',
               'few',
               'zr',
               'aw3',
+              'taw',
               'p_rz',
               'p_eft',
               'niwr',
@@ -81,7 +82,7 @@ def field_day_loop(config, field, debug_flag=False, params=None):
 
             if k == 'rew':
                 foo.__setattr__('depl_surface', foo.tew)
-                foo.__setattr__('depl_zep', 0.0)
+                foo.__setattr__('depl_zep', foo.rew)
 
     # Initialize crop data frame
     foo.setup_dataframe(field)
@@ -113,6 +114,11 @@ def field_day_loop(config, field, debug_flag=False, params=None):
 
         if foo_day.precip == 13.0:
             a = 1
+        if foo_day.dt_string == '2000-08-11':
+            a = 1
+
+        if foo_day.month == 11 and foo_day.day == 1:
+            foo.setup_dormant()
 
         # Calculate height of vegetation.
         # Moved up to this point 12/26/07 for use in adj. Kcb and kc_max
@@ -143,6 +149,7 @@ def field_day_loop(config, field, debug_flag=False, params=None):
         foo.crop_df[step_dt]['fc'] = foo.fc
         foo.crop_df[step_dt]['few'] = foo.few
         foo.crop_df[step_dt]['aw3'] = foo.aw3
+        foo.crop_df[step_dt]['taw'] = foo.taw
         foo.crop_df[step_dt]['irrigation'] = foo.irr_sim
         foo.crop_df[step_dt]['runoff'] = foo.sro
         foo.crop_df[step_dt]['dperc'] = foo.dperc

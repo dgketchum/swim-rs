@@ -7,7 +7,7 @@ import pandas as pd
 from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
-from fieldET import obs_field_cycle
+from model.etd import obs_field_cycle
 
 
 def run_fields(ini_path, flux_obs, debug_flag=False, field_type='irrigated', target_field='1178', **kwargs):
@@ -69,12 +69,21 @@ def run_fields(ini_path, flux_obs, debug_flag=False, field_type='irrigated', tar
                                                                           et_flux.mean(),
                                                                           et_act.mean()))
         print('RMSE Flux/SWB Dates: {:.4f}\n\n\n\n'.format(rmse))
-        pass
+        totals = df[['et_act', 'ppt', 'dperc', 'runoff']].sum(axis=0)
+        water_out = totals[['dperc', 'et_act', 'runoff']].sum()
+        storage = df.loc[df.index[0], 'depl_root'] - df.loc[df.index[-1], 'depl_root']
+        balance = totals['ppt'] - storage - water_out
+        print('Water Balance = {:.1f}; input: {:.1f}; output: {:.1f}; storage: {:.1f}'.format(balance,
+                                                                                              totals['ppt'],
+                                                                                              water_out,
+                                                                                              storage))
+        return None
 
 
 if __name__ == '__main__':
     project = 'flux'
-    target = 'US-FPe'
+    target = 'US-Mj1'
+    # target = 'US-xSL'
     field_type = 'unirrigated'
     d = '/home/dgketchum/PycharmProjects/et-demands/examples/{}'.format(project)
     ini = os.path.join(d, '{}_example_cet_obs.ini'.format(project))
@@ -87,9 +96,9 @@ if __name__ == '__main__':
         'rew': 3.0,
         'tew': 18.0,
         'ndvi_alpha': -0.17410,
-        'ndvi_beta': 1.558615,
+        'ndvi_beta': 1.958615,
         'ndvi_fc': 2.0,
-        'mad': 0.9,
+        'mad': 0.6,
     }
 
     run_fields(ini_path=ini, flux_obs=flux_obs_, debug_flag=False, field_type=field_type,

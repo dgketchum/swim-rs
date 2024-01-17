@@ -4,16 +4,13 @@ Called by crop_cycle.py
 
 """
 
-import datetime
 import logging
 import math
-import sys
 
 import numpy as np
 
-from fieldET import grow_root
-from fieldET import util
-from fieldET import runoff
+from model.etd import grow_root
+from model.etd import runoff
 
 
 def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
@@ -54,8 +51,11 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
         cover_proxy = '{}_inv_irr'.format(config.cover_proxy)
     else:
         cover_proxy = '{}_irr'.format(config.cover_proxy)
+
     foo.ndvi = et_cell.input[foo_day.dt_string][cover_proxy]
+
     foo.fc = foo.ndvi_fc * foo.ndvi
+    # foo.fc = ((foo.kc_bas - foo.kc_min) / (kc_max - foo.kc_min)) ** (1 + 0.5 * foo.height)
 
     # limit so that few > 0
     foo.fc = min(foo.fc, 0.99)
@@ -302,19 +302,19 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
 
     # Transpiration coefficient for moisture stress
 
-    taw = foo.aw * foo.zr
-    taw = max(taw, 0.001)
+    foo.taw = foo.aw * foo.zr
+    foo.taw = max(foo.taw, 0.001)
 
     # MAD: Management Allowable Depletion
     # MAD is set to mad_ini or mad_mid in kcb_daily sub.
     # dgketchum reimplement Allen 2005 form
-    foo.raw = foo.mad * taw
+    foo.raw = foo.mad * foo.taw
 
     # Remember to check reset of AD and RAW each new crop season.  #####
     # AD is allowable depletion
 
     if foo.depl_root > foo.raw:
-        foo.ks = max((taw - foo.depl_root) / (taw - foo.raw), 0)
+        foo.ks = max((foo.taw - foo.depl_root) / (foo.taw - foo.raw), 0)
     else:
         foo.ks = 1
 
@@ -388,7 +388,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
 
     # For irrigation wetted fraction
 
-    kt_reducer_denom = max(1 - foo.depl_root / taw, 0.001)
+    kt_reducer_denom = max(1 - foo.depl_root / foo.taw, 0.001)
 
     # few added, 8/2006, that is not in Allen et al., 2005, ASCE
 
@@ -428,7 +428,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # of water from Ze layer that will increase depletion of that layer
 
     # Available water in Zr includes water in Ze layer.  Therefore limit depl_ze.
-    AvailWatinTotalZr = taw - foo.depl_root
+    AvailWatinTotalZr = foo.taw - foo.depl_root
 
     # leave following out, for noncrop situations
     # IF Delast + Deplast < TEW - AvailWatinTotalZr THEN
@@ -626,7 +626,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
             'compute_crop_et(): irr_sim %.6f  deep_perc %.6f ' % (foo.irr_sim, foo.dperc))
         logging.debug(
             'compute_crop_et(): depl_root %.6f  TAW %.6f  Invoke_Stress %d' %
-            (foo.depl_root, taw, crop.invoke_stress))
+            (foo.depl_root, foo.taw, crop.invoke_stress))
 
     # 4/16/08.  if depl_root > taw, assume it is because we have overshot E+T on this day.
     # 12/23/2011.  But don't do this ifstress flag is turned off!!
@@ -634,10 +634,10 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # since there is no irrigation, but no stress either
     # (i.e., wetlands, cottonwoods, etc.)  (Nuts!)
 
-    if foo.invoke_stress > 0.5 and foo.depl_root > taw:
+    if foo.invoke_stress > 0.5 and foo.depl_root > foo.taw:
         # Since we overshot, then just give remaining water to etc_act
 
-        foo.etc_act -= (foo.depl_root - taw)
+        foo.etc_act -= (foo.depl_root - foo.taw)
         foo.etc_act = max(foo.etc_act, 0)
 
         # Calc new kc_act
@@ -647,7 +647,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
 
         # Limit depletion to total available water
 
-        foo.depl_root = taw
+        foo.depl_root = foo.taw
 
     # Update average Avail. Water in soil layer below current root depth
     #   and above maximum root depth.  Add gross deep percolation to it.

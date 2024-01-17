@@ -312,6 +312,130 @@ class InitializeObsCropCycle:
         self.zr = self.zr_min
         self.crop_setup_flag = False
 
+    def setup_dormant(self):
+        """Start of dormant season
+            a) Set up for soil water reservoir during non-growing season
+                to collect soil moisture for next growing season
+            b) Set for type of surface during non-growing season
+
+        Parameters
+        ---------
+        et_cell :
+
+        crop :
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Called at termination of crop from crop_cycle()
+        If in_season is false and dormant_flag is true,
+        dormant_flag set at GU each year.
+        It is called each year as soon as season is 0.
+
+        """
+
+        # Assume that 'rooting depth' for dormant surfaces is 0.1 or 0.15 m
+        # This is depth that will be applied with a stress function to reduce kc_bas
+
+        zr_dormant = 0.1  #  was 0.15
+
+        # Convert current moisture content of Zr layer
+        #   (which should be at zr_max at end of season)
+        #   into starting moisture content of layer 3
+        # This is done at end of season
+
+        # Calc total water currently in layer 3 (the dynamic layer below zr)
+        # AW is mm/m and daw3 is mm in layer 3 (in case zr < zr_max)
+
+        daw3 = self.aw3 * (self.zr_max - self.zr)
+
+        # Add TAW - depl_root that is in root zone below zr_dormant.
+        # Assume fully mixed root zone including zr_dormant part
+
+        # Potential water in root zone
+
+        taw_root = self.aw * (self.zr)
+
+        # Actual water in root zone based on depl_root at end of season
+
+        daw_root = max(taw_root - self.depl_root, 0)
+
+        # Depth of evaporation layer (This only works when ze < zr_dormant)
+
+        ze = 0.1
+
+
+        # Reduce daw_root by water in evap layer and rest of zr_dormant and then proportion
+        if zr_dormant < self.zr:
+            # determine water in zr_dormant layer
+            # combine water in ze layer (1-fc fraction) to that in balance of zr_dormant depth
+            # need to mix ze and zr_dormant zones.  Assume current Zr zone of crop just ended is fully mixed.
+            # totwatin_ze is water in fc fraction of Ze.
+
+            aw_root = daw_root / self.zr
+            if zr_dormant > ze:
+                totwatinzr_dormant = (
+                    (self.totwatin_ze + aw_root * (zr_dormant - ze)) * (1 - self.fc) +
+                    aw_root * zr_dormant * self.fc)
+            else:
+                # Was, until 5/9/07
+                # totwatinzr_dormant = (
+                #     .totwatin_ze * (ze - zr_dormant) / ze) * (1 - fc) +
+                #     _root * zr_dormant * fc)
+                totwatinzr_dormant = (
+                    (self.totwatin_ze * (1 - (ze - zr_dormant) / ze)) * (1 - self.fc) +
+                    aw_root * zr_dormant * self.fc)  # corrected
+
+            # This requires that zr_dormant > ze.
+
+            if daw_root > totwatinzr_dormant:
+                # Proportionate water between zr_dormant and zr
+
+                daw_below = (daw_root - totwatinzr_dormant)
+
+                # Actual water between zr_dormant and zr
+                # daw_below = daw_root * (zr - zr_dormant) / zr
+            else:
+                daw_below = 0
+
+            # Actual water in mm/m below zr_dormant
+
+            self.aw3 = (daw_below + daw3) / (self.zr_max - zr_dormant)
+        else:
+            # This should never happen, since zr_max for all crops > 0.15 m
+
+            self.aw3 = self.aw3
+
+        # initialize depl_root for dormant season
+        # Depletion below evaporation layer:
+
+        # depl_root_below_Ze = (depl_root - de)  # / (zr - ze) #'mm/m
+        # If depl_root_below_ze < 0 Then depl_root_below_ze = 0
+        # assume fully mixed profile below Ze
+        # depl_root = depl_root_below_ze * (zr_dormant - ze) / (zr - ze) + de
+
+        self.depl_root = self.aw * zr_dormant - totwatinzr_dormant
+
+        # set Zr for dormant season
+
+        self.zr = zr_dormant
+
+        # This value for zr will hold constant all dormant season.  dp from zr will be
+        # used to recharge zr_max - zr zone.
+        # Make sure that grow_root is not called during dormant season.
+
+        self.fw_irr = self.fw_std  # fw changed to fw_irr 8/10/06
+        self.irr_auto = 0
+        self.irr_sim = 0
+        self.dormant_setup_flag = False
+
+        # Clear cutting flag (just in case)
+
+        self.cutting = 0
+
     def setup_dataframe(self, et_cell):
         """Initialize output dataframe
 
