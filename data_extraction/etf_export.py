@@ -4,7 +4,7 @@ import sys
 import ee
 import geopandas as gpd
 
-from ee_api.ee_utils import landsat_masked, is_authorized
+from data_extraction.ee_utils import is_authorized
 
 sys.path.insert(0, os.path.abspath('..'))
 sys.setrecursionlimit(5000)
@@ -14,7 +14,6 @@ IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 ETF = 'projects/usgs-gee-nhm-ssebop/assets/ssebop/landsat/c02'
 
 EC_POINTS = 'users/dgketchum/flux_ET_dataset/stations'
-
 
 STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
 
@@ -28,7 +27,7 @@ def get_flynn():
                                            {'key': 'Flynn_Ex'}))
 
 
-def export_etf(feature_coll, year=2015, bucket=None, debug=False, mask_type='irr'):
+def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_type='irr'):
     s, e = '1987-01-01', '2021-12-31'
     irr_coll = ee.ImageCollection(IRR)
     coll = irr_coll.filterDate(s, e).select('classification')
@@ -165,14 +164,90 @@ def flux_tower_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_d
             print(desc)
 
 
+def clustered_field_etf(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None):
+
+    feature_coll = ee.FeatureCollection(feature_coll)
+
+    s, e = '1987-01-01', '2021-12-31'
+    irr_coll = ee.ImageCollection(IRR)
+    coll = irr_coll.filterDate(s, e).select('classification')
+    remap = coll.map(lambda img: img.lt(1))
+    irr_min_yr_mask = remap.sum().gte(5)
+
+    for year in range(2000, 2022):
+
+        irr = irr_coll.filterDate('{}-01-01'.format(year),
+                                  '{}-12-31'.format(year)).select('classification').mosaic()
+        irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
+
+        desc = 'etf_{}_{}'.format(year, mask_type)
+
+        if check_dir:
+            f = os.path.join(check_dir, '{}.csv'.format(desc))
+            if os.path.exists(f):
+                print(desc, 'exists, skipping')
+                continue
+
+        coll = ee.ImageCollection(ETF).filterDate('{}-01-01'.format(year), '{}-12-31'.format(year))
+        coll = coll.filterBounds(feature_coll)
+        scenes = coll.aggregate_histogram('system:index').getInfo()
+
+        first, bands = True, None
+        selectors = ['FID']
+
+        for img_id in scenes:
+
+            # if img_id != 'lt05_036029_20000623':
+            #     continue
+
+            splt = img_id.split('_')
+            _name = '_'.join(splt[-3:])
+
+            selectors.append(_name)
+
+            etf_img = ee.Image(os.path.join(ETF, img_id)).rename(_name)
+            etf_img = etf_img.divide(10000)
+
+            if mask_type == 'no_mask':
+                etf_img = etf_img.clip(feature_coll.geometry())
+            elif mask_type == 'irr':
+                etf_img = etf_img.clip(feature_coll.geometry()).mask(irr_mask)
+            elif mask_type == 'inv_irr':
+                etf_img = etf_img.clip(feature_coll.geometry()).mask(irr.gt(0))
+
+            if first:
+                bands = etf_img
+                first = False
+            else:
+                bands = bands.addBands([etf_img])
+
+            if debug:
+                point = ee.Geometry.Point([-107.188225, 44.9011])
+                data = etf_img.sample(point, 30).getInfo()
+                print(data['features'])
+
+        data = bands.reduceRegions(collection=feature_coll,
+                                   reducer=ee.Reducer.mean(),
+                                   scale=30)
+
+        task = ee.batch.Export.table.toCloudStorage(
+            data,
+            description=desc,
+            bucket=bucket,
+            fileNamePrefix=desc,
+            fileFormat='CSV',
+            selectors=selectors)
+
+        task.start()
+        print(desc)
+
+
 if __name__ == '__main__':
     is_authorized()
     bucket_ = 'wudr'
-
-    shp = '/media/research/IrrigationGIS/et-demands/examples/flux/gis/flux_fields_sample.shp'
+    fields = 'users/dgketchum/fields/tongue_9MAY2023'
     for mask in ['inv_irr', 'irr']:
-        chk = '/media/research/IrrigationGIS/et-demands/examples/flux/landsat/extracts/etf/{}'.format(mask)
-        flux_tower_etf(shp, bucket_, debug=False, mask_type=mask, check_dir=chk)
-        pass
+        chk = '/media/research/IrrigationGIS/swim/examples/tongue_full/landsat/extracts/etf/{}'.format(mask)
+        clustered_field_etf(fields, bucket_, debug=False, mask_type=mask, check_dir=chk)
 
 # ========================= EOF ====================================================================

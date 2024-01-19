@@ -4,7 +4,7 @@ import sys
 import ee
 import geopandas as gpd
 
-from ee_api.ee_utils import landsat_masked, is_authorized
+from data_extraction.ee_utils import landsat_masked, is_authorized
 
 sys.path.insert(0, os.path.abspath('..'))
 sys.setrecursionlimit(5000)
@@ -157,14 +157,85 @@ def flux_tower_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_
             print(desc)
 
 
+def clustered_field_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None):
+
+    feature_coll = ee.FeatureCollection(feature_coll)
+
+    s, e = '1987-01-01', '2021-12-31'
+    irr_coll = ee.ImageCollection(IRR)
+    coll = irr_coll.filterDate(s, e).select('classification')
+    remap = coll.map(lambda img: img.lt(1))
+    irr_min_yr_mask = remap.sum().gte(5)
+
+    for year in range(2000, 2022):
+
+        irr = irr_coll.filterDate('{}-01-01'.format(year),
+                                  '{}-12-31'.format(year)).select('classification').mosaic()
+        irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
+
+        first, bands = True, None
+        selectors = ['FID']
+
+        desc = 'ndvi_{}_{}'.format(year, mask_type)
+
+        if check_dir:
+            f = os.path.join(check_dir, '{}.csv'.format(desc))
+            if os.path.exists(f):
+                print(desc, 'exists, skipping')
+                continue
+
+        coll = landsat_masked(year, feature_coll).map(lambda x: x.normalizedDifference(['B5', 'B4']))
+        ndvi_scenes = coll.aggregate_histogram('system:index').getInfo()
+
+        for img_id in ndvi_scenes:
+
+            splt = img_id.split('_')
+            _name = '_'.join(splt[-3:])
+
+            selectors.append(_name)
+
+            nd_img = coll.filterMetadata('system:index', 'equals', img_id).first().rename(_name)
+
+            if mask_type == 'no_mask':
+                nd_img = nd_img.clip(feature_coll.geometry())
+            elif mask_type == 'irr':
+                nd_img = nd_img.clip(feature_coll.geometry()).mask(irr_mask)
+            elif mask_type == 'inv_irr':
+                nd_img = nd_img.clip(feature_coll.geometry()).mask(irr.gt(0))
+
+            if first:
+                bands = nd_img
+                first = False
+            else:
+                bands = bands.addBands([nd_img])
+
+            if debug:
+                point = ee.Geometry.Point([-107.188225, 44.9011])
+                data = nd_img.sample(point, 30).getInfo()
+                print(data['features'])
+
+        data = bands.reduceRegions(collection=feature_coll,
+                                   reducer=ee.Reducer.mean(),
+                                   scale=30)
+
+        task = ee.batch.Export.table.toCloudStorage(
+            data,
+            description=desc,
+            bucket=bucket,
+            fileNamePrefix=desc,
+            fileFormat='CSV',
+            selectors=selectors)
+
+        task.start()
+        print(desc)
+
+
 if __name__ == '__main__':
     is_authorized()
     bucket_ = 'wudr'
-
-    shp = '/media/research/IrrigationGIS/et-demands/examples/flux/gis/flux_fields_sample.shp'
+    fields = 'users/dgketchum/fields/tongue_9MAY2023'
     for mask in ['inv_irr', 'irr']:
-        hk = '/media/research/IrrigationGIS/et-demands/examples/flux/landsat/extracts/ndvi/{}'.format(mask)
-        flux_tower_ndvi(shp, bucket_, debug=False, mask_type=mask)
-        pass
+        chk = '/media/research/IrrigationGIS/swim/examples/tongue_full/landsat/extracts/ndvi/{}'.format(mask)
+        clustered_field_ndvi(fields, bucket_, debug=False, mask_type=mask, check_dir=chk)
 
 # ========================= EOF ====================================================================
