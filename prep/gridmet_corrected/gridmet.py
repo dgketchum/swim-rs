@@ -71,7 +71,7 @@ COLUMN_ORDER = ['date',
 
 
 def corrected_gridmet_clustered(fields, gridmet_points, fields_join, gridmet_csv_dir, gridmet_ras,
-                      start=None, end=None):
+                      start=None, end=None, field_select=None):
     """This depends on running 'Raster Pixels to Points' on a WGS Gridmet raster,
      attributing GFID, lat, and lon in the attribute table, and saving to project crs: 5071.
      GFID is an arbitrary identifier e.g., @row_number. It further depends on projecting the
@@ -94,6 +94,10 @@ def corrected_gridmet_clustered(fields, gridmet_points, fields_join, gridmet_csv
 
     gridmet_targets = {}
     for i, field in tqdm(fields.iterrows(), total=fields.shape[0]):
+
+        if field['FID'] not in field_select:
+            continue
+
         min_distance = 1e13
         closest_fid = None
 

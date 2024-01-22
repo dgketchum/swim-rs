@@ -21,6 +21,10 @@ def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_di
 
     for f, row in fields.iterrows():
 
+        if pd.isna(row['GFID']):
+            print(row['FID'], 'was not assigned a Gridmet point')
+            continue
+
         _file = os.path.join(dst_dir, '{}_daily.csv'.format(f))
         if os.path.exists(_file) and not overwrite:
             continue
@@ -42,22 +46,24 @@ def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_di
 
 if __name__ == '__main__':
 
-    d = '/media/research/IrrigationGIS/et-demands'
+    d = '/media/research/IrrigationGIS/swim'
     if not os.path.exists(d):
         d = d = '/home/dgketchum/data/IrrigationGIS'
 
-    project = 'flux'
+    project = 'tongue'
     project_ws = os.path.join(d, 'examples', project)
 
     gridmet = os.path.join(d, 'gridmet')
     rasters_ = os.path.join(gridmet, 'gridmet_corrected', 'correction_surfaces_aea')
     grimet_cent = os.path.join(gridmet, 'gridmet_centroids.shp')
 
-    fields_shp = os.path.join(project_ws, 'gis', '{}_fields_sample.shp'.format(project))
-    fields_gridmet = os.path.join(project_ws, 'gis', '{}_fields_sample_gfid.shp'.format(project))
+    fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
+    fields_gridmet = os.path.join(project_ws, 'gis', '{}_fields_gfid.shp'.format(project))
     met = os.path.join(project_ws, 'met_timeseries')
+
+    select_fields = [1778, 1791, 1804, 1853, 1375]
     corrected_gridmet_clustered(fields_shp, grimet_cent, fields_gridmet, met, rasters_, start='2000-01-01',
-                                end='2020-12-31')
+                                end='2020-12-31', field_select=select_fields)
 
     landsat = os.path.join(project_ws, 'landsat', '{}_sensing_sample.csv'.format(project))
     dst_dir_ = os.path.join(project_ws, 'input_timeseries')
