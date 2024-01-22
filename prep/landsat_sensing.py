@@ -11,6 +11,20 @@ from detecta import detect_cusum, detect_peaks, detect_onset
 
 
 def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_ct=100):
+    """
+    Intended to process raw tif to tabular data using zonal statistics on polygons.
+    See e.g., 'ndvi_export.export_ndvi() to export such images from Earth Engine. The output of this function
+    should be the same format and structure as that from landsat_time_series_station() and
+    landsat_time_series_multipolygon(). Ensure the .tif and
+    .shp are both in the same coordinate reference system.
+    :param in_shp:
+    :param tif_dir:
+    :param years:
+    :param out_csv:
+    :param out_csv_ct:
+    :param min_ct:
+    :return:
+    """
     gdf = gpd.read_file(in_shp)
     gdf.index = gdf['FID']
 
@@ -50,7 +64,19 @@ def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_c
     ctdf.to_csv(out_csv_ct)
 
 
-def landsat_time_series_table(in_shp, csv_dir, years, out_csv, out_csv_ct):
+def landsat_time_series_station(in_shp, csv_dir, years, out_csv, out_csv_ct):
+    """
+    Intended to process Earth Engine extracts of buffered point data, e.g., the area around flux tower
+    stations. See e.g., ndvi_export.flux_tower_ndvi() to generate such data. The output of this function
+    should be the same format and structure as that from landsat_time_series_image()
+    and landsat_time_series_multipolygon().
+    :param in_shp:
+    :param csv_dir:
+    :param years:
+    :param out_csv:
+    :param out_csv_ct:
+    :return:
+    """
     gdf = gpd.read_file(in_shp)
     gdf.index = gdf['FID']
 
@@ -65,7 +91,7 @@ def landsat_time_series_table(in_shp, csv_dir, years, out_csv, out_csv_ct):
         ct = pd.DataFrame(index=dt_index, columns=gdf.index)
 
         file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
-         x.endswith('.csv') and '_{}'.format(yr) in x]
+                     x.endswith('.csv') and '_{}'.format(yr) in x]
 
         for f in file_list:
             field = pd.read_csv(f)
@@ -88,6 +114,95 @@ def landsat_time_series_table(in_shp, csv_dir, years, out_csv, out_csv_ct):
 
         df = df.astype(float).interpolate()
         df = df.interpolate(method='bfill')
+
+        ct = ct.fillna(0)
+        ct = ct.astype(int)
+
+        if first:
+            adf = df.copy()
+            ctdf = ct.copy()
+            first = False
+        else:
+            adf = pd.concat([adf, df], axis=0, ignore_index=False, sort=True)
+            ctdf = pd.concat([ctdf, ct], axis=0, ignore_index=False, sort=True)
+        print(yr)
+
+    adf.to_csv(out_csv)
+    ctdf.to_csv(out_csv_ct)
+
+
+def landsat_time_series_multipolygon(in_shp, csv_dir, years, out_csv, out_csv_ct):
+    """
+    Intended to process Earth Engine extracts of buffered point data, e.g., the area around flux tower
+    stations. See e.g., ndvi_export.clustered_field_ndvi() to generate such data. The output of this function
+    should be the same format and structure as that from landsat_time_series_image() and
+    landsat_time_series_station().
+    :param in_shp:
+    :param csv_dir:
+    :param years:
+    :param out_csv:
+    :param out_csv_ct:
+    :return:
+    """
+    gdf = gpd.read_file(in_shp)
+    gdf.index = gdf['FID']
+
+    print(csv_dir)
+
+    adf, ctdf, first = None, None, True
+
+    for yr in years:
+
+        dt_index = pd.date_range('{}-01-01'.format(yr), '{}-12-31'.format(yr), freq='D')
+
+        try:
+            f = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
+                 x.endswith('.csv') and '_{}'.format(yr) in x][0]
+        except IndexError as e:
+            print(e, yr)
+            continue
+
+        field = pd.read_csv(f)
+        field.index = field['FID']
+        cols = [c for c in field.columns if len(c.split('_')) == 3]
+        f_idx = [c.split('_')[-1] for c in cols]
+        f_idx = [pd.to_datetime(i) for i in f_idx]
+        field = pd.DataFrame(columns=field.index, data=field[cols].values.T, index=f_idx)
+        duplicates = field[field.index.duplicated(keep=False)]
+        if not duplicates.empty:
+            field = field.resample('D').max()
+        field = field.sort_index()
+
+        field[field.values == 0.00] = np.nan
+
+        # for both NDVI and ETf, values in agriculture and the vegetated land surface generally,
+        # should not go below about 0.01
+        # captures of these low values are likely small pixel samples on SLC OFF Landsat 7 or
+        # on bad polygons that include water or some other land cover we don't want to use
+        # see e.g., https://code.earthengine.google.com/5ea8bc8c6134845a8c0c81a4cdb99fc0
+        # TODO: examine these thresholds
+
+        diff_back = field.diff().values
+        field = pd.DataFrame(index=field.index, columns=field.columns,
+                             data=np.where(diff_back < -0.1, np.nan, field.values))
+
+        diff_for = field.shift(periods=2).diff()
+        diff_for = diff_for.shift(periods=-3).values
+        field = pd.DataFrame(index=field.index, columns=field.columns,
+                             data=np.where(diff_for > 0.1, np.nan, field.values))
+
+        if 'etf' in csv_dir:
+            field[field.values < 0.2] = np.nan
+
+        if 'ndvi' in csv_dir:
+            field[field.values < 0.2] = np.nan
+
+        df = field.copy()
+
+        ct = ~pd.isna(field)
+
+        df = df.astype(float).interpolate()
+        df = df.interpolate().bfill()
 
         ct = ct.fillna(0)
         ct = ct.astype(int)
@@ -251,7 +366,8 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
                     roll['count'] = roll.groupby([selector, 'crossing']).cumcount(ascending=True)
                     irr_doys = [i.dayofyear for i in roll[roll[selector]].index]
                     roll = roll[(roll['count'] == 0 & roll[selector])]
-                    start_idx, end_idx = list(roll.loc[roll[selector] == 1].index), list(roll.loc[roll[selector] == 0].index)
+                    start_idx, end_idx = list(roll.loc[roll[selector] == 1].index), list(
+                        roll.loc[roll[selector] == 0].index)
                     start_idx = ['{}-{:02d}-{:02d}'.format(d.year, d.month, d.day) for d in start_idx]
                     end_idx = ['{}-{:02d}-{:02d}'.format(d.year, d.month, d.day) for d in end_idx]
                     irr_windows = [(s, e) for s, e in zip(start_idx, end_idx)]
@@ -281,37 +397,37 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
 
 if __name__ == '__main__':
 
-    d = '/media/research/IrrigationGIS/et-demands'
-    project = 'flux'
+    d = '/media/research/IrrigationGIS/swim'
+
+    project = 'tongue'
     dtype = 'extracts'
+
     project_ws = os.path.join(d, 'examples', project)
     tables = os.path.join(project_ws, 'landsat', 'tables')
 
-    targets_ = ['US-FPe', 'US-Mj1', 'US-Mj2']
-
     types_ = ['inv_irr', 'irr']
-    sensing_params = ['ndvi']
+    sensing_params = ['ndvi', 'etf']
 
     for mask_type in types_:
 
         for sensing_param in sensing_params:
-
             yrs = [x for x in range(2000, 2021)]
-            shp = os.path.join(project_ws, 'gis', '{}_fields_sample.shp'.format(project))
+            shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
 
             ee_data, src = None, None
 
             ee_data = os.path.join(project_ws, 'landsat', dtype, sensing_param, mask_type)
-            src = os.path.join(tables, '{}_{}_{}_sample.csv'.format(project, sensing_param, mask_type))
-            src_ct = os.path.join(tables, '{}_{}_{}_ct_sample.csv'.format(project, sensing_param, mask_type))
+            src = os.path.join(tables, '{}_{}_{}.csv'.format(project, sensing_param, mask_type))
+            src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(project, sensing_param, mask_type))
 
-            # landsat_time_series_table(shp, ee_data, yrs, src, src_ct)
+            # landsat_time_series_station(shp, ee_data, yrs, src, src_ct)
+            landsat_time_series_multipolygon(shp, ee_data, yrs, src, src_ct)
             # landsat_time_series_image(shp, tif, yrs, src, src_ct)
 
-    dst_ = os.path.join(project_ws, 'landsat', '{}_sensing_sample.csv'.format(project))
+    dst_ = os.path.join(project_ws, 'landsat', '{}_sensing.csv'.format(project))
     join_remote_sensing(tables, dst_)
 
-    irr_ = os.path.join(project_ws, 'properties', '{}_sample_irr.csv'.format(project))
+    irr_ = os.path.join(project_ws, 'properties', '{}_irr.csv'.format(project))
     js_ = os.path.join(project_ws, 'landsat', '{}_cuttings.json'.format(project))
     detect_cuttings(dst_, irr_, irr_threshold=0.1, out_json=js_)
 
