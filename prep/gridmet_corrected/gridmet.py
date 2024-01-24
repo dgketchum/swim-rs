@@ -89,14 +89,16 @@ def corrected_gridmet(fields, gridmet_points, fields_join, gridmet_csv_dir, grid
     gridmet_pts = gpd.read_file(gridmet_points)
 
     rasters = []
+
     for v in ['eto', 'etr']:
         [rasters.append(os.path.join(gridmet_ras, 'gridmet_corrected_{}_{}.tif'.format(v, m))) for m in range(1, 13)]
 
     gridmet_targets = {}
     for i, field in tqdm(fields.iterrows(), total=fields.shape[0]):
 
-        if field['FID'] not in field_select:
-            continue
+        if field_select:
+            if field['FID'] not in field_select:
+                continue
 
         min_distance = 1e13
         closest_fid = None
@@ -116,6 +118,8 @@ def corrected_gridmet(fields, gridmet_points, fields_join, gridmet_csv_dir, grid
 
         fields.at[i, 'GFID'] = closest_fid
         fields.at[i, 'STATION_ID'] = closest_fid
+
+        print('Matched {} to {}'.format(field['FID'], closest_fid))
 
         if closest_fid not in gridmet_targets.keys():
             gridmet_targets[closest_fid] = {str(m): {} for m in range(1, 13)}
@@ -167,13 +171,12 @@ def corrected_gridmet(fields, gridmet_points, fields_join, gridmet_csv_dir, grid
 
         for _var in ['etr', 'eto']:
             variable = '{}_mm'.format(_var)
+            COLUMN_ORDER.append('{}_uncorr'.format(variable))
             for month in range(1, 13):
                 corr_factor = v[str(month)][_var]
                 idx = [i for i in df.index if i.month == month]
                 df.loc[idx, '{}_uncorr'.format(variable)] = df.loc[idx, variable]
                 df.loc[idx, variable] = df.loc[idx, '{}_uncorr'.format(variable)] * corr_factor
-                if month == 1:
-                    COLUMN_ORDER.append('{}_uncorr'.format(variable))
 
         zw = 10
         df['u2_ms'] = wind_height_adjust(
