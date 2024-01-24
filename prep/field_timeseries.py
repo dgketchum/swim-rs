@@ -1,10 +1,9 @@
 import os
 
-import numpy as np
-import pandas as pd
 import geopandas as gpd
+import pandas as pd
 
-from gridmet_corrected.gridmet import corrected_gridmet_clustered
+from gridmet_corrected.gridmet import corrected_gridmet
 
 
 def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_dir, overwrite=False,
@@ -62,8 +61,8 @@ if __name__ == '__main__':
     met = os.path.join(project_ws, 'met_timeseries')
 
     select_fields = [1778, 1791, 1804, 1853, 1375]
-    corrected_gridmet_clustered(fields_shp, grimet_cent, fields_gridmet, met, rasters_, start='2000-01-01',
-                                end='2020-12-31', field_select=select_fields)
+    corrected_gridmet(fields_shp, grimet_cent, fields_gridmet, met, rasters_, start='2000-01-01',
+                      end='2020-12-31', field_select=select_fields)
 
     landsat = os.path.join(project_ws, 'landsat', '{}_sensing_sample.csv'.format(project))
     dst_dir_ = os.path.join(project_ws, 'input_timeseries')

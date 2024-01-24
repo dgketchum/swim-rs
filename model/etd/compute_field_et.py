@@ -54,8 +54,8 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
 
     foo.ndvi = et_cell.input[foo_day.dt_string][cover_proxy]
 
-    foo.fc = foo.ndvi_fc * foo.ndvi
-    # foo.fc = ((foo.kc_bas - foo.kc_min) / (kc_max - foo.kc_min)) ** (1 + 0.5 * foo.height)
+    # foo.fc = foo.ndvi_fc * foo.ndvi
+    foo.fc = ((foo.kc_bas - foo.kc_min) / (kc_max - foo.kc_min)) ** (1 + 0.5 * foo.height)
 
     # limit so that few > 0
     foo.fc = min(foo.fc, 0.99)
@@ -581,7 +581,6 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     if config.field_type == 'irrigated':
         irr_days = et_cell.irrigation_data[str(foo_day.year)]['irr_doys']
 
-        # TODO setup calibration for these parameters (i.e., Kcb and NDVI-based irr_doy formulation)
         if (foo_day.doy in irr_days or foo.kc_bas > 0.7) and foo.depl_root > foo.raw:
             foo.irr_sim = foo.depl_root
             foo.irr_sim = max(foo.irr_sim, foo.irr_min)
@@ -634,7 +633,8 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # since there is no irrigation, but no stress either
     # (i.e., wetlands, cottonwoods, etc.)  (Nuts!)
 
-    if foo.invoke_stress > 0.5 and foo.depl_root > foo.taw:
+    # removed invoke_stress
+    if foo.depl_root > foo.taw:
         # Since we overshot, then just give remaining water to etc_act
 
         foo.etc_act -= (foo.depl_root - foo.taw)

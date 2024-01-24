@@ -1,6 +1,6 @@
 import os
 import logging
-import configparser
+import toml
 from datetime import datetime
 
 import pandas as pd
@@ -18,6 +18,7 @@ class ProjectConfig:
 
     def __init__(self, field_type='irrigated'):
         super().__init__()
+        self.irrigation_data = None
         self.cover_proxy = None
         self.field_cuttings = None
         self.refet_type = None
@@ -52,52 +53,50 @@ class ProjectConfig:
         self.winter_end_day = None
         self.winter_start_day = None
 
-    def read_config(self, ini_path, debug_flag=False):
-        logging.info('  INI: {}'.format(os.path.basename(ini_path)))
+    def read_config(self, conf):
 
-        # Check that INI file can be read
-        config = configparser.RawConfigParser()
-        config.read_file(open(ini_path))
+        with open(conf, 'r') as f:
+            config = toml.load(f)
 
-        crop_et_sec = 'CROP_ET'
+        crop_et_sec = 'FIELDS'
         calib_sec = 'CALIBRATION'
-        # runspec_sec = 'RUNSPEC'
 
-        self.kc_proxy = config.get(crop_et_sec, 'kc_proxy')
-        self.cover_proxy = config.get(crop_et_sec, 'cover_proxy')
+        self.kc_proxy = config[crop_et_sec]['kc_proxy']
+        self.cover_proxy = config[crop_et_sec]['cover_proxy']
 
-        self.project_ws = config.get(crop_et_sec, 'project_folder')
-        self.field_index = 'FID'
+        self.project_ws = config[crop_et_sec]['project_folder']
+        self.field_index = config[crop_et_sec]['field_index']
 
         assert os.path.isdir(self.project_ws)
 
         self.ts_quantity = int(1)
 
-        sdt = config.get(crop_et_sec, 'start_date')
+        sdt = config[crop_et_sec]['start_date']
         self.start_dt = pd.to_datetime(sdt)
-        edt = config.get(crop_et_sec, 'end_date')
+        edt = config[crop_et_sec]['end_date']
         self.end_dt = pd.to_datetime(edt)
 
         # elevation units
-        self.elev_units = config.get(crop_et_sec, 'elev_units')
+        self.elev_units = config[crop_et_sec]['elev_units']
         assert self.elev_units == 'm'
 
-        self.refet_type = config.get(crop_et_sec, 'refet_type')
+        self.refet_type = config[crop_et_sec]['refet_type']
 
         # et cells properties
-        self.soils = config.get(crop_et_sec, 'soils')
+        # TODO: get ksat for runoff generation
+        # self.soils = config.get(crop_et_sec, 'soils')
 
-        self.fields_path = config.get(crop_et_sec, 'fields_path')
-        self.field_properties = config.get(crop_et_sec, 'field_properties')
-        self.input_timeseries = config.get(crop_et_sec, 'input_timeseries')
-        self.irrigation_data = config.get(crop_et_sec, 'irrigation_data')
+        self.fields_path = config[crop_et_sec]['fields_path']
+        self.field_properties = config[crop_et_sec]['field_properties']
+        self.input_timeseries = config[crop_et_sec]['input_timeseries']
+        self.irrigation_data = config[crop_et_sec]['irrigation_data']
 
-        self.calibration = bool(config.get(calib_sec, 'calibrate_flag'))
+        self.calibration = bool(config[calib_sec]['calibrate_flag'])
 
         if self.calibration:
-            cf = config.get(calib_sec, 'calibration_folder')
+            cf = config[calib_sec]['calibration_folder']
             self.calibration_folder = cf
-            self.calibrated_parameters = config.get(calib_sec, 'calibrated_parameters').split(',')
+            self.calibrated_parameters = config[calib_sec]['calibrated_parameters']
             _files = sorted([os.path.join(cf, f) for f in os.listdir(cf)])
             self.calibration_files = {k: v for k, v in zip(self.calibrated_parameters, _files)}
 

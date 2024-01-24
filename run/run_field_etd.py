@@ -7,21 +7,18 @@ import pandas as pd
 from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
-from fieldET import obs_field_cycle
+from model.etd import obs_field_cycle
 
 
-def run_fields(ini_path, debug_flag=False, field_type='irrigated', target_field='1178', project='tongue'):
+def run_fields(ini_path, debug_flag=False, field_type='irrigated', target_fields=None, project='tongue'):
     config = ProjectConfig(field_type=field_type)
-    config.read_config(ini_path, debug_flag)
+    config.read_config(ini_path)
 
     fields = SamplePlots()
-    fields.initialize_plot_data(config)
+    fields.initialize_plot_data(config, targets=target_fields)
 
     cell_count = 0
     for fid, field in sorted(fields.fields_dict.items()):
-
-        if fid != target_field:
-            continue
 
         cell_count += 1
 
@@ -55,10 +52,10 @@ def run_fields(ini_path, debug_flag=False, field_type='irrigated', target_field=
 
 
 if __name__ == '__main__':
-    project = 'flux'
-    target = 'US-Mj1'
+    project = 'tongue'
+    targets_ = [1778, 1791, 1804, 1853, 1375]
     field_type = 'unirrigated'
-    d = '/home/dgketchum/PycharmProjects/et-demands/examples/{}'.format(project)
-    ini = os.path.join(d, '{}_example_cet_obs.ini'.format(project))
+    d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
+    ini = os.path.join(d, '{}_swim.toml'.format(project))
     run_fields(ini_path=ini, debug_flag=False, field_type=field_type,
-               target_field=target, project=project)
+               target_fields=targets_, project=project)

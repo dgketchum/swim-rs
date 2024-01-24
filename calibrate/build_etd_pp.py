@@ -4,7 +4,7 @@ import pandas as pd
 from pyemu.utils import PstFrom
 
 
-def build_pest_etd(model_dir, pest_dir, input_data, **kwargs):
+def build_pest(model_dir, pest_dir, input_data, **kwargs):
     pest = PstFrom(model_dir, pest_dir, remove_existing=True)
 
     for k, v in kwargs['pars'].items():
@@ -14,7 +14,7 @@ def build_pest_etd(model_dir, pest_dir, input_data, **kwargs):
     pest.add_observations(kwargs['obs']['file'], insfile=kwargs['obs']['insfile'])
 
     idf = pd.read_csv(input_data, index_col=0, parse_dates=True)
-    idf['dummy_idx'] = ['eta_{}'.format(str(i).rjust(6, '0')) for i in range(idf.shape[0])]
+    idf['dummy_idx'] = ['obs_eta_{}'.format(str(i).rjust(6, '0')) for i in range(idf.shape[0])]
     captures = [i for i, r in idf.iterrows() if r['etf_inv_irr_ct'] and i.month in list(range(5, 11))]
     captures = idf['dummy_idx'].loc[captures]
 
@@ -33,9 +33,9 @@ if __name__ == '__main__':
 
     fid = 'US-FPe'
     project = 'flux'
-    d = '/home/dgketchum/PycharmProjects/et-demands/examples/{}'.format(project)
+    d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
 
-    data = '/media/research/IrrigationGIS/et-demands/examples/{}/input_timeseries'.format(project)
+    data = '/media/research/IrrigationGIS/swim/examples/{}/input_timeseries'.format(project)
     input_csv = os.path.join(data, '{}_daily.csv'.format(fid))
 
     pp_dir = os.path.join(d, 'pest')
@@ -43,7 +43,7 @@ if __name__ == '__main__':
     ins = '{}.ins'.format(fid)
     p_file = os.path.join(d, 'params.csv')
 
-    dct = {'obs': {'file': 'eta.np',
+    dct = {'obs': {'file': 'obs_eta.np',
                    'insfile': ins},
 
            'pars': {
@@ -67,15 +67,11 @@ if __name__ == '__main__':
                              'initial_value': 0.8, 'lower_bound': 0.5, 'upper_bound': 1.7,
                              'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': 4},
 
-               'ndvi_fc': {'file': p_file,
-                           'initial_value': 1.0, 'lower_bound': 0.6, 'upper_bound': 1.5,
-                           'pargp': 'ndvi_fc', 'index_cols': 0, 'use_cols': 1, 'use_rows': 5},
-
                'mad': {'file': p_file,
                        'initial_value': 0.6, 'lower_bound': 0.1, 'upper_bound': 0.9,
                        'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': 6},
 
            }
            }
-    build_pest_etd(d, pp_dir, input_csv, **dct)
+    build_pest(d, pp_dir, input_csv, **dct)
 # ========================= EOF ====================================================================

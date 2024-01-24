@@ -4,18 +4,17 @@ import time
 import numpy as np
 import pandas as pd
 
+from model.etd import obs_field_cycle
 from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
-from model.etd import obs_field_cycle
 
-
-def run_fields(ini_path, flux_obs, debug_flag=False, field_type='irrigated', target_field='1178', **kwargs):
+def run_fields(conf, flux_obs, debug_flag=False, field_type='irrigated', target_field='1178', **kwargs):
     config = ProjectConfig(field_type=field_type)
-    config.read_config(ini_path, debug_flag)
+    config.read_config(conf)
 
     fields = SamplePlots()
-    fields.initialize_plot_data(config, target=target_field)
+    fields.initialize_plot_data(config, targets=target_field)
 
     for fid, field in sorted(fields.fields_dict.items()):
 
@@ -27,7 +26,7 @@ def run_fields(ini_path, flux_obs, debug_flag=False, field_type='irrigated', tar
         pred = df['et_act'].values + 0.001
 
         print('Predicted: max {:.2f} min {:.2f}'.format(pred.max(), pred.min()))
-        np.savetxt(os.path.join(d, 'pest', 'eta.np'), pred)
+        np.savetxt(os.path.join(d, 'pest', 'pred_eta.np'), pred)
 
         obs = pd.read_csv(flux_obs, index_col=0, parse_dates=True)
         cols = ['et_flux'] + ['et_ssebop'] + list(df.columns)
@@ -73,33 +72,31 @@ def run_fields(ini_path, flux_obs, debug_flag=False, field_type='irrigated', tar
         water_out = totals[['dperc', 'et_act', 'runoff']].sum()
         storage = df.loc[df.index[0], 'depl_root'] - df.loc[df.index[-1], 'depl_root']
         balance = totals['ppt'] - storage - water_out
-        print('Water Balance = {:.1f}; input: {:.1f}; output: {:.1f}; storage: {:.1f}'.format(balance,
-                                                                                              totals['ppt'],
-                                                                                              water_out,
-                                                                                              storage))
+        print('Water Balance = {:.1f}; input: {:.1f}; output: {:.1f}; storage: {:.1f}\n\n\n'.format(balance,
+                                                                                                    totals['ppt'],
+                                                                                                    water_out,
+                                                                                                    storage))
         return None
 
 
 if __name__ == '__main__':
     project = 'flux'
-    target = 'US-Mj1'
-    # target = 'US-xSL'
+    target = 'US-FPe'
     field_type = 'unirrigated'
-    d = '/home/dgketchum/PycharmProjects/et-demands/examples/{}'.format(project)
-    ini = os.path.join(d, '{}_example_cet_obs.ini'.format(project))
+    d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
+    ini = os.path.join(d, '{}_swim.toml'.format(project))
 
     flux_obs_ = os.path.join('/media/research/IrrigationGIS/climate/flux_ET_dataset/'
                              'daily_data_files/{}_daily_data.csv'.format(target))
 
     params = {
-        'aw': 122.177,
+        'aw': 300.0,
         'rew': 3.0,
-        'tew': 18.0,
-        'ndvi_alpha': -0.17410,
-        'ndvi_beta': 1.958615,
-        'ndvi_fc': 2.0,
-        'mad': 0.6,
+        'tew': 6.4,
+        'ndvi_alpha': 0.9,
+        'ndvi_beta': 1.7,
+        'mad': 0.1,
     }
 
-    run_fields(ini_path=ini, flux_obs=flux_obs_, debug_flag=False, field_type=field_type,
+    run_fields(conf=ini, flux_obs=flux_obs_, debug_flag=False, field_type=field_type,
                target_field=target, **params)

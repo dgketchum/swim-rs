@@ -16,7 +16,7 @@ class SamplePlots:
         super().__init__()
         self.fields_dict = None
 
-    def initialize_plot_data(self, config, target=None):
+    def initialize_plot_data(self, config, targets=None):
         self.fields_dict = {}
 
         df = gpd.read_file(config.fields_path)
@@ -24,7 +24,7 @@ class SamplePlots:
 
         for fid, row in df.iterrows():
 
-            if target and target != fid:
+            if targets and fid not in targets:
                 continue
 
             field = PlotData()

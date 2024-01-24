@@ -32,6 +32,7 @@ OUTPUT_FMT = ['capture',
               'fc',
               'few',
               'zr',
+              'aw',
               'aw3',
               'taw',
               'p_rz',
@@ -40,7 +41,6 @@ OUTPUT_FMT = ['capture',
               'runoff',
               'season',
               'cutting',
-              'et_bas',
               ]
 
 
@@ -71,7 +71,8 @@ def field_day_loop(config, field, debug_flag=False, params=None):
             else:
                 v = pd.read_csv(f, index_col=None, header=0)
 
-                assert v.loc[0, 'pargp1'] == k
+                if not v.loc[0, 'pargp1'] == k:
+                    raise NotImplementedError('The calibration file and tarket parameter are mismatched.')
 
                 value = v.loc[0, '1']
 
@@ -148,6 +149,7 @@ def field_day_loop(config, field, debug_flag=False, params=None):
         foo.crop_df[step_dt]['p_eft'] = foo.p_eft
         foo.crop_df[step_dt]['fc'] = foo.fc
         foo.crop_df[step_dt]['few'] = foo.few
+        foo.crop_df[step_dt]['aw'] = foo.aw
         foo.crop_df[step_dt]['aw3'] = foo.aw3
         foo.crop_df[step_dt]['taw'] = foo.taw
         foo.crop_df[step_dt]['irrigation'] = foo.irr_sim

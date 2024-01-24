@@ -11,7 +11,11 @@ def write_field_properties(shp, irr, cdl, soils, js):
     dct = irr.T.to_dict()
     dct = {k: {'irr': {int(kk.split('_')[1]): vv for kk, vv in v.items()}} for k, v in dct.items()}
     cdl = pd.read_csv(cdl, index_col='FID')
-    cdl.drop(columns=['LAT', 'LON'], inplace=True)
+    try:
+        cdl.drop(columns=['LAT', 'LON'], inplace=True)
+    except KeyError:
+        pass
+    cdl.fillna(0.0, axis=0, inplace=True)
     cdl = cdl.T.to_dict()
     [dct[k].update({'cdl': {int(kk.split('_')[1]): int(vv) for kk, vv in cdl[k].items()}}) for k in dct.keys()]
 
@@ -35,18 +39,18 @@ def write_field_properties(shp, irr, cdl, soils, js):
 
 if __name__ == '__main__':
 
-    d = '/media/research/IrrigationGIS/et-demands'
+    d = '/media/research/IrrigationGIS/swim'
 
     soils_ = os.path.join(d, 'soils_aea')
 
-    project = 'flux'
+    project = 'tongue'
     project_ws = os.path.join(d, 'examples', project)
 
-    fields_shp = os.path.join(project_ws, 'gis', '{}_fields_sample.shp'.format(project))
+    fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
 
-    irr_ = os.path.join(project_ws, 'properties', '{}_sample_irr.csv'.format(project))
-    cdl_ = os.path.join(project_ws, 'properties', '{}_sample_cdl.csv'.format(project))
-    jsn = os.path.join(project_ws, 'properties', '{}_sample_props.json'.format(project))
+    irr_ = os.path.join(project_ws, 'properties', '{}_irr.csv'.format(project))
+    cdl_ = os.path.join(project_ws, 'properties', '{}_cdl.csv'.format(project))
+    jsn = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
 
     write_field_properties(fields_shp, irr_, cdl_, soils_, jsn)
 

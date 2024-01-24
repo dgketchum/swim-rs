@@ -70,7 +70,7 @@ COLUMN_ORDER = ['date',
                 'eto_mm']
 
 
-def corrected_gridmet_clustered(fields, gridmet_points, fields_join, gridmet_csv_dir, gridmet_ras,
+def corrected_gridmet(fields, gridmet_points, fields_join, gridmet_csv_dir, gridmet_ras,
                       start=None, end=None, field_select=None):
     """This depends on running 'Raster Pixels to Points' on a WGS Gridmet raster,
      attributing GFID, lat, and lon in the attribute table, and saving to project crs: 5071.

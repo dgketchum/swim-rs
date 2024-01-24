@@ -11,12 +11,12 @@ from model.etd import obs_field_cycle
 from model.etrm import dict_setup, processes
 
 
-def run_fields(ini_path, flux_obs, debug_flag=False, field_type='irrigated', target_field='1178', **kwargs):
+def run_fields(conf, flux_obs, debug_flag=False, field_type='irrigated', target_field='1178', **kwargs):
     config = ProjectConfig(field_type=field_type)
-    config.read_config(ini_path, debug_flag)
+    config.read_config(conf)
 
     fields = SamplePlots()
-    fields.initialize_plot_data(config, target=target_field)
+    fields.initialize_plot_data(config, targets=target_field)
 
     for fid, field in sorted(fields.fields_dict.items()):
 
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     target = 'US-FPe'
     field_type = 'unirrigated'
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
-    ini = os.path.join(d, '{}_example_cet_obs.ini'.format(project))
+    ini = os.path.join(d, '{}_swim.toml'.format(project))
 
     flux_obs_ = os.path.join('/media/research/IrrigationGIS/climate/flux_ET_dataset/'
                              'daily_data_files/{}_daily_data.csv'.format(target))
@@ -99,5 +99,5 @@ if __name__ == '__main__':
         'mad': 0.9,
     }
 
-    run_fields(ini_path=ini, flux_obs=flux_obs_, debug_flag=False, field_type=field_type,
+    run_fields(conf=ini, flux_obs=flux_obs_, debug_flag=False, field_type=field_type,
                target_field=target, **params)

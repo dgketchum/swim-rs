@@ -8,7 +8,7 @@ def get_cdl(fields, desc, geometry='polygon'):
     crops, first = None, True
     cdl_years = [x for x in range(2008, 2023)]
 
-    _selectors = ['FID', 'LAT', 'LON']
+    _selectors = ['FID']
 
     for y in cdl_years:
 
@@ -84,11 +84,11 @@ def get_irrigation(fields, desc, debug=False, geometry='polygon'):
 if __name__ == '__main__':
     ee.Initialize()
 
-    project = 'flux'
-    fields_ = 'users/dgketchum/fields/{}_sample'.format(project)
-    description = '{}_sample_cdl'.format(project)
+    project = 'tongue'
+    fields_ = 'users/dgketchum/fields/tongue_9MAY2023'
+    description = '{}_cdl'.format(project)
     get_cdl(fields_, description)
-    description = '{}_sample_irr'.format(project)
+    description = '{}_irr'.format(project)
     get_irrigation(fields_, description, debug=False)
 
 # ========================= EOF ====================================================================

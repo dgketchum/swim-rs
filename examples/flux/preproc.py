@@ -11,10 +11,10 @@ field_id = 'US-FPe'
 
 root = '/media/research/IrrigationGIS'
 
-d = os.path.join(root, 'et-demands/examples/{}/input_timeseries'.format(project))
+d = os.path.join(root, 'swim/examples/{}/input_timeseries'.format(project))
 flux_obs = os.path.join(root, 'climate/flux_ET_dataset/daily_data_files/{}_daily_data.csv'.format(field_id))
 
-project_dir = '/home/dgketchum/PycharmProjects/et-demands/examples/{}'.format(project)
+project_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
 
 
 def preproc():
@@ -25,13 +25,9 @@ def preproc():
     data = data[['eta']]
     data.dropna(inplace=True)
     print('preproc mean: {}'.format(data.values.mean()))
-    _file = os.path.join(project_dir, 'eta.np')
+    _file = os.path.join(project_dir, 'obs_eta.np')
     np.savetxt(_file, data.values)
-
-    obs = pd.read_csv(flux_obs, index_col=0, parse_dates=True)
-    _file = os.path.join(d, 'obs.np')
-    np.savetxt(_file, data.values)
-    print('Writing Obs to {}'.format(_file))
+    print('Wrote obs to {}'.format(_file))
 
 
 preproc()

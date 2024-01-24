@@ -158,7 +158,6 @@ def flux_tower_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_
 
 
 def clustered_field_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None):
-
     feature_coll = ee.FeatureCollection(feature_coll)
 
     s, e = '1987-01-01', '2021-12-31'
@@ -194,6 +193,9 @@ def clustered_field_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr'
 
             selectors.append(_name)
 
+            # if splt[-1] not in ['20000514', '20000515']:
+            #     continue
+
             nd_img = coll.filterMetadata('system:index', 'equals', img_id).first().rename(_name)
 
             if mask_type == 'no_mask':
@@ -209,10 +211,12 @@ def clustered_field_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr'
             else:
                 bands = bands.addBands([nd_img])
 
-            if debug:
-                point = ee.Geometry.Point([-107.188225, 44.9011])
-                data = nd_img.sample(point, 30).getInfo()
-                print(data['features'])
+        if debug:
+            fc = ee.FeatureCollection([feature_coll.filterMetadata('FID', 'equals', 2).first()])
+            data = bands.reduceRegions(collection=fc,
+                                       reducer=ee.Reducer.mean(),
+                                       scale=30).getInfo()
+            print(data['features'])
 
         data = bands.reduceRegions(collection=feature_coll,
                                    reducer=ee.Reducer.mean(),
@@ -235,7 +239,7 @@ if __name__ == '__main__':
     bucket_ = 'wudr'
     fields = 'users/dgketchum/fields/tongue_9MAY2023'
     for mask in ['inv_irr', 'irr']:
-        chk = '/media/research/IrrigationGIS/swim/examples/tongue_full/landsat/extracts/ndvi/{}'.format(mask)
+        chk = '/media/research/IrrigationGIS/swim/examples/tongue/landsat/extracts/ndvi/{}'.format(mask)
         clustered_field_ndvi(fields, bucket_, debug=False, mask_type=mask, check_dir=chk)
 
 # ========================= EOF ====================================================================
