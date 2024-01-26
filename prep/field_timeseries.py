@@ -29,7 +29,12 @@ def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_di
             continue
 
         gridmet_file = os.path.join(gridmet_dir, 'gridmet_historical_{}.csv'.format(int(row['GFID'])))
-        gridmet = pd.read_csv(gridmet_file, index_col='date', parse_dates=True).loc[start: end]
+
+        try:
+            gridmet = pd.read_csv(gridmet_file, index_col='date', parse_dates=True).loc[start: end]
+        except FileNotFoundError:
+            print(gridmet_file, 'not found')
+            continue
 
         for p in params:
             gridmet.loc[lst.index, p] = lst['{}_{}'.format(f, p)]
@@ -47,9 +52,9 @@ if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/swim'
     if not os.path.exists(d):
-        d = d = '/home/dgketchum/data/IrrigationGIS'
+        d = d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'tongue'
+    project = 'flux'
     project_ws = os.path.join(d, 'examples', project)
 
     gridmet = os.path.join(d, 'gridmet')
@@ -60,9 +65,11 @@ if __name__ == '__main__':
     fields_gridmet = os.path.join(project_ws, 'gis', '{}_fields_gfid.shp'.format(project))
     met = os.path.join(project_ws, 'met_timeseries')
 
-    select_fields = [1778, 1791, 1804, 1853, 1375]
+    select_fields = ['US-FPe']
+
+    # TODO: write gridmet data to a common directory, instead of project ws
     corrected_gridmet(fields_shp, grimet_cent, fields_gridmet, met, rasters_, start='2000-01-01',
-                      end='2020-12-31', field_select=select_fields)
+                      end='2020-12-31', field_select=None)
 
     landsat = os.path.join(project_ws, 'landsat', '{}_sensing_sample.csv'.format(project))
     dst_dir_ = os.path.join(project_ws, 'input_timeseries')

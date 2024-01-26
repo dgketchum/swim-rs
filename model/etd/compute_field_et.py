@@ -633,7 +633,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # since there is no irrigation, but no stress either
     # (i.e., wetlands, cottonwoods, etc.)  (Nuts!)
 
-    # removed invoke_stress
+    # dgk removed invoke_stress
     if foo.depl_root > foo.taw:
         # Since we overshot, then just give remaining water to etc_act
 
