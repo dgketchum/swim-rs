@@ -279,8 +279,8 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
         print('\n', c, selector)
         count, fallow = [], []
 
-        if c not in ['US-Mj1', 'US-Mj2']:
-            continue
+        # if c not in ['US-Mj1', 'US-Mj2']:
+        #     continue
 
         for yr in years:
 
@@ -328,13 +328,19 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
                 for infl, green in zip(ta, tai):
 
                     off_peak = False
-                    if np.all(~np.array([ons[0] < green < ons[1] for ons in onsets])):
-                        off_peak = True
+                    try:
+                        if np.all(~np.array([ons[0] < green < ons[1] for ons in onsets])):
+                            off_peak = True
+                    except TypeError:
+                        continue
 
                     if not off_peak:
                         continue
-
-                    sign = diff.loc[diff.index[green + 1]: diff.index[green + 10], selector].mean()
+                    try:
+                        sign = diff.loc[diff.index[green + 1]: diff.index[green + 10], selector].mean()
+                    except IndexError as e:
+                        print(c, e)
+                        continue
 
                     if sign > 0:
                         date = df.index[green]
@@ -421,11 +427,11 @@ if __name__ == '__main__':
             src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(project, sensing_param, mask_type))
 
             # landsat_time_series_station(shp, ee_data, yrs, src, src_ct)
-            landsat_time_series_multipolygon(shp, ee_data, yrs, src, src_ct)
+            # landsat_time_series_multipolygon(shp, ee_data, yrs, src, src_ct)
             # landsat_time_series_image(shp, tif, yrs, src, src_ct)
 
     dst_ = os.path.join(project_ws, 'landsat', '{}_sensing.csv'.format(project))
-    join_remote_sensing(tables, dst_)
+    # join_remote_sensing(tables, dst_)
 
     irr_ = os.path.join(project_ws, 'properties', '{}_irr.csv'.format(project))
     js_ = os.path.join(project_ws, 'landsat', '{}_cuttings.json'.format(project))
