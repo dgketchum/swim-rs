@@ -3,8 +3,6 @@ import os
 import geopandas as gpd
 import pandas as pd
 
-from gridmet_corrected.gridmet import find_gridmet_points, download_gridmet
-
 
 def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_dir, overwrite=False,
                                       start_date=None, end_date=None, **kwargs):
@@ -32,8 +30,16 @@ def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_di
 
         try:
             gridmet = pd.read_csv(gridmet_file, index_col='date', parse_dates=True).loc[start: end]
+            drop_cols = [c for c in gridmet.columns if '.' in c]
+            if drop_cols:
+                gridmet.drop(columns=drop_cols, inplace=True)
+
         except FileNotFoundError:
-            print(gridmet_file, 'not found')
+            print(gridmet_file, 'not found\n')
+            continue
+
+        except pd.errors.EmptyDataError:
+            print(gridmet_file, 'empty\n')
             continue
 
         for p in params:
@@ -69,9 +75,9 @@ if __name__ == '__main__':
     # select_fields = ['US-FPe']
 
     # TODO: write gridmet data to a common directory, instead of project ws
-    find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=None)
-
-    download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31')
+    # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=None)
+    #
+    # download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31')
 
     landsat = os.path.join(project_ws, 'landsat', '{}_sensing_sample.csv'.format(project))
     dst_dir_ = os.path.join(project_ws, 'input_timeseries')
