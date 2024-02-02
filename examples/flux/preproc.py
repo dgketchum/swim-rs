@@ -23,8 +23,7 @@ def preproc():
     data.index = list(range(data.shape[0]))
     data['eta'] = data['etr_mm'] * data['etf_inv_irr']
     data = data[['eta']]
-    data.dropna(inplace=True)
-    print('preproc mean: {}'.format(data.values.mean()))
+    print('preproc mean: {}'.format(np.nanmean(data.values)))
     _file = os.path.join(project_dir, 'obs_eta.np')
     np.savetxt(_file, data.values)
     print('Wrote obs to {}'.format(_file))
