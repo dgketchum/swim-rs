@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 import pandas as pd
 from pyemu.utils import PstFrom
 
@@ -21,6 +22,8 @@ def build_pest(model_dir, pest_dir, input_data, **kwargs):
     d = pest.obs_dfs[0].copy()
     d['weight'] = 0.0
     d['weight'].loc[captures] = 1.0
+    d['weight'].loc[np.isnan(d['obsval'])] = 0.0
+    d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
     pest.obs_dfs[0] = d
 
     pest.py_run_file = 'custom_forward_run.py'
