@@ -1,4 +1,5 @@
 import os
+import json
 
 import geopandas as gpd
 import numpy as np
@@ -70,8 +71,8 @@ COLUMN_ORDER = ['date',
                 'eto_mm']
 
 
-def corrected_gridmet(fields, gridmet_points, fields_join, gridmet_csv_dir, gridmet_ras,
-                      start=None, end=None, field_select=None):
+def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
+                        factors_js, field_select=None):
     """This depends on running 'Raster Pixels to Points' on a WGS Gridmet raster,
      attributing GFID, lat, and lon in the attribute table, and saving to project crs: 5071.
      GFID is an arbitrary identifier e.g., @row_number. It further depends on projecting the
@@ -79,7 +80,8 @@ def corrected_gridmet(fields, gridmet_points, fields_join, gridmet_csv_dir, grid
 
      The reason we're not just doing a zonal stat on correction surface for every object is that
      there may be many fields that only need data from one gridmet cell. This prevents us from downloading
-     many redundant data sets."""
+     many redundant data sets.
+    """
 
     print('Find field-gridmet joins')
 
@@ -87,6 +89,7 @@ def corrected_gridmet(fields, gridmet_points, fields_join, gridmet_csv_dir, grid
 
     fields = gpd.read_file(fields)
     gridmet_pts = gpd.read_file(gridmet_points)
+    gridmet_pts.index = gridmet_pts['GFID']
 
     rasters = []
 
@@ -94,6 +97,7 @@ def corrected_gridmet(fields, gridmet_points, fields_join, gridmet_csv_dir, grid
         [rasters.append(os.path.join(gridmet_ras, 'gridmet_corrected_{}_{}.tif'.format(v, m))) for m in range(1, 13)]
 
     gridmet_targets = {}
+    first = True
     for i, field in tqdm(fields.iterrows(), total=fields.shape[0]):
 
         if field_select:
@@ -113,17 +117,21 @@ def corrected_gridmet(fields, gridmet_points, fields_join, gridmet_csv_dir, grid
 
             if distance < min_distance:
                 min_distance = distance
-                closest_fid = g_point['GFID']
+                closest_fid = j
                 closest_geo = g_point['geometry']
 
         fields.at[i, 'GFID'] = closest_fid
         fields.at[i, 'STATION_ID'] = closest_fid
 
-        print('Matched {} to {}'.format(field['FID'], closest_fid))
+        if first:
+            print('Matched {} to {}'.format(field['FID'], closest_fid))
+            first = False
 
         if closest_fid not in gridmet_targets.keys():
             gridmet_targets[closest_fid] = {str(m): {} for m in range(1, 13)}
             gdf = gpd.GeoDataFrame({'geometry': [closest_geo]})
+            gridmet_targets[closest_fid]['lat'] = gridmet_pts.loc[closest_fid]['lat']
+            gridmet_targets[closest_fid]['lon'] = gridmet_pts.loc[closest_fid]['lon']
             for r in rasters:
                 splt = r.split('_')
                 _var, month = splt[-2], splt[-1].replace('.tif', '')
@@ -138,20 +146,35 @@ def corrected_gridmet(fields, gridmet_points, fields_join, gridmet_csv_dir, grid
 
     len_ = len(gridmet_targets.keys())
     print('Get gridmet for {} target points'.format(len_))
-    gridmet_pts.index = gridmet_pts['GFID']
 
+    with open(factors_js, 'w') as fp:
+        json.dump(gridmet_targets, fp, indent=4)
+
+
+def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None):
     if not start:
         start = '1987-01-01'
     if not end:
         end = '2021-12-31'
 
-    for k, v in tqdm(gridmet_targets.items(), total=len_):
+    fields = gpd.read_file(fields)
+    fields.index = fields['FID']
+
+    with open(gridmet_factors, 'r') as f:
+        gridmet_factors = json.load(f)
+
+    print('Downloading GridMET')
+    for k, v in tqdm(fields.iterrows(), total=fields.shape[0]):
+        out_cols = COLUMN_ORDER.copy()
         df, first = pd.DataFrame(), True
         for thredds_var, cols in CLIMATE_COLS.items():
             variable = cols['col']
+
             if not thredds_var:
                 continue
-            r = gridmet_pts.loc[k]
+
+            g_fid = str(int(v['GFID']))
+            r = gridmet_factors[g_fid]
             lat, lon = r['lat'], r['lon']
             g = GridMet(thredds_var, start=start, end=end, lat=lat, lon=lon)
             s = g.get_point_timeseries()
@@ -171,9 +194,9 @@ def corrected_gridmet(fields, gridmet_points, fields_join, gridmet_csv_dir, grid
 
         for _var in ['etr', 'eto']:
             variable = '{}_mm'.format(_var)
-            COLUMN_ORDER.append('{}_uncorr'.format(variable))
+            out_cols.append('{}_uncorr'.format(variable))
             for month in range(1, 13):
-                corr_factor = v[str(month)][_var]
+                corr_factor = gridmet_factors[g_fid][str(month)][_var]
                 idx = [i for i in df.index if i.month == month]
                 df.loc[idx, '{}_uncorr'.format(variable)] = df.loc[idx, variable]
                 df.loc[idx, variable] = df.loc[idx, '{}_uncorr'.format(variable)] * corr_factor
@@ -189,8 +212,8 @@ def corrected_gridmet(fields, gridmet_points, fields_join, gridmet_csv_dir, grid
         df['tmax_c'] = df.tmax_k - 273.15
         df['tmin_c'] = df.tmin_k - 273.15
 
-        df = df[COLUMN_ORDER]
-        _file = os.path.join(gridmet_csv_dir, 'gridmet_historical_{}.csv'.format(r['GFID']))
+        df = df[out_cols]
+        _file = os.path.join(gridmet_csv_dir, 'gridmet_historical_{}.csv'.format(g_fid))
         df.to_csv(_file, index=False)
 
 
@@ -290,8 +313,5 @@ def wind_height_adjust(uz, zw):
 
 
 if __name__ == '__main__':
-    d = '/home/dgketchum/PycharmProjects/et-demands/'
-
-    # export_openet_correction_surfaces()
-
+    pass
 # ========================= EOF ====================================================================
