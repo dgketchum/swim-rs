@@ -3,7 +3,7 @@ import os
 import geopandas as gpd
 import pandas as pd
 
-from gridmet_corrected.gridmet import corrected_gridmet
+from gridmet_corrected.gridmet import find_gridmet_points, download_gridmet
 
 
 def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_dir, overwrite=False,
@@ -54,22 +54,24 @@ if __name__ == '__main__':
     if not os.path.exists(d):
         d = d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'flux'
+    project = 'tongue'
     project_ws = os.path.join(d, 'examples', project)
 
     gridmet = os.path.join(d, 'gridmet')
     rasters_ = os.path.join(gridmet, 'gridmet_corrected', 'correction_surfaces_aea')
-    grimet_cent = os.path.join(gridmet, 'gridmet_centroids.shp')
+    grimet_cent = os.path.join(gridmet, 'gridmet_centroids_tongue.shp')
 
     fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
     fields_gridmet = os.path.join(project_ws, 'gis', '{}_fields_gfid.shp'.format(project))
+    gridmet_factors = os.path.join(project_ws, 'gis', '{}_fields_gfid.json'.format(project))
     met = os.path.join(project_ws, 'met_timeseries')
 
-    select_fields = ['US-FPe']
+    # select_fields = ['US-FPe']
 
     # TODO: write gridmet data to a common directory, instead of project ws
-    corrected_gridmet(fields_shp, grimet_cent, fields_gridmet, met, rasters_, start='2000-01-01',
-                      end='2020-12-31', field_select=None)
+    find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=None)
+
+    download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31')
 
     landsat = os.path.join(project_ws, 'landsat', '{}_sensing_sample.csv'.format(project))
     dst_dir_ = os.path.join(project_ws, 'input_timeseries')
