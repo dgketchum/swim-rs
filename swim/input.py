@@ -14,15 +14,27 @@ class SamplePlots:
 
     def __init__(self):
         super().__init__()
+        self.fields = None
+        self.cuttings = None
+        self.field_props = None
         self.fields_dict = None
 
     def initialize_plot_data(self, config, targets=None):
         self.fields_dict = {}
 
-        df = gpd.read_file(config.fields_path)
-        df.index = df[config.field_index]
+        f = config.fields_path
+        with open(f, 'r') as fp:
+            self.fields = json.load(fp)
 
-        for fid, row in df.iterrows():
+        f = config.field_properties
+        with open(f, 'r') as fp:
+            self.field_props = json.load(fp)
+
+        f = config.irrigation_data
+        with open(f, 'r') as fp:
+            self.cuttings = json.load(fp)
+
+        for fid, row in self.fields.items():
 
             if targets and fid not in targets:
                 continue
@@ -32,13 +44,14 @@ class SamplePlots:
             field.field_id = str(fid)
             field.lat = row['LAT']
             field.lon = row['LON']
-            field.geometry = row['geometry']
+            # field.geometry = row['geometry']
 
             self.fields_dict[field.field_id] = field
 
             field.set_input_timeseries(config)
-            field.set_field_properties(config)
-            field.set_irrigation_cuttings(config)
+
+            field.props = self.field_props[str(fid)]
+            field.irrigation_data = self.cuttings[str(fid)]
 
 
 class PlotData:
@@ -78,18 +91,6 @@ class PlotData:
             self.refet = df['{}_mm_uncorr'.format(config.refet_type)]
         else:
             raise NotImplementedError('Uknown field type')
-
-    def set_field_properties(self, config):
-        f = config.field_properties
-        with open(f, 'r') as fp:
-            dct = json.load(fp)
-        self.props = dct[str(self.field_id)]
-
-    def set_irrigation_cuttings(self, config):
-        f = config.irrigation_data
-        with open(f, 'r') as fp:
-            dct = json.load(fp)
-        self.irrigation_data = dct[str(self.field_id)]
 
 
 if __name__ == '__main__':
