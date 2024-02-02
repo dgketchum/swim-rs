@@ -4,10 +4,9 @@ import time
 import numpy as np
 import pandas as pd
 
+from model.etd import obs_field_cycle
 from swim.config import ProjectConfig
 from swim.input import SamplePlots
-
-from model.etd import obs_field_cycle
 
 
 def run_fields(ini_path, debug_flag=False, field_type='irrigated', target_fields=None, project='tongue'):
