@@ -1,4 +1,5 @@
 import os
+from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
@@ -6,7 +7,6 @@ from pyemu.utils import PstFrom
 
 
 def build_pest(model_dir, pest_dir, **kwargs):
-
     pest = PstFrom(model_dir, pest_dir, remove_existing=True)
     _file = None
 
@@ -16,7 +16,6 @@ def build_pest(model_dir, pest_dir, **kwargs):
         pest.add_parameters(_file, 'constant', **v)
 
     for i, fid in enumerate(kwargs['targets']):
-
         pest.add_observations(kwargs['obs']['file'][i], insfile=kwargs['obs']['insfile'][i])
         idf = pd.read_csv(kwargs['inputs'][i], index_col=0, parse_dates=True)
         idf['dummy_idx'] = ['obs_eta_{}_{}'.format(fid, str(i).rjust(6, '0')) for i in range(idf.shape[0])]
@@ -37,7 +36,6 @@ def build_pest(model_dir, pest_dir, **kwargs):
 
 
 if __name__ == '__main__':
-
     targets_ = [1778, 1791, 1804, 1853, 1375]
     project = 'tongue'
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
@@ -51,38 +49,39 @@ if __name__ == '__main__':
     ins = ['{}.ins'.format(fid) for fid in targets_]
     p_file = os.path.join(d, 'params.csv')
 
-    pars = {
-               'aw': {'file': p_file,
-                      'initial_value': 145.0, 'lower_bound': 100.0, 'upper_bound': 1000.0,
-                      'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': 0},
+    pars = OrderedDict({
+        'aw': {'file': p_file,
+               'initial_value': 145.0, 'lower_bound': 100.0, 'upper_bound': 1000.0,
+               'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': 0},
 
-               'rew': {'file': p_file,
-                       'initial_value': 3.0, 'lower_bound': 2.0, 'upper_bound': 6.0,
-                       'pargp': 'rew', 'index_cols': 0, 'use_cols': 1, 'use_rows': 1},
+        'rew': {'file': p_file,
+                'initial_value': 3.0, 'lower_bound': 2.0, 'upper_bound': 6.0,
+                'pargp': 'rew', 'index_cols': 0, 'use_cols': 1, 'use_rows': 1},
 
-               'tew': {'file': p_file,
-                       'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
-                       'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': 2},
+        'tew': {'file': p_file,
+                'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
+                'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': 2},
 
-               'ndvi_alpha': {'file': p_file,
-                              'initial_value': -0.2, 'lower_bound': -0.7, 'upper_bound': 1.5,
-                              'pargp': 'ndvi_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': 3},
+        'ndvi_alpha': {'file': p_file,
+                       'initial_value': -0.2, 'lower_bound': -0.7, 'upper_bound': 1.5,
+                       'pargp': 'ndvi_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': 3},
 
-               'ndvi_beta': {'file': p_file,
-                             'initial_value': 0.8, 'lower_bound': 0.5, 'upper_bound': 1.7,
-                             'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': 4},
+        'ndvi_beta': {'file': p_file,
+                      'initial_value': 0.8, 'lower_bound': 0.5, 'upper_bound': 1.7,
+                      'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': 4},
 
-               'mad': {'file': p_file,
-                       'initial_value': 0.6, 'lower_bound': 0.1, 'upper_bound': 0.9,
-                       'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': 6},
+        'mad': {'file': p_file,
+                'initial_value': 0.6, 'lower_bound': 0.1, 'upper_bound': 0.9,
+                'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': 6},
 
-           }
+    })
 
-    pars = {'{}_{}'.format(k, fid): v for k, v in pars.items() for fid in targets_}
+    pars = OrderedDict({'{}_{}'.format(k, fid): v for k, v in pars.items() for fid in targets_})
 
-    params = [(k, v['initial_value']) for k, v in pars.items()]
-    idx, vals = [x[0] for x in params], [x[1] for x in params]
-    pd.Series(index=idx, data=vals, name='Name').to_csv(p_file)
+    params = [(k, v['initial_value'], 'p_inst{}_constant.csv'.format(i)) for i, (k, v) in enumerate(pars.items())]
+    idx, vals, _names = [x[0] for x in params], [x[1] for x in params], [x[2] for x in params]
+    vals = np.array([vals, _names]).T
+    pd.DataFrame(index=idx, data=vals, columns=['value', 'mult_name']).to_csv(p_file)
 
     obs_files = ['obs/obs_eta_{}.np'.format(fid) for fid in targets_]
 
