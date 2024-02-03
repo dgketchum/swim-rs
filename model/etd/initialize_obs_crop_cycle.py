@@ -31,19 +31,104 @@ FOO_FMT = ['et_act',
            'et_bas',
            ]
 
+TRACKER_PARAMS = ['aw3',
+                  'cn2',
+                  'cgdd',
+                  'aw',
+                  'cgdd_penalty',
+                  'cum_evap',
+                  'ad',
+                  'cum_evap_prev',
+                  'depl_ze',
+                  'depl_zep',
+                  'dperc',
+                  'dperc_ze',
+                  'density',
+                  'depl_surface',
+                  'depl_root',
+                  'etc_act',
+                  'etc_pot',
+                  'etc_bas',
+                  'etref_30',
+                  'fc',
+                  'fw',
+                  'fw_spec',
+                  'fw_std',
+                  'fw_irr',
+                  'gdd',
+                  'gdd_penalty',
+                  'height_min',
+                  'height_max',
+                  'height',
+                  'irr_auto',
+                  'irr_sim',
+                  'kc_act',
+                  'kc_pot',
+                  'kc_max',
+                  'kc_min',
+                  'kc_bas',
+                  'kc_bas_mid',
+                  'kc_bas_prev',
+                  'ke',
+                  'ke_irr',
+                  'ke_ppt',
+                  'kr2',
+                  'ks',
+                  'kt_reducer',
+                  'mad',
+                  'mad_ini',
+                  'mad_mid',
+                  'n_cgdd',
+                  'n_pl_ec',
+                  'niwr',
+                  'p_rz',
+                  'p_eft',
+                  'ppt_inf',
+                  'ppt_inf_prev',
+                  'rew',
+                  'tew',
+                  'tew2',
+                  'tew3',
+                  's',
+                  's1',
+                  's2',
+                  's3',
+                  's4',
+                  'sro',
+                  'zr_min',
+                  'zr_max',
+                  'z',
+                  'invoke_stress',
+                  'doy_start_cycle',
+                  'cutting',
+                  'cycle',
+                  'height_initial',
+                  'height_max',
+                  'height_min',
+                  'height',
+                  'totwatin_ze',
+                  'cgdd_at_planting',
+                  'wt_irr',
+                  'kc_bas_prev',
+                  'irr_min']
 
-class InitializeObsCropCycle:
-    def __init__(self):
+
+class PlotTracker:
+    def __init__(self, size):
         """Initialize for crops cycle"""
+
+        self.size = size
+
         self.cover_proxy = None
         self.crop_df = None
-        self.ad = 0.
-        self.aw = 0
+
         self.aw3 = 0.
         self.cn2 = 0.
         self.cgdd = 0.
+        self.aw = 0
         self.cgdd_penalty = 0.
         self.cum_evap = 0.
+        self.ad = 0.
         self.cum_evap_prev = 0.
         self.depl_ze = 0.
         self.depl_zep = 0.
@@ -63,9 +148,9 @@ class InitializeObsCropCycle:
         self.fw_irr = 0.
         self.gdd = 0.0
         self.gdd_penalty = 0.
-        self.height_min = 0.
-        self.height_max = 0.
         self.height = 0
+        self.height_min = 0.1
+        self.height_max = 2.0
         self.irr_auto = 0.
         self.irr_sim = 0.
         self.kc_act = 0.
@@ -101,9 +186,10 @@ class InitializeObsCropCycle:
         self.s3 = 0.
         self.s4 = 0.
         self.sro = 0.
-        self.zr_min = 0.
-        self.zr_max = 0.
         self.z = 0.
+
+        self.zr_min = 0.1
+        self.zr_max = 1.7
 
         # TODO add invoke stess as a tunable parameter
         self.invoke_stress = 0.9
@@ -158,6 +244,11 @@ class InitializeObsCropCycle:
 
         self.irr_min = 10.
 
+        # convert all numerical attributes to numpy arrays, shape (1, -1)
+        for p in TRACKER_PARAMS:
+            v = self.__getattribute__(p)
+            self.__setattr__(p, np.ones((1, size)) * v)
+
     def crop_load(self, et_cell):
         """Assign characteristics for crop from crop Arrays
         Parameters
@@ -180,11 +271,6 @@ class InitializeObsCropCycle:
 
         """
 
-        self.height_min = 0.1
-        self.height_max = 2.0
-        self.zr_min = 0.1
-        self.zr_max = 1.7
-
         self.depl_ze = de_initial  # (10 mm) at start of new crop at beginning of time
         self.depl_root = de_initial  # (20 mm) at start of new crop at beginning of time
         self.zr = self.zr_min  # initialize rooting depth at beginning of time
@@ -198,7 +284,10 @@ class InitializeObsCropCycle:
         self.kc_bas_mid = 0.
 
         # Available water in soil
-        self.aw = et_cell.props['stn_whc'] / 12 * 1000.  # in/ft to mm/m
+        # This will be optimized
+        # TODO: get this from props
+        # self.aw = et_cell.props['stn_whc'] / 12 * 1000.  # in/ft to mm/m
+        self.aw = np.ones((1, self.size)) * 300.0  # in/ft to mm/m
 
         # Estimate readily evaporable water and total evaporable water from WHC
         # REW is from regression of REW vs. AW from FAO-56 soils table
@@ -211,11 +300,11 @@ class InitializeObsCropCycle:
         # R.Allen, August 2006, R2=0.88, n = 9
 
         self.tew = -3.7 + 166 * self.aw / 1000  # TEW is in mm and AW is in mm/m
-        if self.rew > (0.8 * self.tew):
-            self.rew = 0.8 * self.tew  # limit REW based on TEW
+
+        condition = self.rew > 0.8 * self.tew
+        self.rew = np.where(condition, 0.8 * self.tew, self.rew)  # limit REW based on TEW
         self.tew2 = self.tew  # TEW2Array(ctCount)
         self.tew3 = self.tew  # TEW3Array(ctCount) '(no severely cracking clays in Idaho)
-        self.kr2 = 0  # Kr2Array(ctCount)'(no severely cracking clays in Idaho)
 
         self.setup_crop()
 
@@ -248,8 +337,8 @@ class InitializeObsCropCycle:
 
         self.height = self.height_min
         self.tew = self.tew2  # find total evaporable water
-        if self.tew < self.tew3:
-            self.tew = self.tew3
+        self.tew = np.where(self.tew < self.tew3, self.tew3, self.tew)
+
         self.fw_irr = self.fw_std  # fw changed to fw_irr 8/10/06
         self.irr_auto = 0
         self.irr_sim = 0
@@ -274,43 +363,49 @@ class InitializeObsCropCycle:
         # Make sure that AW3 has been collecting DP from zr_dormant layer during winter
 
         # if daw3 < 0.0: daw3 = 0.
-        daw3 = max(0, daw3)
+        daw3 = np.where(daw3 < 0.0,
+                        np.zeros_like(daw3),
+                        daw3)
+
         # if taw3 < 0.0: taw3 = 0.
-        taw3 = max(0, taw3)
-        if self.zr_min > zr_dormant:
-            # adjust depletion for extra starting root zone at plant or GU
-            # assume fully mixed layer 3
+        taw3 = np.where(taw3 < 0.0,
+                        np.zeros_like(taw3),
+                        taw3)
 
-            self.depl_root = (
-                self.depl_root + (taw3 - daw3) *
-                (self.zr_min - zr_dormant) / (self.zr_max - zr_dormant))
-        elif self.zr_max > self.zr_min:
-            # Was, until 5/9/07:
-            # Assume moisture right above zr_dormant is same as below
-            # depl_root = depl_root - (taw3 - daw3) * (zr_dormant - zr_min) / (zr_max - zr_min)
-            # Following added 5/9/07
-            # Enlarge depth of water
+        # Was, until 5/9/07:
+        # Assume moisture right above zr_dormant is same as below
+        # depl_root = depl_root - (taw3 - daw3) * (zr_dormant - zr_min) / (zr_max - zr_min)
+        # Following added 5/9/07
+        # Enlarge depth of water
 
-            daw3 = (
-                daw3 + (zr_dormant - self.zr_min) / zr_dormant *
-                (self.aw * zr_dormant - self.depl_root))
+        self.depl_root = np.where(self.zr_min > zr_dormant,
+                                  self.depl_root + (taw3 - daw3) * (self.zr_min - zr_dormant) / (
+                                      self.zr_max - zr_dormant),
+                                  self.depl_root)
 
-            # Adjust depl_root in proportion to zr_min / zdormant and increase daw3 and AW3
+        daw3 = np.where(self.zr_max > self.zr_min,
+                        daw3 + (zr_dormant - self.zr_min) / zr_dormant * (self.aw * zr_dormant - self.depl_root),
+                        daw3)
 
-            self.depl_root *= self.zr_min / zr_dormant
+        self.depl_root = np.where(self.zr_max > self.zr_min,
+                                  self.depl_root * self.zr_min / zr_dormant,
+                                  self.depl_root)
 
-            # denom is layer 3 depth at start of season
+        self.aw3 = np.where(self.zr_max > self.zr_min,
+                            daw3 / (self.zr_max - self.zr_min),
+                            self.aw3)
 
-            self.aw3 = daw3 / (self.zr_max - self.zr_min)
-            # if self.aw3 < 0.0: self.aw3 = 0.
-            self.aw3 = max(0.0, self.aw3)
-            if self.aw3 > self.aw: self.aw3 = self.aw
-            self.aw3 = min(self.aw, self.aw3)
-        if self.depl_root < 0.: self.depl_root = 0.
+        self.aw3 = np.where(self.aw3 < 0.0,
+                            np.zeros_like(self.aw3),
+                            self.aw3)
 
-        # Initialize rooting depth at beginning of time  <----DO??? Need recalc on Reserve?
-        self.zr = self.zr_min
-        self.crop_setup_flag = False
+        self.aw3 = np.where(self.aw3 > self.aw,
+                            self.aw,
+                            self.aw3)
+
+        self.depl_root = np.where(self.depl_root < 0.,
+                                  np.zeros_like(self.depl_root),
+                                  self.depl_root)
 
     def setup_dormant(self):
         """Start of dormant season
@@ -340,7 +435,7 @@ class InitializeObsCropCycle:
         # Assume that 'rooting depth' for dormant surfaces is 0.1 or 0.15 m
         # This is depth that will be applied with a stress function to reduce kc_bas
 
-        zr_dormant = 0.1  #  was 0.15
+        zr_dormant = 0.1  # was 0.15
 
         # Convert current moisture content of Zr layer
         #   (which should be at zr_max at end of season)
@@ -366,7 +461,6 @@ class InitializeObsCropCycle:
         # Depth of evaporation layer (This only works when ze < zr_dormant)
 
         ze = 0.1
-
 
         # Reduce daw_root by water in evap layer and rest of zr_dormant and then proportion
         if zr_dormant < self.zr:

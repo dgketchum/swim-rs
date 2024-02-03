@@ -18,6 +18,7 @@ class ProjectConfig:
 
     def __init__(self, field_type='irrigated'):
         super().__init__()
+        self.calibration_groups = None
         self.irrigation_data = None
         self.cover_proxy = None
         self.field_cuttings = None
@@ -96,9 +97,15 @@ class ProjectConfig:
         if self.calibration:
             cf = config[calib_sec]['calibration_folder']
             self.calibration_folder = cf
-            self.calibrated_parameters = config[calib_sec]['calibrated_parameters']
-            _files = sorted([os.path.join(cf, f) for f in os.listdir(cf)])
+            initial_values_csv = config[calib_sec]['initial_values_csv']
+            pdf = pd.read_csv(initial_values_csv, index_col=0)
+            self.calibrated_parameters = pdf.index
+            _files = list(pdf['mult_name'])
+            assert set(os.listdir(self.calibration_folder)) == set(_files)
+            _files = [os.path.join(self.calibration_folder, f) for f in _files]
             self.calibration_files = {k: v for k, v in zip(self.calibrated_parameters, _files)}
+            self.calibration_groups = list(set(['_'.join(p.split('_')[:-1]) for p in pdf.index]))
+
 
         # TODO: remove these ETRM-specific config attributes
 

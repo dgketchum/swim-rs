@@ -26,19 +26,11 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
 
     # Limit height for numerical stability
 
-    foo.height = max(0.05, foo.height)
+    foo.height = np.maximum(0.05, foo.height)
 
-    if et_cell.props['irr'][str(foo_day.year)] < 0.5:
-        fallow = True
-    else:
-        fallow = False
+    kc_max = np.maximum(foo.kc_max, foo.kc_bas + 0.05)
 
-    kc_max = max(foo.kc_max, foo.kc_bas + 0.05)
-
-    # Use same value for both ETr or ETo bases.
-
-    foo.kc_min = 0.1
-    foo.kc_bas = max(foo.kc_min, foo.kc_bas)
+    foo.kc_bas = np.maximum(foo.kc_min, foo.kc_bas)
 
     # Estimate height of vegetation for estimating fraction of ground cover
     #   for evaporation and fraction of ground covered by vegetation
@@ -46,21 +38,13 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # heightcalc  #'call to heightcalc was moved to top of this subroutine 12/26/07 by Allen
     # foo.fc = ((foo.kc_bas - foo.kc_min) / (kc_max - foo.kc_min)) ** (1 + 0.5 * foo.height)
 
-    # dgketchum hack tunable cover fraction function
-    if fallow or config.field_type == 'unirrigated':
-        cover_proxy = '{}_inv_irr'.format(config.cover_proxy)
-    else:
-        cover_proxy = '{}_irr'.format(config.cover_proxy)
-
-    foo.ndvi = et_cell.input[foo_day.dt_string][cover_proxy]
-
     # foo.fc = foo.ndvi_fc * foo.ndvi
     foo.fc = ((foo.kc_bas - foo.kc_min) / (kc_max - foo.kc_min)) ** (1 + 0.5 * foo.height)
 
     # limit so that few > 0
-    foo.fc = min(foo.fc, 0.99)
-    if np.isnan(foo.fc):
-        raise ValueError
+    foo.fc = np.minimum(foo.fc, 0.99)
+    if np.any(np.isnan(foo.fc)):
+        raise ValueError('Found nan in foo.fc')
 
     # Estimate infiltrating precipitation
 
@@ -70,9 +54,11 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     foo.ppt_inf = 0.0
     foo.sro = 0.0
 
-    if foo_day.precip > 0:
-        # Compute weighted depletion of surface from irr and precip areas
-        foo.depl_surface = foo.wt_irr * foo.depl_ze + (1 - foo.wt_irr) * foo.depl_zep
+    if np.any(foo_day.precip > 0):
+        foo.depl_surface = np.where(
+            foo_day.precip > 0,
+            foo.wt_irr * foo.depl_ze + (1 - foo.wt_irr) * foo.depl_zep,
+            foo.depl_surface)
         runoff.runoff(foo, foo_day, debug_flag)
         foo.ppt_inf = foo_day.precip - foo.sro
 

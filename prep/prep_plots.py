@@ -21,14 +21,14 @@ REQUIRED = ['prcp_mm',
 
 
 def prep_fields_json(fields, input_ts, target_plots, out_js, data_out, idx_col='FID'):
-    df = gpd.read_file(fields)
-    df.index = df[idx_col]
-    df = df.loc[target_plots]
-    df.drop(columns=['STATE', 'geometry'], inplace=True)
+    gdf = gpd.read_file(fields)
+    gdf.index = [str(i) for i in gdf[idx_col]]
+    gdf = gdf.loc[target_plots]
+    gdf.drop(columns=['STATE', 'geometry'], inplace=True)
 
-    dct = {i: r.to_dict() for i, r in df.iterrows()}
+    dct = {i: r.to_dict() for i, r in gdf.iterrows()}
 
-    dts = None
+    dts, order = None, []
     first, arrays = True, {r: [] for r in REQUIRED}
     for fid, v in dct.items():
         _file = os.path.join(input_ts, '{}_daily.csv'.format(fid))
@@ -38,21 +38,26 @@ def prep_fields_json(fields, input_ts, target_plots, out_js, data_out, idx_col='
             dts = [(int(r['year']), int(r['month']), int(r['day'])) for i, r in df.iterrows()]
             dts = ['{}-{:02d}-{:02d}'.format(y, m, d) for y, m, d in dts]
             data = {dt: {'doy': doy} for dt, doy in zip(dts, doys)}
-            data['order'] = [fid]
+            order = [fid]
             first = False
         else:
-            data['order'].append(fid)
+            order.append(fid)
 
         for p in REQUIRED:
-            arrays[p].append(df[p].values)
+            a = df[p].values
+            if np.any(np.isnan(a)):
+                raise ValueError
+            arrays[p].append(a)
 
     for p in REQUIRED:
-        arrays[p] = np.array(arrays[p]).T
+        a = np.array(arrays[p]).T
+        arrays[p] = a
 
     for i, dt in enumerate(dts):
         for p in REQUIRED:
             data[dt][p] = list(arrays[p][i, :])
 
+    dct = {'order': order, 'plots': dct}
     with open(out_js, 'w') as fp:
         json.dump(dct, fp, indent=4)
 
@@ -73,7 +78,7 @@ if __name__ == '__main__':
 
     fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
 
-    select_fields = [1778, 1791, 1804, 1853, 1375]
+    select_fields = ['1778', '1791', '1804', '1853', '1375']
 
     select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_fields.json'.format(project))
     input_data = os.path.join(project_ws, 'prepped_input', '{}_data.json'.format(project))

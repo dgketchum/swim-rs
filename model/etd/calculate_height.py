@@ -6,6 +6,8 @@ Called by crop_cycle.py
 
 import logging
 
+import numpy as np
+
 
 def calculate_height(foo):
 
@@ -16,11 +18,19 @@ def calculate_height(foo):
     # kc_bas_mid is maximum kc_bas found in kc_bas table read into program
 
     # Following conditionals added 12/26/07 to prevent any error
-    if foo.kc_bas > foo.kc_min and foo.kc_bas_mid > foo.kc_min:
-        foo.height = (
-            foo.height_initial + (foo.kc_bas - foo.kc_min) / (foo.kc_bas_mid - foo.kc_min) *
-            (foo.height_max - foo.height_initial))
-    else:
-        foo.height = foo.height_initial
-    foo.height = min(max(foo.height_initial, max(height_prev, foo.height)), foo.height_max)
+    # if foo.kc_bas > foo.kc_min and foo.kc_bas_mid > foo.kc_min:
+    #     foo.height = (
+    #         foo.height_initial + (foo.kc_bas - foo.kc_min) / (foo.kc_bas_mid - foo.kc_min) *
+    #         (foo.height_max - foo.height_initial))
+    # else:
+    #     foo.height = foo.height_initial
+    # foo.height = min(max(foo.height_initial, max(height_prev, foo.height)), foo.height_max)
 
+    condition = (foo.kc_bas > foo.kc_min) & (foo.kc_bas_mid > foo.kc_min)
+    foo.height = np.where(
+        condition,
+        foo.height_initial + (foo.kc_bas - foo.kc_min) / (foo.kc_bas_mid - foo.kc_min) * (foo.height_max - foo.height_initial),
+        foo.height_initial
+    )
+
+    foo.height = np.minimum(np.maximum(foo.height_initial, np.maximum(height_prev, foo.height)), foo.height_max)

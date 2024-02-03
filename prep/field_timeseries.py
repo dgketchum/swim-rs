@@ -1,5 +1,4 @@
 import os
-import json
 
 import geopandas as gpd
 import pandas as pd
@@ -55,18 +54,6 @@ def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_di
         print(_file)
 
 
-def prep_fields_json(fields, target_plots, out_js, idx_col='FID'):
-
-    df = gpd.read_file(fields)
-    df.index = df[idx_col]
-    df = df.loc[target_plots]
-    df.drop(columns=['STATE', 'geometry'], inplace=True)
-
-    dct = {i: r.to_dict() for i, r in df.iterrows()}
-    with open(out_js, 'w') as fp:
-        json.dump(dct, fp, indent=4)
-
-
 if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/swim'
@@ -85,7 +72,6 @@ if __name__ == '__main__':
     gridmet_factors = os.path.join(project_ws, 'gis', '{}_fields_gfid.json'.format(project))
     met = os.path.join(project_ws, 'met_timeseries')
 
-
     # TODO: write gridmet data to a common directory, instead of project ws
     # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=None)
     #
@@ -101,10 +87,7 @@ if __name__ == '__main__':
 
     params += ['{}_ct'.format(p) for p in params]
 
-    # join_gridmet_remote_sensing_daily(fields_gridmet, met, landsat, dst_dir_, overwrite=True,
-    #                                   start_date='2000-01-01', end_date='2020-12-31', **{'params': params})
+    join_gridmet_remote_sensing_daily(fields_gridmet, met, landsat, dst_dir_, overwrite=True,
+                                      start_date='2000-01-01', end_date='2020-12-31', **{'params': params})
 
-    select_fields = [1778, 1791, 1804, 1853, 1375]
-    select_fields_js = os.path.join(project_ws, 'gis', '{}_fields.json'.format(project))
-    prep_fields_json(fields_shp, select_fields, select_fields_js, idx_col='FID')
 # ========================= EOF ====================================================================
