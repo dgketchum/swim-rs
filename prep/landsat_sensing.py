@@ -202,7 +202,9 @@ def landsat_time_series_multipolygon(in_shp, csv_dir, years, out_csv, out_csv_ct
         ct = ~pd.isna(field)
 
         df = df.astype(float).interpolate()
+        df = df.reindex(dt_index)
         df = df.interpolate().bfill()
+        df = df.interpolate().ffill()
 
         ct = ct.fillna(0)
         ct = ct.astype(int)
@@ -224,9 +226,9 @@ def join_remote_sensing(_dir, dst):
     l = [os.path.join(_dir, f) for f in os.listdir(_dir) if f.endswith('.csv')]
     first = True
 
-    params = ['etf_inv_irr',
+    params = ['etf_irr',
+              'etf_inv_irr',
               'ndvi_inv_irr',
-              'etf_irr',
               'ndvi_irr']
 
     params += ['{}_ct'.format(p) for p in params]
@@ -427,11 +429,11 @@ if __name__ == '__main__':
             src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(project, sensing_param, mask_type))
 
             # landsat_time_series_station(shp, ee_data, yrs, src, src_ct)
-            # landsat_time_series_multipolygon(shp, ee_data, yrs, src, src_ct)
+            landsat_time_series_multipolygon(shp, ee_data, yrs, src, src_ct)
             # landsat_time_series_image(shp, tif, yrs, src, src_ct)
 
     dst_ = os.path.join(project_ws, 'landsat', '{}_sensing.csv'.format(project))
-    # join_remote_sensing(tables, dst_)
+    join_remote_sensing(tables, dst_)
 
     irr_ = os.path.join(project_ws, 'properties', '{}_irr.csv'.format(project))
     js_ = os.path.join(project_ws, 'landsat', '{}_cuttings.json'.format(project))
