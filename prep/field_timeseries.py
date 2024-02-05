@@ -1,7 +1,8 @@
 import os
 
-import geopandas as gpd
+import numpy as np
 import pandas as pd
+import geopandas as gpd
 
 
 def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_dir, overwrite=False,
@@ -77,7 +78,7 @@ if __name__ == '__main__':
     #
     # download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31')
 
-    landsat = os.path.join(project_ws, 'landsat', '{}_sensing_sample.csv'.format(project))
+    landsat = os.path.join(project_ws, 'landsat', '{}_sensing.csv'.format(project))
     dst_dir_ = os.path.join(project_ws, 'input_timeseries')
 
     params = ['etf_inv_irr',

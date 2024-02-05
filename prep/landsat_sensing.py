@@ -206,6 +206,7 @@ def landsat_time_series_multipolygon(in_shp, csv_dir, years, out_csv, out_csv_ct
         df = df.interpolate().bfill()
         df = df.interpolate().ffill()
 
+        ct = ct.reindex(dt_index)
         ct = ct.fillna(0)
         ct = ct.astype(int)
 
@@ -437,6 +438,6 @@ if __name__ == '__main__':
 
     irr_ = os.path.join(project_ws, 'properties', '{}_irr.csv'.format(project))
     js_ = os.path.join(project_ws, 'landsat', '{}_cuttings.json'.format(project))
-    detect_cuttings(dst_, irr_, irr_threshold=0.1, out_json=js_)
+    # detect_cuttings(dst_, irr_, irr_threshold=0.1, out_json=js_)
 
 # ========================= EOF ================================================================================
