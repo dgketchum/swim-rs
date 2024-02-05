@@ -30,6 +30,7 @@ def prep_fields_json(fields, input_ts, target_plots, out_js, data_out, idx_col='
 
     dct = {i: r.to_dict() for i, r in gdf.iterrows()}
 
+    required_params = None
     if ltype == 'irrigated':
         required_params = REQUIRED + REQ_IRR
     elif ltype == 'unirrigated':
@@ -72,6 +73,20 @@ def prep_fields_json(fields, input_ts, target_plots, out_js, data_out, idx_col='
         json.dump(data, fp, indent=4)
 
 
+def preproc(field_ids, src, _dir):
+
+    for fid in field_ids:
+        obs_file = os.path.join(src, '{}_daily.csv'.format(fid))
+        data = pd.read_csv(obs_file, index_col=0, parse_dates=True)
+        data.index = list(range(data.shape[0]))
+        data['eta'] = data['etr_mm'] * data['etf_inv_irr']
+        data = data[['eta']]
+        print('preproc mean: {}'.format(np.nanmean(data.values)))
+        _file = os.path.join(project_dir, 'obs', 'obs_eta_{}.np'.format(fid))
+        np.savetxt(_file, data.values)
+        print('Wrote obs to {}'.format(_file))
+
+
 if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/swim'
@@ -92,5 +107,9 @@ if __name__ == '__main__':
 
     prep_fields_json(fields_shp, src_dir, select_fields, select_fields_js, input_data,
                      idx_col='FID', ltype='irrigated')
+
+    project_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
+
+    preproc(select_fields, src_dir, project_dir)
 
 # ========================= EOF ====================================================================

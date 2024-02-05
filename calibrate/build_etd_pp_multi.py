@@ -1,4 +1,5 @@
 import os
+import json
 from collections import OrderedDict
 
 import numpy as np
@@ -36,12 +37,16 @@ def build_pest(model_dir, pest_dir, **kwargs):
 
 
 if __name__ == '__main__':
-    targets_ = [1778, 1791, 1804, 1853, 1375]
+
     project = 'tongue'
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
 
-    data = '/media/research/IrrigationGIS/swim/examples/{}/input_timeseries'.format(project)
+    fields = '/media/research/IrrigationGIS/swim/examples/{}/prepped_input/{}_fields.json'.format(project, project)
+    with open(fields, 'r') as f:
+        fields = json.load(f)
+    targets_ = fields['order']
 
+    data = '/media/research/IrrigationGIS/swim/examples/{}/input_timeseries'.format(project)
     input_csv = [os.path.join(data, '{}_daily.csv'.format(fid)) for fid in targets_]
 
     pp_dir = os.path.join(d, 'pest')

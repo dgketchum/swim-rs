@@ -48,7 +48,6 @@ def optimize_fields(ini_path, debug_flag=False, field_type='irrigated', project=
 
 if __name__ == '__main__':
     project_ = 'tongue'
-    targets_ = [1778, 1791, 1804, 1853, 1375]
     field_type_ = 'irrigated'
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project_)
     ini = os.path.join(d, '{}_swim.toml'.format(project_))

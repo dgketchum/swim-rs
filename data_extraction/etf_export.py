@@ -247,7 +247,7 @@ if __name__ == '__main__':
     bucket_ = 'wudr'
     fields = 'users/dgketchum/fields/tongue_9MAY2023'
     for mask in ['inv_irr', 'irr']:
-        chk = '/media/research/IrrigationGIS/swim/examples/tongue_full/landsat/extracts/etf/{}'.format(mask)
+        chk = '/media/research/IrrigationGIS/swim/examples/tongue/landsat/extracts/etf/{}'.format(mask)
         clustered_field_etf(fields, bucket_, debug=False, mask_type=mask, check_dir=chk)
 
 # ========================= EOF ====================================================================

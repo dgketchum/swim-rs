@@ -100,22 +100,18 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     if config.refet_type == 'eto' and config.field_type == 'irrigated':
         refet = 'eto_mm'
         ndvi = 'ndvi_irr'
-        etf = 'etf_irr'
 
     elif config.refet_type == 'eto' and config.field_type == 'unirrigated':
         refet = 'eto_mm_uncorr'
         ndvi = 'ndvi_inv_irr'
-        etf = 'etf_inv_irr'
 
     elif config.refet_type == 'etr' and config.field_type == 'irrigated':
         refet = 'etr_mm_uncorr'
         ndvi = 'ndvi_irr'
-        etf = 'etf_irr'
 
     elif config.refet_type == 'etr' and config.field_type == 'unirrigated':
         refet = 'etr_mm_uncorr'
         ndvi = 'ndvi_inv_irr'
-        etf = 'etf_inv_irr'
 
     for step_dt, vals in plots.data.items():
 
@@ -129,7 +125,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         foo_day.year = dt.year
         foo_day.refet = vals[refet]
         foo_day.ndvi = vals[ndvi]
-        foo_day.precip = vals['prcp_mm']
+        foo_day.precip = np.array(vals['prcp_mm'])
         foo_day.snow_depth = 0.0
 
         if foo_day.month == 11 and foo_day.day == 1:
