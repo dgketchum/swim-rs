@@ -2,7 +2,9 @@ import ee
 
 IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 
+# OpenET AWC is in cm/cm
 AWC = 'projects/openet/soil/ssurgo_AWC_WTA_0to152cm_composite'
+# OpenET KSAT is in micrometers/sec
 KSAT = 'projects/openet/soil/ssurgo_Ksat_WTA_0to152cm_composite'
 
 
