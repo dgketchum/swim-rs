@@ -8,7 +8,9 @@ from rasterstats import zonal_stats
 import pyproj
 from tqdm import tqdm
 
-from prep.gridmet_corrected.thredds import GridMet
+import pynldas2 as nld
+
+from data_extraction.gridmet.thredds import GridMet
 
 CLIMATE_COLS = {
     'etr': {
@@ -53,22 +55,16 @@ CLIMATE_COLS = {
         'col': 'vpd_kpa'}
 }
 
-COLUMN_ORDER = ['date',
-                'year',
-                'month',
-                'day',
-                'centroid_lat',
-                'centroid_lon',
-                'elev_m',
-                'u2_ms',
-                'tmin_c',
-                'tmax_c',
-                'srad_wm2',
-                'ea_kpa',
-                'pair_kpa',
-                'prcp_mm',
-                'etr_mm',
-                'eto_mm']
+GRIDMET_GET = ['elev_m',
+               'tmin_c',
+               'tmax_c',
+               'prcp_mm',
+               'etr_mm',
+               'eto_mm']
+
+BASIC_REQ = ['date', 'year', 'month', 'day', 'centroid_lat', 'centroid_lon']
+
+COLUMN_ORDER = BASIC_REQ + GRIDMET_GET
 
 
 def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
@@ -151,7 +147,7 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
         json.dump(gridmet_targets, fp, indent=4)
 
 
-def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None):
+def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None, get_nldas=False):
     if not start:
         start = '1987-01-01'
     if not end:
@@ -167,8 +163,12 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
     for k, v in tqdm(fields.iterrows(), total=fields.shape[0]):
         out_cols = COLUMN_ORDER.copy()
         df, first = pd.DataFrame(), True
+
         for thredds_var, cols in CLIMATE_COLS.items():
             variable = cols['col']
+
+            if thredds_var != 'pr':
+                continue
 
             if not thredds_var:
                 continue
@@ -191,6 +191,14 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
                 elev = g.get_point_elevation()
                 df['elev_m'] = [elev for _ in range(df.shape[0])]
                 first = False
+
+            if thredds_var == 'pr':
+                df.index = df.index.tz_localize('UTC')
+                nldas = nld.get_bycoords((lon, lat), start_date=start,
+                                         end_date=end, variables=['prcp'])
+                hourly_ppt = nldas.pivot_table(columns=nldas.index.hour, index=nldas.index.date, values='prcp')
+                cols = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
+                df[cols] = hourly_ppt.values
 
         for _var in ['etr', 'eto']:
             variable = '{}_mm'.format(_var)
