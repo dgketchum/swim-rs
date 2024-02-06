@@ -1,8 +1,7 @@
-import os
 import json
+import os
 
 import numpy as np
-import geopandas as gpd
 import pandas as pd
 
 REQUIRED = ['prcp_mm']
@@ -22,23 +21,26 @@ REQ_IRR = ['etr_mm',
            'ndvi_irr_ct']
 
 
-def prep_fields_json(fields, input_ts, target_plots, out_js, data_out, idx_col='FID', ltype='unirrigated'):
-    gdf = gpd.read_file(fields)
-    gdf.index = [str(i) for i in gdf[idx_col]]
-    gdf = gdf.loc[target_plots]
-    gdf.drop(columns=['STATE', 'geometry'], inplace=True)
+def prep_fields_json(fields, target_plots, input_ts, out_js, ltype='unirrigated', irr_data=None):
 
-    dct = {i: r.to_dict() for i, r in gdf.iterrows()}
+    with open(fields, 'r') as fp:
+        fields = json.load(fp)
+
+    dct = {'props': {i: r for i, r in fields.items() if i in target_plots}}
 
     required_params = None
     if ltype == 'irrigated':
         required_params = REQUIRED + REQ_IRR
+        with open(irr_data, 'r') as fp:
+            irr_data = json.load(fp)
+        dct['irr_data'] = {fid: v for fid, v in irr_data.items() if fid in target_plots}
+
     elif ltype == 'unirrigated':
         required_params = REQUIRED + REQ_UNIRR
 
     dts, order = None, []
     first, arrays = True, {r: [] for r in required_params}
-    for fid, v in dct.items():
+    for fid, v in dct['props'].items():
         _file = os.path.join(input_ts, '{}_daily.csv'.format(fid))
         df = pd.read_csv(_file, index_col='date', parse_dates=True)
         if first:
@@ -65,12 +67,9 @@ def prep_fields_json(fields, input_ts, target_plots, out_js, data_out, idx_col='
         for p in required_params:
             data[dt][p] = list(arrays[p][i, :])
 
-    dct = {'order': order, 'plots': dct}
+    dct.update({'order': order, 'time_series': data})
     with open(out_js, 'w') as fp:
         json.dump(dct, fp, indent=4)
-
-    with open(data_out, 'w') as fp:
-        json.dump(data, fp, indent=4)
 
 
 def preproc(field_ids, src, _dir):
@@ -98,15 +97,13 @@ if __name__ == '__main__':
 
     src_dir = os.path.join(project_ws, 'input_timeseries')
 
-    fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
+    fields_props = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
+    cuttings = '/media/research/IrrigationGIS/swim/examples/tongue/landsat/{}_cuttings.json'.format(project)
 
     select_fields = [str(f) for f in [1779, 1787, 1793, 1794, 1797, 1801, 1804]]
+    select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input.json'.format(project))
 
-    select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_fields.json'.format(project))
-    input_data = os.path.join(project_ws, 'prepped_input', '{}_data.json'.format(project))
-
-    prep_fields_json(fields_shp, src_dir, select_fields, select_fields_js, input_data,
-                     idx_col='FID', ltype='irrigated')
+    prep_fields_json(fields_props, select_fields, src_dir, select_fields_js, ltype='irrigated', irr_data=cuttings)
 
     project_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
 

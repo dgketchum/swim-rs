@@ -14,28 +14,12 @@ class SamplePlots:
 
     def __init__(self):
         super().__init__()
-        self.data = None
-        self.fields = None
-        self.cuttings = None
-        self.field_props = None
+        self.input = None
 
     def initialize_plot_data(self, config):
-
-        f = config.fields_path
+        f = config.input_data
         with open(f, 'r') as fp:
-            self.fields = json.load(fp)
-
-        f = config.field_properties
-        with open(f, 'r') as fp:
-            self.field_props = json.load(fp)
-
-        f = config.irrigation_data
-        with open(f, 'r') as fp:
-            self.cuttings = json.load(fp)
-
-        f = config.input_timeseries
-        with open(f, 'r') as fp:
-            self.data = json.load(fp)
+            self.input = json.load(fp)
 
 
 if __name__ == '__main__':
