@@ -41,10 +41,11 @@ if __name__ == '__main__':
     project = 'tongue'
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
 
-    fields = '/media/research/IrrigationGIS/swim/examples/{}/prepped_input/{}_fields.json'.format(project, project)
-    with open(fields, 'r') as f:
-        fields = json.load(f)
-    targets_ = fields['order']
+    input_ = '/media/research/IrrigationGIS/swim/examples/{}/prepped_input/{}_input.json'.format(project, project)
+    with open(input_, 'r') as f:
+        input_ = json.load(f)
+    targets_ = input_['order']
+    aw = [input_['props'][t]['awc'] for t in targets_]
 
     data = '/media/research/IrrigationGIS/swim/examples/{}/input_timeseries'.format(project)
     input_csv = [os.path.join(data, '{}_daily.csv'.format(fid)) for fid in targets_]
@@ -56,7 +57,7 @@ if __name__ == '__main__':
 
     pars = OrderedDict({
         'aw': {'file': p_file,
-               'initial_value': 145.0, 'lower_bound': 100.0, 'upper_bound': 1000.0,
+               'initial_value': None, 'lower_bound': 15.0, 'upper_bound': 700.0,
                'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': 0},
 
         'rew': {'file': p_file,
@@ -83,7 +84,13 @@ if __name__ == '__main__':
 
     pars = OrderedDict({'{}_{}'.format(k, fid): v for k, v in pars.items() for fid in targets_})
 
-    params = [(k, v['initial_value'], 'p_inst{}_constant.csv'.format(i)) for i, (k, v) in enumerate(pars.items())]
+    params = []
+    for i, (k, v) in enumerate(pars.items()):
+        if 'aw_' in k:
+            params.append((k, aw[i] * 1000., 'p_inst{}_constant.csv'.format(i)))
+        else:
+            params.append((k, v['initial_value'], 'p_inst{}_constant.csv'.format(i)))
+
     idx, vals, _names = [x[0] for x in params], [x[1] for x in params], [x[2] for x in params]
     vals = np.array([vals, _names]).T
     pd.DataFrame(index=idx, data=vals, columns=['value', 'mult_name']).to_csv(p_file)

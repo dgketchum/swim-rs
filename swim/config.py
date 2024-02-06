@@ -18,41 +18,24 @@ class ProjectConfig:
 
     def __init__(self, field_type='irrigated'):
         super().__init__()
-        self.calibration_groups = None
-        self.irrigation_data = None
+
+        self.field_type = field_type
+
+        self.kc_proxy = None
         self.cover_proxy = None
-        self.field_cuttings = None
-        self.refet_type = None
-        self.soils = None
+        self.project_ws = None
         self.field_index = None
+        self.ts_quantity = None
+        self.start_dt = None
+        self.end_dt = None
+        self.elev_units = None
+        self.refet_type = None
+        self.input_data = None
         self.calibration = None
         self.calibration_folder = None
         self.calibrated_parameters = None
         self.calibration_files = None
-        self.parameter_values = None
-        self.field_type = field_type
-        self.kc_proxy = None
-        self.project_ws = None
-        self.ts_quantity = None
-        self.start_dt = None
-        self.end_dt = None
-        self.sensing_folder = None
-        self.cell_crops_path = None
-        self.elev_units = None
-        self.field_properties = None
-        self.input_timeseries = None
-        self.fields_path = None
-        self.static_keys = None
-        self.initial_keys = None
-        self.date_range = None
-        self.use_individual_kcb = None
-        self.ro_reinf_frac = None
-        self.swb_mode = None
-        self.rew_ceff = None
-        self.evap_ceff = None
-        self.winter_evap_limiter = None
-        self.winter_end_day = None
-        self.winter_start_day = None
+        self.calibration_groups = None
 
     def read_config(self, conf):
 
@@ -87,10 +70,7 @@ class ProjectConfig:
         # TODO: get ksat for runoff generation
         # self.soils = config.get(crop_et_sec, 'soils')
 
-        self.fields_path = config[crop_et_sec]['fields_path']
-        self.field_properties = config[crop_et_sec]['field_properties']
-        self.input_timeseries = config[crop_et_sec]['input_timeseries']
-        self.irrigation_data = config[crop_et_sec]['irrigation_data']
+        self.input_data = config[crop_et_sec]['input_data']
 
         self.calibration = bool(config[calib_sec]['calibrate_flag'])
 

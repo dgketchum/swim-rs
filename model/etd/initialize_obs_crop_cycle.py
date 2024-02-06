@@ -122,6 +122,7 @@ class PlotTracker:
         self.cover_proxy = None
         self.crop_df = None
 
+        self.aw = 0.
         self.aw3 = 0.
         self.cn2 = 0.
         self.cgdd = 0.
@@ -165,6 +166,7 @@ class PlotTracker:
         self.ke_ppt = 0.
         self.kr2 = 0.
         self.ks = 0.
+        self.ksat = 0.
         self.kt_reducer = 1.
         self.mad = 0.
         self.mad_ini = 0.
@@ -249,11 +251,11 @@ class PlotTracker:
             v = self.__getattribute__(p)
             self.__setattr__(p, np.ones((1, size)) * v)
 
-    def crop_load(self, et_cell):
+    def load_soils(self, plots):
         """Assign characteristics for crop from crop Arrays
         Parameters
         ---------
-        data : dict
+        plots : dict
             configuration data from INI file
 
         et_cell :
@@ -271,33 +273,27 @@ class PlotTracker:
 
         """
 
-        self.depl_ze = de_initial  # (10 mm) at start of new crop at beginning of time
-        self.depl_root = de_initial  # (20 mm) at start of new crop at beginning of time
         self.zr = self.zr_min  # initialize rooting depth at beginning of time
         self.height = self.height_min
-        self.stress_event = False
-
-        # Find maximum kc_bas in array for this crop (used later in height calc)
-        # kc_bas_mid is the maximum kc_bas found in the kc_bas table read into program
-        # Following code was repaired to properly parse crop curve arrays on 7/31/2012.  dlk
-
-        self.kc_bas_mid = 0.
 
         # Available water in soil
         # This will be optimized
         # TODO: get this from props
         # self.aw = et_cell.props['stn_whc'] / 12 * 1000.  # in/ft to mm/m
-        self.aw = np.ones((1, self.size)) * 300.0  # in/ft to mm/m
+
+        fields = plots.input['order']
+
+        self.aw = np.array([plots.input['props'][f]['awc'] for f in fields]).reshape(1, -1)
+
+        self.ksat = np.array([plots.input['props'][f]['ksat'] for f in fields]).reshape(1, -1)
+        # micrometer/sec to mm/day
+        self.ksat = self.ksat * 0.001 * 86400.
 
         # Estimate readily evaporable water and total evaporable water from WHC
         # REW is from regression of REW vs. AW from FAO-56 soils table
         # R.Allen, August 2006, R2=0.92, n = 9
 
         self.rew = 0.8 + 54.4 * self.aw / 1000  # REW is in mm and AW is in mm/m
-
-        # Estimate TEW from AW and Ze = 0.1 m
-        # use FAO-56 based regression, since WHC from statso database does not have texture indication
-        # R.Allen, August 2006, R2=0.88, n = 9
 
         self.tew = -3.7 + 166 * self.aw / 1000  # TEW is in mm and AW is in mm/m
 
@@ -306,42 +302,7 @@ class PlotTracker:
         self.tew2 = self.tew  # TEW2Array(ctCount)
         self.tew3 = self.tew  # TEW3Array(ctCount) '(no severely cracking clays in Idaho)
 
-        self.setup_crop()
-
-    def setup_crop(self):
-        """Initialize some variables for beginning of crop seasons
-
-        Attributes
-        ----------
-        crop :
-
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        Called in crop_cycle if not in season and crop setup flag is true
-        Called in kcb_daily for startup/greenup type 1, 2, and 3 when startup conditions are met
-
-        """
-
-        # zr_dormant was never assigned a value - what's its purpose - dlk 10/26/2011 ???????????????????
-
-        zr_dormant = 0.0
-
-        # setup_crop is called from crop_cycle if is_season is false and crop_setup_flag is true
-        # thus only setup 1st time for crop (not each year)
-        # also called from kcb_daily each time GU/Plant date is reached, thus at growing season start
-
-        self.height = self.height_min
-        self.tew = self.tew2  # find total evaporable water
-        self.tew = np.where(self.tew < self.tew3, self.tew3, self.tew)
-
         self.fw_irr = self.fw_std  # fw changed to fw_irr 8/10/06
-        self.irr_auto = 0
-        self.irr_sim = 0
 
         # Reinitialize zr, but actCount for additions of DP into reserve (zrmax - zr) for rainfed
 
@@ -350,6 +311,8 @@ class PlotTracker:
         # Calc total water currently in layer 3
 
         # AW3 is mm/m and daw3 is mm in layer 3 (in case Zr<zr_max)
+
+        zr_dormant = 0.1
 
         daw3 = self.aw3 * (self.zr_max - zr_dormant)
 
@@ -530,7 +493,7 @@ class PlotTracker:
 
         self.cutting = 0
 
-    def setup_dataframe(self, et_cell):
+    def setup_dataframe(self):
         """Initialize output dataframe
 
         Attributes
@@ -548,6 +511,6 @@ class PlotTracker:
 
         self.crop_df = {}
 
-    def set_kc_max(self, et_cell):
+    def set_kc_max(self):
 
         self.kc_max = 1.05

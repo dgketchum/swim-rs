@@ -51,15 +51,10 @@ class DayData:
 
 
 def field_day_loop(config, plots, debug_flag=False, params=None):
-    func_str = 'field_day_loop()'
 
-    # 'foo' is holder of all these global variables for now
-    size = len(plots.fields['order'])
+    size = len(plots.input['order'])
     tracker = PlotTracker(size)
-
-    # First time through for crop, load basic crop parameters and
-    # process climate data
-    tracker.crop_load(plots.data)
+    tracker.load_soils(plots)
 
     # apply calibration parameter updates here
     if config.calibration:
@@ -69,7 +64,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         for k, f in config.calibration_files.items():
 
             group, fid = '_'.join(k.split('_')[:-1]), k.split('_')[-1]
-            idx = plots.fields['order'].index(fid)
+            idx = plots.input['order'].index(fid)
 
             if params:
                 value = params[k]
@@ -80,8 +75,11 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
             cal_arr[group][0, idx] = value
 
         for k, v in cal_arr.items():
+
             tracker.__setattr__(k, v)
+
             print('{}: {}'.format(k, ['{:.1f}'.format(p) for p in v.flatten()]))
+
             if k == 'aw':
                 tracker.__setattr__('depl_root', tracker.aw)
 
@@ -90,8 +88,8 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
                 tracker.__setattr__('depl_zep', tracker.rew)
 
     # Initialize crop data frame
-    tracker.setup_dataframe(plots)
-    tracker.set_kc_max(plots)
+    tracker.setup_dataframe()
+    tracker.set_kc_max()
 
     foo_day = DayData()
     foo_day.sdays = 0
@@ -113,7 +111,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         refet = 'etr_mm_uncorr'
         ndvi = 'ndvi_inv_irr'
 
-    for step_dt, vals in plots.data.items():
+    for step_dt, vals in plots.input['time_series'].items():
 
         # Track variables for each day
         # For now, cast all values to native Python types
