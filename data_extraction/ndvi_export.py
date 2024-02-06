@@ -166,7 +166,7 @@ def clustered_field_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr'
     remap = coll.map(lambda img: img.lt(1))
     irr_min_yr_mask = remap.sum().gte(5)
 
-    for year in range(2000, 2022):
+    for year in range(1987, 2022):
 
         irr = irr_coll.filterDate('{}-01-01'.format(year),
                                   '{}-12-31'.format(year)).select('classification').mosaic()
@@ -235,11 +235,16 @@ def clustered_field_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr'
 
 
 if __name__ == '__main__':
+
+    d = '/media/research/IrrigationGIS/swim'
+    if not os.path.exists(d):
+        d = '/home/dgketchum/data/IrrigationGIS/swim'
+
     is_authorized()
     bucket_ = 'wudr'
     fields = 'users/dgketchum/fields/tongue_9MAY2023'
     for mask in ['inv_irr', 'irr']:
-        chk = '/media/research/IrrigationGIS/swim/examples/tongue/landsat/extracts/ndvi/{}'.format(mask)
+        chk = os.path.join(d, 'examples/tongue/landsat/extracts/ndvi/{}'.format(mask))
         clustered_field_ndvi(fields, bucket_, debug=False, mask_type=mask, check_dir=chk)
 
 # ========================= EOF ====================================================================
