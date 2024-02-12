@@ -1,14 +1,17 @@
 import os
 import json
+import pytz
+import time
+from datetime import timedelta, date, datetime
 
-import geopandas as gpd
 import numpy as np
 import pandas as pd
-from rasterstats import zonal_stats
-import pyproj
 from tqdm import tqdm
+import geopandas as gpd
 
+import pyproj
 import pynldas2 as nld
+from rasterstats import zonal_stats
 
 from data_extraction.gridmet.thredds import GridMet
 
@@ -25,18 +28,6 @@ CLIMATE_COLS = {
         'nc': 'agg_met_pr_1979_CurrentYear_CONUS',
         'var': 'precipitation_amount',
         'col': 'prcp_mm'},
-    'sph': {
-        'nc': 'agg_met_sph_1979_CurrentYear_CONUS',
-        'var': 'daily_mean_specific_humidity',
-        'col': 'q_kgkg'},
-    'srad': {
-        'nc': 'agg_met_srad_1979_CurrentYear_CONUS',
-        'var': 'daily_mean_shortwave_radiation_at_surface',
-        'col': 'srad_wm2'},
-    'vs': {
-        'nc': 'agg_met_vs_1979_CurrentYear_CONUS',
-        'var': 'daily_mean_wind_speed',
-        'col': 'u10_ms'},
     'tmmx': {
         'nc': 'agg_met_tmmx_1979_CurrentYear_CONUS',
         'var': 'daily_maximum_temperature',
@@ -45,22 +36,15 @@ CLIMATE_COLS = {
         'nc': 'agg_met_tmmn_1979_CurrentYear_CONUS',
         'var': 'daily_minimum_temperature',
         'col': 'tmin_k'},
-    'th': {
-        'nc': 'agg_met_th_1979_CurrentYear_CONUS',
-        'var': 'daily_mean_wind_direction',
-        'col': 'wdir_deg'},
-    'vpd': {
-        'nc': 'agg_met_vpd_1979_CurrentYear_CONUS',
-        'var': 'daily_mean_vapor_pressure_deficit',
-        'col': 'vpd_kpa'}
 }
 
 GRIDMET_GET = ['elev_m',
                'tmin_c',
                'tmax_c',
-               'prcp_mm',
                'etr_mm',
-               'eto_mm']
+               'eto_mm',
+               'prcp_mm',
+               ]
 
 BASIC_REQ = ['date', 'year', 'month', 'day', 'centroid_lat', 'centroid_lon']
 
@@ -147,7 +131,9 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
         json.dump(gridmet_targets, fp, indent=4)
 
 
-def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None, get_nldas=False):
+def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None, overwite=False,
+                     target_fields=None):
+
     if not start:
         start = '1987-01-01'
     if not end:
@@ -159,23 +145,39 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
     with open(gridmet_factors, 'r') as f:
         gridmet_factors = json.load(f)
 
+    hr_cols = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
+
+    downloaded = {}
+
     print('Downloading GridMET')
     for k, v in tqdm(fields.iterrows(), total=fields.shape[0]):
-        out_cols = COLUMN_ORDER.copy()
+        start_time = datetime.now()
+        out_cols = COLUMN_ORDER.copy() + ['nld_ppt_d'] + hr_cols
         df, first = pd.DataFrame(), True
+
+        if target_fields and k not in target_fields:
+            continue
+
+        g_fid = str(int(v['GFID']))
+
+        if g_fid in downloaded.keys():
+            downloaded[g_fid].append(k)
+            print('Gridmet Cell {} downloaded for {}'.format(g_fid, downloaded[g_fid]))
+
+        _file = os.path.join(gridmet_csv_dir, 'gridmet_historical_{}.csv'.format(g_fid))
+        if os.path.exists(_file) and not overwite:
+            print('{} exists, skipping'.format(_file))
+            continue
+
+        r = gridmet_factors[g_fid]
+        lat, lon = r['lat'], r['lon']
 
         for thredds_var, cols in CLIMATE_COLS.items():
             variable = cols['col']
 
-            if thredds_var != 'pr':
-                continue
-
             if not thredds_var:
                 continue
 
-            g_fid = str(int(v['GFID']))
-            r = gridmet_factors[g_fid]
-            lat, lon = r['lat'], r['lon']
             g = GridMet(thredds_var, start=start, end=end, lat=lat, lon=lon)
             s = g.get_point_timeseries()
             df[variable] = s[thredds_var]
@@ -193,12 +195,23 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
                 first = False
 
             if thredds_var == 'pr':
-                df.index = df.index.tz_localize('UTC')
-                nldas = nld.get_bycoords((lon, lat), start_date=start,
-                                         end_date=end, variables=['prcp'])
+                # gridmet is utc-6, US/Central, NLDAS is UTC-0
+                # shifting NLDAS to UTC-6 is the most straightforward alignment
+                s = pd.to_datetime(start) - timedelta(days=1)
+                e = pd.to_datetime(end) + timedelta(days=2)
+                nldas = nld.get_bycoords((lon, lat), start_date=s, end_date=e, variables=['prcp'])
+                central = pytz.timezone('US/Central')
+                nldas = nldas.tz_convert(central)
                 hourly_ppt = nldas.pivot_table(columns=nldas.index.hour, index=nldas.index.date, values='prcp')
-                cols = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
-                df[cols] = hourly_ppt.values
+                df[hr_cols] = hourly_ppt.loc[df.index]
+
+                nan_ct = np.sum(np.isnan(df[hr_cols].values), axis=0)
+                if sum(nan_ct) > 100:
+                    raise ValueError('Too many NaN in NLDAS data')
+                if np.any(nan_ct):
+                    df[hr_cols] = df[hr_cols].fillna(0.)
+
+                df['nld_ppt_d'] = df[hr_cols].sum(axis=1)
 
         for _var in ['etr', 'eto']:
             variable = '{}_mm'.format(_var)
@@ -209,20 +222,15 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
                 df.loc[idx, '{}_uncorr'.format(variable)] = df.loc[idx, variable]
                 df.loc[idx, variable] = df.loc[idx, '{}_uncorr'.format(variable)] * corr_factor
 
-        zw = 10
-        df['u2_ms'] = wind_height_adjust(
-            df.u10_ms, zw)
-        df['pair_kpa'] = air_pressure(
-            df.elev_m, method='asce')
-        df['ea_kpa'] = actual_vapor_pressure(
-            df.q_kgkg, df.pair_kpa)
-
         df['tmax_c'] = df.tmax_k - 273.15
         df['tmin_c'] = df.tmin_k - 273.15
 
         df = df[out_cols]
-        _file = os.path.join(gridmet_csv_dir, 'gridmet_historical_{}.csv'.format(g_fid))
+        end_time = datetime.now()
+        timeit = end_time - start_time
         df.to_csv(_file, index=False)
+        print('{} seconds to download {}'.format(timeit.seconds, _file))
+        downloaded[g_fid] = [k]
 
 
 # from CGMorton's RefET (github.com/WSWUP/RefET)
