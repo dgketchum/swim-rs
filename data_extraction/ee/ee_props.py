@@ -2,6 +2,9 @@ import ee
 
 IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 
+# See https://websoilsurvey.nrcs.usda.gov/app/WebSoilSurvey.aspx
+# to check soil parameters
+
 # OpenET AWC is in cm/cm
 AWC = 'projects/openet/soil/ssurgo_AWC_WTA_0to152cm_composite'
 # OpenET KSAT is in micrometers/sec

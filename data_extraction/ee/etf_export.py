@@ -4,9 +4,9 @@ import sys
 import ee
 import geopandas as gpd
 
-from data_extraction.ee_utils import is_authorized
+from data_extraction.ee.ee_utils import is_authorized
 
-sys.path.insert(0, os.path.abspath('..'))
+sys.path.insert(0, os.path.abspath('../..'))
 sys.setrecursionlimit(5000)
 
 IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
@@ -226,6 +226,7 @@ def clustered_field_etf(feature_coll, bucket=None, debug=False, mask_type='irr',
                 data = etf_img.sample(point, 30).getInfo()
                 print(data['features'])
 
+        # TODO extract pixel count to filter data
         data = bands.reduceRegions(collection=feature_coll,
                                    reducer=ee.Reducer.mean(),
                                    scale=30)
