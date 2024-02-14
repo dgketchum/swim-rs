@@ -58,31 +58,31 @@ if __name__ == '__main__':
     pars = OrderedDict({
         'aw': {'file': p_file,
                'initial_value': None, 'lower_bound': 15.0, 'upper_bound': 700.0,
-               'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': 0},
+               'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         'rew': {'file': p_file,
                 'initial_value': 3.0, 'lower_bound': 2.0, 'upper_bound': 6.0,
-                'pargp': 'rew', 'index_cols': 0, 'use_cols': 1, 'use_rows': 1},
+                'pargp': 'rew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         'tew': {'file': p_file,
                 'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
-                'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': 2},
+                'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         'ndvi_alpha': {'file': p_file,
-                       'initial_value': -0.2, 'lower_bound': -0.7, 'upper_bound': 1.5,
-                       'pargp': 'ndvi_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': 3},
+                       'initial_value': 0.2, 'lower_bound': -0.7, 'upper_bound': 1.5,
+                       'pargp': 'ndvi_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         'ndvi_beta': {'file': p_file,
-                      'initial_value': 0.8, 'lower_bound': 0.5, 'upper_bound': 1.7,
-                      'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': 4},
+                      'initial_value': 1.25, 'lower_bound': 0.5, 'upper_bound': 1.7,
+                      'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         'mad': {'file': p_file,
                 'initial_value': 0.6, 'lower_bound': 0.1, 'upper_bound': 0.9,
-                'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': 6},
+                'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
     })
 
-    pars = OrderedDict({'{}_{}'.format(k, fid): v for k, v in pars.items() for fid in targets_})
+    pars = OrderedDict({'{}_{}'.format(k, fid): v.copy() for k, v in pars.items() for fid in targets_})
 
     params = []
     for i, (k, v) in enumerate(pars.items()):
@@ -93,7 +93,13 @@ if __name__ == '__main__':
 
     idx, vals, _names = [x[0] for x in params], [x[1] for x in params], [x[2] for x in params]
     vals = np.array([vals, _names]).T
-    pd.DataFrame(index=idx, data=vals, columns=['value', 'mult_name']).to_csv(p_file)
+    df = pd.DataFrame(index=idx, data=vals, columns=['value', 'mult_name'])
+    df.to_csv(p_file)
+
+    for e, (i, r) in enumerate(df.iterrows()):
+        pars[i]['use_rows'] = e
+        if 'aw_' in i:
+            pars[i]['initial_value'] = float(r['value'])
 
     obs_files = ['obs/obs_eta_{}.np'.format(fid) for fid in targets_]
 
