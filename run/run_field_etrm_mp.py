@@ -5,26 +5,26 @@ import numpy as np
 import pandas as pd
 
 from model.etd import obs_field_cycle
+from model.etrm.processes import Processes
+
 from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
 
-def optimize_fields(ini_path, debug_flag=False, field_type='irrigated', project='tongue'):
+def optimize_fields(toml, debug_flag=False, field_type='irrigated', project='tongue'):
+    config = ProjectConfig(field_type=field_type)
+    config.read_config(toml)
+
+    etrm = Processes(config)
+    etrm.run()
 
     start_time = time.time()
-
-    config = ProjectConfig(field_type=field_type)
-    config.read_config(ini_path)
-
-    fields = SamplePlots()
-    fields.initialize_plot_data(config)
-
     df = obs_field_cycle.field_day_loop(config, fields, debug_flag=debug_flag)
     pred = df['et_act'].values
 
     np.savetxt(os.path.join(d, 'pest', 'eta.np'), pred)
 
-    obs = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/obs/obs_eta_1779.np'.format(project)
+    obs = '/home/dgketchum/PycharmProjects/et-demands/examples/{}/obs.np'.format(project)
     obs = np.loadtxt(obs)
     cols = ['et_obs'] + list(df.columns)
     df['et_obs'] = obs
@@ -51,5 +51,5 @@ if __name__ == '__main__':
     project_ = 'tongue'
     field_type_ = 'irrigated'
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project_)
-    ini = os.path.join(d, '{}_swim.toml'.format(project_))
-    optimize_fields(ini_path=ini, debug_flag=False, field_type=field_type_, project=project_)
+    conf_ = os.path.join(d, '{}_swim.toml'.format(project_))
+    optimize_fields(toml=conf_, debug_flag=False, field_type=field_type_, project=project_)
