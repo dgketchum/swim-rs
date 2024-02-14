@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
+from data_extraction.gridmet.gridmet import find_gridmet_points, download_gridmet
+
 
 def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_dir, overwrite=False,
                                       start_date=None, end_date=None, **kwargs):
@@ -18,6 +20,10 @@ def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_di
     fields.index = fields['FID']
 
     for f, row in fields.iterrows():
+
+        if 'target_fields' in kwargs.keys():
+            if f not in kwargs['target_fields']:
+                continue
 
         if pd.isna(row['GFID']):
             print(row['FID'], 'was not assigned a Gridmet point')
@@ -65,7 +71,7 @@ if __name__ == '__main__':
     project_ws = os.path.join(d, 'examples', project)
 
     gridmet = os.path.join(d, 'gridmet')
-    rasters_ = os.path.join(gridmet, 'gridmet_corrected', 'correction_surfaces_aea')
+    rasters_ = os.path.join(gridmet, '../data_extraction/gridmet_corrected', 'correction_surfaces_aea')
     grimet_cent = os.path.join(gridmet, 'gridmet_centroids_tongue.shp')
 
     fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
@@ -75,8 +81,12 @@ if __name__ == '__main__':
 
     # TODO: write gridmet data to a common directory, instead of project ws
     # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=None)
-    #
-    # download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31')
+
+    # targets = [1779, 1787, 1793, 1794, 1797, 1801, 1804]
+    targets = [1779]
+
+    download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31', overwite=True,
+                     target_fields=targets)
 
     landsat = os.path.join(project_ws, 'landsat', '{}_sensing.csv'.format(project))
     dst_dir_ = os.path.join(project_ws, 'input_timeseries')
@@ -88,7 +98,8 @@ if __name__ == '__main__':
 
     params += ['{}_ct'.format(p) for p in params]
 
-    join_gridmet_remote_sensing_daily(fields_gridmet, met, landsat, dst_dir_, overwrite=True,
-                                      start_date='2000-01-01', end_date='2020-12-31', **{'params': params})
+    # join_gridmet_remote_sensing_daily(fields_gridmet, met, landsat, dst_dir_, overwrite=True,
+    #                                   start_date='2000-01-01', end_date='2020-12-31', **{'params': params,
+    #                                                                                      'target_fields': targets})
 
 # ========================= EOF ====================================================================

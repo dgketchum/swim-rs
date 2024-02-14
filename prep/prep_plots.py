@@ -4,7 +4,12 @@ import os
 import numpy as np
 import pandas as pd
 
-REQUIRED = ['prcp_mm']
+REQUIRED = ['prcp_mm', 'nld_ppt_d', 'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
+            'prcp_hr_05', 'prcp_hr_06', 'prcp_hr_07', 'prcp_hr_08', 'prcp_hr_09', 'prcp_hr_10',
+            'prcp_hr_11', 'prcp_hr_12', 'prcp_hr_13', 'prcp_hr_14', 'prcp_hr_15', 'prcp_hr_16',
+            'prcp_hr_17', 'prcp_hr_18', 'prcp_hr_19', 'prcp_hr_20', 'prcp_hr_21', 'prcp_hr_22',
+            'prcp_hr_23']
+
 
 REQ_UNIRR = ['etr_mm_uncorr',
              'eto_mm_uncorr',
@@ -100,7 +105,7 @@ if __name__ == '__main__':
     fields_props = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
     cuttings = '/media/research/IrrigationGIS/swim/examples/tongue/landsat/{}_cuttings.json'.format(project)
 
-    select_fields = [str(f) for f in [1779, 1787, 1793, 1794, 1797, 1801, 1804]]
+    select_fields = [str(f) for f in [1779, 1787, 1793, 1797, 1801, 1804]]
     select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input.json'.format(project))
 
     prep_fields_json(fields_props, select_fields, src_dir, select_fields_js, ltype='irrigated', irr_data=cuttings)

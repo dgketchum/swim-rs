@@ -180,7 +180,7 @@ def landsat_time_series_multipolygon(in_shp, csv_dir, years, out_csv, out_csv_ct
         # captures of these low values are likely small pixel samples on SLC OFF Landsat 7 or
         # on bad polygons that include water or some other land cover we don't want to use
         # see e.g., https://code.earthengine.google.com/5ea8bc8c6134845a8c0c81a4cdb99fc0
-        # TODO: examine these thresholds
+        # TODO: examine these thresholds, prob better to extract pixel count to filter data
 
         diff_back = field.diff().values
         field = pd.DataFrame(index=field.index, columns=field.columns,
@@ -279,11 +279,7 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
     for c in cols:
 
         selector = '{}_ndvi_irr'.format(c)
-        print('\n', c, selector)
         count, fallow = [], []
-
-        # if c not in ['US-Mj1', 'US-Mj2']:
-        #     continue
 
         for yr in years:
 
@@ -402,11 +398,14 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
 
     with open(out_json, 'w') as fp:
         json.dump(fields, fp, indent=4)
+    print('wrote {}'.format(out_json))
 
 
 if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/swim'
+    if not os.path.exists(d):
+        d = d = '/home/dgketchum/data/IrrigationGIS/swim'
 
     project = 'tongue'
     dtype = 'extracts'
@@ -430,14 +429,14 @@ if __name__ == '__main__':
             src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(project, sensing_param, mask_type))
 
             # landsat_time_series_station(shp, ee_data, yrs, src, src_ct)
-            landsat_time_series_multipolygon(shp, ee_data, yrs, src, src_ct)
+            # landsat_time_series_multipolygon(shp, ee_data, yrs, src, src_ct)
             # landsat_time_series_image(shp, tif, yrs, src, src_ct)
 
     dst_ = os.path.join(project_ws, 'landsat', '{}_sensing.csv'.format(project))
-    join_remote_sensing(tables, dst_)
+    # join_remote_sensing(tables, dst_)
 
     irr_ = os.path.join(project_ws, 'properties', '{}_irr.csv'.format(project))
-    js_ = os.path.join(project_ws, 'landsat', '{}_cuttings.json'.format(project))
-    # detect_cuttings(dst_, irr_, irr_threshold=0.1, out_json=js_)
+    js_ = os.path.join(project_ws, 'landsat', '{}_cuttings_1794.json'.format(project))
+    detect_cuttings(dst_, irr_, irr_threshold=0.1, out_json=js_)
 
 # ========================= EOF ================================================================================
