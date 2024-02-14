@@ -4,7 +4,7 @@ import time
 
 import numpy as np
 
-from model.etrm import dict_setup, INITIAL_KEYS, STATIC_KEYS
+from model.etrm import dict_setup, INITIAL_KEYS, STATIC_KEYS, initialize_tracker
 from model.etrm.tools import time_it, day_generator, millimeter_to_acreft
 
 
@@ -665,13 +665,6 @@ class Processes(object):
 
 
 if __name__ == '__main__':
-    project = 'flux'
-    target = 'US-Mj1'
-    field_type = 'unirrigated'
-    d = '/home/dgketchum/PycharmProjects/et-demands/examples/{}'.format(project)
-    ini = os.path.join(d, '{}_example_cet_obs.ini'.format(project))
-    etrm = Processes(ini)
-    run_fields(ini_path=ini, debug_flag=False, field_type=field_type,
-               target_field=target, project=project)
+    pass
 
 # ============= EOF =============================================

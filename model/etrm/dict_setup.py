@@ -84,6 +84,7 @@ def initialize_master_dict(shape):
 
 
 def initialize_static_dict(config):
+
     d, arr = {}, None
     print('       Key                  Name')
     for k in config.static_keys:
