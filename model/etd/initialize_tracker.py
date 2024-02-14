@@ -57,6 +57,7 @@ TRACKER_PARAMS = ['aw3',
                   'fw_irr',
                   'gdd',
                   'gdd_penalty',
+                  'grow_root',
                   'height_min',
                   'height_max',
                   'height',
@@ -72,6 +73,7 @@ TRACKER_PARAMS = ['aw3',
                   'ke',
                   'ke_irr',
                   'ke_ppt',
+                  'kr',
                   'kr2',
                   'ks',
                   'kt_reducer',
@@ -149,6 +151,7 @@ class PlotTracker:
         self.fw_irr = 0.
         self.gdd = 0.0
         self.gdd_penalty = 0.
+        self.grow_root = 0.
         self.height = 0
         self.height_min = 0.1
         self.height_max = 2.0
@@ -164,9 +167,13 @@ class PlotTracker:
         self.ke = 0.
         self.ke_irr = 0
         self.ke_ppt = 0.
+        self.kr = 0.
         self.kr2 = 0.
         self.ks = 0.
         self.ksat = 0.
+
+        self.ksat_hourly = None
+
         self.kt_reducer = 1.
         self.mad = 0.
         self.mad_ini = 0.
@@ -233,15 +240,6 @@ class PlotTracker:
 
         self.max_lines_in_crop_curve_table = 34
 
-        # CGM - In VB code, crops 44-46 were run first to set these values kn kcb_daily()
-        #   Initialize here instead
-        #   Using a dictionary instead of an array to make the indexing more obvious
-
-        self.kc_bas_wscc = dict()
-        self.kc_bas_wscc[1] = 0.1
-        self.kc_bas_wscc[2] = 0.1
-        self.kc_bas_wscc[3] = 0.1
-
         # TP - Minimum net depth of application for germination irrigation, etc.
 
         self.irr_min = 10.
@@ -288,6 +286,7 @@ class PlotTracker:
         self.ksat = np.array([plots.input['props'][f]['ksat'] for f in fields]).reshape(1, -1)
         # micrometer/sec to mm/day
         self.ksat = self.ksat * 0.001 * 86400.
+        self.ksat_hourly = np.ones((24, self.ksat.shape[1])) * self.ksat / 24.
 
         # Estimate readily evaporable water and total evaporable water from WHC
         # REW is from regression of REW vs. AW from FAO-56 soils table
@@ -419,52 +418,34 @@ class PlotTracker:
 
         # Actual water in root zone based on depl_root at end of season
 
-        daw_root = max(taw_root - self.depl_root, 0)
+        daw_root = np.maximum(taw_root - self.depl_root, 0)
 
         # Depth of evaporation layer (This only works when ze < zr_dormant)
 
         ze = 0.1
 
+        # assuming values for daw_root, zr_dormant, self.zr, self.totwatin_ze, ze, self.fc are defined
+
         # Reduce daw_root by water in evap layer and rest of zr_dormant and then proportion
-        if zr_dormant < self.zr:
-            # determine water in zr_dormant layer
-            # combine water in ze layer (1-fc fraction) to that in balance of zr_dormant depth
-            # need to mix ze and zr_dormant zones.  Assume current Zr zone of crop just ended is fully mixed.
-            # totwatin_ze is water in fc fraction of Ze.
+        aw_root = np.where(zr_dormant < self.zr, daw_root / self.zr, 0)
 
-            aw_root = daw_root / self.zr
-            if zr_dormant > ze:
-                totwatinzr_dormant = (
-                    (self.totwatin_ze + aw_root * (zr_dormant - ze)) * (1 - self.fc) +
-                    aw_root * zr_dormant * self.fc)
-            else:
-                # Was, until 5/9/07
-                # totwatinzr_dormant = (
-                #     .totwatin_ze * (ze - zr_dormant) / ze) * (1 - fc) +
-                #     _root * zr_dormant * fc)
-                totwatinzr_dormant = (
-                    (self.totwatin_ze * (1 - (ze - zr_dormant) / ze)) * (1 - self.fc) +
-                    aw_root * zr_dormant * self.fc)  # corrected
+        # determine water in zr_dormant layer
+        # combine water in ze layer (1-fc fraction) to that in balance of zr_dormant depth
+        # need to mix ze and zr_dormant zones.  Assume current Zr zone of crop just ended is fully mixed.
+        # totwatin_ze is water in fc fraction of Ze.
+        totwatinzr_dormant = np.where(zr_dormant > ze,
+                                      ((self.totwatin_ze + aw_root * (zr_dormant - ze)) * (1 - self.fc) +
+                                       aw_root * zr_dormant * self.fc),
+                                      ((self.totwatin_ze * (1 - (ze - zr_dormant) / ze)) * (1 - self.fc) +
+                                       aw_root * zr_dormant * self.fc))
 
-            # This requires that zr_dormant > ze.
+        # This requires that zr_dormant > ze.
 
-            if daw_root > totwatinzr_dormant:
-                # Proportionate water between zr_dormant and zr
+        # Proportionate water between zr_dormant and zr
+        daw_below = np.where(daw_root > totwatinzr_dormant, daw_root - totwatinzr_dormant, 0)
 
-                daw_below = (daw_root - totwatinzr_dormant)
-
-                # Actual water between zr_dormant and zr
-                # daw_below = daw_root * (zr - zr_dormant) / zr
-            else:
-                daw_below = 0
-
-            # Actual water in mm/m below zr_dormant
-
-            self.aw3 = (daw_below + daw3) / (self.zr_max - zr_dormant)
-        else:
-            # This should never happen, since zr_max for all crops > 0.15 m
-
-            self.aw3 = self.aw3
+        # Actual water in mm/m below zr_dormant
+        self.aw3 = np.where(zr_dormant < self.zr, (daw_below + daw3) / (self.zr_max - zr_dormant), self.aw3)
 
         # initialize depl_root for dormant season
         # Depletion below evaporation layer:

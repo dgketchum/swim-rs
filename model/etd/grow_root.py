@@ -73,21 +73,8 @@ def grow_root(foo, foo_day, debug_flag=False):
 
     # update depl_root for new moisture coming in bottom of root zone
     # depl_root (depletion) will increase if new portion of root zone is < FC
-    if delta_zr > 0:
-        # AM3 is mean moisture of maxrootzone - Zr layer
-        foo.depl_root += delta_zr * (foo.aw - foo.aw3)
+    foo.depl_root = np.where(delta_zr > 0,
+                             foo.depl_root + delta_zr * (foo.aw - foo.aw3),
+                             foo.depl_root)
 
     # Also keep zr from #'shrinking' (for example, with multiple alfalfa cycles
-
-    if debug_flag:
-        logging.debug(
-            ('grow_root(): zr %.6f  fractime %.6f  zr_max %.6f  zr_min %.6f  depl_root %.6f') %
-            (foo.zr, fractime, foo.zr_max, foo.zr_min, foo.depl_root))
-        logging.debug(
-            ('grow_root(): delta_zr %s  AW %.6f  AW3 %.6f') %
-            (delta_zr, foo.aw, foo.aw3))
-        logging.debug(
-            'grow_root(): n_cgdd %.6f  n_pl_ec %s' % (foo.n_cgdd, foo.n_pl_ec))
-        logging.debug(
-            ('grow_root(): end_of_root %s  crop_curve_type %s') %
-            (crop.end_of_root_growth_fraction_time, crop.curve_type))

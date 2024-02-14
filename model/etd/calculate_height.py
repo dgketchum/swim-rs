@@ -26,9 +26,8 @@ def calculate_height(foo):
     #     foo.height = foo.height_initial
     # foo.height = min(max(foo.height_initial, max(height_prev, foo.height)), foo.height_max)
 
-    condition = (foo.kc_bas > foo.kc_min) & (foo.kc_bas_mid > foo.kc_min)
     foo.height = np.where(
-        condition,
+        foo.kc_bas > foo.kc_min,
         foo.height_initial + (foo.kc_bas - foo.kc_min) / (foo.kc_bas_mid - foo.kc_min) * (foo.height_max - foo.height_initial),
         foo.height_initial
     )

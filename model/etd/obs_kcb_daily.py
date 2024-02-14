@@ -68,10 +68,10 @@ def kcb_daily(config, et_cell, foo, foo_day):
     # Save kc_bas_prev prior to CO2 adjustment to avoid double correction
 
     # dgketchum mod to 'turn on' root growth
-    if foo_day.doy > gs_start_doy and 0.10 <= foo.kc_bas:
-        foo.grow_root = True
-    elif foo_day.doy < gs_start_doy or foo_day.doy > gs_end_doy:
-        foo.grow_root = False
+    condition1 = (foo_day.doy > gs_start_doy) & (0.10 <= foo.kc_bas)
+    condition2 = (foo_day.doy < gs_start_doy) | (foo_day.doy > gs_end_doy)
+
+    foo.grow_root = np.where(condition1, True, np.where(condition2, False, foo.grow_root))
 
     foo.kc_bas_prev = foo.kc_bas
 

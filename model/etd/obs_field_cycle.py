@@ -13,12 +13,11 @@ import numpy as np
 import pandas as pd
 
 from model.etd import compute_field_et
-from model.etd.initialize_obs_crop_cycle import PlotTracker
+from model.etd.initialize_tracker import PlotTracker
 from model.etd import obs_kcb_daily
 from model.etd import calculate_height
 
-OUTPUT_FMT = ['capture',
-              'et_act',
+OUTPUT_FMT = ['et_act',
               'etref',
               'kc_act',
               'kc_bas',
@@ -40,7 +39,6 @@ OUTPUT_FMT = ['capture',
               'niwr',
               'runoff',
               'season',
-              'cutting',
               ]
 
 
@@ -81,11 +79,11 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
             print('{}: {}'.format(k, ['{:.1f}'.format(p) for p in v.flatten()]))
 
             if k == 'aw':
-                tracker.__setattr__('depl_root', tracker.aw)
+                tracker.__setattr__('depl_root', tracker.aw / 2)
 
             if k == 'rew':
-                tracker.__setattr__('depl_surface', tracker.tew)
-                tracker.__setattr__('depl_zep', tracker.rew)
+                tracker.__setattr__('depl_surface', tracker.tew / 2)
+                tracker.__setattr__('depl_zep', tracker.rew / 2)
 
     # Initialize crop data frame
     tracker.setup_dataframe()
@@ -94,6 +92,9 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     foo_day = DayData()
     foo_day.sdays = 0
     foo_day.doy_prev = 0
+
+    refet = None
+    ndvi = None
 
     if config.refet_type == 'eto' and config.field_type == 'irrigated':
         refet = 'eto_mm'
@@ -111,6 +112,9 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         refet = 'etr_mm_uncorr'
         ndvi = 'ndvi_inv_irr'
 
+    hr_ppt_keys = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
+    targets = plots.input['order']
+
     for step_dt, vals in plots.input['time_series'].items():
 
         # Track variables for each day
@@ -119,15 +123,34 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         foo_day.doy = vals['doy']
         foo_day.dt_string = step_dt
         dt = pd.to_datetime(step_dt)
-        foo_day.month = dt.month
         foo_day.year = dt.year
-        foo_day.refet = vals[refet]
-        foo_day.ndvi = vals[ndvi]
+        foo_day.month = dt.month
+        foo_day.day = dt.day
+        foo_day.refet = np.array(vals[refet]).reshape(1, -1)
+        foo_day.ndvi = np.array(vals[ndvi]).reshape(1, -1)
+
+        if config.field_type == 'irrigated':
+            try:
+                irr = plots.input['irr_data']
+                irr_day = [int(foo_day.doy) in irr[t][str(foo_day.year)]['irr_doys'] for t in targets]
+                foo_day.irr_day = np.array(irr_day).reshape(1, -1)
+
+            except KeyError as e:
+                print(e)
+
         foo_day.precip = np.array(vals['prcp_mm'])
+        if np.any(foo_day.precip > 0.):
+            hr_ppt = np.array([vals[k] for k in hr_ppt_keys]).reshape(24, size)
+            foo_day.hr_precip = hr_ppt
+        foo_day.precip = foo_day.precip.reshape(1, -1)
+
         foo_day.snow_depth = 0.0
 
         if foo_day.month == 11 and foo_day.day == 1:
             tracker.setup_dormant()
+
+        if foo_day.month == 7 and foo_day.day == 1 and foo_day.year > 2010:
+            a = 1
 
         # Calculate height of vegetation.
         # Moved up to this point 12/26/07 for use in adj. Kcb and kc_max
@@ -143,32 +166,32 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         # Retrieve values from foo_day and write to output data frame
         # Eventually let compute_crop_et() write directly to output df
         tracker.crop_df[step_dt] = {}
+        sample_idx = 0, 0
 
-        tracker.crop_df[step_dt]['etref'] = plots.refet.at[step_dt]
-        tracker.crop_df[step_dt]['et_act'] = tracker.etc_act
-        tracker.crop_df[step_dt]['capture'] = tracker.capture
-        tracker.crop_df[step_dt]['kc_act'] = tracker.kc_act
-        tracker.crop_df[step_dt]['ks'] = tracker.ks
-        tracker.crop_df[step_dt]['ke'] = tracker.ke
-        tracker.crop_df[step_dt]['ppt'] = foo_day.precip
-        tracker.crop_df[step_dt]['depl_root'] = tracker.depl_root
-        tracker.crop_df[step_dt]['depl_surface'] = tracker.depl_surface
-        tracker.crop_df[step_dt]['p_rz'] = tracker.p_rz
-        tracker.crop_df[step_dt]['p_eft'] = tracker.p_eft
-        tracker.crop_df[step_dt]['fc'] = tracker.fc
-        tracker.crop_df[step_dt]['few'] = tracker.few
-        tracker.crop_df[step_dt]['aw'] = tracker.aw
-        tracker.crop_df[step_dt]['aw3'] = tracker.aw3
-        tracker.crop_df[step_dt]['taw'] = tracker.taw
-        tracker.crop_df[step_dt]['irrigation'] = tracker.irr_sim
-        tracker.crop_df[step_dt]['runoff'] = tracker.sro
-        tracker.crop_df[step_dt]['dperc'] = tracker.dperc
-        tracker.crop_df[step_dt]['zr'] = tracker.zr
-        tracker.crop_df[step_dt]['kc_bas'] = tracker.kc_bas
-        tracker.crop_df[step_dt]['niwr'] = tracker.niwr + 0
+        tracker.crop_df[step_dt]['etref'] = foo_day.refet[sample_idx]
+        tracker.crop_df[step_dt]['et_act'] = tracker.etc_act[sample_idx]
+        # tracker.crop_df[step_dt]['capture'] = tracker.capture
+        tracker.crop_df[step_dt]['kc_act'] = tracker.kc_act[sample_idx]
+        tracker.crop_df[step_dt]['ks'] = tracker.ks[sample_idx]
+        tracker.crop_df[step_dt]['ke'] = tracker.ke[sample_idx]
+        tracker.crop_df[step_dt]['ppt'] = foo_day.precip[sample_idx]
+        tracker.crop_df[step_dt]['depl_root'] = tracker.depl_root[sample_idx]
+        tracker.crop_df[step_dt]['depl_surface'] = tracker.depl_surface[sample_idx]
+        tracker.crop_df[step_dt]['p_rz'] = tracker.p_rz[sample_idx]
+        tracker.crop_df[step_dt]['p_eft'] = tracker.p_eft[sample_idx]
+        tracker.crop_df[step_dt]['fc'] = tracker.fc[sample_idx]
+        tracker.crop_df[step_dt]['few'] = tracker.few[sample_idx]
+        tracker.crop_df[step_dt]['aw'] = tracker.aw[sample_idx]
+        tracker.crop_df[step_dt]['aw3'] = tracker.aw3[sample_idx]
+        tracker.crop_df[step_dt]['taw'] = tracker.taw[sample_idx]
+        tracker.crop_df[step_dt]['irrigation'] = tracker.irr_sim[sample_idx]
+        tracker.crop_df[step_dt]['runoff'] = tracker.sro[sample_idx]
+        tracker.crop_df[step_dt]['dperc'] = tracker.dperc[sample_idx]
+        tracker.crop_df[step_dt]['zr'] = tracker.zr[sample_idx]
+        tracker.crop_df[step_dt]['kc_bas'] = tracker.kc_bas[sample_idx]
+        tracker.crop_df[step_dt]['niwr'] = tracker.niwr[sample_idx]
         tracker.crop_df[step_dt]['et_bas'] = tracker.etc_bas
-        tracker.crop_df[step_dt]['season'] = int(tracker.in_season)
-        tracker.crop_df[step_dt]['cutting'] = int(tracker.cutting)
+        tracker.crop_df[step_dt]['season'] = tracker.in_season
 
         # Write final output file variables to DEBUG file
 
