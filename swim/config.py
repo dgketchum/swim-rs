@@ -37,6 +37,18 @@ class ProjectConfig:
         self.calibration_files = None
         self.calibration_groups = None
 
+        self.static_keys = None
+        self.initial_keys = None
+        self.date_range = None
+        self.use_individual_kcb = None
+        self.ro_reinf_frac = None
+        self.swb_mode = None
+        self.rew_ceff = None
+        self.evap_ceff = None
+        self.winter_evap_limiter = None
+        self.winter_end_day = None
+        self.winter_start_day = None
+
     def read_config(self, conf):
 
         with open(conf, 'r') as f:
@@ -44,6 +56,7 @@ class ProjectConfig:
 
         crop_et_sec = 'FIELDS'
         calib_sec = 'CALIBRATION'
+        runspec_sec = 'RUNSPEC'
 
         self.kc_proxy = config[crop_et_sec]['kc_proxy']
         self.cover_proxy = config[crop_et_sec]['cover_proxy']
@@ -86,25 +99,19 @@ class ProjectConfig:
             self.calibration_files = {k: v for k, v in zip(self.calibrated_parameters, _files)}
             self.calibration_groups = list(set(['_'.join(p.split('_')[:-1]) for p in pdf.index]))
 
-
         # TODO: remove these ETRM-specific config attributes
 
-        # self.static_keys = ('plant_height', 'rew', 'root_z', 'soil_ksat', 'taw', 'tew')
-        #
-        # self.initial_keys = 'de', 'dr', 'drew'
-        #
-        # dtr = config.get(runspec_sec, 'date_range').split(',')
-        # fmt = '%Y-%m-%d'
-        # s, e = datetime.strptime(dtr[0], fmt), datetime.strptime(dtr[1], fmt)
-        # self.date_range = (s, e)
-        # self.use_individual_kcb = bool(config.get(runspec_sec, 'use_individual_kcb'))
-        # self.ro_reinf_frac = float(config.get(runspec_sec, 'ro_reinf_frac'))
-        # self.swb_mode = config.get(runspec_sec, 'swb_mode')
-        # self.rew_ceff = config.get(runspec_sec, 'rew_ceff')
-        # self.evap_ceff = config.get(runspec_sec, 'evap_ceff')
-        # self.winter_evap_limiter = config.get(runspec_sec, 'winter_evap_limiter')
-        # self.winter_end_day = config.get(runspec_sec, 'winter_end_day')
-        # self.winter_start_day = config.get(runspec_sec, 'winter_start_day')
+        self.static_keys = ('plant_height', 'rew', 'root_z', 'soil_ksat', 'taw', 'tew')
+
+        self.initial_keys = 'de', 'dr', 'drew'
+
+        self.date_range = (self.start_dt, self.end_dt)
+        self.swb_mode = config.get(runspec_sec, 'swb_mode')
+        self.rew_ceff = config.get(runspec_sec, 'rew_ceff')
+        self.evap_ceff = config.get(runspec_sec, 'evap_ceff')
+        self.winter_evap_limiter = config.get(runspec_sec, 'winter_evap_limiter')
+        self.winter_end_day = config.get(runspec_sec, 'winter_end_day')
+        self.winter_start_day = config.get(runspec_sec, 'winter_start_day')
 
     @property
     def initial_pairs(self):
