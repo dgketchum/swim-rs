@@ -9,6 +9,8 @@ IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 AWC = 'projects/openet/soil/ssurgo_AWC_WTA_0to152cm_composite'
 # OpenET KSAT is in micrometers/sec
 KSAT = 'projects/openet/soil/ssurgo_Ksat_WTA_0to152cm_composite'
+CLAY = 'projects/openet/soil/ssurgo_Clay_WTA_0to152cm_composite'
+SAND = 'projects/openet/soil/ssurgo_Sand_WTA_0to152cm_composite'
 
 
 def get_cdl(fields, desc):
@@ -94,10 +96,40 @@ def get_ssurgo(fields, desc, debug=False):
 
     ksat = ee.Image(KSAT).select('b1').rename('ksat')
     awc = ee.Image(AWC).select('b1').rename('awc')
+    clay = ee.Image(CLAY).select('b1').rename('clay')
+    sand = ee.Image(SAND).select('b1').rename('sand')
 
-    img = ksat.addBands([awc])
+    img = ksat.addBands([awc, clay, sand])
 
-    _selectors = ['FID', 'LAT', 'LON'] + ['awc', 'ksat']
+    _selectors = ['FID', 'LAT', 'LON'] + ['awc', 'ksat', 'clay', 'sand']
+
+    means = img.reduceRegions(collection=plots,
+                              reducer=ee.Reducer.mean(),
+                              scale=30)
+
+    if debug:
+        debug = means.filterMetadata('FID', 'equals', 1789).getInfo()
+
+    task = ee.batch.Export.table.toCloudStorage(
+        means,
+        description=desc,
+        bucket='wudr',
+        fileNamePrefix=desc,
+        fileFormat='CSV',
+        selectors=_selectors)
+
+    task.start()
+    print(desc)
+
+
+def get_landfire(fields, desc, debug=False):
+    plots = ee.FeatureCollection(fields)
+
+    height = ee.ImageCollection('LANDFIRE/Vegetation/EVH/v1_4_0').select('EVH').first().rename('plant_height')
+
+    img = height
+
+    _selectors = ['FID', 'LAT', 'LON'] + ['height']
 
     means = img.reduceRegions(collection=plots,
                               reducer=ee.Reducer.mean(),
@@ -123,12 +155,17 @@ if __name__ == '__main__':
 
     project = 'tongue'
     fields_ = 'users/dgketchum/fields/tongue_9MAY2023'
+
     description = '{}_cdl'.format(project)
     # get_cdl(fields_, description)
+
     description = '{}_irr'.format(project)
     # get_irrigation(fields_, description, debug=False)
 
     description = '{}_ssurgo'.format(project)
-    get_ssurgo(fields_, description, debug=False)
+    # get_ssurgo(fields_, description, debug=False)
+
+    description = '{}_landfire'.format(project)
+    get_landfire(fields_, description, debug=False)
 
 # ========================= EOF ====================================================================
