@@ -5,7 +5,7 @@ import geopandas as gpd
 import pandas as pd
 
 
-def write_field_properties(shp, irr, cdl, ssurgo, js):
+def write_field_properties(shp, irr, cdl, ssurgo, landfire, js):
     irr = pd.read_csv(irr, index_col='FID')
     irr.drop(columns=['LAT', 'LON'], inplace=True)
     dct = irr.T.to_dict()
@@ -19,6 +19,11 @@ def write_field_properties(shp, irr, cdl, ssurgo, js):
     cdl = cdl.T.to_dict()
     [dct[k].update({'cdl': {int(kk.split('_')[1]): int(vv) for kk, vv in cdl[k].items()}}) for k in dct.keys()]
 
+    landfire = pd.read_csv(landfire, index_col='FID')
+    plant_height = landfire[['height']].copy()
+    plant_height = plant_height.T.to_dict()
+    [dct[k].update({'plant_height': plant_height[k]['height']}) for k in dct.keys()]
+
     soils = pd.read_csv(ssurgo, index_col='FID')
 
     awc = soils[['awc']].copy()
@@ -28,6 +33,14 @@ def write_field_properties(shp, irr, cdl, ssurgo, js):
     ksat = soils[['ksat']].copy()
     ksat = ksat.T.to_dict()
     [dct[k].update({'ksat': ksat[k]['ksat']}) for k in dct.keys()]
+
+    clay = soils[['clay']].copy()
+    clay = clay.T.to_dict()
+    [dct[k].update({'clay': clay[k]['clay']}) for k in dct.keys()]
+
+    sand = soils[['sand']].copy()
+    sand = sand.T.to_dict()
+    [dct[k].update({'sand': sand[k]['sand']}) for k in dct.keys()]
 
     fields = gpd.read_file(shp)
     fields.index = fields['FID']
@@ -52,8 +65,9 @@ if __name__ == '__main__':
     irr_ = os.path.join(project_ws, 'properties', '{}_irr.csv'.format(project))
     cdl_ = os.path.join(project_ws, 'properties', '{}_cdl.csv'.format(project))
     _ssurgo = os.path.join(project_ws, 'properties', '{}_ssurgo.csv'.format(project))
+    _landfire = os.path.join(project_ws, 'properties', '{}_landfire.csv'.format(project))
     jsn = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
 
-    write_field_properties(fields_shp, irr_, cdl_, _ssurgo, jsn)
+    write_field_properties(fields_shp, irr_, cdl_, _ssurgo, _landfire, jsn)
 
 # ========================= EOF ====================================================================
