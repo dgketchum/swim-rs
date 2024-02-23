@@ -278,6 +278,9 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
     irrigated, fields = False, {c: {} for c in cols}
     for c in cols:
 
+        # if c != '1779':
+        #     continue
+
         selector = '{}_ndvi_irr'.format(c)
         count, fallow = [], []
 
@@ -360,7 +363,7 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
                         cut_dates.append(dts)
 
                 irr_doys = [[i for i in range(s.dayofyear, e.dayofyear)] for s, e in zip(green_start_doys, cut_doys)]
-                irr_doys = list(np.array(irr_doys, dtype=object).flatten())
+                irr_doys = flatten_list(irr_doys)
                 irr_windows = [(gu, cd) for gu, cd in zip(green_start_dates, cut_dates)]
 
                 if not irr_windows:
@@ -401,6 +404,18 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
     print('wrote {}'.format(out_json))
 
 
+def flatten_list(lst):
+    flattened = []
+    for item in lst:
+        if isinstance(item, list):
+            flattened.extend(flatten_list(item))
+        else:
+            flattened.append(item)
+
+    flattened = sorted(list(set(flattened)))
+    return flattened
+
+
 if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/swim'
@@ -436,7 +451,7 @@ if __name__ == '__main__':
     # join_remote_sensing(tables, dst_)
 
     irr_ = os.path.join(project_ws, 'properties', '{}_irr.csv'.format(project))
-    js_ = os.path.join(project_ws, 'landsat', '{}_cuttings_1794.json'.format(project))
+    js_ = os.path.join(project_ws, 'landsat', '{}_cuttings.json'.format(project))
     detect_cuttings(dst_, irr_, irr_threshold=0.1, out_json=js_)
 
 # ========================= EOF ================================================================================
