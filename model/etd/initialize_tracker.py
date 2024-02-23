@@ -80,6 +80,8 @@ TRACKER_PARAMS = ['aw3',
                   'mad',
                   'mad_ini',
                   'mad_mid',
+                  'max_irr_rate',
+                  'next_day_irr',
                   'n_cgdd',
                   'n_pl_ec',
                   'niwr',
@@ -174,10 +176,14 @@ class PlotTracker:
 
         self.ksat_hourly = None
 
+        self.irr_continue = False
+        self.next_day_irr = 0.
+
         self.kt_reducer = 1.
         self.mad = 0.
         self.mad_ini = 0.
         self.mad_mid = 0.
+        self.max_irr_rate = 25.4
         self.n_cgdd = 0.
         self.n_pl_ec = 0.
         self.niwr = 0.
