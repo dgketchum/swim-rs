@@ -3,10 +3,11 @@ Defines function runoff for computing SCS curve number runoff
 called by compute_crop_et.py
 
 """
-
-import logging
-
 import numpy as np
+
+import warnings
+
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 def runoff_curve_number(foo, foo_day, config, debug_flag=False):
@@ -59,27 +60,34 @@ def runoff_curve_number(foo, foo_day, config, debug_flag=False):
                            ((foo.depl_surface - AWCIII) * CNI +
                             (AWCI - foo.depl_surface) * CNIII) / (AWCI - AWCIII)))
 
-    foo.s = 250 * (100 / cn - 1)
+    # where did this function come from?
+    # foo.s = 250 * (100 / cn - 1
+    # TODO: find a defensible way to calculate this
+    foo.s = 100 / cn - 1
 
     # If irrigations are automatically scheduled, base runoff on an average of
     #   conditions for prior four days to smooth results.
 
+    # 'four day smoothing' doesn't really make sense anymore as we are only evaluating the function on days with precip
     if config.field_type == 'irrigated':
         # Initial abstraction
         ppt_net4 = np.maximum(foo_day.precip - 0.2 * foo.s4, 0)
         ppt_net3 = np.maximum(foo_day.precip - 0.2 * foo.s3, 0)
         ppt_net2 = np.maximum(foo_day.precip - 0.2 * foo.s2, 0)
         ppt_net1 = np.maximum(foo_day.precip - 0.2 * foo.s1, 0)
-        foo.sro = 0.25 * (
-            ppt_net4 ** 2 / (foo_day.precip + 0.8 * foo.s4) +
-            ppt_net3 ** 2 / (foo_day.precip + 0.8 * foo.s3) +
-            ppt_net2 ** 2 / (foo_day.precip + 0.8 * foo.s2) +
-            ppt_net1 ** 2 / (foo_day.precip + 0.8 * foo.s1))
+        foo.sro = np.where(foo_day.precip == 0.0, 0.0,
+                           0.25 * (
+                               ppt_net4 ** 2 / (foo_day.precip + 0.8 * foo.s4) +
+                               ppt_net3 ** 2 / (foo_day.precip + 0.8 * foo.s3) +
+                               ppt_net2 ** 2 / (foo_day.precip + 0.8 * foo.s2) +
+                               ppt_net1 ** 2 / (foo_day.precip + 0.8 * foo.s1))
+                           )
 
         foo.s4 = foo.s3
         foo.s3 = foo.s2
         foo.s2 = foo.s1
         foo.s1 = foo.s
+
     else:
         # Non-irrigated runoff
         # Initial abstraction
@@ -88,7 +96,5 @@ def runoff_curve_number(foo, foo_day, config, debug_flag=False):
 
 
 def runoff_infiltration_excess(foo, foo_day, debug_flag=False):
-
     foo.sro = np.maximum(foo_day.hr_precip - foo.ksat_hourly,
                          np.zeros_like(foo_day.hr_precip)).sum(axis=0).reshape(1, -1)
-
