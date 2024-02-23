@@ -105,7 +105,7 @@ if __name__ == '__main__':
     fields_props = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
     cuttings = '/media/research/IrrigationGIS/swim/examples/tongue/landsat/{}_cuttings.json'.format(project)
 
-    select_fields = [str(f) for f in [1779, 1787, 1793, 1797, 1801, 1804]]
+    select_fields = [str(f) for f in list(range(1770, 1805))]
     select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input.json'.format(project))
 
     prep_fields_json(fields_props, select_fields, src_dir, select_fields_js, ltype='irrigated', irr_data=cuttings)

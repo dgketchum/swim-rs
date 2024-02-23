@@ -80,13 +80,13 @@ if __name__ == '__main__':
     met = os.path.join(project_ws, 'met_timeseries')
 
     # TODO: write gridmet data to a common directory, instead of project ws
+
     # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=None)
 
     # targets = [1779, 1787, 1793, 1794, 1797, 1801, 1804]
-    targets = [1779]
+    targets = list(range(1770, 1805))
 
-    download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31', overwite=True,
-                     target_fields=targets)
+    download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31')
 
     landsat = os.path.join(project_ws, 'landsat', '{}_sensing.csv'.format(project))
     dst_dir_ = os.path.join(project_ws, 'input_timeseries')
@@ -98,8 +98,7 @@ if __name__ == '__main__':
 
     params += ['{}_ct'.format(p) for p in params]
 
-    # join_gridmet_remote_sensing_daily(fields_gridmet, met, landsat, dst_dir_, overwrite=True,
-    #                                   start_date='2000-01-01', end_date='2020-12-31', **{'params': params,
-    #                                                                                      'target_fields': targets})
+    join_gridmet_remote_sensing_daily(fields_gridmet, met, landsat, dst_dir_, overwrite=False,
+                                      start_date='2000-01-01', end_date='2020-12-31', **{'params': params})
 
 # ========================= EOF ====================================================================
