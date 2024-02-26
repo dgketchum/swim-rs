@@ -30,29 +30,39 @@ def optimize_fields(ini_path, debug_flag=False, field_type='irrigated', project=
 
     # debug returns a dataframe
     if debug_flag:
-        pred = df['et_act'].values
 
-        obs = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/obs/obs_eta_1779.np'.format(project)
-        obs = np.loadtxt(obs)
-        cols = ['et_obs'] + list(df.columns)
-        df['et_obs'] = obs
-        df = df[cols]
-        a = df.loc['2010-01-01': '2021-01-01']
+        targets = fields.input['order']
+        first = True
 
-        comp = pd.DataFrame(data=np.vstack([obs, pred]).T, columns=['obs', 'pred'], index=df.index)
-        comp['eq'] = comp['obs'] == comp['pred']
-        comp['capture'] = df['capture']
+        for fid in targets:
 
-        rmse = np.sqrt(((pred - obs) ** 2).mean())
-        end_time = time.time()
-        print('Execution time: {:.2f} seconds'.format(end_time - start_time))
-        print('Mean Obs: {:.2f}, Mean Pred: {:.2f}'.format(obs.mean(), pred.mean()))
-        print('RMS Diff: {:.4f}\n\n\n\n'.format(rmse))
+            pred = df[fid]['et_act'].values
 
-        comp = comp.loc[a[a['capture'] == 1.0].index]
-        pred, obs = comp['pred'], comp['obs']
-        rmse = np.sqrt(((pred - obs) ** 2).mean())
-        print('RMSE Capture Dates: {:.4f}\n\n\n\n'.format(rmse))
+            obs = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/obs/obs_eta_{}.np'.format(project, fid)
+            obs = np.loadtxt(obs)
+            cols = ['et_obs'] + list(df[fid].columns)
+            df[fid]['et_obs'] = obs
+            df[fid] = df[fid][cols]
+            a = df[fid].loc['2010-01-01': '2021-01-01']
+
+            comp = pd.DataFrame(data=np.vstack([obs, pred]).T, columns=['obs', 'pred'], index=df[fid].index)
+            comp['eq'] = comp['obs'] == comp['pred']
+            comp['capture'] = df[fid]['capture']
+
+            rmse = np.sqrt(((pred - obs) ** 2).mean())
+            end_time = time.time()
+
+            if first:
+                print('Execution time: {:.2f} seconds'.format(end_time - start_time))
+                first = False
+
+            print('{}: Mean Obs: {:.2f}, Mean Pred: {:.2f}'.format(fid, obs.mean(), pred.mean()))
+            print('{}: RMS Diff: {:.4f}'.format(fid, rmse))
+
+            comp = comp.loc[a[a['capture'] == 1.0].index]
+            pred, obs = comp['pred'], comp['obs']
+            rmse = np.sqrt(((pred - obs) ** 2).mean())
+            print('{}: RMSE Capture Dates: {:.4f}\n\n\n\n'.format(fid, rmse))
 
 
 if __name__ == '__main__':
@@ -60,4 +70,4 @@ if __name__ == '__main__':
     field_type_ = 'irrigated'
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project_)
     ini = os.path.join(d, '{}_swim.toml'.format(project_))
-    optimize_fields(ini_path=ini, debug_flag=False, field_type=field_type_, project=project_)
+    optimize_fields(ini_path=ini, debug_flag=True, field_type=field_type_, project=project_)

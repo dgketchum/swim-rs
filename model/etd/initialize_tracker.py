@@ -480,7 +480,7 @@ class PlotTracker:
 
         self.cutting = 0
 
-    def setup_dataframe(self):
+    def setup_dataframe(self, targets):
         """Initialize output dataframe
 
         Attributes
@@ -496,7 +496,7 @@ class PlotTracker:
 
         """
 
-        self.crop_df = {}
+        self.crop_df = {target: {} for target in targets}
 
     def set_kc_max(self):
 

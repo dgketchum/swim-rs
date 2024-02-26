@@ -51,7 +51,6 @@ class DayData:
 
 
 def field_day_loop(config, plots, debug_flag=False, params=None):
-
     size = len(plots.input['order'])
     tracker = PlotTracker(size)
     tracker.load_soils(plots)
@@ -87,9 +86,11 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
                 tracker.__setattr__('depl_surface', tracker.tew / 2)
                 tracker.__setattr__('depl_zep', tracker.rew / 2)
 
+    targets = plots.input['order']
+
     # Initialize crop data frame
     if debug_flag:
-        tracker.setup_dataframe()
+        tracker.setup_dataframe(targets)
     else:
         eta = []
 
@@ -124,7 +125,6 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         capture = 'etf_inv_irr_ct'
 
     hr_ppt_keys = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
-    targets = plots.input['order']
 
     for step_dt, vals in plots.input['time_series'].items():
 
@@ -178,41 +178,46 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         # Eventually let compute_crop_et() write directly to output df
 
         if debug_flag:
-            tracker.crop_df[step_dt] = {}
-            sample_idx = 0, 0
-            tracker.crop_df[step_dt]['etref'] = foo_day.refet[sample_idx]
-            tracker.crop_df[step_dt]['et_act'] = tracker.etc_act[sample_idx]
-            tracker.crop_df[step_dt]['capture'] = int(vals[capture][sample_idx[0]])
-            tracker.crop_df[step_dt]['kc_act'] = tracker.kc_act[sample_idx]
-            tracker.crop_df[step_dt]['ks'] = tracker.ks[sample_idx]
-            tracker.crop_df[step_dt]['ke'] = tracker.ke[sample_idx]
-            tracker.crop_df[step_dt]['ppt'] = foo_day.precip[sample_idx]
-            tracker.crop_df[step_dt]['depl_root'] = tracker.depl_root[sample_idx]
-            tracker.crop_df[step_dt]['depl_surface'] = tracker.depl_surface[sample_idx]
-            tracker.crop_df[step_dt]['p_rz'] = tracker.p_rz[sample_idx]
-            tracker.crop_df[step_dt]['p_eft'] = tracker.p_eft[sample_idx]
-            tracker.crop_df[step_dt]['fc'] = tracker.fc[sample_idx]
-            tracker.crop_df[step_dt]['few'] = tracker.few[sample_idx]
-            tracker.crop_df[step_dt]['aw'] = tracker.aw[sample_idx]
-            tracker.crop_df[step_dt]['aw3'] = tracker.aw3[sample_idx]
-            tracker.crop_df[step_dt]['taw'] = tracker.taw[sample_idx]
-            tracker.crop_df[step_dt]['irrigation'] = tracker.irr_sim[sample_idx]
-            tracker.crop_df[step_dt]['runoff'] = tracker.sro[sample_idx]
-            tracker.crop_df[step_dt]['irr_day'] = foo_day.irr_day[sample_idx]
-            tracker.crop_df[step_dt]['dperc'] = tracker.dperc[sample_idx]
-            tracker.crop_df[step_dt]['zr'] = tracker.zr[sample_idx]
-            tracker.crop_df[step_dt]['kc_bas'] = tracker.kc_bas[sample_idx]
-            tracker.crop_df[step_dt]['niwr'] = tracker.niwr[sample_idx]
-            tracker.crop_df[step_dt]['et_bas'] = tracker.etc_bas
-            tracker.crop_df[step_dt]['season'] = tracker.in_season
+            for i, fid in enumerate(targets):
+                tracker.crop_df[fid][step_dt] = {}
+                sample_idx = 0, i
+                tracker.crop_df[fid][step_dt]['etref'] = foo_day.refet[sample_idx]
+
+                eta_act = tracker.etc_act[sample_idx]
+                tracker.crop_df[fid][step_dt]['et_act'] = eta_act
+
+                tracker.crop_df[fid][step_dt]['capture'] = int(vals[capture][sample_idx[1]])
+                tracker.crop_df[fid][step_dt]['kc_act'] = tracker.kc_act[sample_idx]
+                tracker.crop_df[fid][step_dt]['ks'] = tracker.ks[sample_idx]
+                tracker.crop_df[fid][step_dt]['ke'] = tracker.ke[sample_idx]
+                tracker.crop_df[fid][step_dt]['ppt'] = foo_day.precip[sample_idx]
+                tracker.crop_df[fid][step_dt]['depl_root'] = tracker.depl_root[sample_idx]
+                tracker.crop_df[fid][step_dt]['depl_surface'] = tracker.depl_surface[sample_idx]
+                tracker.crop_df[fid][step_dt]['p_rz'] = tracker.p_rz[sample_idx]
+                tracker.crop_df[fid][step_dt]['p_eft'] = tracker.p_eft[sample_idx]
+                tracker.crop_df[fid][step_dt]['fc'] = tracker.fc[sample_idx]
+                tracker.crop_df[fid][step_dt]['few'] = tracker.few[sample_idx]
+                tracker.crop_df[fid][step_dt]['aw'] = tracker.aw[sample_idx]
+                tracker.crop_df[fid][step_dt]['aw3'] = tracker.aw3[sample_idx]
+                tracker.crop_df[fid][step_dt]['taw'] = tracker.taw[sample_idx]
+                tracker.crop_df[fid][step_dt]['irrigation'] = tracker.irr_sim[sample_idx]
+                tracker.crop_df[fid][step_dt]['runoff'] = tracker.sro[sample_idx]
+                tracker.crop_df[fid][step_dt]['irr_day'] = foo_day.irr_day[sample_idx]
+                tracker.crop_df[fid][step_dt]['dperc'] = tracker.dperc[sample_idx]
+                tracker.crop_df[fid][step_dt]['zr'] = tracker.zr[sample_idx]
+                tracker.crop_df[fid][step_dt]['kc_bas'] = tracker.kc_bas[sample_idx]
+                tracker.crop_df[fid][step_dt]['niwr'] = tracker.niwr[sample_idx]
+                tracker.crop_df[fid][step_dt]['et_bas'] = tracker.etc_bas
+                tracker.crop_df[fid][step_dt]['season'] = tracker.in_season
 
         else:
             eta.append(tracker.etc_act)
 
     if debug_flag:
         # pass final dataframe to calling script
-        tracker.crop_df = pd.DataFrame().from_dict(tracker.crop_df, orient='index')
-        tracker.crop_df = tracker.crop_df[OUTPUT_FMT]
+
+        tracker.crop_df = {fid: pd.DataFrame().from_dict(tracker.crop_df[fid], orient='index')[OUTPUT_FMT]
+                           for fid in targets}
         return tracker.crop_df
 
     else:
