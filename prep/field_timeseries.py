@@ -5,6 +5,7 @@ import pandas as pd
 import geopandas as gpd
 
 from data_extraction.gridmet.gridmet import find_gridmet_points, download_gridmet
+from data_extraction.snodas.snodas import snodas_zonal_stats
 
 
 def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_dir, overwrite=False,
@@ -86,7 +87,15 @@ if __name__ == '__main__':
     # targets = [1779, 1787, 1793, 1794, 1797, 1801, 1804]
     targets = list(range(1770, 1805))
 
-    download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31')
+    # download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31')
+
+    fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields_wgs.shp'.format(project))
+    snow_ts = os.path.join(project_ws, 'snow_timeseries', 'snodas_{}.json'.format(project))
+
+    s_dir = '/data/hdd1/snodas/processed/swe'
+    if not os.path.isdir(s_dir):
+        s_dir = '/media/research/IrrigationGIS/climate/snodas/processed/swe'
+    snodas_zonal_stats(fields_shp_wgs, s_dir, snow_ts, targets=None)
 
     landsat = os.path.join(project_ws, 'landsat', '{}_sensing.csv'.format(project))
     dst_dir_ = os.path.join(project_ws, 'input_timeseries')
@@ -98,7 +107,7 @@ if __name__ == '__main__':
 
     params += ['{}_ct'.format(p) for p in params]
 
-    join_gridmet_remote_sensing_daily(fields_gridmet, met, landsat, dst_dir_, overwrite=False,
-                                      start_date='2000-01-01', end_date='2020-12-31', **{'params': params})
+    # join_gridmet_remote_sensing_daily(fields_gridmet, met, landsat, dst_dir_, overwrite=False,
+    #                                   start_date='2000-01-01', end_date='2020-12-31', **{'params': params})
 
 # ========================= EOF ====================================================================
