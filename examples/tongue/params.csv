@@ -35,3 +35,15 @@ mad_1793,0.6,p_inst32_constant.csv
 mad_1797,0.6,p_inst33_constant.csv
 mad_1801,0.6,p_inst34_constant.csv
 mad_1804,0.6,p_inst35_constant.csv
+snow_alpha_1779,0.07,p_inst36_constant.csv
+snow_alpha_1787,0.07,p_inst37_constant.csv
+snow_alpha_1793,0.07,p_inst38_constant.csv
+snow_alpha_1797,0.07,p_inst39_constant.csv
+snow_alpha_1801,0.07,p_inst40_constant.csv
+snow_alpha_1804,0.07,p_inst41_constant.csv
+snow_beta_1779,1.0,p_inst42_constant.csv
+snow_beta_1787,1.0,p_inst43_constant.csv
+snow_beta_1793,1.0,p_inst44_constant.csv
+snow_beta_1797,1.0,p_inst45_constant.csv
+snow_beta_1801,1.0,p_inst46_constant.csv
+snow_beta_1804,1.0,p_inst47_constant.csv

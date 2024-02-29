@@ -80,6 +80,14 @@ if __name__ == '__main__':
                 'initial_value': 0.6, 'lower_bound': 0.1, 'upper_bound': 0.9,
                 'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
+        'snow_alpha': {'file': p_file,
+                       'initial_value': 0.07, 'lower_bound': -0.7, 'upper_bound': 1.5,
+                       'pargp': 'snow_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
+        'snow_beta': {'file': p_file,
+                      'initial_value': 1.0, 'lower_bound': 0.5, 'upper_bound': 1.7,
+                      'pargp': 'snow_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
     })
 
     pars = OrderedDict({'{}_{}'.format(k, fid): v.copy() for k, v in pars.items() for fid in targets_})
