@@ -24,15 +24,19 @@ OUTPUT_FMT = ['et_act',
               'ks',
               'ke',
               'ppt',
+              'melt',
+              'rain',
+              'snow_fall',
+              'swe',
+              'tavg',
+              'tmax',
               'depl_root',
-              'depl_surface',
+              'depl_ze',
               'irrigation',
               'dperc',
               'fc',
               'few',
               'zr',
-              'aw',
-              'aw3',
               'taw',
               'p_rz',
               'p_eft',
@@ -77,7 +81,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
             tracker.__setattr__(k, v)
 
-            print('{}: {}'.format(k, ['{:.1f}'.format(p) for p in v.flatten()]))
+            print('{}: {}'.format(k, ['{:.2f}'.format(p) for p in v.flatten()]))
 
             if k == 'aw':
                 tracker.__setattr__('depl_root', tracker.aw / 2)
@@ -139,6 +143,10 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         foo_day.day = dt.day
         foo_day.refet = np.array(vals[refet]).reshape(1, -1)
         foo_day.ndvi = np.array(vals[ndvi]).reshape(1, -1)
+        foo_day.min_temp = np.array(vals['tmin_c']).reshape(1, -1)
+        foo_day.max_temp = np.array(vals['tmax_c']).reshape(1, -1)
+        foo_day.temp_avg = (foo_day.min_temp + foo_day.max_temp) / 2.
+        foo_day.srad = np.array(vals['srad_wm2']).reshape(1, -1)
 
         if config.field_type == 'irrigated':
             try:
@@ -150,17 +158,17 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
                 print(e)
 
         foo_day.precip = np.array(vals['prcp_mm'])
+
         if np.any(foo_day.precip > 0.):
             hr_ppt = np.array([vals[k] for k in hr_ppt_keys]).reshape(24, size)
             foo_day.hr_precip = hr_ppt
-        foo_day.precip = foo_day.precip.reshape(1, -1)
 
-        foo_day.snow_depth = 0.0
+        foo_day.precip = foo_day.precip.reshape(1, -1)
 
         if foo_day.month == 11 and foo_day.day == 1:
             tracker.setup_dormant()
 
-        if foo_day.year == 2020 and foo_day.month == 5 and foo_day.day == 18:
+        if foo_day.year == 2018 and foo_day.month == 1 and foo_day.day == 16:
             a = 1
 
         # Calculate height of vegetation.
@@ -192,7 +200,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
                 tracker.crop_df[fid][step_dt]['ke'] = tracker.ke[sample_idx]
                 tracker.crop_df[fid][step_dt]['ppt'] = foo_day.precip[sample_idx]
                 tracker.crop_df[fid][step_dt]['depl_root'] = tracker.depl_root[sample_idx]
-                tracker.crop_df[fid][step_dt]['depl_surface'] = tracker.depl_surface[sample_idx]
+                tracker.crop_df[fid][step_dt]['depl_ze'] = tracker.depl_ze[sample_idx]
                 tracker.crop_df[fid][step_dt]['p_rz'] = tracker.p_rz[sample_idx]
                 tracker.crop_df[fid][step_dt]['p_eft'] = tracker.p_eft[sample_idx]
                 tracker.crop_df[fid][step_dt]['fc'] = tracker.fc[sample_idx]
@@ -204,6 +212,12 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
                 tracker.crop_df[fid][step_dt]['runoff'] = tracker.sro[sample_idx]
                 tracker.crop_df[fid][step_dt]['irr_day'] = foo_day.irr_day[sample_idx]
                 tracker.crop_df[fid][step_dt]['dperc'] = tracker.dperc[sample_idx]
+                tracker.crop_df[fid][step_dt]['swe'] = tracker.swe[sample_idx]
+                tracker.crop_df[fid][step_dt]['melt'] = tracker.melt[sample_idx]
+                tracker.crop_df[fid][step_dt]['rain'] = tracker.rain[sample_idx]
+                tracker.crop_df[fid][step_dt]['snow_fall'] = tracker.snow_fall[sample_idx]
+                tracker.crop_df[fid][step_dt]['tavg'] = foo_day.temp_avg[sample_idx]
+                tracker.crop_df[fid][step_dt]['tmax'] = foo_day.max_temp[sample_idx]
                 tracker.crop_df[fid][step_dt]['zr'] = tracker.zr[sample_idx]
                 tracker.crop_df[fid][step_dt]['kc_bas'] = tracker.kc_bas[sample_idx]
                 tracker.crop_df[fid][step_dt]['niwr'] = tracker.niwr[sample_idx]

@@ -11,6 +11,7 @@ import numpy as np
 
 from model.etd import grow_root
 from model.etd import runoff
+from model.etd import compute_snow
 
 
 def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
@@ -53,38 +54,24 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     foo.ppt_inf = np.zeros_like(foo_day.precip)
     foo.sro = np.zeros_like(foo_day.precip)
 
-    if np.any(foo_day.precip > 0):
-        foo.depl_surface = np.where(
-            foo_day.precip > 0,
-            foo.wt_irr * foo.depl_ze + (1 - foo.wt_irr) * foo.depl_zep,
-            foo.depl_surface)
+    if np.any(foo_day.precip > 0) or np.any(foo.swe > 0.0):
+
+        compute_snow.calculate_snow(foo, foo_day)
 
         # runoff.runoff_curve_number(foo, foo_day, debug_flag)
         runoff.runoff_curve_number(foo, foo_day, config, debug_flag)
 
-        foo.ppt_inf = foo_day.precip - foo.sro
+        foo.ppt_inf = (foo.melt + foo.rain) - foo.sro
 
-    # Compare precipitation and irrigation to determine value for fw
+    else:
+        foo.rain = np.zeros_like(foo_day.precip)
+        foo.snow_fall = np.zeros_like(foo_day.precip)
+        foo.melt = np.zeros_like(foo_day.precip)
 
-    # At this point, irrigation depth, Irr is based on yesterday's irrigations
-    # (irrig has not yet been updated)
-    # Note: In Idaho CU computations, scheduling is assumed automated according to MAD
-    # Following code contains capacity to specify manual and #'special' irrigations, but isn't used here
-
-    # irr_real is a real irrigation experienced and read in
-    # irr_manual is a manually specified irrigation from an array
-    # irr_special is a special irrigation for leaching or germination
-
-    # irr_real = 0.0
-    # irr_manual = 0.0
-    # irr_special = 0.0
-
-    # Update fw of irrigation if an irrigation yesterday
-    # dgk deprecate
-    # if (irr_real + foo.irr_auto) > 0:
-    #     foo.fw_irr = foo.fw_std
-    # elif (irr_manual + irr_special) > 0:
-    #     foo.fw_irr = foo.fw_spec
+    foo.depl_ze = np.where(
+        (foo.melt + foo.rain) > 0,
+        foo.wt_irr * foo.depl_ze + (1 - foo.wt_irr) * foo.depl_zep,
+        foo.depl_surface)
 
     # find current water in fw_irr portion of ze layer
 
@@ -94,40 +81,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
 
     watin_ze = foo.tew - foo.depl_ze
 
-    watin_ze = np.maximum(watin_ze, 0.001)
-    watin_ze = np.minimum(watin_ze, foo.tew)
-
-    # Find current water in fwp portion of Ze layer
-    # use of 'fewp' (precip) fraction of surface
-
-    watin_zep = foo.tew - foo.depl_zep  # follows Allen et al. 2005 (ASCE JIDE) extensions
-    watin_zep = np.maximum(watin_zep, 0.001)
-    watin_zep = np.minimum(watin_zep, foo.tew)
-
-    # Fraction of ground that is both exposed and wet
-
     foo.few = 1 - foo.fc
-
-    # Limit to fraction wetted by irrigation
-    # dgketchum limit this to irrigated field type
-    # and that fw = 1 - fc
-    if config.field_type == 'irrigated':
-        # foo.few = min(max(foo.few, 0.001), foo.fw_irr)
-        foo.few = np.maximum(foo.few, 0.001)
-        foo.fw_irr = 1 - foo.fc
-    else:
-        foo.few = np.zeros_like(foo.few)
-        foo.fw_irr = np.zeros_like(foo.fw_irr)
-
-    # Fraction of ground that is exposed and wet by precip beyond irrigation
-
-    foo.fewp = np.ones_like(foo.fc) - foo.fc - foo.few
-    foo.fewp = np.maximum(foo.fewp, 0.001)
-
-    # Was "totwatin_ze = watin_ze * few + watin_zep * fewp" until 5/9/07
-    # (corrected)
-
-    foo.totwatin_ze = (watin_ze * foo.few + watin_zep * foo.fewp) / (foo.few + foo.fewp)
 
     # tew is total evaporable water (end of 2nd or 3rd stage)
     # rew is readily evaporable water (end of stage 1)
@@ -139,22 +93,9 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # setup for water balance of evaporation layer
 
     # Deep percolation from Ze layer (not root zone, only surface soil)
-
-    if np.any(foo.fw_irr > 0.0001):
-        # depl_ze, irr from yesterday
-        # fw changed to foo.fw_irr 8/10/06
-        dperc_ze = foo.ppt_inf + foo.irr_sim / foo.fw_irr - foo.depl_ze
-    else:
-        # depl_ze, irr from yesterday
-        # fw changed to fw_irr 8/10/06
-        dperc_ze = foo.ppt_inf + foo.irr_sim / 1 - foo.depl_ze
+    dperc_ze = foo.ppt_inf + foo.irr_sim / 1 - foo.depl_ze
 
     dperc_ze = np.maximum(dperc_ze, 0)
-
-    # depl_zep from yesterday (this was called Dpep in TP's code)
-
-    depl_zep_prev = foo.ppt_inf - foo.depl_zep
-    depl_zep_prev = np.maximum(depl_zep_prev, 0)
 
     # Compute initial balance of Ze layer.  E and T from Ze layer
     # will be added later.  De is depletion of Ze layer, mm
@@ -163,40 +104,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # it is assumed to be in morning before E and T for day have occurred.
     # It is assumed that P occurs earlier in morning.
 
-    if np.any(foo.fw_irr > 0.0001):
-        # fw changed to fw_irr 8/10/06
-        foo.depl_ze = foo.depl_ze - foo.ppt_inf - foo.irr_sim / foo.fw_irr + dperc_ze
-    else:
-        # fw changed to fw_irr 8/10/06
-        foo.depl_ze = foo.depl_ze - foo.ppt_inf - foo.irr_sim / 1 + dperc_ze
-
-    # Use TEW rather than TEW2use to conserve depl_ze
-    if config.field_type == 'unirrigated':
-        foo.depl_ze = 0.0
-    else:
-        foo.depl_ze = np.minimum(np.maximum(foo.depl_ze, 0), foo.tew)
-
-    # Update depletion of few beyond that wetted by irrigation
-
-    foo.depl_zep = foo.depl_zep - foo.ppt_inf + depl_zep_prev
-    foo.depl_zep = np.minimum(np.maximum(foo.depl_zep, 0), foo.tew)
-
-    # reducer coefficient for evaporation based on moisture left
-    # This is set up for three stage evaporation
-    # REW is depletion at end of stage 1 (energy limiting), mm
-    # TEW2 is depletion at end of stage 2 (typical soil), mm
-    # TEW3 is depletion at end of stage 3 (rare), mm
-    # Stage 3 represents a cracking soil where cracks open on drying
-    # Kr2 is value for Kr at transition from stage 2 to 3
-    #   i.e., when depletion is equal to TEW2.
-    # for example, for a cracking clay loam soil,
-    #     REW=8 mm, TEW2=50 mm, TEW3=100 mm and Kr2=0.2
-    # for a noncracking clay loam soil, REW=8 mm, TEW2=50 mm, TEW3=0, Kr2=0
-    # make sure that Kr2 is 0 if TEW3=0
-
-    if np.any(foo.tew3 < 0.1):
-        foo.kr2 = np.where(foo.tew3 < 0.1, 0.0, foo.kr2)
-        foo.kr2 = 0.0
+    foo.depl_ze = foo.depl_ze - foo.ppt_inf - foo.irr_sim / 1 + dperc_ze
 
     # De is depletion of evaporation layer, mm
 
@@ -206,43 +114,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # For portion of surface that has been wetted by irrigation and precipitation
     #   reduce TEW (and REW) during winter when ETr drops below 4 mm/day (FAO-56)
 
-    tew2use = foo.tew2
-    tew3use = foo.tew3  # for stage 3 drying (cracking soils (not in Idaho))
-    rew2use = foo.rew
-    foo.etref_30 = np.maximum(0.1, foo.etref_30)  # mm/day  #'edited from ETr to ETref 12/26/2007
-    if config.refet_type == 'eto':
-        etr_threshold = 5  # for ETo basis #'added March 26, 2008 RGA
-    elif config.refet_type == 'etr':
-        etr_threshold = 4  # for ETr basis
-
-    # Use 30 day ETr, if less than 4 or 5 mm/d to reduce TEW
-
-    if np.any(foo.etref_30 < etr_threshold):
-        tew2use = foo.tew2 * np.sqrt(foo.etref_30 / etr_threshold)
-        tew3use = foo.tew3 * np.sqrt(foo.etref_30 / etr_threshold)
-        if np.any(rew2use > 0.8 * tew2use):
-            # Limit REW to 30% less than TEW
-            # Was 0.7 until 4/16/08
-
-            rew2use = 0.8 * tew2use
-
-    foo.kr = np.where(foo.depl_ze <= rew2use, 1,
-                      foo.kr2 + (1 - foo.kr2) * (tew2use - foo.depl_ze) / (tew2use - rew2use))
-    foo.kr = np.where(tew3use > tew2use, foo.kr2 * (tew3use - foo.depl_ze) / (tew3use - tew2use), 0.0)
-
-    # Portion of surface that has been wetted by precipitation
-
-    krp = np.zeros_like(foo.depl_ze)
-    condition1 = foo.depl_zep <= rew2use
-    krp = np.where(condition1, 1, krp)
-
-    condition2 = (foo.depl_zep <= tew2use) & (~condition1)
-    krp = np.where(condition2, foo.kr2 + (1 - foo.kr2) * (tew2use - foo.depl_zep) / (tew2use - rew2use), krp)
-
-    condition3 = (tew3use > tew2use) & (~condition2)
-    krp = np.where(condition3, foo.kr2 * (tew3use - foo.depl_zep) / (tew3use - tew2use), krp)
-
-    krp = np.where(~np.logical_or.reduce([condition1, condition2, condition3]), 0.0, krp)
+    foo.kr = np.minimum((foo.tew - foo.depl_surface) / (foo.tew - foo.rew), 1.)
 
     # evaporation coefficient Ke
     # partition Ke into that from irrigation wetted and from precip wetted
@@ -251,26 +123,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
 
     # following conditional added July 2006 for when denominator is zero
 
-    condition = (foo.few * watin_ze + foo.fewp * watin_zep) > 0.0001
-    foo.wt_irr = np.where(condition,
-                          foo.few * watin_ze / (foo.few * watin_ze + foo.fewp * watin_zep),
-                          foo.few * watin_ze)
-    foo.wt_irr = np.minimum(np.maximum(foo.wt_irr, 0), 1)
-
-    # Ke = Kr * (kc_max - foo.kc_bas)  # this was generic for irr + precip
-    # IF Ke > few * kc_max THEN Ke = few * kc_max
-
-    ke_irr = foo.kr * (kc_max - foo.kc_bas) * foo.wt_irr
-
-    ke_ppt = krp * (kc_max - foo.kc_bas) * (1 - foo.wt_irr)
-
-    # Limit to maximum rate per unit surface area
-
-    ke_irr = np.minimum(np.maximum(ke_irr, 0), foo.few * kc_max)
-
-    ke_ppt = np.minimum(np.maximum(ke_ppt, 0), foo.fewp * kc_max)
-
-    foo.ke = ke_irr + ke_ppt
+    foo.ke = np.minimum(foo.kr * (foo.kc_max - foo.kc_bas), foo.few * foo.kc_max)
 
     # Transpiration coefficient for moisture stress
 
@@ -291,8 +144,8 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     if 90 > foo_day.doy > 306:
         # Calculate Kc during snow cover
 
-        kc_mult = np.ones_like(foo_day.snow_depth)
-        condition = foo_day.snow_depth > 0.01
+        kc_mult = np.ones_like(foo_day.swe)
+        condition = foo_day.swe > 0.01
 
         # Radiation term for reducing Kc to actCount for snow albedo
         k_rad = (
@@ -306,8 +159,6 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
         kc_mult = kc_mult * 0.7
 
         foo.ke *= kc_mult
-        ke_irr *= kc_mult
-        ke_ppt *= kc_mult
 
     else:
         kc_mult = 1
@@ -326,73 +177,15 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     foo.etc_bas = foo.kc_bas * foo_day.refet
 
     e = foo.ke * foo_day.refet
-    e_irr = ke_irr * foo_day.refet
-    e_ppt = ke_ppt * foo_day.refet
 
     # Begin Water balance of evaporation layer and root zone
 
     # Transpiration from Ze layer
     # transpiration proportioning
 
-    # CGM - For now, just set to target value
-
-    ze = 0.0001
-
-    # TP - ze never initialized, assume 0.0 value
-    #   Also used in SetupDormant(), but value set explicitly
-    #   Wonder if was meant to be global????
-    # ze = 0.0   # I added this line
-    # ze = np.maximum(ze, 0.0001)
-    # # if ze < 0.0001:
-    # #     ze = 0.0001
-
-    foo.zr = np.where(foo.zr < 0.0001, 0.01, foo.zr)
-    kt_prop = (ze / foo.zr) ** 0.6
-
-    # if kt_prop > 1:
-    #     _prop = 1
-
-    kt_prop = np.minimum(kt_prop, 1)
-
-    # Zr is root depth, m
-    # depl_root is depletion in root zone, mm
-    # AW is available water for soil, mm/m
-
-    # For irrigation wetted fraction
-
-    kt_reducer_denom = np.maximum(1 - foo.depl_root / foo.taw, 0.001)
-
-    # few added, 8/2006, that is not in Allen et al., 2005, ASCE
-
-    kt_reducer = foo.few * (1 - foo.depl_ze / tew2use) / kt_reducer_denom
-    kt_prop = kt_prop * kt_reducer
-
-    # kt_reducer can be greater than 1
-
-    kt_prop = np.minimum(kt_prop, 1)
-
-    # this had a few in equation as compared to Allen et al., 2005, ASCE
-
-    te_irr = kc_mult * foo.ks * foo.kc_bas * foo_day.refet * kt_prop
-
-    # For precip wetted fraction beyond that irrigated
-    # fewp added, 8/2006, that is not in Allen et al., 2005, ASCE
-
-    kt_reducer = foo.fewp * (1 - foo.depl_zep / tew2use) / kt_reducer_denom
-    kt_prop = kt_prop * kt_reducer
-
-    # kt_reducer can be greater than 1
-
-    kt_prop = np.minimum(kt_prop, 1)
-
-    # this had a fewp in equation as compared to Allen et al., 2005, ASCE
-
-    te_ppt = kc_mult * foo.ks * foo.kc_bas * foo_day.refet * kt_prop
-
     # Setup for water balance of evaporation layer
 
     depl_ze_prev = foo.depl_ze
-    depl_zep_prev = foo.depl_zep
 
     # if total profile is bone dry from a dry down, then any root
     # extraction from a rain or light watering may all come from the
@@ -411,8 +204,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # finish water balance of Ze evaporation layer
     # (ptt_inf, irr and dperc_ze were subtracted or added earlier)
 
-    if config.field_type == 'irrigated':
-        foo.depl_ze = depl_ze_prev + e_irr / foo.few + te_irr
+    foo.depl_ze = depl_ze_prev + e / foo.few
 
     # This next section modified 2/21/08 to keep a days potential E from exceeding
     # Evaporable water available (for coarse soils).  Allen and Huntington
@@ -425,48 +217,8 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
         potential_e = np.maximum(potential_e, 0.0001)
         e_factor = 1 - (foo.depl_ze - foo.tew) / potential_e
         e_factor = np.minimum(np.maximum(e_factor, 0), 1)
-        e_irr *= e_factor
-        te_irr *= e_factor
-        foo.depl_ze = depl_ze_prev + e_irr / foo.few + te_irr
-        if np.any(foo.depl_ze > foo.tew + 0.2):
-            logging.warning(
-                ('Problem in keeping depl_ze water balance within TEW.' +
-                 'depl_ze, TEW, e_irr, te_irr, e_factor = {} {} {} {} {}').format(
-                    foo.depl_ze, foo.tew, e_irr, te_irr, e_factor))
-            return
-
-    foo.depl_zep = depl_zep_prev + e_ppt / foo.fewp + te_ppt
-    foo.depl_zep = np.maximum(foo.depl_zep, 0)
-
-    if np.any(foo.depl_zep > foo.tew):
-        potential_e = foo.depl_zep - depl_zep_prev
-        potential_e = np.maximum(potential_e, 0.0001)
-        e_factor = 1 - (foo.depl_zep - foo.tew) / potential_e
-        e_factor = np.minimum(np.maximum(e_factor, 0), 1)
-        e_ppt *= e_factor
-        te_ppt *= e_factor
-        foo.depl_zep = depl_zep_prev + e_ppt / foo.fewp + te_ppt  # recalculate
-        if np.any(foo.depl_zep > foo.tew + 0.2):
-            logging.warning(
-                ('Problem in keeping De water balance within TEW.  ' +
-                 'De, TEW, E_irr, te_irr, e_factor = {} {} {} {} {}').format(
-                    foo.depl_ze, foo.tew, e_irr, te_irr, e_factor))
-            return
-
-    # Recomputed these based on corrections above if depl_ze > TEW  2/21/08
-
-    etref_divisor = foo_day.refet
-    etref_divisor = np.where(etref_divisor < 0.01, 0.01, etref_divisor)  # Ensure no division by zero
-
-    ke_irr = e_irr / etref_divisor
-    ke_ppt = e_ppt / etref_divisor
-
-    # limit for when ETref is super small
-    ke_irr = np.minimum(np.maximum(ke_irr, 0), 1.5)
-    ke_ppt = np.minimum(np.maximum(ke_ppt, 0), 1.5)
-
-    foo.ke = ke_irr + ke_ppt
-    e = foo.ke * foo_day.refet
+        e *= e_factor
+        foo.depl_ze = depl_ze_prev + e / foo.few
 
     if np.any(kc_mult > 1):
         logging.warning("kcmult > 1.")
@@ -491,7 +243,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     #   only (if no irrigation).
     # This was moved about 40 lines down 2/21/08 to be after adjustment to Ke, E, etc. made just above here.
 
-    foo.cum_evap_prev = foo.cum_evap_prev + e_irr - (foo.ppt_inf - depl_zep_prev)
+    foo.cum_evap_prev = foo.cum_evap_prev + e - (foo.ppt_inf - depl_ze_prev)
     foo.cum_evap_prev = np.maximum(foo.cum_evap_prev, 0)
 
     # Get irrigation information
@@ -622,13 +374,13 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # Don't include deep percolation when irrigating
     # Irrigation ON conditional accounts for assumption that 10% of irrigation goes to
     # deep percolation.
-    foo.niwr = np.where(foo.irr_sim > 0, foo.etc_act - (foo_day.precip - foo.sro),
-                        foo.etc_act - (foo_day.precip - foo.sro - foo.dperc))
+    foo.niwr = np.where(foo.irr_sim > 0, foo.etc_act - ((foo.melt + foo.rain) - foo.sro),
+                        foo.etc_act - ((foo.melt + foo.rain) - foo.sro - foo.dperc))
 
     # Effective Precipitation Calcs
     # p_rz = Precipitation residing in the root zone
     # p_rz = P - Runoff - DPerc, where P is gross reported precip
-    foo.p_rz = np.where(foo.irr_sim > 0, foo_day.precip - foo.sro, foo_day.precip - foo.sro - foo.dperc)
+    foo.p_rz = np.where(foo.irr_sim > 0, (foo.melt + foo.rain) - foo.sro, (foo.melt + foo.rain) - foo.sro - foo.dperc)
     foo.p_rz = np.maximum(foo.p_rz, 0)
 
     # p_eft = prcp residing in the root zone available for transpiration
@@ -637,14 +389,14 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # e_ppt = ke_ppt*foo_day.etref (evap component of prcp only)
 
     # if foo.irr_sim > 0:
-    #     foo.p_eft = foo_day.precip - foo.sro - e_ppt
+    #     foo.p_eft = (foo.melt + foo.rain) - foo.sro - e_ppt
     # else:
-    #     foo.p_eft = foo_day.precip - foo.sro - foo.dperc - e_ppt
+    #     foo.p_eft = (foo.melt + foo.rain) - foo.sro - foo.dperc - e_ppt
     # if foo.p_eft <= 0:
     #     foo.p_eft = 0
 
     # Modified to use e for surface evaporation losses instead of e_ppt (11/2/2020)
-    foo.p_eft = np.where(foo.irr_sim > 0, foo_day.precip - foo.sro - e, foo_day.precip - foo.sro - foo.dperc - e)
+    foo.p_eft = np.where(foo.irr_sim > 0, (foo.melt + foo.rain) - foo.sro - e, (foo.melt + foo.rain) - foo.sro - foo.dperc - e)
     foo.p_eft = np.maximum(foo.p_eft, 0)
 
     # Note, at end of season (harvest or death), aw3 and zr need to be reset

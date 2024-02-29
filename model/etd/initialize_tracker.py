@@ -31,7 +31,12 @@ FOO_FMT = ['et_act',
            'et_bas',
            ]
 
-TRACKER_PARAMS = ['aw3',
+TRACKER_PARAMS = ['albedo',
+                  'min_albedo',
+                  'melt',
+                  'rain',
+                  'snow_fall',
+                  'aw3',
                   'cn2',
                   'cgdd',
                   'aw',
@@ -40,28 +45,19 @@ TRACKER_PARAMS = ['aw3',
                   'ad',
                   'cum_evap_prev',
                   'depl_ze',
-                  'depl_zep',
                   'dperc',
                   'dperc_ze',
                   'density',
-                  'depl_surface',
                   'depl_root',
                   'etc_act',
                   'etc_pot',
                   'etc_bas',
                   'etref_30',
                   'fc',
-                  'fw',
-                  'fw_spec',
-                  'fw_std',
-                  'fw_irr',
-                  'gdd',
-                  'gdd_penalty',
                   'grow_root',
                   'height_min',
                   'height_max',
                   'height',
-                  'irr_auto',
                   'irr_sim',
                   'kc_act',
                   'kc_pot',
@@ -71,19 +67,11 @@ TRACKER_PARAMS = ['aw3',
                   'kc_bas_mid',
                   'kc_bas_prev',
                   'ke',
-                  'ke_irr',
-                  'ke_ppt',
                   'kr',
-                  'kr2',
                   'ks',
-                  'kt_reducer',
                   'mad',
-                  'mad_ini',
-                  'mad_mid',
                   'max_irr_rate',
                   'next_day_irr',
-                  'n_cgdd',
-                  'n_pl_ec',
                   'niwr',
                   'p_rz',
                   'p_eft',
@@ -91,8 +79,6 @@ TRACKER_PARAMS = ['aw3',
                   'ppt_inf_prev',
                   'rew',
                   'tew',
-                  'tew2',
-                  'tew3',
                   's',
                   's1',
                   's2',
@@ -136,28 +122,19 @@ class PlotTracker:
         self.ad = 0.
         self.cum_evap_prev = 0.
         self.depl_ze = 0.
-        self.depl_zep = 0.
         self.dperc = 0.
         self.dperc_ze = 0.
         self.density = 0.
         self.depl_surface = 0.
-        self.depl_root = 0.
         self.etc_act = 0.
         self.etc_pot = 0.
         self.etc_bas = 0.
         self.etref_30 = 0.  # thirty day mean ETref  ' added 12/2007
         self.fc = 0.
-        self.fw = 0.
-        self.fw_spec = 0.
-        self.fw_std = 0.
-        self.fw_irr = 0.
-        self.gdd = 0.0
-        self.gdd_penalty = 0.
         self.grow_root = 0.
         self.height = 0
         self.height_min = 0.1
         self.height_max = 2.0
-        self.irr_auto = 0.
         self.irr_sim = 0.
         self.kc_act = 0.
         self.kc_pot = 0
@@ -167,10 +144,7 @@ class PlotTracker:
         self.kc_bas_mid = 0.
         self.kc_bas_prev = 0.
         self.ke = 0.
-        self.ke_irr = 0
-        self.ke_ppt = 0.
         self.kr = 0.
-        self.kr2 = 0.
         self.ks = 0.
         self.ksat = 0.
 
@@ -179,13 +153,16 @@ class PlotTracker:
         self.irr_continue = False
         self.next_day_irr = 0.
 
-        self.kt_reducer = 1.
+        self.min_albedo = 0.45
+        self.albedo = self.min_albedo
+
+        self.melt = 0.
+        self.rain = 0.
+        self.snow_fall = 0.
+
         self.mad = 0.
-        self.mad_ini = 0.
-        self.mad_mid = 0.
         self.max_irr_rate = 25.4
-        self.n_cgdd = 0.
-        self.n_pl_ec = 0.
+
         self.niwr = 0.
         self.p_rz = 0.
         self.p_eft = 0.
@@ -193,14 +170,13 @@ class PlotTracker:
         self.ppt_inf_prev = 0.
         self.rew = 0.
         self.tew = 0.
-        self.tew2 = 0.
-        self.tew3 = 0.
         self.s = 0.
         self.s1 = 0.
         self.s2 = 0.
         self.s3 = 0.
         self.s4 = 0.
         self.sro = 0.
+        self.swe = 0.
         self.z = 0.
 
         self.zr_min = 0.1
@@ -252,8 +228,11 @@ class PlotTracker:
 
         # convert all numerical attributes to numpy arrays, shape (1, -1)
         for p in TRACKER_PARAMS:
-            v = self.__getattribute__(p)
-            self.__setattr__(p, np.ones((1, size)) * v)
+            try:
+                v = self.__getattribute__(p)
+                self.__setattr__(p, np.ones((1, size)) * v)
+            except AttributeError as e:
+                print(p, e)
 
     def load_soils(self, plots):
         """Assign characteristics for crop from crop Arrays
@@ -304,10 +283,6 @@ class PlotTracker:
 
         condition = self.rew > 0.8 * self.tew
         self.rew = np.where(condition, 0.8 * self.tew, self.rew)  # limit REW based on TEW
-        self.tew2 = self.tew  # TEW2Array(ctCount)
-        self.tew3 = self.tew  # TEW3Array(ctCount) '(no severely cracking clays in Idaho)
-
-        self.fw_irr = self.fw_std  # fw changed to fw_irr 8/10/06
 
         # Reinitialize zr, but actCount for additions of DP into reserve (zrmax - zr) for rainfed
 
@@ -319,61 +294,6 @@ class PlotTracker:
 
         zr_dormant = 0.1
 
-        daw3 = self.aw3 * (self.zr_max - zr_dormant)
-
-        # Layer 3 is soil depth between current rootzone (or dormant rootdepth) and max root for crop
-        # AW3 is set to 0 first time throught for crop.
-
-        # Potential water in root zone below zr_dormant
-
-        taw3 = self.aw * (self.zr_max - zr_dormant)
-
-        # Make sure that AW3 has been collecting DP from zr_dormant layer during winter
-
-        # if daw3 < 0.0: daw3 = 0.
-        daw3 = np.where(daw3 < 0.0,
-                        np.zeros_like(daw3),
-                        daw3)
-
-        # if taw3 < 0.0: taw3 = 0.
-        taw3 = np.where(taw3 < 0.0,
-                        np.zeros_like(taw3),
-                        taw3)
-
-        # Was, until 5/9/07:
-        # Assume moisture right above zr_dormant is same as below
-        # depl_root = depl_root - (taw3 - daw3) * (zr_dormant - zr_min) / (zr_max - zr_min)
-        # Following added 5/9/07
-        # Enlarge depth of water
-
-        self.depl_root = np.where(self.zr_min > zr_dormant,
-                                  self.depl_root + (taw3 - daw3) * (self.zr_min - zr_dormant) / (
-                                      self.zr_max - zr_dormant),
-                                  self.depl_root)
-
-        daw3 = np.where(self.zr_max > self.zr_min,
-                        daw3 + (zr_dormant - self.zr_min) / zr_dormant * (self.aw * zr_dormant - self.depl_root),
-                        daw3)
-
-        self.depl_root = np.where(self.zr_max > self.zr_min,
-                                  self.depl_root * self.zr_min / zr_dormant,
-                                  self.depl_root)
-
-        self.aw3 = np.where(self.zr_max > self.zr_min,
-                            daw3 / (self.zr_max - self.zr_min),
-                            self.aw3)
-
-        self.aw3 = np.where(self.aw3 < 0.0,
-                            np.zeros_like(self.aw3),
-                            self.aw3)
-
-        self.aw3 = np.where(self.aw3 > self.aw,
-                            self.aw,
-                            self.aw3)
-
-        self.depl_root = np.where(self.depl_root < 0.,
-                                  np.zeros_like(self.depl_root),
-                                  self.depl_root)
 
     def setup_dormant(self):
         """Start of dormant season
@@ -471,13 +391,8 @@ class PlotTracker:
         # used to recharge zr_max - zr zone.
         # Make sure that grow_root is not called during dormant season.
 
-        self.fw_irr = self.fw_std  # fw changed to fw_irr 8/10/06
-        self.irr_auto = 0
         self.irr_sim = 0
         self.dormant_setup_flag = False
-
-        # Clear cutting flag (just in case)
-
         self.cutting = 0
 
     def setup_dataframe(self, targets):
@@ -499,5 +414,4 @@ class PlotTracker:
         self.crop_df = {target: {} for target in targets}
 
     def set_kc_max(self):
-
         self.kc_max = 1.05
