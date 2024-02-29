@@ -1,4 +1,5 @@
 import os
+import json
 
 import numpy as np
 import pandas as pd
@@ -8,10 +9,15 @@ from data_extraction.gridmet.gridmet import find_gridmet_points, download_gridme
 from data_extraction.snodas.snodas import snodas_zonal_stats
 
 
-def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_dir, overwrite=False,
+def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, snow, dst_dir, overwrite=False,
                                       start_date=None, end_date=None, **kwargs):
+
+    with open(snow, 'r') as f:
+        snow = json.load(f)
+
     lst = pd.read_csv(landsat_table, parse_dates=True, index_col=0)
     start, end = lst.index[0], lst.index[-1]
+
     if 'params' not in kwargs.keys():
         params = set(['_'.join(x.split('_')[1:]) for x in lst.columns])
     else:
@@ -41,6 +47,11 @@ def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, dst_di
             drop_cols = [c for c in gridmet.columns if '.' in c]
             if drop_cols:
                 gridmet.drop(columns=drop_cols, inplace=True)
+
+            swe_data = [(pd.to_datetime(k), v[str(f)]) for k, v in snow.items()]
+            swe = pd.Series(index=[x[0] for x in swe_data], data=[x[1] for x in swe_data])
+            match_idx = [i for i in gridmet.index if i in swe.index]
+            gridmet.loc[match_idx, 'obs_swe'] = swe
 
         except FileNotFoundError:
             print(gridmet_file, 'not found\n')
@@ -84,18 +95,20 @@ if __name__ == '__main__':
 
     # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=None)
 
-    # targets = [1779, 1787, 1793, 1794, 1797, 1801, 1804]
-    targets = list(range(1770, 1805))
+    targets = [1779, 1787, 1793, 1794, 1797, 1801, 1804]
+    # targets = list(range(1770, 1805))
 
-    # download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31')
+    # download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31',
+    #                  target_fields=None, overwite=True)
 
     fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields_wgs.shp'.format(project))
     snow_ts = os.path.join(project_ws, 'snow_timeseries', 'snodas_{}.json'.format(project))
 
+    # this extract is meant to be run on Montana Climate Office machine (Zoran)
     s_dir = '/data/hdd1/snodas/processed/swe'
     if not os.path.isdir(s_dir):
         s_dir = '/media/research/IrrigationGIS/climate/snodas/processed/swe'
-    snodas_zonal_stats(fields_shp_wgs, s_dir, snow_ts, targets=None)
+    # snodas_zonal_stats(fields_shp_wgs, s_dir, snow_ts, targets=None)
 
     landsat = os.path.join(project_ws, 'landsat', '{}_sensing.csv'.format(project))
     dst_dir_ = os.path.join(project_ws, 'input_timeseries')
@@ -107,7 +120,8 @@ if __name__ == '__main__':
 
     params += ['{}_ct'.format(p) for p in params]
 
-    # join_gridmet_remote_sensing_daily(fields_gridmet, met, landsat, dst_dir_, overwrite=False,
-    #                                   start_date='2000-01-01', end_date='2020-12-31', **{'params': params})
+    join_gridmet_remote_sensing_daily(fields_gridmet, met, landsat, snow_ts, dst_dir_, overwrite=True,
+                                      start_date='2000-01-01', end_date='2020-12-31', **{'params': params,
+                                                                                         'target_fields': targets})
 
 # ========================= EOF ====================================================================
