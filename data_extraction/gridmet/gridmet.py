@@ -28,6 +28,10 @@ CLIMATE_COLS = {
         'nc': 'agg_met_pr_1979_CurrentYear_CONUS',
         'var': 'precipitation_amount',
         'col': 'prcp_mm'},
+    'srad': {
+        'nc': 'agg_met_srad_1979_CurrentYear_CONUS',
+        'var': 'daily_mean_shortwave_radiation_at_surface',
+        'col': 'srad_wm2'},
     'tmmx': {
         'nc': 'agg_met_tmmx_1979_CurrentYear_CONUS',
         'var': 'daily_maximum_temperature',
@@ -44,6 +48,7 @@ GRIDMET_GET = ['elev_m',
                'etr_mm',
                'eto_mm',
                'prcp_mm',
+               'srad_wm2',
                ]
 
 BASIC_REQ = ['date', 'year', 'month', 'day', 'centroid_lat', 'centroid_lon']
@@ -150,8 +155,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
     downloaded = {}
 
     print('Downloading GridMET')
-    for k, v in tqdm(fields.iterrows(), total=fields.shape[0]):
-        start_time = datetime.now()
+    for k, v in fields.iterrows():
         out_cols = COLUMN_ORDER.copy() + ['nld_ppt_d'] + hr_cols
         df, first = pd.DataFrame(), True
 
@@ -178,8 +182,12 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
             if not thredds_var:
                 continue
 
-            g = GridMet(thredds_var, start=start, end=end, lat=lat, lon=lon)
-            s = g.get_point_timeseries()
+            try:
+                g = GridMet(thredds_var, start=start, end=end, lat=lat, lon=lon)
+                s = g.get_point_timeseries()
+            except OSError as e:
+                print('Error on {}, {}'.format(k, e))
+
             df[variable] = s[thredds_var]
 
             if first:
@@ -226,10 +234,8 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
         df['tmin_c'] = df.tmin_k - 273.15
 
         df = df[out_cols]
-        end_time = datetime.now()
-        timeit = end_time - start_time
         df.to_csv(_file, index=False)
-        print('{} seconds to download {}'.format(timeit.seconds, _file))
+        print(os.path.basename(_file))
         downloaded[g_fid] = [k]
 
 
