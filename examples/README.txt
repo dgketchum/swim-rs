@@ -78,15 +78,14 @@ Note: These instructions are specific to the flux data set, which is dispersed. 
 	
 Notes on the current PEST++ interface in SWIM-RS:
 	
-	PEST is designed to operate independently of the model: it only cares about accessing model output and observations,
-	and analyzing them with respect to its perturbations of the input parameters. SWIM tries to follow this pattern by
-	interacting very little with PEST during model iterations. It does this in only two ways: 1.) It reads the parameter
-	proposal made by PEST and written to e.g., examples/flux/pest/mult. Each file is a parameter in the order of the list
-	given in the .toml; and 2.) It provides PEST with the output of every model iteration (pred_eta.np) so PEST can
-	assess how the calibration is going.
+	PEST is designed to operate independently of the model: it only cares about accessing model output and
+	observations, and analyzing them with respect to its perturbations of the input parameters. SWIM tries to follow
+	this pattern by interacting very little with PEST during model iterations. It does this in only two ways: 1.) It
+	reads the parameter proposal made by PEST and written to e.g., examples/flux/pest/mult; and 2.) It provides PEST
+	with the output of every model iteration (pred_eta.np) so PEST can assess how the calibration is going.
 	
 	The setup SWIM has now is a little confusing because during preparation, obs_eta.np is the observation (SSEBop data)
-	produced by preproc.py, and is read used in the function build_pest.py. This data is written in as the observations
+	produced by preproc.py, and is read in the function build_pest.py. This data is written in as the observations
 	in the e.g., flux.pst file, as one would expect. However, for some reason I haven't investigated,
 	pyEMU writes 'obs_eta.np' into the final line of the .pst file as the file that PEST needs to read to see
 	the model predictions. So this must be changed to 'pred_eta.np', which is the prediction written by
