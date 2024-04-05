@@ -26,7 +26,7 @@ def optimize_fields(ini_path, debug_flag=False, field_type='irrigated', project=
             pred = df[:, 0, i]
             np.savetxt(os.path.join(d, 'pest', 'obs', 'obs_eta_{}.np'.format(fid)), pred)
             end_time = time.time()
-        print('Execution time: {:.2f} seconds'.format(end_time - start_time))
+        print('\n\nExecution time: {:.2f} seconds'.format(end_time - start_time))
 
     # debug returns a dataframe
     if debug_flag:
