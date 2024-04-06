@@ -22,7 +22,7 @@ def snodas_zonal_stats(in_shp, raster_dir, out_js, targets=None):
     for r in l:
         dts = os.path.basename(r).replace('.tif', '').split('_')[-1]
         dct[dts] = {}
-        stats = zonal_stats(geo, r, stats=['mean'])
+        stats = zonal_stats(geo, r, stats=['mean'], all_touched=True)
         for fid, s in zip(fids, stats):
             if s['mean']:
                 dct[dts][fid] = float(s['mean'])
