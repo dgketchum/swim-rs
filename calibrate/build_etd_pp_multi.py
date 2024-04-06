@@ -9,7 +9,7 @@ from pyemu.utils import PstFrom
 
 def build_pest(model_dir, pest_dir, **kwargs):
     pest = PstFrom(model_dir, pest_dir, remove_existing=True)
-    _file = None
+    _file, count = None, None
 
     for k, v in kwargs['pars'].items():
         if 'file' in v.keys():
@@ -17,11 +17,12 @@ def build_pest(model_dir, pest_dir, **kwargs):
         pest.add_parameters(_file, 'constant', **v)
 
     for i, fid in enumerate(kwargs['targets']):
-        pest.add_observations(kwargs['obs']['file'][i], insfile=kwargs['obs']['insfile'][i])
-        idf = pd.read_csv(kwargs['inputs'][i], index_col=0, parse_dates=True)
-        idf['dummy_idx'] = ['obs_eta_{}_{}'.format(fid, str(i).rjust(6, '0')) for i in range(idf.shape[0])]
-        captures = [i for i, r in idf.iterrows() if r['etf_irr_ct'] and i.month in list(range(5, 11))]
-        captures = idf['dummy_idx'].loc[captures]
+        pest.add_observations(kwargs['et_obs']['file'][i], insfile=kwargs['et_obs']['insfile'][i])
+
+        et_df = pd.read_csv(kwargs['inputs'][i], index_col=0, parse_dates=True)
+        et_df['dummy_idx'] = ['obs_eta_{}_{}'.format(fid, str(j).rjust(6, '0')) for j in range(et_df.shape[0])]
+        captures = [ix for ix, r in et_df.iterrows() if r['etf_irr_ct'] and ix.month in list(range(5, 11))]
+        captures = et_df['dummy_idx'].loc[captures]
 
         d = pest.obs_dfs[i].copy()
         d['weight'] = 0.0
@@ -29,6 +30,23 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d['weight'].loc[np.isnan(d['obsval'])] = 0.0
         d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
         pest.obs_dfs[i] = d
+
+    count = i + 1
+
+    for j, fid in enumerate(kwargs['targets']):
+        pest.add_observations(kwargs['swe_obs']['file'][j], insfile=kwargs['swe_obs']['insfile'][j])
+
+        swe_df = pd.read_csv(kwargs['inputs'][i], index_col=0, parse_dates=True)
+        swe_df['dummy_idx'] = ['obs_swe_{}_{}'.format(fid, str(j).rjust(6, '0')) for j in range(swe_df.shape[0])]
+        valid = [ix for ix, r in swe_df.iterrows() if ix.month in [11, 12, 1, 2, 3, 4]]
+        valid = swe_df['dummy_idx'].loc[valid]
+
+        d = pest.obs_dfs[j + count].copy()
+        d['weight'] = 0.0
+        d['weight'].loc[valid] = 1.0
+        d['weight'].loc[np.isnan(d['obsval'])] = 0.0
+        d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
+        pest.obs_dfs[j + count] = d
 
     pest.py_run_file = 'custom_forward_run.py'
     pest.mod_command = 'python custom_forward_run.py'
@@ -52,7 +70,8 @@ if __name__ == '__main__':
 
     pp_dir = os.path.join(d, 'pest')
 
-    ins = ['{}.ins'.format(fid) for fid in targets_]
+    et_ins = ['et_{}.ins'.format(fid) for fid in targets_]
+    swe_ins = ['swe_{}.ins'.format(fid) for fid in targets_]
     p_file = os.path.join(d, 'params.csv')
 
     pars = OrderedDict({
@@ -104,17 +123,20 @@ if __name__ == '__main__':
     df = pd.DataFrame(index=idx, data=vals, columns=['value', 'mult_name'])
     df.to_csv(p_file)
 
-    for e, (i, r) in enumerate(df.iterrows()):
-        pars[i]['use_rows'] = e
-        if 'aw_' in i:
-            pars[i]['initial_value'] = float(r['value'])
+    for e, (ii, r) in enumerate(df.iterrows()):
+        pars[ii]['use_rows'] = e
+        if 'aw_' in ii:
+            pars[ii]['initial_value'] = float(r['value'])
 
-    obs_files = ['obs/obs_eta_{}.np'.format(fid) for fid in targets_]
+    et_obs_files = ['obs/obs_eta_{}.np'.format(fid) for fid in targets_]
+    swe_obs_files = ['obs/obs_swe_{}.np'.format(fid) for fid in targets_]
 
     dct = {'targets': targets_,
            'inputs': input_csv,
-           'obs': {'file': obs_files,
-                   'insfile': ins},
+           'et_obs': {'file': et_obs_files,
+                      'insfile': et_ins},
+           'swe_obs': {'file': swe_obs_files,
+                       'insfile': swe_ins},
            'pars': pars
            }
 
