@@ -11,7 +11,6 @@ REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_17', 'prcp_hr_18', 'prcp_hr_19', 'prcp_hr_20', 'prcp_hr_21', 'prcp_hr_22',
             'prcp_hr_23']
 
-
 REQ_UNIRR = ['etr_mm_uncorr',
              'eto_mm_uncorr',
              'etf_inv_irr',
@@ -30,7 +29,6 @@ ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['obs_swe']
 
 
 def prep_fields_json(fields, target_plots, input_ts, out_js, ltype='unirrigated', irr_data=None):
-
     with open(fields, 'r') as fp:
         fields = json.load(fp)
 
@@ -81,17 +79,19 @@ def prep_fields_json(fields, target_plots, input_ts, out_js, ltype='unirrigated'
 
 
 def preproc(field_ids, src, _dir):
-
     for fid in field_ids:
         obs_file = os.path.join(src, '{}_daily.csv'.format(fid))
         data = pd.read_csv(obs_file, index_col=0, parse_dates=True)
         data.index = list(range(data.shape[0]))
+
         data['eta'] = data['etr_mm'] * data['etf_inv_irr']
-        data = data[['eta']]
-        print('preproc mean: {}'.format(np.nanmean(data.values)))
+        et = data[['eta']]
+        print('preproc ET mean: {:.2f}'.format(np.nanmean(et.values)))
         _file = os.path.join(project_dir, 'obs', 'obs_eta_{}.np'.format(fid))
-        np.savetxt(_file, data.values)
+        np.savetxt(_file, et.values)
         print('Wrote obs to {}'.format(_file))
+        _file = os.path.join(project_dir, 'obs', 'obs_swe_{}.np'.format(fid))
+        np.savetxt(_file, data['obs_swe'].values)
 
 
 if __name__ == '__main__':
