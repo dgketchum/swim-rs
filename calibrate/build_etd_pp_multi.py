@@ -15,7 +15,15 @@ def build_pest(model_dir, pest_dir, **kwargs):
     for k, v in kwargs['pars'].items():
         if 'file' in v.keys():
             _file = v.pop('file')
-        pest.add_parameters(_file, 'constant', alt_inst_str='{}_'.format(k), **v)
+        if v['lower_bound'] <= 0.0:
+            transform = 'none'
+        else:
+            transform = 'log'
+        pest.add_parameters(_file, 'constant', transform=transform, alt_inst_str='{}_'.format(k), **v)
+
+    # pyemu writes observations to the control file, as expected, however it also writes the observtion
+    # source filename to the input/output section, e.g., 'et_1779.ins obs/obs_eta_1779.np' and during optimization
+    # uses obs/obs_eta_1779.np to compare to the observations already written to the control file.
 
     for i, fid in enumerate(kwargs['targets']):
         pest.add_observations(kwargs['et_obs']['file'][i], insfile=kwargs['et_obs']['insfile'][i])
@@ -49,12 +57,15 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
         pest.obs_dfs[j + count] = d
 
-    # TODO: write empty dir in pest folder: 'pred'
-    # TODO: write localization matrix
+    ofiles = [str(x).replace('obs', 'pred') for x in pest.output_filenames]
+    pest.output_filenames = ofiles
+
+    os.makedirs(os.path.join(pest_dir, 'pred'))
+
     pest.py_run_file = 'custom_forward_run.py'
     pest.mod_command = 'python custom_forward_run.py'
 
-    pest.build_pst(write_py_file=False)
+    pest.build_pst(write_py_file=False, version=2)
 
 
 def localize_parameters(pst_file):
@@ -92,8 +103,9 @@ def localize_parameters(pst_file):
 
     pst.pestpp_options["ies_localizer"] = "loc.mat"
     pst.pestpp_options["ies_num_reals"] = 30
+    pst.control_data.noptmax = -2
 
-    pst.write(pst_file)
+    pst.write(pst_file, version=2)
 
 
 if __name__ == '__main__':
@@ -143,7 +155,7 @@ if __name__ == '__main__':
 
         'swe_alpha': {'file': p_file,
                       'initial_value': 0.07, 'lower_bound': -0.7, 'upper_bound': 1.5,
-                      'pargp': 'snow_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+                      'pargp': 'swe_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         'swe_beta': {'file': p_file,
                      'initial_value': 1.0, 'lower_bound': 0.5, 'upper_bound': 1.7,
