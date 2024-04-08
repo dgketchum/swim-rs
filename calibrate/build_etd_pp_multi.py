@@ -48,6 +48,8 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
         pest.obs_dfs[j + count] = d
 
+    # TODO: write empty dir in pest folder: 'pred'
+    # TODO: write localization matrix
     pest.py_run_file = 'custom_forward_run.py'
     pest.mod_command = 'python custom_forward_run.py'
 
