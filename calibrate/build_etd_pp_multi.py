@@ -5,6 +5,7 @@ from collections import OrderedDict
 import numpy as np
 import pandas as pd
 from pyemu.utils import PstFrom
+from pyemu import Pst, Matrix
 
 
 def build_pest(model_dir, pest_dir, **kwargs):
@@ -14,7 +15,7 @@ def build_pest(model_dir, pest_dir, **kwargs):
     for k, v in kwargs['pars'].items():
         if 'file' in v.keys():
             _file = v.pop('file')
-        pest.add_parameters(_file, 'constant', **v)
+        pest.add_parameters(_file, 'constant', alt_inst_str='{}_'.format(k), **v)
 
     for i, fid in enumerate(kwargs['targets']):
         pest.add_observations(kwargs['et_obs']['file'][i], insfile=kwargs['et_obs']['insfile'][i])
@@ -54,6 +55,23 @@ def build_pest(model_dir, pest_dir, **kwargs):
     pest.mod_command = 'python custom_forward_run.py'
 
     pest.build_pst(write_py_file=False)
+
+
+def localize_parameters(pst_file):
+    pst = Pst(pst_file)
+
+    pdict = {}
+    for i, r in pst.parameter_data.iterrows():
+        if r['pargp'] not in pdict.keys():
+            pdict[r['pargp']] = [r['parnme']]
+        else:
+            pdict[r['pargp']].append(r['parnme'])
+
+    pnames = pst.parameter_data['parnme'].values
+
+    loc = Matrix.from_names(pst.nnz_obs_names, pnames).to_dataframe()
+
+    pass
 
 
 if __name__ == '__main__':
@@ -116,9 +134,9 @@ if __name__ == '__main__':
     params = []
     for i, (k, v) in enumerate(pars.items()):
         if 'aw_' in k:
-            params.append((k, aw[i] * 1000., 'p_inst{}_constant.csv'.format(i)))
+            params.append((k, aw[i] * 1000., 'p_{}_0_constant.csv'.format(k)))
         else:
-            params.append((k, v['initial_value'], 'p_inst{}_constant.csv'.format(i)))
+            params.append((k, v['initial_value'], 'p_{}_0_constant.csv'.format(k)))
 
     idx, vals, _names = [x[0] for x in params], [x[1] for x in params], [x[2] for x in params]
     vals = np.array([vals, _names]).T
@@ -143,4 +161,8 @@ if __name__ == '__main__':
            }
 
     build_pest(d, pp_dir, **dct)
+
+    pst_f = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue/pest/tongue.pst'
+
+    # localize_parameters(pst_f)
 # ========================= EOF ====================================================================
