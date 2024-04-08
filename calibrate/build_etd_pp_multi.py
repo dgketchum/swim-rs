@@ -58,6 +58,12 @@ def build_pest(model_dir, pest_dir, **kwargs):
 
 
 def localize_parameters(pst_file):
+
+    et_params = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad']
+    snow_params = ['swe_alpha', 'swe_beta']
+
+    par_relation = {'eta': et_params, 'swe': snow_params}
+
     pst = Pst(pst_file)
 
     pdict = {}
@@ -69,9 +75,25 @@ def localize_parameters(pst_file):
 
     pnames = pst.parameter_data['parnme'].values
 
-    loc = Matrix.from_names(pst.nnz_obs_names, pnames).to_dataframe()
+    df = Matrix.from_names(pst.nnz_obs_names, pnames).to_dataframe()
 
-    pass
+    localizer = df.copy()
+
+    sites = list(set([i.split('_')[2] for i in df.index]))
+
+    for s in sites:
+        for ob_type, params in par_relation.items():
+            idx = [i for i in df.index if '{}_{}'.format(ob_type, s) in i]
+            cols = list(np.array([[c for c in df.columns if '{}_{}'.format(p, s) in c] for p in params]).flatten())
+            localizer.loc[idx, cols] = 1.0
+
+    mat_file = os.path.join(os.path.dirname(pst_file), 'loc.mat')
+    Matrix.from_dataframe(localizer).to_ascii(mat_file)
+
+    pst.pestpp_options["ies_localizer"] = "loc.mat"
+    pst.pestpp_options["ies_num_reals"] = 30
+
+    pst.write(pst_file)
 
 
 if __name__ == '__main__':
@@ -119,13 +141,13 @@ if __name__ == '__main__':
                 'initial_value': 0.6, 'lower_bound': 0.1, 'upper_bound': 0.9,
                 'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-        'snow_alpha': {'file': p_file,
-                       'initial_value': 0.07, 'lower_bound': -0.7, 'upper_bound': 1.5,
-                       'pargp': 'snow_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+        'swe_alpha': {'file': p_file,
+                      'initial_value': 0.07, 'lower_bound': -0.7, 'upper_bound': 1.5,
+                      'pargp': 'snow_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-        'snow_beta': {'file': p_file,
-                      'initial_value': 1.0, 'lower_bound': 0.5, 'upper_bound': 1.7,
-                      'pargp': 'snow_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+        'swe_beta': {'file': p_file,
+                     'initial_value': 1.0, 'lower_bound': 0.5, 'upper_bound': 1.7,
+                     'pargp': 'snow_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
     })
 
@@ -160,9 +182,9 @@ if __name__ == '__main__':
            'pars': pars
            }
 
-    build_pest(d, pp_dir, **dct)
+    # build_pest(d, pp_dir, **dct)
 
     pst_f = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue/pest/tongue.pst'
 
-    # localize_parameters(pst_f)
+    localize_parameters(pst_f)
 # ========================= EOF ====================================================================
