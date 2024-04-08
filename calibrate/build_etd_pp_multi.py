@@ -30,7 +30,7 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
         pest.obs_dfs[i] = d
 
-    os.makedirs(pest_dir, 'pred')
+    os.makedirs(os.path.join(pest_dir, 'pred'))
 
     pest.py_run_file = 'custom_forward_run.py'
     pest.mod_command = 'python custom_forward_run.py'
