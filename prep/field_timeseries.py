@@ -50,6 +50,7 @@ def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, snow, 
 
             swe_data = [(pd.to_datetime(k), v[str(f)]) for k, v in snow.items()]
             swe = pd.Series(index=[x[0] for x in swe_data], data=[x[1] for x in swe_data])
+            print('Max SWE {}: {}'.format(f, swe.max()))
             match_idx = [i for i in gridmet.index if i in swe.index]
             gridmet.loc[match_idx, 'obs_swe'] = swe
 
@@ -105,7 +106,7 @@ if __name__ == '__main__':
     snow_ts = os.path.join(project_ws, 'snow_timeseries', 'snodas_{}.json'.format(project))
 
     # this extract is meant to be run on Montana Climate Office machine (Zoran)
-    s_dir = '/data/hdd1/snodas/processed/swe'
+    s_dir = '/data/ssd1/snodas/processed/swe'
     if not os.path.isdir(s_dir):
         s_dir = '/media/research/IrrigationGIS/climate/snodas/processed/swe'
     # snodas_zonal_stats(fields_shp_wgs, s_dir, snow_ts, targets=None)
