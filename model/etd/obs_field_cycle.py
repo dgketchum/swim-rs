@@ -96,7 +96,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     if debug_flag:
         tracker.setup_dataframe(targets)
     else:
-        eta = []
+        eta, swe = [], []
 
     tracker.set_kc_max()
 
@@ -226,6 +226,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
         else:
             eta.append(tracker.etc_act)
+            swe.append(tracker.swe)
 
     if debug_flag:
         # pass final dataframe to calling script
@@ -235,8 +236,8 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         return tracker.crop_df
 
     else:
-        # if not debug, just return the actual ET results as an ndarray
-        return np.array(eta)
+        # if not debug, just return the actual ET and SWE results as ndarray
+        return np.array(eta), np.array(swe)
 
 
 def write_crop_output(data, et_cell, crop, foo):
