@@ -40,6 +40,7 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d['weight'].loc[captures] = 1.0
         d['weight'].loc[np.isnan(d['obsval'])] = 0.0
         d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
+        d['standard_deviation'] = d['obsval'] * 0.2
 
         d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
         d = d.sort_values(by='idx')
@@ -63,6 +64,7 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d['weight'].loc[valid] = 1.0
         d['weight'].loc[np.isnan(d['obsval'])] = 0.0
         d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
+        d['standard_deviation'] = d['obsval'] * 0.1
 
         d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
         d = d.sort_values(by='idx')
