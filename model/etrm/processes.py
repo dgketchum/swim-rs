@@ -302,7 +302,7 @@ class Processes(object):
 
         m['swe'] += sf
 
-        melt = np.maximum(((1 - alb) * m['rg'] * c['snow_alpha']) + (temp - 1.8) * c['snow_beta'], 0)
+        melt = np.maximum(((1 - alb) * m['rg'] * c['swe_alpha']) + (temp - 1.8) * c['snow_beta'], 0)
 
         m['melt'] = melt = np.minimum(m['swe'], melt)
         m['swe'] -= melt
