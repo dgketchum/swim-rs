@@ -40,6 +40,7 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d['weight'].loc[captures] = 1.0
         d['weight'].loc[np.isnan(d['obsval'])] = 0.0
         d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
+        # TODO get defensible std from literature
         d['standard_deviation'] = d['obsval'] * 0.2
 
         d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
@@ -64,6 +65,7 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d['weight'].loc[valid] = 1.0
         d['weight'].loc[np.isnan(d['obsval'])] = 0.0
         d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
+        # TODO get defensible std from literature
         d['standard_deviation'] = d['obsval'] * 0.1
 
         d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
@@ -83,7 +85,7 @@ def build_pest(model_dir, pest_dir, **kwargs):
     pest.build_pst(version=2)
 
 
-def localize_parameters(pst_file):
+def build_localizer(pst_file):
     et_params = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad']
     snow_params = ['swe_alpha', 'swe_beta']
 
@@ -122,62 +124,61 @@ def localize_parameters(pst_file):
     pst.write(pst_file, version=2)
 
 
-if __name__ == '__main__':
-
-    project = 'tongue'
-    d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
-
-    input_ = '/media/research/IrrigationGIS/swim/examples/{}/prepped_input/{}_input.json'.format(project, project)
-    with open(input_, 'r') as f:
-        input_ = json.load(f)
-    targets_ = input_['order']
-    aw = [input_['props'][t]['awc'] for t in targets_]
-
-    data = '/media/research/IrrigationGIS/swim/examples/{}/input_timeseries'.format(project)
-    input_csv = [os.path.join(data, '{}_daily.csv'.format(fid)) for fid in targets_]
-
-    pp_dir = os.path.join(d, 'pest')
-
-    et_ins = ['et_{}.ins'.format(fid) for fid in targets_]
-    swe_ins = ['swe_{}.ins'.format(fid) for fid in targets_]
-    p_file = os.path.join(d, 'params.csv')
-
-    pars = OrderedDict({
-        'aw': {'file': p_file,
+def initial_parameter_dict(param_file):
+    p = OrderedDict({
+        'aw': {'file': param_file,
                'initial_value': None, 'lower_bound': 15.0, 'upper_bound': 700.0,
                'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-        'rew': {'file': p_file,
+        'rew': {'file': param_file,
                 'initial_value': 3.0, 'lower_bound': 2.0, 'upper_bound': 6.0,
                 'pargp': 'rew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-        'tew': {'file': p_file,
+        'tew': {'file': param_file,
                 'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
                 'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-        'ndvi_alpha': {'file': p_file,
+        'ndvi_alpha': {'file': param_file,
                        'initial_value': 0.2, 'lower_bound': -0.7, 'upper_bound': 1.5,
                        'pargp': 'ndvi_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-        'ndvi_beta': {'file': p_file,
+        'ndvi_beta': {'file': param_file,
                       'initial_value': 1.25, 'lower_bound': 0.5, 'upper_bound': 1.7,
                       'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-        'mad': {'file': p_file,
+        'mad': {'file': param_file,
                 'initial_value': 0.6, 'lower_bound': 0.1, 'upper_bound': 0.9,
                 'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-        'swe_alpha': {'file': p_file,
+        'swe_alpha': {'file': param_file,
                       'initial_value': 0.07, 'lower_bound': -0.7, 'upper_bound': 1.5,
                       'pargp': 'swe_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-        'swe_beta': {'file': p_file,
+        'swe_beta': {'file': param_file,
                      'initial_value': 1.0, 'lower_bound': 0.5, 'upper_bound': 1.7,
                      'pargp': 'snow_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
     })
 
-    pars = OrderedDict({'{}_{}'.format(k, fid): v.copy() for k, v in pars.items() for fid in targets_})
+    return p
+
+
+def get_pest_builder_args(input_json, data):
+    with open(input_json, 'r') as f:
+        input_dct = json.load(f)
+
+    targets = input_dct['order']
+
+    aw = [input_dct['props'][t]['awc'] for t in targets]
+
+    input_csv = [os.path.join(data, '{}_daily.csv'.format(fid)) for fid in targets]
+
+    et_ins = ['et_{}.ins'.format(fid) for fid in targets]
+    swe_ins = ['swe_{}.ins'.format(fid) for fid in targets]
+    p_file = os.path.join(d, 'params.csv')
+
+    pars = initial_parameter_dict(param_file=p_file)
+    pars = OrderedDict({'{}_{}'.format(k, fid): v.copy() for k, v in pars.items() for fid in targets})
 
     params = []
     for i, (k, v) in enumerate(pars.items()):
@@ -196,10 +197,10 @@ if __name__ == '__main__':
         if 'aw_' in ii:
             pars[ii]['initial_value'] = float(r['value'])
 
-    et_obs_files = ['obs/obs_eta_{}.np'.format(fid) for fid in targets_]
-    swe_obs_files = ['obs/obs_swe_{}.np'.format(fid) for fid in targets_]
+    et_obs_files = ['obs/obs_eta_{}.np'.format(fid) for fid in targets]
+    swe_obs_files = ['obs/obs_swe_{}.np'.format(fid) for fid in targets]
 
-    dct = {'targets': targets_,
+    dct = {'targets': targets,
            'inputs': input_csv,
            'et_obs': {'file': et_obs_files,
                       'insfile': et_ins},
@@ -208,9 +209,24 @@ if __name__ == '__main__':
            'pars': pars
            }
 
-    build_pest(d, pp_dir, **dct)
+    return dct
 
-    pst_f = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue/pest/tongue.pst'
 
-    # localize_parameters(pst_f)
+if __name__ == '__main__':
+
+    data_root = '/media/research/IrrigationGIS/swim'
+    if not os.path.exists(data_root):
+        data_root = '/home/dgketchum/data/IrrigationGIS/swim'
+
+    project = 'tongue'
+    d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
+    input_ = os.path.join(data_root, 'examples/{}/prepped_input/{}_input.json'.format(project, project))
+    data_ = os.path.join(data_root, 'examples/{}/input_timeseries'.format(project))
+    dct_ = get_pest_builder_args(input_, data_)
+
+    pest_dir_ = os.path.join(d, 'pest')
+    build_pest(d, pest_dir_, **dct_)
+
+    pst_f = os.path.join(pest_dir_, 'tongue.pst')
+    build_localizer(pst_f)
 # ========================= EOF ====================================================================
