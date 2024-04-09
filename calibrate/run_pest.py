@@ -8,8 +8,6 @@ from pyemu import os_utils
 
 def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, verbose=False):
 
-    [shutil.rmtree(os.path.join(_dir, d)) for d in os.listdir(_dir) if 'worker' in d]
-
     os_utils.start_workers(_dir, _cmd, pst_file,
                            num_workers=num_workers,
                            worker_root=worker_root,
@@ -19,11 +17,13 @@ def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, ver
 
 if __name__ == '__main__':
     project_ = 'tongue'
-    d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/pest'.format(project_)
+    d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project_)
+    p_dir = os.path.join(d, 'pest')
+    m_dir = os.path.join(d, 'master')
+    w_dir = os.path.join(d, 'workers')
     exe_ = 'pestpp-ies'
     _pst = '{}.pst'.format(project_)
-    _workers = psutil.cpu_count(logical=False) - 2
-    worker_rt = os.path.join(d)
+    _workers = 2
 
-    run_pst(d, exe_, _pst, num_workers=_workers, worker_root=worker_rt, verbose=True)
+    run_pst(p_dir, exe_, _pst, num_workers=_workers, worker_root=w_dir, master_dir=m_dir, verbose=True)
 # ========================= EOF ====================================================================
