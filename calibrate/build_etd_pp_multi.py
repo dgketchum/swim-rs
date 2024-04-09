@@ -25,11 +25,13 @@ def build_pest(model_dir, pest_dir, **kwargs):
     # source filename to the input/output section, e.g., 'et_1779.ins obs/obs_eta_1779.np' and during optimization
     # uses obs/obs_eta_1779.np to compare to the observations already written to the control file.
 
+    obsnme_str = 'oname:obs_eta_{}_otype:arr_i:{}_j:0'
+
     for i, fid in enumerate(kwargs['targets']):
         pest.add_observations(kwargs['et_obs']['file'][i], insfile=kwargs['et_obs']['insfile'][i])
 
         et_df = pd.read_csv(kwargs['inputs'][i], index_col=0, parse_dates=True)
-        et_df['dummy_idx'] = ['obs_eta_{}_{}'.format(fid, str(j).rjust(6, '0')) for j in range(et_df.shape[0])]
+        et_df['dummy_idx'] = [obsnme_str.format(fid, j) for j in range(et_df.shape[0])]
         captures = [ix for ix, r in et_df.iterrows() if r['etf_irr_ct'] and ix.month in list(range(5, 11))]
         captures = et_df['dummy_idx'].loc[captures]
 
@@ -38,15 +40,21 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d['weight'].loc[captures] = 1.0
         d['weight'].loc[np.isnan(d['obsval'])] = 0.0
         d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
+
+        d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
+        d = d.sort_values(by='idx')
+        d.drop(columns=['idx'], inplace=True)
+
         pest.obs_dfs[i] = d
 
     count = i + 1
+    obsnme_str = 'oname:obs_swe_{}_otype:arr_i:{}_j:0'
 
     for j, fid in enumerate(kwargs['targets']):
         pest.add_observations(kwargs['swe_obs']['file'][j], insfile=kwargs['swe_obs']['insfile'][j])
 
         swe_df = pd.read_csv(kwargs['inputs'][i], index_col=0, parse_dates=True)
-        swe_df['dummy_idx'] = ['obs_swe_{}_{}'.format(fid, str(j).rjust(6, '0')) for j in range(swe_df.shape[0])]
+        swe_df['dummy_idx'] = [obsnme_str.format(fid, j) for j in range(swe_df.shape[0])]
         valid = [ix for ix, r in swe_df.iterrows() if ix.month in [11, 12, 1, 2, 3, 4]]
         valid = swe_df['dummy_idx'].loc[valid]
 
@@ -55,6 +63,11 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d['weight'].loc[valid] = 1.0
         d['weight'].loc[np.isnan(d['obsval'])] = 0.0
         d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
+
+        d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
+        d = d.sort_values(by='idx')
+        d.drop(columns=['idx'], inplace=True)
+
         pest.obs_dfs[j + count] = d
 
     ofiles = [str(x).replace('obs', 'pred') for x in pest.output_filenames]
@@ -65,11 +78,10 @@ def build_pest(model_dir, pest_dir, **kwargs):
     pest.py_run_file = 'custom_forward_run.py'
     pest.mod_command = 'python custom_forward_run.py'
 
-    pest.build_pst(write_py_file=False, version=2)
+    pest.build_pst(version=2)
 
 
 def localize_parameters(pst_file):
-
     et_params = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad']
     snow_params = ['swe_alpha', 'swe_beta']
 
@@ -194,9 +206,9 @@ if __name__ == '__main__':
            'pars': pars
            }
 
-    # build_pest(d, pp_dir, **dct)
+    build_pest(d, pp_dir, **dct)
 
     pst_f = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue/pest/tongue.pst'
 
-    localize_parameters(pst_f)
+    # localize_parameters(pst_f)
 # ========================= EOF ====================================================================
