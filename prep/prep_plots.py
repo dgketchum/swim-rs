@@ -106,7 +106,7 @@ if __name__ == '__main__':
     src_dir = os.path.join(project_ws, 'input_timeseries')
 
     fields_props = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
-    cuttings = '/media/research/IrrigationGIS/swim/examples/tongue/landsat/{}_cuttings.json'.format(project)
+    cuttings = os.path.join(d, 'examples/tongue/landsat/{}_cuttings.json'.format(project))
 
     # select_fields = [str(f) for f in list(range(1779, 1805))]
     select_fields = [str(f) for f in [1779, 1787, 1793, 1797, 1801, 1804]]
