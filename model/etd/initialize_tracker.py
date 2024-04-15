@@ -126,6 +126,7 @@ class PlotTracker:
         self.dperc_ze = 0.
         self.density = 0.
         self.depl_surface = 0.
+        self.depl_root = 0.
         self.etc_act = 0.
         self.etc_pot = 0.
         self.etc_bas = 0.
