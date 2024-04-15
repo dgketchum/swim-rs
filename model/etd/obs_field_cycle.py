@@ -81,7 +81,8 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
             tracker.__setattr__(k, v)
 
-            print('{}: {}'.format(k, ['{:.2f}'.format(p) for p in v.flatten()]))
+            if debug_flag:
+                print('{}: {}'.format(k, ['{:.2f}'.format(p) for p in v.flatten()]))
 
             if k == 'aw':
                 tracker.__setattr__('depl_root', tracker.aw / 2)
@@ -96,7 +97,8 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     if debug_flag:
         tracker.setup_dataframe(targets)
     else:
-        eta, swe = [], []
+        empty = np.zeros((len(plots.input['time_series']), len(targets))) * np.nan
+        eta, swe = empty.copy(), empty.copy()
 
     tracker.set_kc_max()
 
@@ -130,7 +132,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
     hr_ppt_keys = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
 
-    for step_dt, vals in plots.input['time_series'].items():
+    for j, (step_dt, vals) in enumerate(plots.input['time_series'].items()):
 
         # Track variables for each day
         # For now, cast all values to native Python types
@@ -167,9 +169,6 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
         if foo_day.month == 11 and foo_day.day == 1:
             tracker.setup_dormant()
-
-        if foo_day.year == 2018 and foo_day.month == 1 and foo_day.day == 16:
-            a = 1
 
         # Calculate height of vegetation.
         # Moved up to this point 12/26/07 for use in adj. Kcb and kc_max
@@ -225,8 +224,8 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
                 tracker.crop_df[fid][step_dt]['season'] = tracker.in_season
 
         else:
-            eta.append(tracker.etc_act)
-            swe.append(tracker.swe)
+            eta[j, :] = tracker.etc_act
+            swe[j, :] = tracker.swe
 
     if debug_flag:
         # pass final dataframe to calling script
@@ -237,7 +236,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
     else:
         # if not debug, just return the actual ET and SWE results as ndarray
-        return np.array(eta), np.array(swe)
+        return eta, swe
 
 
 def write_crop_output(data, et_cell, crop, foo):
