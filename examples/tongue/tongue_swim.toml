@@ -1,7 +1,13 @@
 ## SWIM Configuration
 [FIELDS]
 project_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue'
-fields_path = '/media/research/IrrigationGIS/swim/examples/tongue/prepped_input/tongue_fields.json'
+
+# data folder and alternate, so local and MCO machine paths get tried
+data_folder = '/media/research/IrrigationGIS/swim'
+alt_data_folder = '/home/dgketchum/data/IrrigationGIS/swim'
+
+# fields data; prepend with data_folder
+fields_path = 'examples/tongue/prepped_input/tongue_fields.json'
 
 field_index = 'FID'
 
@@ -13,8 +19,8 @@ cover_proxy = 'ndvi'
 start_date = '2015-01-01'
 end_date = '2020-12-31'
 
-## Static file names
-input_data = '/media/research/IrrigationGIS/swim/examples/tongue/prepped_input/tongue_input.json'
+## Static file names; prepend with data_folder
+input_data = 'examples/tongue/prepped_input/tongue_input.json'
 
 ## Misc
 elev_units = 'm'
