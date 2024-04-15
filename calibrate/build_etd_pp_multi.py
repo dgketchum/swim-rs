@@ -1,5 +1,6 @@
 import os
 import json
+import shutil
 from collections import OrderedDict
 
 import numpy as np
@@ -24,12 +25,23 @@ def build_pest(model_dir, pest_dir, **kwargs):
     # pyemu writes observations to the control file, as expected, however it also writes the observtion
     # source filename to the input/output section, e.g., 'et_1779.ins obs/obs_eta_1779.np' and during optimization
     # uses obs/obs_eta_1779.np to compare to the observations already written to the control file.
+    # I think we've circumvented some functionality where we set things pest will 'observe' in the output of the model
+    # see: github.com/gmdsi/GMDSI_notebooks/blob/main/tutorials/part2_02_obs_and_weights/freyberg_obs_and_weights.ipynb
+
+    # TODO: need to weight eta and swe according to their relative contribution to error (phi)
+    # i.e., weight eta higher, so the swe error doesn't dominate calibration
+    # does the fact we are providing a localization matrix obviate this?
+    # might be worth it anyway so we have a representative phi
+    # see: github.com/gmdsi/GMDSI_notebooks/blob/main/tutorials/part2_02_obs_and_weights/freyberg_obs_and_weights.ipynb
+    # or automate this wit pst.adjust_weights() which will be written to the control file
 
     obsnme_str = 'oname:obs_eta_{}_otype:arr_i:{}_j:0'
 
+    # TODO assign 'eta' and 'swe' to oname column in pst.observation_data df instead of 'obs'
     for i, fid in enumerate(kwargs['targets']):
         pest.add_observations(kwargs['et_obs']['file'][i], insfile=kwargs['et_obs']['insfile'][i])
 
+        # only weight eta on capture dates
         et_df = pd.read_csv(kwargs['inputs'][i], index_col=0, parse_dates=True)
         et_df['dummy_idx'] = [obsnme_str.format(fid, j) for j in range(et_df.shape[0])]
         captures = [ix for ix, r in et_df.iterrows() if r['etf_irr_ct'] and ix.month in list(range(5, 11))]
@@ -39,9 +51,6 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d['weight'] = 0.0
         d['weight'].loc[captures] = 1.0
         d['weight'].loc[np.isnan(d['obsval'])] = 0.0
-        d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
-        # TODO get defensible std from literature
-        d['standard_deviation'] = d['obsval'] * 0.2
 
         d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
         d = d.sort_values(by='idx')
@@ -50,11 +59,14 @@ def build_pest(model_dir, pest_dir, **kwargs):
         pest.obs_dfs[i] = d
 
     count = i + 1
+    # note the use of pest-style long names now removes our dependence on dgketchum's hacked fork of pyemu
+    # TODO: implement time dimension to observations
     obsnme_str = 'oname:obs_swe_{}_otype:arr_i:{}_j:0'
 
     for j, fid in enumerate(kwargs['targets']):
         pest.add_observations(kwargs['swe_obs']['file'][j], insfile=kwargs['swe_obs']['insfile'][j])
 
+        # only weight swe Nov - Apr
         swe_df = pd.read_csv(kwargs['inputs'][i], index_col=0, parse_dates=True)
         swe_df['dummy_idx'] = [obsnme_str.format(fid, j) for j in range(swe_df.shape[0])]
         valid = [ix for ix, r in swe_df.iterrows() if ix.month in [11, 12, 1, 2, 3, 4]]
@@ -62,11 +74,10 @@ def build_pest(model_dir, pest_dir, **kwargs):
 
         d = pest.obs_dfs[j + count].copy()
         d['weight'] = 0.0
-        d['weight'].loc[valid] = 1.0
+        # TODO: adjust as needed for phi visibility of eta vs. swe
+        d['weight'].loc[valid] = 0.03
         d['weight'].loc[np.isnan(d['obsval'])] = 0.0
         d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
-        # TODO get defensible std from literature
-        d['standard_deviation'] = d['obsval'] * 0.1
 
         d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
         d = d.sort_values(by='idx')
@@ -82,7 +93,32 @@ def build_pest(model_dir, pest_dir, **kwargs):
     pest.py_run_file = 'custom_forward_run.py'
     pest.mod_command = 'python custom_forward_run.py'
 
+    # the build function doesn't appear to write standard_deviation column in obs data
     pest.build_pst(version=2)
+
+    # the build function wrote a generic python runner that we replace with our own
+    # with some work, pymeu build can do this for us
+    auto_gen = os.path.join(pest_dir, 'custom_forward_run.py')
+    runner = kwargs['python_script']
+    shutil.copyfile(runner, auto_gen)
+
+    # clean up the new pest directory
+    for dd in ['master', 'workers', 'obs']:
+        try:
+            shutil.rmtree(os.path.join(pest_dir, dd))
+        except FileNotFoundError:
+            continue
+
+    # hack to write measurement std post-build
+    # this will be used to add noise to non-zero weighted obs data in e.g., tongue.obs+noise.csv
+    # TODO: pre-compute observation ensembles, implement autocorrelated transient noise
+    # see: github.com/gmdsi/GMDSI_notebooks/blob/main/tutorials/part2_02_obs_and_weights/freyberg_obs_and_weights.ipynb
+    pst = Pst(os.path.join(pest.new_d, '{}.pst'.format(os.path.basename(model_dir))))
+    obs = pst.observation_data
+    obs['standard_deviation'] = np.nan
+    obs.loc[[i for i in obs.index if 'eta' in i], 'standard_deviation'] = obs['obsval'] * 0.2
+    obs.loc[[i for i in obs.index if 'swe' in i], 'standard_deviation'] = obs['obsval'] * 0.1
+    pst.write(pst.filename, version=2)
 
 
 def build_localizer(pst_file):
@@ -119,6 +155,8 @@ def build_localizer(pst_file):
 
     pst.pestpp_options["ies_localizer"] = "loc.mat"
     pst.pestpp_options["ies_num_reals"] = 30
+
+    # pestpp-ies has a more rigorous pre-run testing functionality called when noptmax = -2
     pst.control_data.noptmax = -2
 
     pst.write(pst_file, version=2)
@@ -219,10 +257,16 @@ if __name__ == '__main__':
         data_root = '/home/dgketchum/data/IrrigationGIS/swim'
 
     project = 'tongue'
-    d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
+    src = '/home/dgketchum/PycharmProjects/swim-rs'.format(project)
+    d = os.path.join(src, 'examples/{}'.format(project))
+    python_script = os.path.join(src, 'calibrate', 'custom_forward_run.py')
+
     input_ = os.path.join(data_root, 'examples/{}/prepped_input/{}_input.json'.format(project, project))
     data_ = os.path.join(data_root, 'examples/{}/input_timeseries'.format(project))
     dct_ = get_pest_builder_args(input_, data_)
+
+    # noinspection PyTypedDict
+    dct_.update({'python_script': python_script})
 
     pest_dir_ = os.path.join(d, 'pest')
     build_pest(d, pest_dir_, **dct_)
