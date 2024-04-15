@@ -24,7 +24,7 @@ def optimize_fields(ini_path, debug_flag=False, field_type='irrigated', project=
     if not debug_flag:
         eta, swe = df
         for i, fid in enumerate(fields.input['order']):
-            pred_eta, pred_swe = eta[:, 0, i], swe[:, 0, i]
+            pred_eta, pred_swe = eta[:, i], swe[:, i]
             np.savetxt(os.path.join(d, 'pest', 'pred', 'pred_eta_{}.np'.format(fid)), pred_eta)
             np.savetxt(os.path.join(d, 'pest', 'pred', 'pred_swe_{}.np'.format(fid)), pred_swe)
             end_time = time.time()
@@ -35,6 +35,8 @@ def optimize_fields(ini_path, debug_flag=False, field_type='irrigated', project=
 
         targets = fields.input['order']
         first = True
+
+        print('Warning: model runner is set to debug=True, it will not write results accessible to PEST++')
 
         for fid in targets:
 
@@ -72,6 +74,7 @@ def optimize_fields(ini_path, debug_flag=False, field_type='irrigated', project=
             df[fid]['swe_obs'] = obs_swe
             df[fid] = df[fid][cols]
             swe_df = df[fid].loc['2010-01-01': '2021-01-01'][['swe_obs', 'swe']]
+            swe_df.dropna(axis=0, inplace=True)
             pred_swe = swe_df['swe'].values
             obs_swe = swe_df['swe_obs'].values
             rmse = np.sqrt(((pred_swe - obs_swe) ** 2).mean())
