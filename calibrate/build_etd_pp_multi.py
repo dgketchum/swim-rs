@@ -49,8 +49,8 @@ def build_pest(model_dir, pest_dir, **kwargs):
 
         d = pest.obs_dfs[i].copy()
         d['weight'] = 0.0
-        d['weight'].loc[captures] = 1.0
-        d['weight'].loc[np.isnan(d['obsval'])] = 0.0
+        d.loc['weight', captures] = 1.0
+        d.loc['weight', np.isnan(d['obsval'])] = 0.0
 
         d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
         d = d.sort_values(by='idx')
@@ -75,9 +75,9 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d = pest.obs_dfs[j + count].copy()
         d['weight'] = 0.0
         # TODO: adjust as needed for phi visibility of eta vs. swe
-        d['weight'].loc[valid] = 0.03
-        d['weight'].loc[np.isnan(d['obsval'])] = 0.0
-        d['obsval'].loc[np.isnan(d['obsval'])] = -99.0
+        d.loc['weight', valid] = 0.03
+        d.loc['weight', np.isnan(d['obsval'])] = 0.0
+        d.loc['obsval', np.isnan(d['obsval'])] = -99.0
 
         d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
         d = d.sort_values(by='idx')
@@ -109,7 +109,7 @@ def build_pest(model_dir, pest_dir, **kwargs):
         except FileNotFoundError:
             continue
 
-    # hack to write measurement std post-build
+    # hack to write measurement std post-build, which if not included, 'weight' will be interpreted as std dev
     # this will be used to add noise to non-zero weighted obs data in e.g., tongue.obs+noise.csv
     # TODO: pre-compute observation ensembles, implement autocorrelated transient noise
     # see: github.com/gmdsi/GMDSI_notebooks/blob/main/tutorials/part2_02_obs_and_weights/freyberg_obs_and_weights.ipynb
