@@ -6,9 +6,14 @@ from pyemu import os_utils
 
 def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, verbose=False):
 
-    os.chdir(worker_root)
-    [print('rmtree: {}'.format(os.path.join(worker_root, d))) for d in os.listdir(worker_root)]
-    [shutil.rmtree(os.path.join(worker_root, d)) for d in os.listdir(worker_root)]
+    try:
+        os.chdir(worker_root)
+        [print('rmtree: {}'.format(os.path.join(worker_root, d))) for d in os.listdir(worker_root)]
+        [shutil.rmtree(os.path.join(worker_root, d)) for d in os.listdir(worker_root)]
+    except FileNotFoundError:
+        os.mkdir(os.path.join(worker_root))
+        if master_dir:
+            os.mkdir(os.path.join(master_dir))
 
     os_utils.start_workers(_dir, _cmd, pst_file,
                            num_workers=num_workers,
