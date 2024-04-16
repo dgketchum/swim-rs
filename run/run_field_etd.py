@@ -86,6 +86,6 @@ if __name__ == '__main__':
     field_type_ = 'irrigated'
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project_)
     ini = os.path.join(d, '{}_swim.toml'.format(project_))
-    optimize_fields(ini_path=ini, debug_flag=False, field_type=field_type_, project=project_)
+    optimize_fields(ini_path=ini, debug_flag=True, field_type=field_type_, project=project_)
 
 

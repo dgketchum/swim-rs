@@ -29,7 +29,7 @@ refet_type = 'eto'
 [CALIBRATION]
 ## PEST Calibration
 calibrate_flag = 1
-calibration_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue/pest/mult'
+calibration_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue/master/mult'
 initial_values_csv = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue/params.csv'
 
 [RUNSPEC]
