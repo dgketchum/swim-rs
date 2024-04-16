@@ -1,9 +1,14 @@
 import os
+import shutil
 
 from pyemu import os_utils
 
 
 def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, verbose=False):
+
+    os.chdir(worker_root)
+    [print('rmtree: {}'.format(os.path.join(worker_root, d))) for d in os.listdir(worker_root)]
+    [shutil.rmtree(os.path.join(worker_root, d)) for d in os.listdir(worker_root)]
 
     os_utils.start_workers(_dir, _cmd, pst_file,
                            num_workers=num_workers,
@@ -21,7 +26,7 @@ if __name__ == '__main__':
     w_dir = os.path.join(d, 'workers')
     exe_ = 'pestpp-ies'
     _pst = '{}.pst'.format(project_)
-    _workers = 1
+    _workers = 6
 
     run_pst(p_dir, exe_, _pst, num_workers=_workers, worker_root=w_dir,
             master_dir=m_dir, verbose=True)
