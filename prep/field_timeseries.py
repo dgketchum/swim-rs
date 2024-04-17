@@ -122,7 +122,6 @@ if __name__ == '__main__':
     params += ['{}_ct'.format(p) for p in params]
 
     join_gridmet_remote_sensing_daily(fields_gridmet, met, landsat, snow_ts, dst_dir_, overwrite=True,
-                                      start_date='2000-01-01', end_date='2020-12-31', **{'params': params,
-                                                                                         'target_fields': targets})
+                                      start_date='2000-01-01', end_date='2020-12-31', **{'params': params})
 
 # ========================= EOF ====================================================================
