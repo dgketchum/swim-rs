@@ -6,7 +6,7 @@ from collections import OrderedDict
 import numpy as np
 import pandas as pd
 from pyemu.utils import PstFrom
-from pyemu import Pst, Matrix, Cov
+from pyemu import Pst, Matrix, Cov, geostats
 
 
 def build_pest(model_dir, pest_dir, **kwargs):
@@ -161,13 +161,17 @@ def build_localizer(pst_file):
 
 
 def build_observation_ensembles(pst_dir, pst_file):
+
+    # TODO: figure out a way to build autocorrelated transient noise without memory error
+
     pst = Pst(pst_file)
     obs = pst.observation_data
     obs_cov = Cov.from_observation_data(pst, )
     obs_cov = obs_cov.get(row_names=pst.nnz_obs_names, col_names=pst.nnz_obs_names, )
     obs_cov.to_coo(os.path.join(pst_dir, "obs_cov_diag.jcb"))
     df = obs_cov.to_dataframe()
-    v = pyemu.geostats.ExpVario(a=730, contribution=1.0)
+    v = geostats.ExpVario(a=730, contribution=1.0)
+    obs_select = obs.loc[(obs.obgnme == 'oname:hds_otype:lst_usecol:trgw-0-26-6') & (obs.weight > 0)]
     x = obs_select.time.astype(float).values
     y = np.zeros_like(x)
     names = ["obs_{0}".format(xx) for xx in x]
@@ -294,5 +298,5 @@ if __name__ == '__main__':
     pst_f = os.path.join(pest_dir_, 'tongue.pst')
     # build_localizer(pst_f)
 
-    build_observation_ensembles(pest_dir_, pst_f)
+    # build_observation_ensembles(pest_dir_, pst_f)
 # ========================= EOF ====================================================================
