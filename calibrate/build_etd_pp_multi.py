@@ -6,7 +6,7 @@ from collections import OrderedDict
 import numpy as np
 import pandas as pd
 from pyemu.utils import PstFrom
-from pyemu import Pst, Matrix
+from pyemu import Pst, Matrix, Cov
 
 
 def build_pest(model_dir, pest_dir, **kwargs):
@@ -49,8 +49,8 @@ def build_pest(model_dir, pest_dir, **kwargs):
 
         d = pest.obs_dfs[i].copy()
         d['weight'] = 0.0
-        d.loc['weight', captures] = 1.0
-        d.loc['weight', np.isnan(d['obsval'])] = 0.0
+        d.loc[captures, 'weight'] = 1.0
+        d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
 
         d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
         d = d.sort_values(by='idx')
@@ -75,9 +75,9 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d = pest.obs_dfs[j + count].copy()
         d['weight'] = 0.0
         # TODO: adjust as needed for phi visibility of eta vs. swe
-        d.loc['weight', valid] = 0.03
-        d.loc['weight', np.isnan(d['obsval'])] = 0.0
-        d.loc['obsval', np.isnan(d['obsval'])] = -99.0
+        d.loc[valid, 'weight'] = 0.03
+        d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
+        d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
 
         d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
         d = d.sort_values(by='idx')
@@ -116,8 +116,12 @@ def build_pest(model_dir, pest_dir, **kwargs):
     pst = Pst(os.path.join(pest.new_d, '{}.pst'.format(os.path.basename(model_dir))))
     obs = pst.observation_data
     obs['standard_deviation'] = np.nan
-    obs.loc[[i for i in obs.index if 'eta' in i], 'standard_deviation'] = obs['obsval'] * 0.2
-    obs.loc[[i for i in obs.index if 'swe' in i], 'standard_deviation'] = obs['obsval'] * 0.1
+    obs.loc[[i for i in obs.index if 'eta' in i], 'standard_deviation'] = obs['obsval'] * 0.1
+    obs.loc[[i for i in obs.index if 'swe' in i], 'standard_deviation'] = obs['obsval'] * 0.02
+
+    # add time information
+    obs['time'] = [float(i.split(':')[3].split('_')[0]) for i in obs.index]
+
     pst.write(pst.filename, version=2)
 
 
@@ -160,6 +164,20 @@ def build_localizer(pst_file):
     pst.control_data.noptmax = -2
 
     pst.write(pst_file, version=2)
+
+
+def build_observation_ensembles(pst_dir, pst_file):
+    pst = Pst(pst_file)
+    obs = pst.observation_data
+    obs_cov = Cov.from_observation_data(pst, )
+    obs_cov = obs_cov.get(row_names=pst.nnz_obs_names, col_names=pst.nnz_obs_names, )
+    obs_cov.to_coo(os.path.join(pst_dir, "obs_cov_diag.jcb"))
+    df = obs_cov.to_dataframe()
+    v = pyemu.geostats.ExpVario(a=730, contribution=1.0)
+    x = obs_select.time.astype(float).values
+    y = np.zeros_like(x)
+    names = ["obs_{0}".format(xx) for xx in x]
+    cov = v.covariance_matrix(x, y, names=names)
 
 
 def initial_parameter_dict(param_file):
