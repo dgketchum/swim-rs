@@ -157,12 +157,6 @@ def build_localizer(pst_file):
     mat_file = os.path.join(os.path.dirname(pst_file), 'loc.mat')
     Matrix.from_dataframe(localizer).to_ascii(mat_file)
 
-    pst.pestpp_options["ies_localizer"] = "loc.mat"
-    pst.pestpp_options["ies_num_reals"] = 30
-
-    # pestpp-ies has a more rigorous pre-run testing functionality called when noptmax = -2
-    pst.control_data.noptmax = -2
-
     pst.write(pst_file, version=2)
 
 
@@ -178,6 +172,14 @@ def build_observation_ensembles(pst_dir, pst_file):
     y = np.zeros_like(x)
     names = ["obs_{0}".format(xx) for xx in x]
     cov = v.covariance_matrix(x, y, names=names)
+
+
+def write_control_settings(pst_file):
+    pst = Pst(pst_file)
+    pst.pestpp_options["ies_localizer"] = "loc.mat"
+    pst.pestpp_options["ies_num_reals"] = 250
+    pst.control_data.noptmax = -2
+    pst.write(pst_file, version=2)
 
 
 def initial_parameter_dict(param_file):
@@ -287,8 +289,10 @@ if __name__ == '__main__':
     dct_.update({'python_script': python_script})
 
     pest_dir_ = os.path.join(d, 'pest')
-    build_pest(d, pest_dir_, **dct_)
+    # build_pest(d, pest_dir_, **dct_)
 
     pst_f = os.path.join(pest_dir_, 'tongue.pst')
-    build_localizer(pst_f)
+    # build_localizer(pst_f)
+
+    build_observation_ensembles(pest_dir_, pst_f)
 # ========================= EOF ====================================================================
