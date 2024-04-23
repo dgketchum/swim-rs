@@ -5,12 +5,12 @@ import geopandas as gpd
 import pandas as pd
 
 
-def write_field_properties(shp, irr, cdl, ssurgo, landfire, js):
-    irr = pd.read_csv(irr, index_col='FID')
+def write_field_properties(shp, irr, cdl, ssurgo, landfire, js, index_col='FID'):
+    irr = pd.read_csv(irr, index_col=index_col)
     irr.drop(columns=['LAT', 'LON'], inplace=True)
     dct = irr.T.to_dict()
     dct = {k: {'irr': {int(kk.split('_')[1]): vv for kk, vv in v.items()}} for k, v in dct.items()}
-    cdl = pd.read_csv(cdl, index_col='FID')
+    cdl = pd.read_csv(cdl, index_col=index_col)
     try:
         cdl.drop(columns=['LAT', 'LON'], inplace=True)
     except KeyError:
@@ -19,12 +19,12 @@ def write_field_properties(shp, irr, cdl, ssurgo, landfire, js):
     cdl = cdl.T.to_dict()
     [dct[k].update({'cdl': {int(kk.split('_')[1]): int(vv) for kk, vv in cdl[k].items()}}) for k in dct.keys()]
 
-    landfire = pd.read_csv(landfire, index_col='FID')
+    landfire = pd.read_csv(landfire, index_col=index_col)
     plant_height = landfire[['height']].copy()
     plant_height = plant_height.T.to_dict()
     [dct[k].update({'plant_height': plant_height[k]['height']}) for k in dct.keys()]
 
-    soils = pd.read_csv(ssurgo, index_col='FID')
+    soils = pd.read_csv(ssurgo, index_col=index_col)
 
     awc = soils[['awc']].copy()
     awc = awc.T.to_dict()
@@ -43,7 +43,7 @@ def write_field_properties(shp, irr, cdl, ssurgo, landfire, js):
     [dct[k].update({'sand': sand[k]['sand']}) for k in dct.keys()]
 
     fields = gpd.read_file(shp)
-    fields.index = fields['FID']
+    fields.index = fields[index_col]
     fields['area_sq_m'] = [g.area for g in fields['geometry']]
     area_sq_m = fields[['area_sq_m']].copy()
     area_sq_m = area_sq_m.T.to_dict()
@@ -57,7 +57,7 @@ if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/swim'
 
-    project = 'tongue'
+    project = 'flux'
     project_ws = os.path.join(d, 'examples', project)
 
     fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
@@ -68,6 +68,8 @@ if __name__ == '__main__':
     _landfire = os.path.join(project_ws, 'properties', '{}_landfire.csv'.format(project))
     jsn = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
 
-    write_field_properties(fields_shp, irr_, cdl_, _ssurgo, _landfire, jsn)
+    write_field_properties(fields_shp, irr_, cdl_, _ssurgo, _landfire, jsn, index_col='field_1')
+
+    # flux_west = '/media/research/IrrigationGIS/swim/examples/flux/gis/flux_fields_west.csv'
 
 # ========================= EOF ====================================================================
