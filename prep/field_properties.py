@@ -1,8 +1,9 @@
 import json
 import os
 
-import geopandas as gpd
+import numpy as np
 import pandas as pd
+import geopandas as gpd
 
 
 def write_field_properties(shp, irr, cdl, ssurgo, landfire, js, index_col='FID'):
@@ -49,15 +50,23 @@ def write_field_properties(shp, irr, cdl, ssurgo, landfire, js, index_col='FID')
     area_sq_m = area_sq_m.T.to_dict()
     [dct[k].update({'area_sq_m': area_sq_m[k]['area_sq_m']}) for k in dct.keys()]
 
+    d = dct.copy()
+    for k, v in dct.items():
+        if np.any(np.isnan([v['awc'], v['ksat'], v['area_sq_m']])):
+            _ = d.pop(k)
+            print('skipping {}: has nan'.format(k))
+        elif v['area_sq_m'] < 900.:
+            _ = d.pop(k)
+            print('skipping {}: has small area'.format(k))
+
     with open(js, 'w') as fp:
-        json.dump(dct, fp, indent=4)
+        json.dump(d, fp, indent=4)
 
 
 if __name__ == '__main__':
-
     d = '/media/research/IrrigationGIS/swim'
 
-    project = 'flux'
+    project = 'tongue'
     project_ws = os.path.join(d, 'examples', project)
 
     fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
@@ -68,7 +77,7 @@ if __name__ == '__main__':
     _landfire = os.path.join(project_ws, 'properties', '{}_landfire.csv'.format(project))
     jsn = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
 
-    write_field_properties(fields_shp, irr_, cdl_, _ssurgo, _landfire, jsn, index_col='field_1')
+    write_field_properties(fields_shp, irr_, cdl_, _ssurgo, _landfire, jsn, index_col='FID')
 
     # flux_west = '/media/research/IrrigationGIS/swim/examples/flux/gis/flux_fields_west.csv'
 
