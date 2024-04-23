@@ -19,6 +19,7 @@ class ProjectConfig:
     def __init__(self, field_type='irrigated'):
         super().__init__()
 
+        self.data_folder = None
         self.field_type = field_type
 
         self.kc_proxy = None
@@ -62,9 +63,14 @@ class ProjectConfig:
         self.cover_proxy = config[crop_et_sec]['cover_proxy']
 
         self.project_ws = config[crop_et_sec]['project_folder']
-        self.field_index = config[crop_et_sec]['field_index']
-
         assert os.path.isdir(self.project_ws)
+
+        self.data_folder = config[crop_et_sec]['data_folder']
+        if not os.path.exists(self.data_folder):
+            self.data_folder = config[crop_et_sec]['alt_data_folder']
+        assert os.path.exists(self.data_folder)
+
+        self.field_index = config[crop_et_sec]['field_index']
 
         self.ts_quantity = int(1)
 
@@ -83,7 +89,7 @@ class ProjectConfig:
         # TODO: get ksat for runoff generation
         # self.soils = config.get(crop_et_sec, 'soils')
 
-        self.input_data = config[crop_et_sec]['input_data']
+        self.input_data = os.path.join(self.data_folder, config[crop_et_sec]['input_data'])
 
         self.calibration = bool(config[calib_sec]['calibrate_flag'])
 

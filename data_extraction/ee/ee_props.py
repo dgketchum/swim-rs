@@ -13,12 +13,12 @@ CLAY = 'projects/openet/soil/ssurgo_Clay_WTA_0to152cm_composite'
 SAND = 'projects/openet/soil/ssurgo_Sand_WTA_0to152cm_composite'
 
 
-def get_cdl(fields, desc):
+def get_cdl(fields, desc, selector='FID'):
     plots = ee.FeatureCollection(fields)
     crops, first = None, True
     cdl_years = [x for x in range(2008, 2023)]
 
-    _selectors = ['FID']
+    _selectors = [selector]
 
     for y in cdl_years:
 
@@ -48,11 +48,11 @@ def get_cdl(fields, desc):
     task.start()
 
 
-def get_irrigation(fields, desc, debug=False):
+def get_irrigation(fields, desc, debug=False, selector='FID'):
     plots = ee.FeatureCollection(fields)
     irr_coll = ee.ImageCollection(IRR)
 
-    _selectors = ['FID', 'LAT', 'LON']
+    _selectors = [selector, 'LAT', 'LON']
     first = True
 
     area, irr_img = ee.Image.pixelArea(), None
@@ -91,7 +91,7 @@ def get_irrigation(fields, desc, debug=False):
     task.start()
 
 
-def get_ssurgo(fields, desc, debug=False):
+def get_ssurgo(fields, desc, debug=False, selector='FID'):
     plots = ee.FeatureCollection(fields)
 
     ksat = ee.Image(KSAT).select('b1').rename('ksat')
@@ -101,7 +101,7 @@ def get_ssurgo(fields, desc, debug=False):
 
     img = ksat.addBands([awc, clay, sand])
 
-    _selectors = ['FID', 'LAT', 'LON'] + ['awc', 'ksat', 'clay', 'sand']
+    _selectors = [selector, 'LAT', 'LON'] + ['awc', 'ksat', 'clay', 'sand']
 
     means = img.reduceRegions(collection=plots,
                               reducer=ee.Reducer.mean(),
@@ -122,14 +122,14 @@ def get_ssurgo(fields, desc, debug=False):
     print(desc)
 
 
-def get_landfire(fields, desc, debug=False):
+def get_landfire(fields, desc, debug=False, selector='FID'):
     plots = ee.FeatureCollection(fields)
 
     height = ee.ImageCollection('LANDFIRE/Vegetation/EVH/v1_4_0').select('EVH').first().rename('plant_height')
 
     img = height
 
-    _selectors = ['FID', 'LAT', 'LON'] + ['height']
+    _selectors = [selector, 'LAT', 'LON'] + ['height']
 
     means = img.reduceRegions(collection=plots,
                               reducer=ee.Reducer.mean(),
@@ -153,19 +153,20 @@ def get_landfire(fields, desc, debug=False):
 if __name__ == '__main__':
     ee.Initialize()
 
-    project = 'tongue'
-    fields_ = 'users/dgketchum/fields/tongue_9MAY2023'
+    project = 'flux'
+    index_col = 'field_1'
+    fields_ = 'users/dgketchum/fields/flux'
 
     description = '{}_cdl'.format(project)
-    # get_cdl(fields_, description)
+    get_cdl(fields_, description, selector=index_col)
 
     description = '{}_irr'.format(project)
-    # get_irrigation(fields_, description, debug=False)
+    get_irrigation(fields_, description, debug=False, selector=index_col)
 
     description = '{}_ssurgo'.format(project)
-    # get_ssurgo(fields_, description, debug=False)
+    get_ssurgo(fields_, description, debug=False, selector=index_col)
 
     description = '{}_landfire'.format(project)
-    get_landfire(fields_, description, debug=False)
+    get_landfire(fields_, description, debug=False, selector=index_col)
 
 # ========================= EOF ====================================================================

@@ -26,7 +26,7 @@ def calculate_snow(foo, foo_day):
     foo.swe += sf
 
     melt = np.where(tmax > 0.,
-                    np.maximum(((1 - alb) * foo_day.srad * foo.snow_alpha) + (temp - 1.8) * foo.snow_beta, 0),
+                    np.maximum(((1 - alb) * foo_day.srad * foo.swe_alpha) + (temp - 1.8) * foo.swe_beta, 0),
                     0.)
 
     foo.melt = melt = np.minimum(foo.swe, melt)

@@ -275,11 +275,16 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
     irr = pd.read_csv(irr_csv, index_col=0)
     irr.drop(columns=['LAT', 'LON'], inplace=True)
 
-    irrigated, fields = False, {c: {} for c in cols}
+    irrigated, fields = False, {}
     for c in cols:
 
-        # if c != '1779':
-        #     continue
+        if c not in irr.index:
+            continue
+
+        if np.all(np.isnan(irr.loc[c])):
+            continue
+
+        fields[c] = {}
 
         selector = '{}_ndvi_irr'.format(c)
         count, fallow = [], []
@@ -422,7 +427,7 @@ if __name__ == '__main__':
     if not os.path.exists(d):
         d = d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'tongue'
+    project = 'flux'
     dtype = 'extracts'
 
     project_ws = os.path.join(d, 'examples', project)

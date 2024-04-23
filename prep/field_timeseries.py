@@ -9,9 +9,8 @@ from data_extraction.gridmet.gridmet import find_gridmet_points, download_gridme
 from data_extraction.snodas.snodas import snodas_zonal_stats
 
 
-def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, snow, dst_dir, overwrite=False,
-                                      start_date=None, end_date=None, **kwargs):
-
+def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, overwrite=False,
+                          start_date=None, end_date=None, **kwargs):
     with open(snow, 'r') as f:
         snow = json.load(f)
 
@@ -25,6 +24,8 @@ def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, snow, 
 
     fields = gpd.read_file(fields)
     fields.index = fields['FID']
+
+    out_plots = []
 
     for f, row in fields.iterrows():
 
@@ -50,6 +51,7 @@ def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, snow, 
 
             swe_data = [(pd.to_datetime(k), v[str(f)]) for k, v in snow.items()]
             swe = pd.Series(index=[x[0] for x in swe_data], data=[x[1] for x in swe_data])
+            print('Max SWE {}: {}'.format(f, swe.max()))
             match_idx = [i for i in gridmet.index if i in swe.index]
             gridmet.loc[match_idx, 'obs_swe'] = swe
 
@@ -72,6 +74,10 @@ def join_gridmet_remote_sensing_daily(fields, gridmet_dir, landsat_table, snow, 
         gridmet.to_csv(_file)
         print(_file)
 
+        out_plots.append(f)
+
+    print(out_plots)
+
 
 if __name__ == '__main__':
 
@@ -79,11 +85,11 @@ if __name__ == '__main__':
     if not os.path.exists(d):
         d = d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'tongue'
+    project = 'flux'
     project_ws = os.path.join(d, 'examples', project)
 
     gridmet = os.path.join(d, 'gridmet')
-    rasters_ = os.path.join(gridmet, '../data_extraction/gridmet_corrected', 'correction_surfaces_aea')
+    rasters_ = os.path.join(gridmet, 'gridmet_corrected', 'correction_surfaces_aea')
     grimet_cent = os.path.join(gridmet, 'gridmet_centroids_tongue.shp')
 
     fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
@@ -91,24 +97,28 @@ if __name__ == '__main__':
     gridmet_factors = os.path.join(project_ws, 'gis', '{}_fields_gfid.json'.format(project))
     met = os.path.join(project_ws, 'met_timeseries')
 
+    flux_west = os.path.join(project_ws, 'gis', 'flux_fields_west.csv')
+    fdf = pd.read_csv(flux_west)
+    targets = list(fdf['field_1'])
+
     # TODO: write gridmet data to a common directory, instead of project ws
 
-    # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=None)
+    # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=targets)
 
-    targets = [1779, 1787, 1793, 1794, 1797, 1801, 1804]
+    # targets = [1779, 1787, 1793, 1794, 1797, 1801, 1804]
     # targets = list(range(1770, 1805))
 
     # download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31',
-    #                  target_fields=None, overwite=True)
+    #                  target_fields=targets, overwite=False)
 
-    fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields_wgs.shp'.format(project))
+    fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields_west_wgs.shp'.format(project))
     snow_ts = os.path.join(project_ws, 'snow_timeseries', 'snodas_{}.json'.format(project))
 
     # this extract is meant to be run on Montana Climate Office machine (Zoran)
-    s_dir = '/data/hdd1/snodas/processed/swe'
+    s_dir = '/data/ssd1/snodas/processed/swe'
     if not os.path.isdir(s_dir):
         s_dir = '/media/research/IrrigationGIS/climate/snodas/processed/swe'
-    # snodas_zonal_stats(fields_shp_wgs, s_dir, snow_ts, targets=None)
+    # snodas_zonal_stats(fields_shp_wgs, s_dir, snow_ts, targets=targets, index_col='field_1')
 
     landsat = os.path.join(project_ws, 'landsat', '{}_sensing.csv'.format(project))
     dst_dir_ = os.path.join(project_ws, 'input_timeseries')
@@ -120,8 +130,7 @@ if __name__ == '__main__':
 
     params += ['{}_ct'.format(p) for p in params]
 
-    join_gridmet_remote_sensing_daily(fields_gridmet, met, landsat, snow_ts, dst_dir_, overwrite=True,
-                                      start_date='2000-01-01', end_date='2020-12-31', **{'params': params,
-                                                                                         'target_fields': targets})
+    join_daily_timeseries(fields_gridmet, met, landsat, snow_ts, dst_dir_, overwrite=True,
+                          start_date='2000-01-01', end_date='2020-12-31', **{'params': params})
 
 # ========================= EOF ====================================================================

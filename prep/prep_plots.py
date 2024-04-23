@@ -4,13 +4,25 @@ import os
 import numpy as np
 import pandas as pd
 
+FLUX_SELECT = ['US-ADR', 'US-Bi1', 'US-Bi2', 'US-Blo', 'US-CZ3', 'US-Fmf',
+               'US-Fuf', 'US-Fwf', 'US-GLE', 'US-Hn2', 'US-Hn3', 'US-Jo2',
+               'US-MC1', 'US-Me1', 'US-Me2', 'US-Me5', 'US-Me6', 'US-Mj1',
+               'US-Mj2', 'US-NR1', 'US-Rwe', 'US-Rwf', 'US-Rws', 'US-SCg',
+               'US-SCs', 'US-SCw', 'US-Sne', 'US-SO2', 'US-SO3', 'US-SO4',
+               'US-Srr', 'US-Tw2', 'US-Tw3', 'US-Twt', 'US-Var', 'US-xJR',
+               'US-xNW', 'US-xRM', 'US-xYE', 'MB_Pch', 'S2', 'Almond_Low',
+               'Almond_Med', 'JPL1_JV114', 'UA1_JV187', 'UA1_KN18', 'UA2_JV330',
+               'UA2_KN20', 'UA3_JV108', 'UA3_KN15', 'BAR012', 'RIP760', 'SLM001',
+               'B_01', 'B_11', 'ET_1', 'ET_8', 'MOVAL', 'MR', 'TAM', 'VR', 'AFD',
+               'AFS', 'BPHV', 'BPLV', 'DVDV', 'KV_1', 'KV_2', 'KV_4', 'SPV_1',
+               'SPV_3', 'SV_5', 'SV_6', 'UMVW', 'UOVLO', 'UOVMD', 'UOVUP', 'WRV_1', 'WRV_2']
+
 REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
             'prcp_hr_05', 'prcp_hr_06', 'prcp_hr_07', 'prcp_hr_08', 'prcp_hr_09', 'prcp_hr_10',
             'prcp_hr_11', 'prcp_hr_12', 'prcp_hr_13', 'prcp_hr_14', 'prcp_hr_15', 'prcp_hr_16',
             'prcp_hr_17', 'prcp_hr_18', 'prcp_hr_19', 'prcp_hr_20', 'prcp_hr_21', 'prcp_hr_22',
             'prcp_hr_23']
-
 
 REQ_UNIRR = ['etr_mm_uncorr',
              'eto_mm_uncorr',
@@ -30,7 +42,6 @@ ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['obs_swe']
 
 
 def prep_fields_json(fields, target_plots, input_ts, out_js, ltype='unirrigated', irr_data=None):
-
     with open(fields, 'r') as fp:
         fields = json.load(fp)
 
@@ -81,17 +92,19 @@ def prep_fields_json(fields, target_plots, input_ts, out_js, ltype='unirrigated'
 
 
 def preproc(field_ids, src, _dir):
-
     for fid in field_ids:
         obs_file = os.path.join(src, '{}_daily.csv'.format(fid))
         data = pd.read_csv(obs_file, index_col=0, parse_dates=True)
         data.index = list(range(data.shape[0]))
+
         data['eta'] = data['etr_mm'] * data['etf_inv_irr']
-        data = data[['eta']]
-        print('preproc mean: {}'.format(np.nanmean(data.values)))
+        et = data[['eta']]
+        print('preproc ET mean: {:.2f}'.format(np.nanmean(et.values)))
         _file = os.path.join(project_dir, 'obs', 'obs_eta_{}.np'.format(fid))
-        np.savetxt(_file, data.values)
+        np.savetxt(_file, et.values)
         print('Wrote obs to {}'.format(_file))
+        _file = os.path.join(project_dir, 'obs', 'obs_swe_{}.np'.format(fid))
+        np.savetxt(_file, data['obs_swe'].values)
 
 
 if __name__ == '__main__':
@@ -100,22 +113,23 @@ if __name__ == '__main__':
     if not os.path.exists(d):
         d = d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'tongue'
+    project = 'flux'
+    land_type = 'unirrigated'
     project_ws = os.path.join(d, 'examples', project)
 
     src_dir = os.path.join(project_ws, 'input_timeseries')
 
     fields_props = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
-    cuttings = '/media/research/IrrigationGIS/swim/examples/tongue/landsat/{}_cuttings.json'.format(project)
+    cuttings = os.path.join(d, 'examples/tongue/landsat/{}_cuttings.json'.format(project))
 
-    # select_fields = [str(f) for f in list(range(1779, 1805))]
-    select_fields = [str(f) for f in [1779, 1787, 1793, 1797, 1801, 1804]]
-    select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input.json'.format(project))
-    prep_fields_json(fields_props, select_fields, src_dir, select_fields_js,
-                     ltype='irrigated', irr_data=cuttings)
+    # select_fields = ['1416'] + [str(f) for f in list(range(1779, 1805))]
+    # select_fields = [str(f) for f in range(1, 1917)]
+    select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input_sample.json'.format(project))
+    prep_fields_json(fields_props, FLUX_SELECT, src_dir, select_fields_js,
+                     ltype=land_type, irr_data=cuttings)
 
     project_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
 
-    preproc(select_fields, src_dir, project_dir)
+    preproc(FLUX_SELECT, src_dir, project_dir)
 
 # ========================= EOF ====================================================================
