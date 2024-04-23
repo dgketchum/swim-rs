@@ -33,7 +33,7 @@ def build_pest(model_dir, pest_dir, **kwargs):
     # does the fact we are providing a localization matrix obviate this?
     # might be worth it anyway so we have a representative phi
     # see: github.com/gmdsi/GMDSI_notebooks/blob/main/tutorials/part2_02_obs_and_weights/freyberg_obs_and_weights.ipynb
-    # or automate this wit pst.adjust_weights() which will be written to the control file
+    # or automate this with pst.adjust_weights() which will be written to the control file
 
     obsnme_str = 'oname:obs_eta_{}_otype:arr_i:{}_j:0'
 
@@ -49,7 +49,13 @@ def build_pest(model_dir, pest_dir, **kwargs):
 
         d = pest.obs_dfs[i].copy()
         d['weight'] = 0.0
-        d.loc[captures, 'weight'] = 1.0
+
+        try:
+            d.loc[captures, 'weight'] = 1.0
+        except KeyError:
+            captures = [v.lower() for v in captures.values]
+            d.loc[captures, 'weight'] = 1.0
+
         d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
 
         d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
@@ -74,8 +80,14 @@ def build_pest(model_dir, pest_dir, **kwargs):
 
         d = pest.obs_dfs[j + count].copy()
         d['weight'] = 0.0
+
         # TODO: adjust as needed for phi visibility of eta vs. swe
-        d.loc[valid, 'weight'] = 0.03
+        try:
+            d.loc[valid, 'weight'] = 0.03
+        except KeyError:
+            valid = [v.lower() for v in valid.values]
+            d.loc[valid, 'weight'] = 0.03
+
         d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
         d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
 
@@ -245,7 +257,10 @@ def get_pest_builder_args(input_json, data):
     params = []
     for i, (k, v) in enumerate(pars.items()):
         if 'aw_' in k:
-            params.append((k, aw[i] * 1000., 'p_{}_0_constant.csv'.format(k)))
+            aw_ = aw[i] * 1000.
+            if np.isnan(aw_):
+                aw_ = 150.0
+            params.append((k, aw_, 'p_{}_0_constant.csv'.format(k)))
         else:
             params.append((k, v['initial_value'], 'p_{}_0_constant.csv'.format(k)))
 
@@ -280,23 +295,26 @@ if __name__ == '__main__':
     if not os.path.exists(data_root):
         data_root = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'tongue'
+    project = 'flux'
     src = '/home/dgketchum/PycharmProjects/swim-rs'.format(project)
     d = os.path.join(src, 'examples/{}'.format(project))
     python_script = os.path.join(src, 'calibrate', 'custom_forward_run.py')
 
-    input_ = os.path.join(data_root, 'examples/{}/prepped_input/{}_input.json'.format(project, project))
+    input_ = os.path.join(data_root, 'examples/{}/prepped_input/{}_input_sample.json'.format(project, project))
     data_ = os.path.join(data_root, 'examples/{}/input_timeseries'.format(project))
+
     dct_ = get_pest_builder_args(input_, data_)
 
     # noinspection PyTypedDict
     dct_.update({'python_script': python_script})
 
     pest_dir_ = os.path.join(d, 'pest')
-    # build_pest(d, pest_dir_, **dct_)
+    build_pest(d, pest_dir_, **dct_)
 
     pst_f = os.path.join(pest_dir_, 'tongue.pst')
-    # build_localizer(pst_f)
+    build_localizer(pst_f)
 
+    # TODO: finish implementing this
     # build_observation_ensembles(pest_dir_, pst_f)
+
 # ========================= EOF ====================================================================
