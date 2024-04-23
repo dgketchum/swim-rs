@@ -41,21 +41,21 @@ REQ_IRR = ['etr_mm',
 ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['obs_swe']
 
 
-def prep_fields_json(fields, target_plots, input_ts, out_js, ltype='unirrigated', irr_data=None):
+def prep_fields_json(fields, target_plots, input_ts, out_js, irr_data=None):
     with open(fields, 'r') as fp:
         fields = json.load(fp)
 
     dct = {'props': {i: r for i, r in fields.items() if i in target_plots}}
 
-    required_params = None
-    if ltype == 'irrigated':
-        required_params = REQUIRED + REQ_IRR
-        with open(irr_data, 'r') as fp:
-            irr_data = json.load(fp)
-        dct['irr_data'] = {fid: v for fid, v in irr_data.items() if fid in target_plots}
+    missing = [x for x in target_plots if x not in dct['props'].keys()]
+    if missing:
+        print('Target sample missing: {}'.format(missing))
+        [target_plots.remove(f) for f in missing]
 
-    elif ltype == 'unirrigated':
-        required_params = REQUIRED + REQ_UNIRR
+    required_params = REQUIRED + REQ_IRR + REQ_UNIRR
+    with open(irr_data, 'r') as fp:
+        irr_data = json.load(fp)
+    dct['irr_data'] = {fid: v for fid, v in irr_data.items() if fid in target_plots}
 
     dts, order = None, []
     first, arrays = True, {r: [] for r in required_params}
@@ -113,7 +113,7 @@ if __name__ == '__main__':
     if not os.path.exists(d):
         d = d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'flux'
+    project = 'tongue'
     land_type = 'unirrigated'
     project_ws = os.path.join(d, 'examples', project)
 
@@ -122,11 +122,12 @@ if __name__ == '__main__':
     fields_props = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
     cuttings = os.path.join(d, 'examples/tongue/landsat/{}_cuttings.json'.format(project))
 
-    # select_fields = ['1416'] + [str(f) for f in list(range(1779, 1805))]
+    select_fields = ['1416'] + [str(f) for f in list(range(1779, 1805))]
     # select_fields = [str(f) for f in range(1, 1917)]
     select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input_sample.json'.format(project))
-    prep_fields_json(fields_props, FLUX_SELECT, src_dir, select_fields_js,
-                     ltype=land_type, irr_data=cuttings)
+
+    # prep_fields_json(fields_props, select_fields, src_dir, select_fields_js,
+    #                  ltype=land_type, irr_data=cuttings)
 
     project_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
 
