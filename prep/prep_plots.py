@@ -1,4 +1,11 @@
-import json
+try:
+    import ujson as json
+except ImportError:
+    try:
+        import simplejson as json
+    except ImportError:
+        import json
+
 import os
 
 import numpy as np
@@ -126,11 +133,9 @@ if __name__ == '__main__':
     # select_fields = [str(f) for f in range(1, 1917)]
     select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input_sample.json'.format(project))
 
-    # prep_fields_json(fields_props, select_fields, src_dir, select_fields_js,
-    #                  ltype=land_type, irr_data=cuttings)
+    prep_fields_json(fields_props, select_fields, src_dir, select_fields_js, irr_data=cuttings)
 
     project_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
-
-    preproc(FLUX_SELECT, src_dir, project_dir)
+    preproc(select_fields, src_dir, project_dir)
 
 # ========================= EOF ====================================================================
