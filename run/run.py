@@ -9,10 +9,10 @@ from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
 
-def optimize_fields(ini_path, debug_flag=False, field_type='irrigated', project='tongue'):
+def optimize_fields(ini_path, debug_flag=False, project='tongue'):
     start_time = time.time()
 
-    config = ProjectConfig(field_type=field_type)
+    config = ProjectConfig()
     config.read_config(ini_path)
 
     fields = SamplePlots()
@@ -61,7 +61,7 @@ def optimize_fields(ini_path, debug_flag=False, field_type='irrigated', project=
                 first = False
 
             print('{}: Mean Obs: {:.2f}, Mean Pred: {:.2f}'.format(fid, obs_et.mean(), pred_et.mean()))
-            print('{}: RMS Diff: {:.4f}'.format(fid, rmse))
+            print('{}: RMSE: {:.4f}'.format(fid, rmse))
 
             comp = comp.loc[a[a['capture'] == 1.0].index]
             pred_et, obs_et = comp['pred'], comp['obs']
@@ -83,9 +83,8 @@ def optimize_fields(ini_path, debug_flag=False, field_type='irrigated', project=
 
 if __name__ == '__main__':
     project_ = 'tongue'
-    field_type_ = 'irrigated'
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project_)
     ini = os.path.join(d, '{}_swim.toml'.format(project_))
-    optimize_fields(ini_path=ini, debug_flag=True, field_type=field_type_, project=project_)
+    optimize_fields(ini_path=ini, debug_flag=True, project=project_)
 
 
