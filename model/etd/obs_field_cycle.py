@@ -6,16 +6,13 @@ Called by mod_crop_et.py
 
 """
 
-import datetime
-import logging
-import os
 import numpy as np
 import pandas as pd
 
-from model.etd import compute_field_et
-from model.etd.initialize_tracker import PlotTracker
-from model.etd import obs_kcb_daily
 from model.etd import calculate_height
+from model.etd import compute_field_et
+from model.etd import obs_kcb_daily
+from model.etd.initialize_tracker import PlotTracker
 
 OUTPUT_FMT = ['et_act',
               'etref',
@@ -46,6 +43,12 @@ OUTPUT_FMT = ['et_act',
               'season',
               'capture',
               ]
+
+DEFAULTS = {'ndvi_beta': 1.35,
+            'ndvi_alpha': -0.44,
+            'mad': 0.28,
+            'swe_alpha': 0.073,
+            'swe_beta': 1.38}
 
 
 class DayData:
@@ -92,6 +95,15 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
                 tracker.__setattr__('depl_surface', tracker.tew / 2)
                 tracker.__setattr__('depl_zep', tracker.rew / 2)
 
+    else:
+        for k, v in DEFAULTS.items():
+            arr = np.ones((1, size)) * v
+            tracker.__setattr__(k, arr)
+
+        tracker.__setattr__('depl_root', tracker.aw / 2)
+        tracker.__setattr__('depl_surface', tracker.tew / 2)
+        tracker.__setattr__('depl_zep', tracker.rew / 2)
+
     targets = plots.input['order']
 
     # Initialize crop data frame
@@ -107,30 +119,6 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     foo_day.sdays = 0
     foo_day.doy_prev = 0
 
-    refet = None
-    ndvi = None
-    capture = None
-
-    if config.refet_type == 'eto' and config.field_type == 'irrigated':
-        refet = 'eto_mm'
-        ndvi = 'ndvi_irr'
-        capture = 'etf_irr_ct'
-
-    elif config.refet_type == 'eto' and config.field_type == 'unirrigated':
-        refet = 'eto_mm_uncorr'
-        ndvi = 'ndvi_inv_irr'
-        capture = 'etf_inv_irr_ct'
-
-    elif config.refet_type == 'etr' and config.field_type == 'irrigated':
-        refet = 'etr_mm_uncorr'
-        ndvi = 'ndvi_irr'
-        capture = 'etf_irr_ct'
-
-    elif config.refet_type == 'etr' and config.field_type == 'unirrigated':
-        refet = 'etr_mm_uncorr'
-        ndvi = 'ndvi_inv_irr'
-        capture = 'etf_inv_irr_ct'
-
     hr_ppt_keys = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
 
     for j, (step_dt, vals) in enumerate(plots.input['time_series'].items()):
@@ -144,22 +132,48 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         foo_day.year = dt.year
         foo_day.month = dt.month
         foo_day.day = dt.day
-        foo_day.refet = np.array(vals[refet]).reshape(1, -1)
-        foo_day.ndvi = np.array(vals[ndvi]).reshape(1, -1)
+
+        foo_day.ndvi = np.zeros((1, size))
+        foo_day.capture = np.zeros((1, size))
+        foo_day.refet = np.zeros((1, size))
+        foo_day.irr_day = np.zeros((1, size), dtype=int)
+
+        if foo_day.doy == 1:
+
+            foo_day.irr_status = np.zeros((1, len(plots.input['order'])))
+            foo_day.irr_doys = []
+
+            for i, fid in enumerate(plots.input['order']):
+                try:
+                    irrigated = plots.input['irr_data'][fid][str(dt.year)]['irrigated']
+                    foo_day.irr_doys.append(plots.input['irr_data'][fid][str(foo_day.year)]['irr_doys'])
+                    foo_day.irr_status[0, i] = irrigated
+                except KeyError:
+                    foo_day.irr_status[0, i] = 0
+                    foo_day.irr_doys.append([])
+
+        for i, fid in enumerate(plots.input['order']):
+            irrigated = foo_day.irr_status[0, i]
+            if irrigated:
+                foo_day.ndvi[0, i] = vals['ndvi_irr'][i]
+                foo_day.capture[0, i] = vals['etf_irr_ct'][i]
+                foo_day.refet[0, i] = vals['{}_mm'.format(config.refet_type)][i]
+                foo_day.irr_day[0, i] = int(foo_day.doy in foo_day.irr_doys[i])
+
+            else:
+                foo_day.ndvi[0, i] = vals['ndvi_inv_irr'][i]
+                foo_day.capture[0, i] = vals['etf_inv_irr_ct'][i]
+                foo_day.refet[0, i] = vals['{}_mm_uncorr'.format(config.refet_type)][i]
+                foo_day.irr_day[0, i] = 0
+
+        foo_day.ndvi = foo_day.ndvi.reshape(1, -1)
+        foo_day.capture = foo_day.capture.reshape(1, -1)
+        foo_day.refet = foo_day.refet.reshape(1, -1)
+
         foo_day.min_temp = np.array(vals['tmin_c']).reshape(1, -1)
         foo_day.max_temp = np.array(vals['tmax_c']).reshape(1, -1)
         foo_day.temp_avg = (foo_day.min_temp + foo_day.max_temp) / 2.
         foo_day.srad = np.array(vals['srad_wm2']).reshape(1, -1)
-
-        if config.field_type == 'irrigated':
-            try:
-                irr = plots.input['irr_data']
-                irr_day = [int(foo_day.doy) in irr[t][str(foo_day.year)]['irr_doys'] for t in targets]
-                foo_day.irr_day = np.array(irr_day).reshape(1, -1)
-
-            except KeyError as e:
-                print(e)
-
         foo_day.precip = np.array(vals['prcp_mm'])
 
         if np.any(foo_day.precip > 0.):
@@ -194,7 +208,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
                 eta_act = tracker.etc_act[sample_idx]
                 tracker.crop_df[fid][step_dt]['et_act'] = eta_act
 
-                tracker.crop_df[fid][step_dt]['capture'] = int(vals[capture][sample_idx[1]])
+                tracker.crop_df[fid][step_dt]['capture'] = foo_day.capture[sample_idx]
                 tracker.crop_df[fid][step_dt]['kc_act'] = tracker.kc_act[sample_idx]
                 tracker.crop_df[fid][step_dt]['ks'] = tracker.ks[sample_idx]
                 tracker.crop_df[fid][step_dt]['ke'] = tracker.ke[sample_idx]

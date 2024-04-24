@@ -59,7 +59,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
         compute_snow.calculate_snow(foo, foo_day)
 
         # runoff.runoff_curve_number(foo, foo_day, debug_flag)
-        runoff.runoff_curve_number(foo, foo_day, config, debug_flag)
+        runoff.runoff_infiltration_excess(foo, foo_day)
 
         foo.ppt_inf = (foo.melt + foo.rain) - foo.sro
 
@@ -276,7 +276,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
 
     # TODO: the irrigated status should be marked in a numpy array to the
     # irrigation application can be made with np.where
-    if config.field_type == 'irrigated' and np.any(foo_day.irr_day) or np.any(foo.irr_continue):
+    if np.any(foo_day.irr_day) or np.any(foo.irr_continue):
 
         # account for the case where depletion exceeded the maximum daily irr rate yesterday
         irr_waiting = foo.next_day_irr
@@ -285,7 +285,8 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
                                     foo.next_day_irr - foo.max_irr_rate,
                                     0.0)
 
-        foo.next_day_irr = np.where((foo_day.irr_day & (foo.depl_root > foo.raw) & (foo.max_irr_rate < foo.depl_root * 1.1)),
+        next_day_cond = (foo_day.irr_day & (foo.depl_root > foo.raw) & (foo.max_irr_rate < foo.depl_root * 1.1))
+        foo.next_day_irr = np.where(next_day_cond,
                                     foo.depl_root * 1.1 - foo.max_irr_rate,
                                     foo.next_day_irr)
 
@@ -297,9 +298,6 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
         foo.irr_continue = np.where((foo_day.irr_day & (foo.max_irr_rate < foo.depl_root * 1.1)), 1, 0)
 
         foo.irr_sim = potential_irr
-
-        if np.any(foo.irr_sim) > 0:
-            a = 1
 
     # Update depletion of root zone
 

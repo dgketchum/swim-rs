@@ -295,7 +295,6 @@ class PlotTracker:
 
         zr_dormant = 0.1
 
-
     def setup_dormant(self):
         """Start of dormant season
             a) Set up for soil water reservoir during non-growing season
