@@ -1,11 +1,7 @@
 import os
-import logging
-import toml
-from datetime import datetime
 
 import pandas as pd
-
-from model.etrm import STATIC_KEYS, INITIAL_KEYS
+import toml
 
 
 class ProjectConfig:
@@ -16,11 +12,10 @@ class ProjectConfig:
 
     """
 
-    def __init__(self, field_type='irrigated'):
+    def __init__(self):
         super().__init__()
 
         self.data_folder = None
-        self.field_type = field_type
 
         self.kc_proxy = None
         self.cover_proxy = None
@@ -118,17 +113,3 @@ class ProjectConfig:
         self.winter_evap_limiter = config.get(runspec_sec, 'winter_evap_limiter')
         self.winter_end_day = config.get(runspec_sec, 'winter_end_day')
         self.winter_start_day = config.get(runspec_sec, 'winter_start_day')
-
-    @property
-    def initial_pairs(self):
-        try:
-            return tuple((k, getattr(self, k)) for k in INITIAL_KEYS)
-        except AttributeError:
-            pass
-
-    @property
-    def static_pairs(self):
-        try:
-            return tuple((k, getattr(self, k)) for k in STATIC_KEYS)
-        except AttributeError:
-            pass
