@@ -182,8 +182,8 @@ if __name__ == '__main__':
     pest_dir_ = os.path.join(d, pest_root)
     pst_f = os.path.join(pest_dir_, '{}.pst'.format(project))
 
-    # show_phi_evolution(pest_dir_, glob=project)
+    show_phi_evolution(pest_dir_, glob=project)
 
-    plot_tseries_ensembles(pest_dir_, glob=project, target='US-MC1', sample_n=30)
+    # plot_tseries_ensembles(pest_dir_, glob=project, target='US-MC1', sample_n=30)
     # plot_prediction_scatter(pest_dir_, glob=project, target='US-MC1', sample_n=30)
 # ========================= EOF ====================================================================
