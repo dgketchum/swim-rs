@@ -127,7 +127,7 @@ def build_pest(model_dir, pest_dir, **kwargs):
     # see: github.com/gmdsi/GMDSI_notebooks/blob/main/tutorials/part2_02_obs_and_weights/freyberg_obs_and_weights.ipynb
     pst = Pst(os.path.join(pest.new_d, '{}.pst'.format(os.path.basename(model_dir))))
     obs = pst.observation_data
-    obs['standard_deviation'] = np.nan
+    obs['standard_deviation'] = 0.01
     obs.loc[[i for i in obs.index if 'eta' in i], 'standard_deviation'] = obs['obsval'] * 0.1
     obs.loc[[i for i in obs.index if 'swe' in i], 'standard_deviation'] = obs['obsval'] * 0.02
 
@@ -190,11 +190,11 @@ def build_observation_ensembles(pst_dir, pst_file):
     cov = v.covariance_matrix(x, y, names=names)
 
 
-def write_control_settings(pst_file):
+def write_control_settings(pst_file, noptmax=-2, reals=250):
     pst = Pst(pst_file)
     pst.pestpp_options["ies_localizer"] = "loc.mat"
-    pst.pestpp_options["ies_num_reals"] = 250
-    pst.control_data.noptmax = -2
+    pst.pestpp_options["ies_num_reals"] = reals
+    pst.control_data.noptmax = noptmax
     pst.write(pst_file, version=2)
 
 
@@ -303,16 +303,16 @@ if __name__ == '__main__':
     input_ = os.path.join(data_root, 'examples/{}/prepped_input/{}_input_sample.json'.format(project, project))
     data_ = os.path.join(data_root, 'examples/{}/input_timeseries'.format(project))
 
-    dct_ = get_pest_builder_args(input_, data_)
+    pest_dir_ = os.path.join(d, 'pest')
+    pst_f = os.path.join(pest_dir_, '{}.pst'.format(project))
 
+    dct_ = get_pest_builder_args(input_, data_)
     # noinspection PyTypedDict
     dct_.update({'python_script': python_script})
-
-    pest_dir_ = os.path.join(d, 'pest')
     build_pest(d, pest_dir_, **dct_)
-
-    pst_f = os.path.join(pest_dir_, 'tongue.pst')
     build_localizer(pst_f)
+
+    write_control_settings(pst_f, 3, 30)
 
     # TODO: finish implementing this
     # build_observation_ensembles(pest_dir_, pst_f)
