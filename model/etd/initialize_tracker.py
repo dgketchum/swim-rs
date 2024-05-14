@@ -267,7 +267,7 @@ class PlotTracker:
 
         fields = plots.input['order']
 
-        self.aw = np.array([plots.input['props'][f]['awc'] for f in fields]).reshape(1, -1)
+        self.aw = np.array([plots.input['props'][f]['awc'] for f in fields]).reshape(1, -1) * 1000.
 
         self.ksat = np.array([plots.input['props'][f]['ksat'] for f in fields]).reshape(1, -1)
         # micrometer/sec to mm/day

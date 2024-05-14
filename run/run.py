@@ -38,7 +38,7 @@ def optimize_fields(ini_path, debug_flag=False, project='tongue'):
 
         print('Warning: model runner is set to debug=True, it will not write results accessible to PEST++')
 
-        for fid in targets:
+        for i, fid in enumerate(targets):
 
             pred_et = df[fid]['et_act'].values
 
@@ -47,7 +47,9 @@ def optimize_fields(ini_path, debug_flag=False, project='tongue'):
             cols = ['et_obs'] + list(df[fid].columns)
             df[fid]['et_obs'] = obs_et
             df[fid] = df[fid][cols]
-            a = df[fid].loc['2010-01-01': '2021-01-01']
+            sdf = df[fid].loc['2017-01-01': '2017-12-31']
+            if i == 10:
+                a = 1
 
             comp = pd.DataFrame(data=np.vstack([obs_et, pred_et]).T, columns=['obs', 'pred'], index=df[fid].index)
             comp['eq'] = comp['obs'] == comp['pred']
@@ -63,7 +65,7 @@ def optimize_fields(ini_path, debug_flag=False, project='tongue'):
             print('{}: Mean Obs: {:.2f}, Mean Pred: {:.2f}'.format(fid, obs_et.mean(), pred_et.mean()))
             print('{}: RMSE: {:.4f}'.format(fid, rmse))
 
-            comp = comp.loc[a[a['capture'] == 1.0].index]
+            comp = comp.loc[sdf[sdf['capture'] == 1.0].index]
             pred_et, obs_et = comp['pred'], comp['obs']
             rmse = np.sqrt(((pred_et - obs_et) ** 2).mean())
             print('{}: RMSE Capture Dates: {:.4f}'.format(fid, rmse))

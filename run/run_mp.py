@@ -9,10 +9,11 @@ from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
 
-def optimize_fields(ini_path, worker_dir, field_type='irrigated'):
+def optimize_fields(ini_path, worker_dir):
     start_time = time.time()
+    end_time = None
 
-    config = ProjectConfig(field_type=field_type)
+    config = ProjectConfig()
     config.read_config(ini_path)
 
     fields = SamplePlots()
@@ -27,7 +28,8 @@ def optimize_fields(ini_path, worker_dir, field_type='irrigated'):
         np.savetxt(os.path.join(worker_dir, 'pred', 'pred_eta_{}.np'.format(fid)), pred_eta)
         np.savetxt(os.path.join(worker_dir, 'pred', 'pred_swe_{}.np'.format(fid)), pred_swe)
         end_time = time.time()
-    print('\n\nExecution time: {:.2f} seconds'.format(end_time - start_time))
+    print('\n\nExecution time: {:.2f} seconds, mean pred ET: {:.3f}\n\n'.format(end_time - start_time,
+                                                                                np.nanmean(pred_eta)))
 
 
 def main():

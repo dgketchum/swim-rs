@@ -46,7 +46,7 @@ OUTPUT_FMT = ['et_act',
 
 DEFAULTS = {'ndvi_beta': 1.35,
             'ndvi_alpha': -0.44,
-            'mad': 0.28,
+            'mad': 0.6,
             'swe_alpha': 0.073,
             'swe_beta': 1.38}
 
@@ -184,6 +184,9 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
         if foo_day.month == 11 and foo_day.day == 1:
             tracker.setup_dormant()
+
+        if step_dt == '2017-05-20':
+            a = 1
 
         # Calculate height of vegetation.
         # Moved up to this point 12/26/07 for use in adj. Kcb and kc_max

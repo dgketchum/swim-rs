@@ -11,18 +11,20 @@ import os
 import numpy as np
 import pandas as pd
 
-FLUX_SELECT = ['US-ADR', 'US-Bi1', 'US-Bi2', 'US-Blo', 'US-CZ3', 'US-Fmf',
-               'US-Fuf', 'US-Fwf', 'US-GLE', 'US-Hn2', 'US-Hn3', 'US-Jo2',
-               'US-MC1', 'US-Me1', 'US-Me2', 'US-Me5', 'US-Me6', 'US-Mj1',
-               'US-Mj2', 'US-NR1', 'US-Rwe', 'US-Rwf', 'US-Rws', 'US-SCg',
-               'US-SCs', 'US-SCw', 'US-Sne', 'US-SO2', 'US-SO3', 'US-SO4',
-               'US-Srr', 'US-Tw2', 'US-Tw3', 'US-Twt', 'US-Var', 'US-xJR',
-               'US-xNW', 'US-xRM', 'US-xYE', 'MB_Pch', 'S2', 'Almond_Low',
-               'Almond_Med', 'JPL1_JV114', 'UA1_JV187', 'UA1_KN18', 'UA2_JV330',
-               'UA2_KN20', 'UA3_JV108', 'UA3_KN15', 'BAR012', 'RIP760', 'SLM001',
-               'B_01', 'B_11', 'ET_1', 'ET_8', 'MOVAL', 'MR', 'TAM', 'VR', 'AFD',
-               'AFS', 'BPHV', 'BPLV', 'DVDV', 'KV_1', 'KV_2', 'KV_4', 'SPV_1',
-               'SPV_3', 'SV_5', 'SV_6', 'UMVW', 'UOVLO', 'UOVMD', 'UOVUP', 'WRV_1', 'WRV_2']
+# FLUX_SELECT = ['US-ADR', 'US-Bi1', 'US-Bi2', 'US-Blo', 'US-CZ3', 'US-Fmf',
+#                'US-Fuf', 'US-Fwf', 'US-GLE', 'US-Hn2', 'US-Hn3', 'US-Jo2',
+#                'US-MC1', 'US-Me1', 'US-Me2', 'US-Me5', 'US-Me6', 'US-Mj1',
+#                'US-Mj2', 'US-NR1', 'US-Rwe', 'US-Rwf', 'US-Rws', 'US-SCg',
+#                'US-SCs', 'US-SCw', 'US-Sne', 'US-SO2', 'US-SO3', 'US-SO4',
+#                'US-Srr', 'US-Tw2', 'US-Tw3', 'US-Twt', 'US-Var', 'US-xJR',
+#                'US-xNW', 'US-xRM', 'US-xYE', 'MB_Pch', 'S2', 'Almond_Low',
+#                'Almond_Med', 'JPL1_JV114', 'UA1_JV187', 'UA1_KN18', 'UA2_JV330',
+#                'UA2_KN20', 'UA3_JV108', 'UA3_KN15', 'BAR012', 'RIP760', 'SLM001',
+#                'B_01', 'B_11', 'ET_1', 'ET_8', 'MOVAL', 'MR', 'TAM', 'VR', 'AFD',
+#                'AFS', 'BPHV', 'BPLV', 'DVDV', 'KV_1', 'KV_2', 'KV_4', 'SPV_1',
+#                'SPV_3', 'SV_5', 'SV_6', 'UMVW', 'UOVLO', 'UOVMD', 'UOVUP', 'WRV_1', 'WRV_2']
+
+FLUX_SELECT = ['US-MC1']
 
 REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
@@ -120,22 +122,21 @@ if __name__ == '__main__':
     if not os.path.exists(d):
         d = d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'tongue'
-    land_type = 'unirrigated'
+    project = 'flux'
     project_ws = os.path.join(d, 'examples', project)
 
     src_dir = os.path.join(project_ws, 'input_timeseries')
 
     fields_props = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
-    cuttings = os.path.join(d, 'examples/tongue/landsat/{}_cuttings.json'.format(project))
+    cuttings = os.path.join(d, 'examples/{}/landsat/{}_cuttings.json'.format(project, project))
 
-    select_fields = ['1416'] + [str(f) for f in list(range(1779, 1805))]
+    # select_fields = ['1416'] + [str(f) for f in list(range(1779, 1805))]
     # select_fields = [str(f) for f in range(1, 1917)]
     select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input_sample.json'.format(project))
 
-    prep_fields_json(fields_props, select_fields, src_dir, select_fields_js, irr_data=cuttings)
+    # prep_fields_json(fields_props, FLUX_SELECT, src_dir, select_fields_js, irr_data=cuttings)
 
     project_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
-    preproc(select_fields, src_dir, project_dir)
+    preproc(FLUX_SELECT, src_dir, project_dir)
 
 # ========================= EOF ====================================================================

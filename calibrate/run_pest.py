@@ -24,7 +24,7 @@ def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, ver
 
 
 if __name__ == '__main__':
-    project_ = 'tongue'
+    project_ = 'flux'
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project_)
     p_dir = os.path.join(d, 'pest')
     m_dir = os.path.join(d, 'master')

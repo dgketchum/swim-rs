@@ -276,6 +276,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
 
     # TODO: the irrigated status should be marked in a numpy array to the
     # irrigation application can be made with np.where
+
     if np.any(foo_day.irr_day) or np.any(foo.irr_continue):
 
         # account for the case where depletion exceeded the maximum daily irr rate yesterday

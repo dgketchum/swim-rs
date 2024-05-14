@@ -9,94 +9,107 @@ from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
 
-def run_fields(conf, flux_obs, debug_flag=False, field_type='irrigated', target_field='1178', **kwargs):
-    config = ProjectConfig(field_type=field_type)
-    config.read_config(conf)
+def run_flux_sites(ini_path, flux_obs, debug_flag=False, project='tongue'):
+    start_time = time.time()
+
+    config = ProjectConfig()
+    config.read_config(ini_path)
 
     fields = SamplePlots()
-    fields.initialize_plot_data(config, targets=target_field)
+    fields.initialize_plot_data(config)
 
-    for fid, field in sorted(fields.fields_dict.items()):
+    df = obs_field_cycle.field_day_loop(config, fields, debug_flag=debug_flag)
 
-        if fid != target_field:
-            continue
+    # debug_flag=False just returns the ndarray for writing
+    if not debug_flag:
+        eta_result, swe_result = df
+        for i, fid in enumerate(fields.input['order']):
+            pred_eta, pred_swe = eta_result[:, i], swe_result[:, i]
+            np.savetxt(os.path.join(d, 'pest', 'pred', 'pred_eta_{}.np'.format(fid)), pred_eta)
+            np.savetxt(os.path.join(d, 'pest', 'pred', 'pred_swe_{}.np'.format(fid)), pred_swe)
+            end_time = time.time()
+        print('\n\nExecution time: {:.2f} seconds'.format(end_time - start_time))
 
-        start_time = time.time()
-        df = obs_field_cycle.field_day_loop(config, field, debug_flag=debug_flag, params=kwargs)
-        pred = df['et_act'].values + 0.001
+    if debug_flag:
 
-        print('Predicted: max {:.2f} min {:.2f}'.format(pred.max(), pred.min()))
-        np.savetxt(os.path.join(d, 'pest', 'pred_eta.np'), pred)
+        targets = fields.input['order']
+        first = True
 
-        obs = pd.read_csv(flux_obs, index_col=0, parse_dates=True)
-        cols = ['et_flux'] + ['et_ssebop'] + list(df.columns)
-        df['et_flux'] = obs['ET']
-        df['et_ssebop'] = [field.input[k]['etf_inv_irr'] * field.input[k]['etr_mm'] for k in field.input.keys()]
-        df = df[cols]
+        print('Warning: model runner is set to debug=True, it will not write results accessible to PEST++')
 
-        comp = df.loc[df[df['capture'] == 1.0].index].copy()
-        et_act, et_ssebop = comp['et_act'], comp['et_ssebop']
-        rmse = np.sqrt(((et_act - et_ssebop) ** 2).mean())
-        end_time = time.time()
-        print('Execution time: {:.2f} seconds\n'.format(end_time - start_time))
-        print('{} Capture Dates; Mean SSEBop: {:.2f}, SWB Pred: {:.2f}'.format(comp.shape[0],
-                                                                               et_ssebop.mean(),
-                                                                               et_act.mean()))
-        print('SWB ET/SSEBop RMSE: {:.4f}\n\n\n\n'.format(rmse))
+        for i, fid in enumerate(targets):
 
-        comp = df[~pd.isna(df['et_flux']) == 1].copy()
-        comp = comp.loc[comp[comp['capture'] == 1.0].index]
-        et_flux, et_ssebop = comp['et_flux'], comp['et_ssebop']
-        rmse = np.sqrt(((et_flux - et_ssebop) ** 2).mean())
-        print('{} Flux/Capture Dates; Mean Flux: {:.2f}, Mean SSEBop: {:.2f}'.format(comp.shape[0],
-                                                                                     et_flux.mean(),
-                                                                                     et_ssebop.mean()))
-        print('RMSE Flux/SSEBop Capture Dates: {:.4f}\n\n\n\n'.format(rmse))
+            pred_et = df[fid]['et_act'].values
 
-        comp = df[~pd.isna(df['et_flux']) == 1].copy()
-        et_flux, et_ssebop = comp['et_flux'], comp['et_ssebop']
-        rmse = np.sqrt(((et_flux - et_ssebop) ** 2).mean())
-        print('{} Flux Dates; Mean Flux: {:.2f}, Mean SSEBop: {:.2f}'.format(comp.shape[0],
-                                                                             et_flux.mean(),
-                                                                             et_ssebop.mean()))
-        print('RMSE Flux/All SSEBop Dates: {:.4f}\n\n\n\n'.format(rmse))
+            obs_et = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/obs/obs_eta_{}.np'.format(project, fid)
+            obs_et = np.loadtxt(obs_et)
+            cols = ['et_obs'] + list(df[fid].columns)
+            df[fid]['et_obs'] = obs_et
+            df[fid] = df[fid][cols]
+            sdf = df[fid].loc['2017-01-01': '2017-12-31']
 
-        comp = df[~pd.isna(df['et_flux']) == 1].copy()
-        et_act, et_flux = comp['et_act'], comp['et_flux']
-        rmse = np.sqrt(((et_act - et_flux) ** 2).mean())
-        print('{} Flux Dates; Mean Flux: {:.2f}, Mean SWB: {:.2f}'.format(comp.shape[0],
-                                                                          et_flux.mean(),
-                                                                          et_act.mean()))
-        print('RMSE Flux/SWB Dates: {:.4f}\n\n\n\n'.format(rmse))
-        totals = df[['et_act', 'ppt', 'dperc', 'runoff']].sum(axis=0)
-        water_out = totals[['dperc', 'et_act', 'runoff']].sum()
-        storage = df.loc[df.index[0], 'depl_root'] - df.loc[df.index[-1], 'depl_root']
-        balance = totals['ppt'] - storage - water_out
-        print('Water Balance = {:.1f}; input: {:.1f}; output: {:.1f}; storage: {:.1f}\n\n\n'.format(balance,
-                                                                                                    totals['ppt'],
-                                                                                                    water_out,
-                                                                                                    storage))
-        return None
+            comp = pd.DataFrame(data=np.vstack([obs_et, pred_et]).T, columns=['obs', 'pred'], index=df[fid].index)
+            comp['eq'] = comp['obs'] == comp['pred']
+            comp['capture'] = df[fid]['capture']
+
+            obs_file = flux_obs.format(fid)
+            obs = pd.read_csv(flux_obs, index_col=0, parse_dates=True)
+            cols = ['et_flux'] + ['et_ssebop'] + list(df.columns)
+            df['et_flux'] = obs['ET']
+            df['et_ssebop'] = [field.input[k]['etf_inv_irr'] * field.input[k]['etr_mm'] for k in field.input.keys()]
+            df = df[cols]
+
+            comp = df.loc[df[df['capture'] == 1.0].index].copy()
+            et_act, et_ssebop = comp['et_act'], comp['et_ssebop']
+            rmse = np.sqrt(((et_act - et_ssebop) ** 2).mean())
+            end_time = time.time()
+            print('Execution time: {:.2f} seconds\n'.format(end_time - start_time))
+            print('{} Capture Dates; Mean SSEBop: {:.2f}, SWB Pred: {:.2f}'.format(comp.shape[0],
+                                                                                   et_ssebop.mean(),
+                                                                                   et_act.mean()))
+            print('SWB ET/SSEBop RMSE: {:.4f}\n\n\n\n'.format(rmse))
+
+            comp = df[~pd.isna(df['et_flux']) == 1].copy()
+            comp = comp.loc[comp[comp['capture'] == 1.0].index]
+            et_flux, et_ssebop = comp['et_flux'], comp['et_ssebop']
+            rmse = np.sqrt(((et_flux - et_ssebop) ** 2).mean())
+            print('{} Flux/Capture Dates; Mean Flux: {:.2f}, Mean SSEBop: {:.2f}'.format(comp.shape[0],
+                                                                                         et_flux.mean(),
+                                                                                         et_ssebop.mean()))
+            print('RMSE Flux/SSEBop Capture Dates: {:.4f}\n\n\n\n'.format(rmse))
+
+            comp = df[~pd.isna(df['et_flux']) == 1].copy()
+            et_flux, et_ssebop = comp['et_flux'], comp['et_ssebop']
+            rmse = np.sqrt(((et_flux - et_ssebop) ** 2).mean())
+            print('{} Flux Dates; Mean Flux: {:.2f}, Mean SSEBop: {:.2f}'.format(comp.shape[0],
+                                                                                 et_flux.mean(),
+                                                                                 et_ssebop.mean()))
+            print('RMSE Flux/All SSEBop Dates: {:.4f}\n\n\n\n'.format(rmse))
+
+            comp = df[~pd.isna(df['et_flux']) == 1].copy()
+            et_act, et_flux = comp['et_act'], comp['et_flux']
+            rmse = np.sqrt(((et_act - et_flux) ** 2).mean())
+            print('{} Flux Dates; Mean Flux: {:.2f}, Mean SWB: {:.2f}'.format(comp.shape[0],
+                                                                              et_flux.mean(),
+                                                                              et_act.mean()))
+            print('RMSE Flux/SWB Dates: {:.4f}\n\n\n\n'.format(rmse))
+            totals = df[['et_act', 'ppt', 'dperc', 'runoff']].sum(axis=0)
+            water_out = totals[['dperc', 'et_act', 'runoff']].sum()
+            storage = df.loc[df.index[0], 'depl_root'] - df.loc[df.index[-1], 'depl_root']
+            balance = totals['ppt'] - storage - water_out
+            print('Water Balance = {:.1f}; input: {:.1f}; output: {:.1f}; storage: {:.1f}\n\n\n'.format(balance,
+                                                                                                        totals['ppt'],
+                                                                                                        water_out,
+                                                                                                        storage))
+            return None
 
 
 if __name__ == '__main__':
     project = 'flux'
-    target = 'US-FPe'
-    field_type = 'unirrigated'
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
-    ini = os.path.join(d, '{}_swim.toml'.format(project))
+    conf = os.path.join(d, '{}_swim.toml'.format(project))
 
     flux_obs_ = os.path.join('/media/research/IrrigationGIS/climate/flux_ET_dataset/'
-                             'daily_data_files/{}_daily_data.csv'.format(target))
+                             'daily_data_files/{}_daily_data.csv')
 
-    params = {
-        'aw': 300.0,
-        'rew': 3.0,
-        'tew': 6.4,
-        'ndvi_alpha': 0.9,
-        'ndvi_beta': 1.7,
-        'mad': 0.1,
-    }
-
-    run_fields(conf=ini, flux_obs=flux_obs_, debug_flag=False, field_type=field_type,
-               target_field=target, **params)
+    run_flux_sites(conf, flux_obs=flux_obs_, debug_flag=False)
