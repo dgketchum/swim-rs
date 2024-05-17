@@ -24,7 +24,7 @@ import pandas as pd
 #                'AFS', 'BPHV', 'BPLV', 'DVDV', 'KV_1', 'KV_2', 'KV_4', 'SPV_1',
 #                'SPV_3', 'SV_5', 'SV_6', 'UMVW', 'UOVLO', 'UOVMD', 'UOVUP', 'WRV_1', 'WRV_2']
 
-FLUX_SELECT = ['US-MC1']
+FLUX_SELECT = ['US-Rws']
 
 REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
@@ -134,7 +134,7 @@ if __name__ == '__main__':
     # select_fields = [str(f) for f in range(1, 1917)]
     select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input_sample.json'.format(project))
 
-    # prep_fields_json(fields_props, FLUX_SELECT, src_dir, select_fields_js, irr_data=cuttings)
+    prep_fields_json(fields_props, FLUX_SELECT, src_dir, select_fields_js, irr_data=cuttings)
 
     project_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
     preproc(FLUX_SELECT, src_dir, project_dir)

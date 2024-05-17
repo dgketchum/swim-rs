@@ -31,7 +31,8 @@ FOO_FMT = ['et_act',
            'et_bas',
            ]
 
-TRACKER_PARAMS = ['albedo',
+TRACKER_PARAMS = ['taw',
+                  'albedo',
                   'min_albedo',
                   'melt',
                   'rain',
@@ -113,6 +114,7 @@ class PlotTracker:
         self.crop_df = None
 
         self.aw = 0.
+        self.taw = 0.
         self.aw3 = 0.
         self.cn2 = 0.
         self.cgdd = 0.
@@ -295,6 +297,98 @@ class PlotTracker:
 
         zr_dormant = 0.1
 
+    def setup_crop(self):
+        """Initialize some variables for beginning of crop seasons
+
+        Attributes
+        ----------
+        crop :
+
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Called in crop_cycle if not in season and crop setup flag is true
+        Called in kcb_daily for startup/greenup type 1, 2, and 3 when startup conditions are met
+
+        """
+
+        zr_dormant = 0.0
+
+        # setup_crop is called from crop_cycle if is_season is false and crop_setup_flag is true
+        # thus only setup 1st time for crop (not each year)
+        # also called from kcb_daily each time GU/Plant date is reached, thus at growing season start
+
+        self.height = self.height_min
+        self.irr_auto = 0
+        self.irr_sim = 0
+
+        # Reinitialize zr, but actCount for additions of DP into reserve (zrmax - zr) for rainfed
+
+        # Convert current moisture content below Zr at end of season to AW for new crop
+        # (into starting moisture content of layer 3). This is required if zr_min != zr_dormant
+        # Calc total water currently in layer 3
+
+        # AW3 is mm/m and daw3 is mm in layer 3 (in case Zr<zr_max)
+
+        self.daw3 = self.aw3 * (self.zr_max - zr_dormant)
+
+        # Layer 3 is soil depth between current rootzone (or dormant rootdepth) and max root for crop
+        # AW3 is set to 0 first time through for crop.
+
+        # Potential water in root zone below zr_dormant
+
+        taw3 = self.aw * (self.zr_max - zr_dormant)
+
+        # Make sure that AW3 has been collecting DP from zr_dormant layer during winter
+
+        # if daw3 < 0.0: daw3 = 0.
+        self.daw3 = np.maximum(0, self.daw3)
+        # if taw3 < 0.0: taw3 = 0.
+        taw3 = np.maximum(0, taw3)
+
+        # Create boolean masks
+        mask_zr_max_greater_zr_min = self.zr_max > self.zr_min
+
+        # Adjust depletion for extra starting root zone at plant or GU
+        self.depl_root = np.where(
+            self.zr_min > zr_dormant,
+            self.depl_root + (taw3 - self.daw3) * (self.zr_min - zr_dormant) / (self.zr_max - zr_dormant),
+            self.depl_root)
+
+        # Enlarge depth of water for the case where zr_max > zr_min
+        self.daw3 = np.where(
+            self.zr_max > self.zr_min,
+            self.daw3 + (zr_dormant - self.zr_min) / zr_dormant * (self.aw * zr_dormant - self.depl_root),
+            self.daw3)
+
+        # Adjust depl_root in proportion to zr_min / zr_dormant
+        self.depl_root = np.where(
+            self.zr_max > self.zr_min,
+            self.depl_root * self.zr_min / zr_dormant,
+            self.depl_root)
+
+        # denom is layer 3 depth at start of season
+        self.aw3 = np.where(
+            self.zr_max > self.zr_min,
+            self.daw3 / (self.zr_max - self.zr_min),
+            self.aw3)
+
+        # Ensure self.aw3 is within bounds
+        self.aw3 = np.maximum(0.0, self.aw3)
+        self.aw3 = np.where(self.aw3 > self.aw, self.aw, self.aw3)
+        self.aw3 = np.minimum(self.aw, self.aw3)
+
+        # Ensure depl_root is non-negative
+        self.depl_root = np.maximum(0.0, self.depl_root)
+
+        # Initialize rooting depth at beginning of time
+        self.zr = self.zr_min
+        self.crop_setup_flag = False
+
     def setup_dormant(self):
         """Start of dormant season
             a) Set up for soil water reservoir during non-growing season
@@ -333,7 +427,7 @@ class PlotTracker:
         # Calc total water currently in layer 3 (the dynamic layer below zr)
         # AW is mm/m and daw3 is mm in layer 3 (in case zr < zr_max)
 
-        daw3 = self.aw3 * (self.zr_max - self.zr)
+        self.daw3 = self.aw3 * (self.zr_max - self.zr)
 
         # Add TAW - depl_root that is in root zone below zr_dormant.
         # Assume fully mixed root zone including zr_dormant part
@@ -371,7 +465,7 @@ class PlotTracker:
         daw_below = np.where(daw_root > totwatinzr_dormant, daw_root - totwatinzr_dormant, 0)
 
         # Actual water in mm/m below zr_dormant
-        self.aw3 = np.where(zr_dormant < self.zr, (daw_below + daw3) / (self.zr_max - zr_dormant), self.aw3)
+        self.aw3 = np.where(zr_dormant < self.zr, (daw_below + self.daw3) / (self.zr_max - zr_dormant), self.aw3)
 
         # initialize depl_root for dormant season
         # Depletion below evaporation layer:

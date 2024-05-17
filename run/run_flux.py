@@ -18,11 +18,11 @@ def run_flux_sites(ini_path, flux_obs, debug_flag=False, project='tongue'):
     fields = SamplePlots()
     fields.initialize_plot_data(config)
 
-    df = obs_field_cycle.field_day_loop(config, fields, debug_flag=debug_flag)
+    df_dct = obs_field_cycle.field_day_loop(config, fields, debug_flag=debug_flag)
 
     # debug_flag=False just returns the ndarray for writing
     if not debug_flag:
-        eta_result, swe_result = df
+        eta_result, swe_result = df_dct
         for i, fid in enumerate(fields.input['order']):
             pred_eta, pred_swe = eta_result[:, i], swe_result[:, i]
             np.savetxt(os.path.join(d, 'pest', 'pred', 'pred_eta_{}.np'.format(fid)), pred_eta)
@@ -39,24 +39,27 @@ def run_flux_sites(ini_path, flux_obs, debug_flag=False, project='tongue'):
 
         for i, fid in enumerate(targets):
 
-            pred_et = df[fid]['et_act'].values
+            df = df_dct[fid].copy()
+            pred_et = df['et_act'].values
 
             obs_et = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/obs/obs_eta_{}.np'.format(project, fid)
             obs_et = np.loadtxt(obs_et)
-            cols = ['et_obs'] + list(df[fid].columns)
-            df[fid]['et_obs'] = obs_et
-            df[fid] = df[fid][cols]
-            sdf = df[fid].loc['2017-01-01': '2017-12-31']
+            cols = ['et_obs'] + list(df.columns)
+            df['et_obs'] = obs_et
+            df = df[cols]
+            sdf = df.loc['2018-01-01': '2018-12-31']
 
-            comp = pd.DataFrame(data=np.vstack([obs_et, pred_et]).T, columns=['obs', 'pred'], index=df[fid].index)
+            comp = pd.DataFrame(data=np.vstack([obs_et, pred_et]).T, columns=['obs', 'pred'], index=df.index)
             comp['eq'] = comp['obs'] == comp['pred']
-            comp['capture'] = df[fid]['capture']
+            comp['capture'] = df['capture']
 
-            obs_file = flux_obs.format(fid)
             obs = pd.read_csv(flux_obs, index_col=0, parse_dates=True)
             cols = ['et_flux'] + ['et_ssebop'] + list(df.columns)
             df['et_flux'] = obs['ET']
-            df['et_ssebop'] = [field.input[k]['etf_inv_irr'] * field.input[k]['etr_mm'] for k in field.input.keys()]
+
+            etf = [v['etf_inv_irr'][i] for k, v in fields.input['time_series'].items()]
+            etr = [v['etr_mm'][i] for k, v in fields.input['time_series'].items()]
+            df['et_ssebop'] = np.array(etf) * np.array(etr)
             df = df[cols]
 
             comp = df.loc[df[df['capture'] == 1.0].index].copy()
@@ -106,10 +109,12 @@ def run_flux_sites(ini_path, flux_obs, debug_flag=False, project='tongue'):
 
 if __name__ == '__main__':
     project = 'flux'
+    site = 'US-Rws'
+
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
     conf = os.path.join(d, '{}_swim.toml'.format(project))
 
     flux_obs_ = os.path.join('/media/research/IrrigationGIS/climate/flux_ET_dataset/'
-                             'daily_data_files/{}_daily_data.csv')
+                             'daily_data_files/{}_daily_data.csv'.format(site))
 
-    run_flux_sites(conf, flux_obs=flux_obs_, debug_flag=False)
+    run_flux_sites(conf, flux_obs=flux_obs_, project=project, debug_flag=True)

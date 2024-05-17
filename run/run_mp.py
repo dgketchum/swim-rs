@@ -28,8 +28,12 @@ def optimize_fields(ini_path, worker_dir):
         np.savetxt(os.path.join(worker_dir, 'pred', 'pred_eta_{}.np'.format(fid)), pred_eta)
         np.savetxt(os.path.join(worker_dir, 'pred', 'pred_swe_{}.np'.format(fid)), pred_swe)
         end_time = time.time()
-    print('\n\nExecution time: {:.2f} seconds, mean pred ET: {:.3f}\n\n'.format(end_time - start_time,
-                                                                                np.nanmean(pred_eta)))
+        obs_eta = np.loadtxt(
+            os.path.join('/home/dgketchum/PycharmProjects/swim-rs/examples/flux/obs/obs_eta_US-MC1.np'), dtype=float)
+        rmse = np.sqrt(np.mean((pred_eta - obs_eta) ** 2))
+    print('\n\nExecution time: {:.2f} seconds, mean pred ET: {:.3f}, RMSE: {:.3f}\n\n'.format(end_time - start_time,
+                                                                                              np.nanmean(pred_eta),
+                                                                                              rmse))
 
 
 def main():
