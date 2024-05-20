@@ -32,11 +32,14 @@ FOO_FMT = ['et_act',
            ]
 
 TRACKER_PARAMS = ['taw',
+                  'taw3',
                   'albedo',
                   'min_albedo',
                   'melt',
                   'rain',
                   'snow_fall',
+                  'daw3',
+                  'daw3_prev',
                   'aw3',
                   'cn2',
                   'cgdd',
@@ -50,6 +53,9 @@ TRACKER_PARAMS = ['taw',
                   'dperc_ze',
                   'density',
                   'depl_root',
+                  'depl_root_prev',
+                  'soil_water',
+                  'soil_water_prev',
                   'etc_act',
                   'etc_pot',
                   'etc_bas',
@@ -115,6 +121,7 @@ class PlotTracker:
 
         self.aw = 0.
         self.taw = 0.
+        self.taw3 = 0.
         self.aw3 = 0.
         self.cn2 = 0.
         self.cgdd = 0.
@@ -124,11 +131,16 @@ class PlotTracker:
         self.ad = 0.
         self.cum_evap_prev = 0.
         self.depl_ze = 0.
+        self.daw3 = 0.0
+        self.daw3_prev = 0.
+        self.depl_root = 0.
+        self.depl_root_prev = 0.
+        self.soil_water = 0.
+        self.soil_water_prev = 0.
         self.dperc = 0.
         self.dperc_ze = 0.
         self.density = 0.
         self.depl_surface = 0.
-        self.depl_root = 0.
         self.etc_act = 0.
         self.etc_pot = 0.
         self.etc_bas = 0.
@@ -287,15 +299,8 @@ class PlotTracker:
         condition = self.rew > 0.8 * self.tew
         self.rew = np.where(condition, 0.8 * self.tew, self.rew)  # limit REW based on TEW
 
-        # Reinitialize zr, but actCount for additions of DP into reserve (zrmax - zr) for rainfed
-
-        # Convert current moisture content below Zr at end of season to AW for new crop
-        # (into starting moisture content of layer 3).  This is required if zr_min != zr_dormant
-        # Calc total water currently in layer 3
-
-        # AW3 is mm/m and daw3 is mm in layer 3 (in case Zr<zr_max)
-
-        zr_dormant = 0.1
+        self.daw3 = np.zeros_like(self.aw)
+        self.depl_root = self.aw * self.zr
 
     def setup_crop(self):
         """Initialize some variables for beginning of crop seasons

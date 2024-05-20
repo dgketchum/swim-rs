@@ -51,31 +51,32 @@ def grow_root(foo, foo_day, debug_flag=False):
     elif fractime > 1.0:
         foo.zr *= 0.9
 
+    # as root zone grows or retracts, transfer the water in that column from root zone (depl_root) to/from
+    # sub-root zone (daw3)
+
     delta_zr = foo.zr - zr_prev
 
-    prev_taw = foo.taw.copy()
+    foo.taw3 = foo.aw * (foo.zr_max - foo.zr)
 
-    foo.taw = foo.aw * foo.zr
-    foo.taw = np.maximum(foo.taw, 0.001)
+    prev_rt_water = ((foo.aw * zr_prev) - foo.depl_root.copy())
 
-    delta_taw = foo.taw - prev_taw
+    foo.depl_root = np.where(delta_zr >= 0.0,
+                             foo.depl_root + (delta_zr * foo.aw) - (foo.daw3 * delta_zr / (foo.zr_max - foo.zr)),
+                             foo.depl_root * (1 - (-1.0 * delta_zr / zr_prev)))
 
-    # update depl_root for new moisture coming in bottom of root zone
-    # depl_root (depletion) will increase if new portion of root zone is < FC
+    rt_water = (foo.aw * foo.zr) - foo.depl_root.copy()
 
-    prev_depl_root = foo.depl_root.copy()
+    prev_daw3 = foo.daw3.copy()
 
-    foo.depl_root = np.where(delta_zr > 0,
-                             foo.depl_root + delta_zr / (foo.zr_max - foo.zr) * foo.daw3,
-                             foo.depl_root)
+    foo.daw3 = np.where(delta_zr >= 0.0,
+                        foo.daw3 - (foo.daw3 * delta_zr / (foo.zr_max - foo.zr)),
+                        foo.daw3 + prev_rt_water - rt_water)
 
-    foo.depl_root = np.where(delta_zr < 0,
-                             foo.depl_root - delta_zr / (foo.zr_max - foo.zr) * foo.daw3,
-                             foo.depl_root)
+    if foo.daw3 - foo.taw3 > 0.0001:
+        raise NotImplementedError
 
-    foo.depl_root = np.where(delta_taw < 0, foo.taw, foo.depl_root)
-
-    foo.daw3 = np.where(delta_taw < 0,
-                        foo.daw3 + delta_zr / foo.zr * (foo.taw - foo.depl_root),
-                        foo.daw3 - delta_zr / foo.zr * (foo.taw - foo.depl_root))
-
+    delta_daw3 = foo.daw3 - prev_daw3
+    delta_rt_water = rt_water - prev_rt_water
+    distribution = delta_rt_water + delta_daw3
+    if distribution.sum().item() > 0.0001:
+        raise NotImplementedError

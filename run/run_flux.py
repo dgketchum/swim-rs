@@ -47,7 +47,8 @@ def run_flux_sites(ini_path, flux_obs, debug_flag=False, project='tongue'):
             cols = ['et_obs'] + list(df.columns)
             df['et_obs'] = obs_et
             df = df[cols]
-            sdf = df.loc['2018-01-01': '2018-12-31']
+            df.index = [pd.to_datetime(i) for i in df.index]
+            sdf = df.loc['2012-01-01': '2012-12-31']
 
             comp = pd.DataFrame(data=np.vstack([obs_et, pred_et]).T, columns=['obs', 'pred'], index=df.index)
             comp['eq'] = comp['obs'] == comp['pred']

@@ -15,8 +15,6 @@ from model.etd import obs_kcb_daily
 from model.etd.initialize_tracker import PlotTracker
 
 OUTPUT_FMT = ['et_act',
-              't',
-              'e',
               'etref',
               'kc_act',
               'kc_bas',
@@ -31,8 +29,8 @@ OUTPUT_FMT = ['et_act',
               'taw',
               'taw3',
               'daw3',
-              'wbal',
               'delta_daw3',
+              'wbal',
               'ppt',
               'snow_fall',
               'swe',
@@ -40,6 +38,8 @@ OUTPUT_FMT = ['et_act',
               'tmax',
               'irrigation',
               'fc',
+              't',
+              'e',
               'few',
               'zr',
               'p_rz',
@@ -98,27 +98,13 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
             if debug_flag:
                 print('{}: {}'.format(k, ['{:.2f}'.format(p) for p in v.flatten()]))
 
-            if k == 'aw':
-                tracker.__setattr__('aw3', tracker.aw)
-                tracker.__setattr__('daw3', tracker.aw)
-                tracker.__setattr__('depl_root', tracker.aw / 2)
-                print('AW: {:.3f}'.format(tracker.aw.mean()))
-
-            if k == 'rew':
-                tracker.__setattr__('depl_surface', tracker.tew / 2)
-                tracker.__setattr__('depl_zep', tracker.rew / 2)
 
     else:
         for k, v in DEFAULTS.items():
             arr = np.ones((1, size)) * v
             tracker.__setattr__(k, arr)
 
-        tracker.__setattr__('aw3', tracker.aw)
-        tracker.__setattr__('daw3', tracker.aw)
-        tracker.__setattr__('depl_root', tracker.aw / 2)
-        tracker.__setattr__('depl_surface', tracker.tew / 2)
-        tracker.__setattr__('depl_zep', tracker.rew / 2)
-
+    print('AW: {:.3f}'.format(tracker.aw.mean()))
     targets = plots.input['order']
 
     # Initialize crop data frame
@@ -133,8 +119,6 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     foo_day = DayData()
     foo_day.sdays = 0
     foo_day.doy_prev = 0
-    deplt_root_prev = 0.0
-    depl_ze_prev = 0.0
 
     hr_ppt_keys = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
 
@@ -199,7 +183,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
         foo_day.precip = foo_day.precip.reshape(1, -1)
 
-        if step_dt == '2018-10-31':
+        if step_dt == '2005-11-12':
             a = 1
 
         # Calculate height of vegetation.
@@ -245,20 +229,32 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
                 tracker.crop_df[fid][step_dt]['runoff'] = runoff
                 dperc = tracker.dperc[sample_idx]
                 tracker.crop_df[fid][step_dt]['dperc'] = dperc
+
                 depl_root = tracker.depl_root[sample_idx]
                 tracker.crop_df[fid][step_dt]['depl_root'] = depl_root
-                depl_ze = tracker.depl_ze[sample_idx]
-                tracker.crop_df[fid][step_dt]['depl_ze'] = depl_ze
-                delta_daw3 = tracker.delta_daw3[sample_idx]
+                depl_root_prev = tracker.depl_root_prev[sample_idx]
+                tracker.crop_df[fid][step_dt]['depl_root_prev'] = depl_root_prev
+
+                daw3 = tracker.daw3[sample_idx]
+                tracker.crop_df[fid][step_dt]['daw3'] = daw3
+                daw3_prev = tracker.daw3_prev[sample_idx]
+                tracker.crop_df[fid][step_dt]['daw3_prev'] = daw3_prev
+                delta_daw3 = daw3 - daw3_prev
                 tracker.crop_df[fid][step_dt]['delta_daw3'] = delta_daw3
 
+                soil_water = tracker.soil_water[sample_idx]
+                tracker.crop_df[fid][step_dt]['soil_water'] = soil_water
+                soil_water_prev = tracker.soil_water_prev[sample_idx]
+                tracker.crop_df[fid][step_dt]['soil_water_prev'] = soil_water_prev
+
+                depl_ze = tracker.depl_ze[sample_idx]
+                tracker.crop_df[fid][step_dt]['depl_ze'] = depl_ze
                 tracker.crop_df[fid][step_dt]['p_rz'] = tracker.p_rz[sample_idx]
                 tracker.crop_df[fid][step_dt]['p_eft'] = tracker.p_eft[sample_idx]
                 tracker.crop_df[fid][step_dt]['fc'] = tracker.fc[sample_idx]
                 tracker.crop_df[fid][step_dt]['few'] = tracker.few[sample_idx]
                 tracker.crop_df[fid][step_dt]['aw'] = tracker.aw[sample_idx]
                 tracker.crop_df[fid][step_dt]['aw3'] = tracker.aw3[sample_idx]
-                tracker.crop_df[fid][step_dt]['daw3'] = tracker.daw3[sample_idx]
                 tracker.crop_df[fid][step_dt]['taw'] = tracker.taw[sample_idx]
                 tracker.crop_df[fid][step_dt]['taw3'] = tracker.taw3[sample_idx]
                 tracker.crop_df[fid][step_dt]['irrigation'] = tracker.irr_sim[sample_idx]
@@ -273,18 +269,15 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
                 tracker.crop_df[fid][step_dt]['et_bas'] = tracker.etc_bas
                 tracker.crop_df[fid][step_dt]['season'] = tracker.in_season
 
-                water_out = eta_act + dperc + runoff + delta_daw3
-                delta_dep_rz = depl_root - deplt_root_prev
-                water_stored = -1.0 * delta_dep_rz
+                water_out = eta_act + dperc + runoff
+                water_stored = soil_water - soil_water_prev
                 water_in = melt + rain
                 balance = water_in - water_stored - water_out
 
                 tracker.crop_df[fid][step_dt]['wbal'] = balance
 
-                if dt.year == 2018 and balance > 0.1 and dt.day_of_year > 150:
-                    raise WaterBalanceError
-
-                deplt_root_prev = depl_root
+                if abs(balance) > 0.1:
+                    raise WaterBalanceError('Check November water balance')
 
         else:
             eta[j, :] = tracker.etc_act

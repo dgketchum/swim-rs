@@ -29,7 +29,6 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
         raise ValueError('Found nan in foo.fc')
 
     # Estimate infiltrating precipitation
-
     # Yesterday's infiltration
 
     foo.ppt_inf_prev = foo.ppt_inf
@@ -53,11 +52,10 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
 
     # setup for water balance of evaporation layer
     # Deep percolation from Ze layer (not root zone, only surface soil)
+    depl_ze_prev = foo.depl_ze.copy()
 
     foo.depl_ze = foo.depl_ze - (foo.melt + foo.rain + foo.irr_sim)
-    dperc_ze = np.where(foo.depl_ze < 0.0, -1.0 * foo.depl_ze, 0.0)
 
-    watin_ze = foo.tew - foo.depl_ze
     foo.few = 1 - foo.fc
 
     foo.kr = np.minimum((foo.tew - foo.depl_ze) / (foo.tew - foo.rew), 1.)
@@ -66,7 +64,8 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     foo.ke = np.maximum(foo.ke, 0.0)
 
     # Transpiration coefficient for moisture stress
-
+    foo.taw = foo.aw * foo.zr
+    foo.taw = np.maximum(foo.taw, 0.001)
     foo.raw = foo.mad * foo.taw
 
     # Remember to check reset of AD and RAW each new crop season.  #####
@@ -108,13 +107,9 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     foo.etc_bas = foo.kc_bas * foo_day.refet
 
     foo.e = foo.ke * foo_day.refet
-
     depl_ze_prev = foo.depl_ze
-
     foo.depl_ze = depl_ze_prev + foo.e
-
-    if np.any(foo.depl_ze < 0):
-        foo.depl_ze[foo.depl_ze < 0] = 0.0
+    foo.depl_ze = np.where(foo.depl_ze < 0, 0.0, foo.depl_ze)
 
     if np.any(foo.depl_ze > foo.tew):
         potential_e = foo.depl_ze - depl_ze_prev
@@ -124,17 +119,11 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
         foo.e *= e_factor
         foo.depl_ze = depl_ze_prev + foo.e
 
-    if np.any(kc_mult > 1):
-        logging.warning("kcmult > 1.")
-        return
-
-    if np.any(foo.ks > 1):
-        logging.warning("ks > 1.")
-        return
-
     foo.cum_evap_prev = foo.cum_evap_prev + foo.e - (foo.ppt_inf - depl_ze_prev)
     foo.cum_evap_prev = np.maximum(foo.cum_evap_prev, 0)
 
+    foo.soil_water_prev = foo.soil_water.copy()
+    foo.depl_root_prev = foo.depl_root.copy()
     foo.depl_root += foo.etc_act - foo.ppt_inf
 
     foo.irr_sim = np.zeros_like(foo.aw)
@@ -169,27 +158,19 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     foo.cum_evap_prev[foo.irr_sim > 0] = 0.0
 
     foo.dperc = np.where(foo.depl_root < 0.0, -1. * foo.depl_root, np.zeros_like(foo.depl_root))
-
     foo.depl_root += foo.dperc
-
-    # dgk removed invoke_stress
-    if np.any(foo.depl_root > foo.taw):
-        foo.etc_act = np.where(foo.depl_root > foo.taw, foo.depl_root - foo.taw, foo.etc_act)
-        foo.depl_root = np.where(foo.depl_root > foo.taw, foo.taw, foo.depl_root)
+    foo.depl_root = np.where(foo.depl_root > foo.taw, foo.taw, foo.depl_root)
 
     gross_dperc = foo.dperc + (0.1 * foo.irr_sim)
 
     # aw3 is mm/m and daw3 is mm in layer 3.
     # aw3 is layer between current root depth and max root
 
-    # foo.daw3 = foo.aw3 * (foo.zr_max - foo.zr)
+    foo.daw3_prev = foo.daw3.copy()
 
-    # foo.taw3 is potential mm in layer 3
-
-    prev_daw3 = foo.daw3
-    foo.taw3 = foo.aw * (foo.zr_max - foo.zr)
-    foo.daw3 = np.maximum(foo.daw3, 0)
-    foo.taw3 = np.maximum(foo.taw3, 0)
+    # foo.taw3 = foo.aw * (foo.zr_max - foo.zr)
+    # foo.daw3 = np.maximum(foo.daw3, 0)
+    # foo.taw3 = np.maximum(foo.taw3, 0)
 
     # Increase water in layer 3 for deep percolation from root zone
 
@@ -220,4 +201,8 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
 
     grow_root.grow_root(foo, foo_day, debug_flag)
 
-    foo.delta_daw3 = foo.daw3 - prev_daw3
+    foo.delta_daw3 = foo.daw3.item() - foo.daw3_prev
+
+    foo.soil_water = (foo.aw * foo.zr) - foo.depl_root + foo.daw3
+
+    foo.delta_soil_water = foo.soil_water - foo.soil_water_prev
