@@ -52,8 +52,6 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
 
     # setup for water balance of evaporation layer
     # Deep percolation from Ze layer (not root zone, only surface soil)
-    depl_ze_prev = foo.depl_ze.copy()
-
     foo.depl_ze = foo.depl_ze - (foo.melt + foo.rain + foo.irr_sim)
 
     foo.few = 1 - foo.fc
@@ -66,10 +64,8 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # Transpiration coefficient for moisture stress
     foo.taw = foo.aw * foo.zr
     foo.taw = np.maximum(foo.taw, 0.001)
+    foo.taw = np.maximum(foo.taw, foo.tew)
     foo.raw = foo.mad * foo.taw
-
-    # Remember to check reset of AD and RAW each new crop season.  #####
-    # AD is allowable depletion
 
     foo.ks = np.where(foo.depl_root > foo.raw,
                       np.maximum((foo.taw - foo.depl_root) / (foo.taw - foo.raw), 0), 1)
@@ -103,8 +99,6 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     foo.kc_pot = foo.kc_bas + foo.ke
 
     foo.etc_act = foo.kc_act * foo_day.refet
-    foo.etc_pot = foo.kc_pot * foo_day.refet
-    foo.etc_bas = foo.kc_bas * foo_day.refet
 
     foo.e = foo.ke * foo_day.refet
     depl_ze_prev = foo.depl_ze
@@ -199,10 +193,12 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # Get setup for next time step.
     # if foo.in_season:
 
-    grow_root.grow_root(foo, foo_day, debug_flag)
-
     foo.delta_daw3 = foo.daw3.item() - foo.daw3_prev
 
     foo.soil_water = (foo.aw * foo.zr) - foo.depl_root + foo.daw3
 
     foo.delta_soil_water = foo.soil_water - foo.soil_water_prev
+
+    grow_root.grow_root(foo, foo_day, debug_flag)
+
+

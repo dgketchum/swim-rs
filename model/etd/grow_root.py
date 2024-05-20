@@ -49,7 +49,7 @@ def grow_root(foo, foo_day, debug_flag=False):
             (foo.zr_max - foo.zr_min) + foo.zr_min)
 
     elif fractime > 1.0:
-        foo.zr *= 0.9
+        foo.zr = foo.zr_min
 
     # as root zone grows or retracts, transfer the water in that column from root zone (depl_root) to/from
     # sub-root zone (daw3)
