@@ -45,7 +45,7 @@ class ProjectConfig:
         self.winter_end_day = None
         self.winter_start_day = None
 
-    def read_config(self, conf):
+    def read_config(self, conf, calibration_folder=None):
 
         with open(conf, 'r') as f:
             config = toml.load(f)
@@ -89,7 +89,12 @@ class ProjectConfig:
         self.calibration = bool(config[calib_sec]['calibrate_flag'])
 
         if self.calibration:
-            cf = config[calib_sec]['calibration_folder']
+
+            if calibration_folder:
+                cf = calibration_folder
+            else:
+                cf = config[calib_sec]['calibration_folder']
+
             self.calibration_folder = cf
             initial_values_csv = config[calib_sec]['initial_values_csv']
             pdf = pd.read_csv(initial_values_csv, index_col=0)
