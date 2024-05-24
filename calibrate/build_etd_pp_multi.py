@@ -131,9 +131,13 @@ def build_pest(model_dir, pest_dir, **kwargs):
     # see: github.com/gmdsi/GMDSI_notebooks/blob/main/tutorials/part2_02_obs_and_weights/freyberg_obs_and_weights.ipynb
     pst = Pst(os.path.join(pest.new_d, '{}.pst'.format(os.path.basename(model_dir))))
     obs = pst.observation_data
-    obs['standard_deviation'] = 0.01
-    obs.loc[[i for i in obs.index if 'eta' in i], 'standard_deviation'] = obs['obsval'] * 0.1
-    obs.loc[[i for i in obs.index if 'swe' in i], 'standard_deviation'] = obs['obsval'] * 0.02
+
+    obs['standard_deviation'] = 0.00
+    eta_idx = [i for i in obs.index if 'eta' in i]
+    obs.loc[eta_idx, 'standard_deviation'] = obs['obsval'] * 0.1
+
+    swe_idx = [i for i, r in obs.iterrows() if 'swe' in i and r['obsval'] > 0.0]
+    obs.loc[swe_idx, 'standard_deviation'] = obs['obsval'] * 0.02
 
     # add time information
     obs['time'] = [float(i.split(':')[3].split('_')[0]) for i in obs.index]
@@ -213,11 +217,11 @@ def initial_parameter_dict(param_file):
                 'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         'swe_alpha': {'file': param_file,
-                      'initial_value': 0.07, 'lower_bound': -0.7, 'upper_bound': 1.5,
+                      'initial_value': 0.15, 'lower_bound': -0.5, 'upper_bound': 1.,
                       'pargp': 'swe_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         'swe_beta': {'file': param_file,
-                     'initial_value': 1.0, 'lower_bound': 0.5, 'upper_bound': 1.7,
+                     'initial_value': 1.5, 'lower_bound': 0.5, 'upper_bound': 2.5,
                      'pargp': 'snow_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
     })
