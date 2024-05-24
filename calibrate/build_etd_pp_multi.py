@@ -44,7 +44,11 @@ def build_pest(model_dir, pest_dir, **kwargs):
         # only weight eta on capture dates
         et_df = pd.read_csv(kwargs['inputs'][i], index_col=0, parse_dates=True)
         et_df['dummy_idx'] = [obsnme_str.format(fid, j) for j in range(et_df.shape[0])]
-        captures = [ix for ix, r in et_df.iterrows() if r['etf_irr_ct'] and ix.month in list(range(5, 11))]
+        captures = [ix for ix, r in et_df.iterrows()
+                    if r['etf_irr_ct']
+                    or r['etf_inv_irr_ct']
+                    and ix.month in list(range(5, 11))]
+
         captures = et_df['dummy_idx'].loc[captures]
 
         d = pest.obs_dfs[i].copy()
@@ -185,7 +189,7 @@ def write_control_settings(pst_file, noptmax=-2, reals=250):
 def initial_parameter_dict(param_file):
     p = OrderedDict({
         'aw': {'file': param_file,
-               'initial_value': None, 'lower_bound': 15.0, 'upper_bound': 700.0,
+               'initial_value': None, 'lower_bound': 15.0, 'upper_bound': 900.0,
                'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         'rew': {'file': param_file,
@@ -295,6 +299,6 @@ if __name__ == '__main__':
     dct_.update({'python_script': python_script})
     build_pest(d, pest_dir_, **dct_)
     build_localizer(pst_f)
-    write_control_settings(pst_f, 3, 30)
+    write_control_settings(pst_f, 6, 100)
 
 # ========================= EOF ====================================================================
