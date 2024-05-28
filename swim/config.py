@@ -15,6 +15,9 @@ class ProjectConfig:
     def __init__(self):
         super().__init__()
 
+        self.forecast_parameter_groups = None
+        self.forecast_parameters = None
+        self.forecast = None
         self.data_folder = None
 
         self.kc_proxy = None
@@ -45,13 +48,14 @@ class ProjectConfig:
         self.winter_end_day = None
         self.winter_start_day = None
 
-    def read_config(self, conf, calibration_folder=None):
+    def read_config(self, conf, calibration_folder=None, parameter_dist_csv=None):
 
         with open(conf, 'r') as f:
             config = toml.load(f)
 
         crop_et_sec = 'FIELDS'
         calib_sec = 'CALIBRATION'
+        forecast_sec = 'FORECAST'
         runspec_sec = 'RUNSPEC'
 
         self.kc_proxy = config[crop_et_sec]['kc_proxy']
@@ -104,6 +108,21 @@ class ProjectConfig:
             _files = [os.path.join(self.calibration_folder, f) for f in _files]
             self.calibration_files = {k: v for k, v in zip(self.calibrated_parameters, _files)}
             self.calibration_groups = list(set(['_'.join(p.split('_')[:-1]) for p in pdf.index]))
+
+        self.forecast = bool(config[forecast_sec]['forecast_flag'])
+
+        if self.forecast:
+
+            if parameter_dist_csv:
+                fcst = parameter_dist_csv
+            else:
+                fcst = config[forecast_sec]['forecast_parameters']
+
+            pdf = pd.read_csv(fcst, index_col=0).mean(axis=0)
+            p_str = ['_'.join(s.split(':')[1].split('_')[1:-1]) for s in list(pdf.index)]
+            pdf.index = p_str
+            self.forecast_parameters = pdf.copy()
+            self.forecast_parameter_groups = list(set(['_'.join(p.split('_')[:-1]) for p in pdf.index]))
 
         # TODO: remove these ETRM-specific config attributes
 

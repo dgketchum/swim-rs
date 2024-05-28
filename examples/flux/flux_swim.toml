@@ -17,8 +17,8 @@ kc_proxy = 'etf'
 cover_proxy = 'ndvi'
 
 ## Date Range
-start_date = '2015-01-01'
-end_date = '2020-12-31'
+start_date = '2000-01-01'
+end_date = '2023-12-31'
 
 ## Static file names; prepend with data_folder
 input_data = 'examples/flux/prepped_input/flux_input_sample.json'
@@ -28,6 +28,10 @@ refet_type = 'eto'
 
 [CALIBRATION]
 ## PEST Calibration
-calibrate_flag = 1
+calibrate_flag = 0
 calibration_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/pest/mult'
 initial_values_csv = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/params.csv'
+
+[FORECAST]
+forecast_flag = 1
+forecast_parameters = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/master/flux.5.par.csv'

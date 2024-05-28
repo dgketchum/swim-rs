@@ -1,9 +1,9 @@
 ,value,mult_name
-aw_US-Rws,100.0000014901161,p_aw_US-Rws_0_constant.csv
-rew_US-Rws,3.0,p_rew_US-Rws_0_constant.csv
-tew_US-Rws,18.0,p_tew_US-Rws_0_constant.csv
-ndvi_alpha_US-Rws,0.2,p_ndvi_alpha_US-Rws_0_constant.csv
-ndvi_beta_US-Rws,1.25,p_ndvi_beta_US-Rws_0_constant.csv
-mad_US-Rws,0.6,p_mad_US-Rws_0_constant.csv
-swe_alpha_US-Rws,0.07,p_swe_alpha_US-Rws_0_constant.csv
-swe_beta_US-Rws,1.0,p_swe_beta_US-Rws_0_constant.csv
+aw_US-Mj1,109.9999994039535,p_aw_US-Mj1_0_constant.csv
+rew_US-Mj1,3.0,p_rew_US-Mj1_0_constant.csv
+tew_US-Mj1,18.0,p_tew_US-Mj1_0_constant.csv
+ndvi_alpha_US-Mj1,0.2,p_ndvi_alpha_US-Mj1_0_constant.csv
+ndvi_beta_US-Mj1,1.25,p_ndvi_beta_US-Mj1_0_constant.csv
+mad_US-Mj1,0.6,p_mad_US-Mj1_0_constant.csv
+swe_alpha_US-Mj1,0.15,p_swe_alpha_US-Mj1_0_constant.csv
+swe_beta_US-Mj1,1.5,p_swe_beta_US-Mj1_0_constant.csv

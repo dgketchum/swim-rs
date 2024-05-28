@@ -14,9 +14,9 @@ def calculate_snow(foo, foo_day):
     a_min = 0.45
     a_max = 0.98
 
-    # The threshold values here were 0.0 and were changed to 4.0, consider calibrating this
-    sf = np.where(temp < 4.0, precip, 0)
-    rain = np.where(temp >= 4.0, precip, 0)
+    # The threshold values here were 0.0, consider calibrating this
+    sf = np.where(temp < 1.0, precip, 0)
+    rain = np.where(temp >= 1.0, precip, 0)
 
     alb = np.where(sf > 3.0, a_max, palb)
     alb = np.where(sf <= 3.0, a_min + (palb - a_min) * np.exp(-0.12), alb)

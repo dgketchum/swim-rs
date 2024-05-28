@@ -52,11 +52,11 @@ def run_flux_sites(ini_path, flux_obs, debug_flag=False, project='tongue', calib
             comp['eq'] = comp['obs'] == comp['pred']
             comp['capture'] = df['capture']
 
-            obs = pd.read_csv(flux_obs, index_col=0, parse_dates=True)
+            flux_obs = pd.read_csv(flux_obs, index_col=0, parse_dates=True)
             cols = ['et_flux'] + list(df.columns)
-            df['et_flux'] = obs['ET']
+            df['et_flux'] = flux_obs['ET_fill']
             df = df[cols]
-            sdf = df.loc['2015-01-01': '2015-12-31']
+            sdf = df.loc['2014-01-01': '2014-12-31']
 
             comp = df.loc[df[df['capture'] == 1.0].index].copy()
             et_act, et_ssebop = comp['et_act'], comp['et_obs']
@@ -85,6 +85,8 @@ def run_flux_sites(ini_path, flux_obs, debug_flag=False, project='tongue', calib
                                                                                                et_ssebop.mean(), rmse))
             comp = df[~pd.isna(df['et_flux']) == 1].copy()
             et_act, et_flux = comp['et_act'], comp['et_flux']
+            comp['res'] = comp['et_act'] - comp['et_flux']
+            comp = comp[['res'] + cols]
             rmse = np.sqrt(((et_act - et_flux) ** 2).mean())
             print('{} Flux Dates; Mean Flux: {:.2f}, Mean SWB: {:.2f}, RMSE: {:.4f}'.format(comp.shape[0],
                                                                                             et_flux.mean(),
@@ -110,8 +112,8 @@ if __name__ == '__main__':
     flux_obs_ = os.path.join('/media/research/IrrigationGIS/climate/flux_ET_dataset/'
                              'daily_data_files/{}_daily_data.csv'.format(site))
 
-    calibration_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/master/mult'
-    # calibration_folder = None
+    # calibration_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/master/mult'
+    calibration_folder = None
 
     tuned_params = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/master/flux.5.par.csv'
 

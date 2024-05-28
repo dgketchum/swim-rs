@@ -5,6 +5,7 @@ Defines crop_cycle_mp, crop_cycle, crop_day_loop_mp, crop_day_loop,
 Called by mod_crop_et.py
 
 """
+import os.path
 
 import numpy as np
 import pandas as pd
@@ -76,7 +77,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
     # apply calibration parameter updates here
     if config.calibration:
-        # PEST++ hacking
+        # load PEST++ parameter proposition
         cal_arr = {k: np.zeros((1, size)) for k in config.calibration_groups}
 
         for k, f in config.calibration_files.items():
@@ -99,13 +100,36 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
             if debug_flag:
                 print('{}: {}'.format(k, ['{:.2f}'.format(p) for p in v.flatten()]))
 
+    elif config.forecast:
+
+        param_arr = {k: np.zeros((1, size)) for k in config.forecast_parameter_groups}
+
+        for k, v in config.forecast_parameters.items():
+
+            group, fid = '_'.join(k.split('_')[:-1]), k.split('_')[-1]
+            # PEST++ has lower-cased the FIDs
+            l = [x.lower() for x in plots.input['order']]
+            idx = l.index(fid)
+
+            if params:
+                value = params[k]
+            else:
+                value = v
+
+            param_arr[group][0, idx] = value
+
+        for k, v in param_arr.items():
+
+            tracker.__setattr__(k, v)
+
+            if debug_flag:
+                print('{}: {}'.format(k, ['{:.2f}'.format(p) for p in v.flatten()]))
 
     else:
         for k, v in DEFAULTS.items():
             arr = np.ones((1, size)) * v
             tracker.__setattr__(k, arr)
 
-    print('AW: {:.3f}'.format(tracker.aw.mean()))
     targets = plots.input['order']
 
     # Initialize crop data frame
