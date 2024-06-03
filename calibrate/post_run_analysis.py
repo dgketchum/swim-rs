@@ -14,7 +14,7 @@ from prep.prep_plots import FLUX_SELECT
 
 
 def plot_tseries_ensembles(pst_dir, glob='tongue', targets=1779, sample_n=30, idx_start=None, idx_end=None,
-                           flux_file=None, start_date='2000-01-01'):
+                           flux_file=None, start_date='2000-01-01', moving_average_window=None, nopt=None):
     pst = Pst(os.path.join(pst_dir, '{}.pst'.format(glob)))
 
     for target in targets:
@@ -30,9 +30,10 @@ def plot_tseries_ensembles(pst_dir, glob='tongue', targets=1779, sample_n=30, id
         pr_oe = ObservationEnsemble.from_csv(pst=pst, filename=os.path.join(pst_dir, '{}.0.obs.csv'.format(glob)))
         pr_oe = reduce_obs_ens(pr_oe)
 
-        noptmax = pst.control_data.noptmax - 1
+        if not nopt:
+            nopt = pst.control_data.noptmax - 1
         pt_oe = ObservationEnsemble.from_csv(pst=pst, filename=os.path.join(pst_dir,
-                                                                            '{}.{}.obs.csv'.format(glob, noptmax)))
+                                                                            '{}.{}.obs.csv'.format(glob, nopt)))
         pt_oe = reduce_obs_ens(pt_oe)
 
         noise = ObservationEnsemble.from_csv(pst=pst, filename=os.path.join(pst_dir, '{}.obs+noise.csv'.format(glob)))
@@ -69,15 +70,23 @@ def plot_tseries_ensembles(pst_dir, glob='tongue', targets=1779, sample_n=30, id
 
             # plot prior
             for i in samples:
-                p.line(tvals, pr_oe.loc[pr_oe.oname == og, i].values, line_width=0.5, alpha=0.3, color=colors[0],
-                       legend_label='Prior')
+                yvals = pr_oe.loc[pr_oe.oname == og, i].values
+                if moving_average_window:
+                    yvals = pd.Series(yvals).rolling(window=moving_average_window, min_periods=1).mean().values
+                p.line(tvals, yvals, line_width=0.5, alpha=0.3, color=colors[0], legend_label='Prior')
 
             # plot posterior
             for i in samples:
-                p.line(tvals, pt_oe.loc[pr_oe.oname == og, i].values, line_width=0.5, alpha=0.5,
-                       color=colors[1], legend_label='Posterior')
+                yvals = pt_oe.loc[pt_oe.oname == og, i].values
+                if moving_average_window:
+                    yvals = pd.Series(yvals).rolling(window=moving_average_window, min_periods=1).mean().values
+                p.line(tvals, yvals, line_width=0.5, alpha=0.7, color=colors[1], legend_label='Posterior')
 
-            p.line(tvals, oobs.obsval, line_width=2, color='red', legend_label='Observed')
+            if moving_average_window:
+                yvals = pd.Series(yvals).rolling(window=moving_average_window, min_periods=1).mean().values
+            else:
+                yvals = oobs.obsval
+            p.line(tvals, yvals, line_width=2, color='red', legend_label='Observed')
 
             p.legend.location = "top_left"
             p.xaxis.formatter = DatetimeTickFormatter(days=["%Y-%m-%d"], months=["%Y-%m-%d"], years=["%Y-%m-%d"])
@@ -89,6 +98,8 @@ def plot_tseries_ensembles(pst_dir, glob='tongue', targets=1779, sample_n=30, id
                 flux_df = pd.read_csv(flux_file.format(target), index_col=0, parse_dates=True)
                 flux_df = flux_df.reindex(dt_index)
                 p.scatter(tvals, flux_df['ET'], size=6, color='black', legend_label='Flux Obs')
+                if moving_average_window:
+                    flux_df['ET_fill'] = flux_df['ET_fill'].rolling(window=moving_average_window, min_periods=1).mean()
                 p.line(tvals, flux_df['ET_fill'], line_width=2, color='green', legend_label='Flux Fill')
 
             # if og == 'eta':
@@ -119,13 +130,13 @@ def plot_prediction_scatter(pst_dir, glob='tongue', target=1779, sample_n=30):
         return obj
 
     pr_oe = pd.read_csv(os.path.join(pst_dir, '{}.0.base.rei'.format(glob)),
-                        header=0, skiprows=3, delim_whitespace=True, index_col=0)
+                        header=0, skiprows=3, sep='\s+', index_col=0)
     pr_oe = reduce_obs_ens(pr_oe)
     print('Modelled with prior: {:.3f}'.format(pr_oe['Modelled'].values.mean()))
 
     noptmax = pst.control_data.noptmax - 1
     pt_oe = pd.read_csv(os.path.join(pst_dir, '{}.{}.base.rei'.format(glob, noptmax)),
-                        header=0, skiprows=3, delim_whitespace=True, index_col=0)
+                        header=0, skiprows=3, sep='\s+', index_col=0)
     pt_oe = reduce_obs_ens(pt_oe)
     print('Modelled with posterior: {:.3f}'.format(pt_oe['Modelled'].values.mean()))
 
@@ -221,11 +232,12 @@ if __name__ == '__main__':
     flux_obs_ = os.path.join('/media/research/IrrigationGIS/climate/flux_ET_dataset/'
                              'daily_data_files/{}_daily_data.csv')
 
-    pest_dir_ = '/media/research/IrrigationGIS/swim/examples/flux/calibrated_models/two_model_30MAY2024'
+    pest_dir_ = '/media/research/IrrigationGIS/swim/examples/flux/calibrated_models/two_model_03JUN2024'
     pst_f = os.path.join(pest_dir_, '{}.pst'.format(project))
 
     # show_phi_evolution(pest_dir_, glob=project)
 
-    plot_tseries_ensembles(pest_dir_, glob=project, targets=FLUX_SELECT[:2], sample_n=5, flux_file=flux_obs_)
+    plot_tseries_ensembles(pest_dir_, glob=project, targets=FLUX_SELECT[:2], sample_n=5, flux_file=flux_obs_,
+                           moving_average_window=15, nopt=3)
     # plot_prediction_scatter(pest_dir_, glob=project, target='US-MJ1', sample_n=30)
 # ========================= EOF ====================================================================
