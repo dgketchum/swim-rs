@@ -8,10 +8,11 @@ from model.etd import obs_field_cycle
 from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
+from prep.prep_plots import FLUX_SELECT
 
-def run_flux_sites(ini_path, flux_obs, debug_flag=False, project='tongue', calibration_dir=None,
+
+def run_flux_sites(ini_path, flux_file, debug_flag=False, project='tongue', calibration_dir=None,
                    parameter_distribution=None):
-
     start_time = time.time()
 
     config = ProjectConfig()
@@ -36,11 +37,14 @@ def run_flux_sites(ini_path, flux_obs, debug_flag=False, project='tongue', calib
         targets = fields.input['order']
 
         print('Warning: model runner is set to debug=True, it will not write results accessible to PEST++')
+        end_time = time.time()
+        print('\nExecution time: {:.2f} seconds\n'.format(end_time - start_time))
 
         for i, fid in enumerate(targets):
             df = df_dct[fid].copy()
             pred_et = df['et_act'].values
 
+            print(fid)
             obs_et = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/obs/obs_eta_{}.np'.format(project, fid)
             obs_et = np.loadtxt(obs_et)
             cols = ['et_obs'] + list(df.columns)
@@ -52,7 +56,7 @@ def run_flux_sites(ini_path, flux_obs, debug_flag=False, project='tongue', calib
             comp['eq'] = comp['obs'] == comp['pred']
             comp['capture'] = df['capture']
 
-            flux_obs = pd.read_csv(flux_obs, index_col=0, parse_dates=True)
+            flux_obs = pd.read_csv(flux_file.format(fid), index_col=0, parse_dates=True)
             cols = ['et_flux'] + list(df.columns)
             df['et_flux'] = flux_obs['ET_fill']
             df = df[cols]
@@ -61,9 +65,7 @@ def run_flux_sites(ini_path, flux_obs, debug_flag=False, project='tongue', calib
             comp = df.loc[df[df['capture'] == 1.0].index].copy()
             et_act, et_ssebop = comp['et_act'], comp['et_obs']
             rmse = np.sqrt(((et_act - et_ssebop) ** 2).mean())
-            end_time = time.time()
 
-            print('\nExecution time: {:.2f} seconds\n'.format(end_time - start_time))
             print('{} Capture Dates; Mean SSEBop: {:.2f}, SWB Pred: {:.2f}, RMSE: {:.4f}'.format(comp.shape[0],
                                                                                                  et_ssebop.mean(),
                                                                                                  et_act.mean(), rmse))
@@ -99,23 +101,26 @@ def run_flux_sites(ini_path, flux_obs, debug_flag=False, project='tongue', calib
                                                                                                         totals['ppt'],
                                                                                                         water_out,
                                                                                                         storage))
-            return None
+        return None
 
 
 if __name__ == '__main__':
-    project = 'flux'
-    site = 'US-Mj1'
 
+    root = '/media/research/IrrigationGIS'
+    if not os.path.exists(root):
+        root = '/home/dgketchum/data/IrrigationGIS'
+
+    project = 'flux'
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
     conf = os.path.join(d, '{}_swim.toml'.format(project))
 
-    flux_obs_ = os.path.join('/media/research/IrrigationGIS/climate/flux_ET_dataset/'
-                             'daily_data_files/{}_daily_data.csv'.format(site))
+    flux_obs_ = os.path.join(root, 'climate/flux_ET_dataset/daily_data_files/{}_daily_data.csv')
 
     # calibration_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/master/mult'
     calibration_folder = None
 
-    tuned_params = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/master/flux.5.par.csv'
+    tuned = '/media/research/IrrigationGIS/swim/examples/flux/calibrated_models/two_model_03JUN2024/flux.3.par.csv'
+    # tuned_params = None
 
-    run_flux_sites(conf, flux_obs=flux_obs_, project=project, debug_flag=True,
-                   calibration_dir=calibration_folder, parameter_distribution=tuned_params)
+    run_flux_sites(conf, flux_file=flux_obs_, project=project, debug_flag=True,
+                   calibration_dir=calibration_folder, parameter_distribution=tuned)

@@ -193,7 +193,7 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # Get setup for next time step.
     # if foo.in_season:
 
-    foo.delta_daw3 = foo.daw3.item() - foo.daw3_prev
+    foo.delta_daw3 = foo.daw3 - foo.daw3_prev
 
     foo.soil_water = (foo.aw * foo.zr) - foo.depl_root + foo.daw3
 

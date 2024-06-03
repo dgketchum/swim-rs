@@ -72,11 +72,11 @@ def grow_root(foo, foo_day, debug_flag=False):
                         foo.daw3 - (foo.daw3 * delta_zr / (foo.zr_max - foo.zr)),
                         foo.daw3 + prev_rt_water - rt_water)
 
-    if foo.daw3 - foo.taw3 > 0.0001:
+    if np.any(foo.daw3 - foo.taw3 > 0.0001):
         raise NotImplementedError
 
     delta_daw3 = foo.daw3 - prev_daw3
     delta_rt_water = rt_water - prev_rt_water
     distribution = delta_rt_water + delta_daw3
-    if distribution.sum().item() > 0.0001:
+    if np.any(distribution > 0.0001):
         raise NotImplementedError

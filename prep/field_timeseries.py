@@ -8,6 +8,7 @@ import geopandas as gpd
 from data_extraction.gridmet.gridmet import find_gridmet_points, download_gridmet
 from data_extraction.snodas.snodas import snodas_zonal_stats
 
+from prep.prep_plots import FLUX_SELECT
 
 def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, overwrite=False,
                           start_date=None, end_date=None, **kwargs):
@@ -71,10 +72,19 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
         if end_date:
             gridmet = gridmet.loc[:end_date]
 
-        gridmet.to_csv(_file)
-        print(_file)
+        accept = True
 
-        out_plots.append(f)
+        for i, r in gridmet.iterrows():
+            if np.isnan(r['ndvi_irr']) and np.isnan(r['ndvi_inv_irr']):
+                accept = False
+            if np.isnan(r['etf_irr']) and np.isnan(r['etf_inv_irr']):
+                accept = False
+
+        if accept:
+            gridmet.to_csv(_file)
+            print(_file)
+
+            out_plots.append(f)
 
     print(out_plots)
 
@@ -90,7 +100,7 @@ if __name__ == '__main__':
 
     gridmet = os.path.join(d, 'gridmet')
     rasters_ = os.path.join(gridmet, 'gridmet_corrected', 'correction_surfaces_aea')
-    grimet_cent = os.path.join(gridmet, 'gridmet_centroids_tongue.shp')
+    grimet_cent = os.path.join(gridmet, 'gridmet_centroids.shp')
 
     fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
     fields_gridmet = os.path.join(project_ws, 'gis', '{}_fields_gfid.shp'.format(project))
@@ -99,17 +109,18 @@ if __name__ == '__main__':
 
     flux_west = os.path.join(project_ws, 'gis', 'flux_fields_west.csv')
     fdf = pd.read_csv(flux_west)
-    targets = list(fdf['field_1'])
+    targets = FLUX_SELECT[:2]
 
     # TODO: write gridmet data to a common directory, instead of project ws
+    # TODO: US-ADR is pulling data from the wrong lat/lon
 
-    # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=targets)
+    find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=targets)
 
     # targets = [1779, 1787, 1793, 1794, 1797, 1801, 1804]
     # targets = list(range(1770, 1805))
 
-    # download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2020-12-31',
-    #                  target_fields=targets, overwite=False)
+    download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2023-12-31',
+                     target_fields=targets, overwite=True)
 
     fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields_west_wgs.shp'.format(project))
     snow_ts = os.path.join(project_ws, 'snow_timeseries', 'snodas_{}.json'.format(project))
@@ -131,6 +142,7 @@ if __name__ == '__main__':
     params += ['{}_ct'.format(p) for p in params]
 
     join_daily_timeseries(fields_gridmet, met, landsat, snow_ts, dst_dir_, overwrite=True,
-                          start_date='2000-01-01', end_date='2020-12-31', **{'params': params})
+                          start_date='2000-01-01', end_date='2023-12-31', **{'params': params,
+                                                                             'target_fields': targets})
 
 # ========================= EOF ====================================================================
