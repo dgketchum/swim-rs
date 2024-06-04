@@ -70,7 +70,7 @@ class WaterBalanceError(Exception):
 
 
 def field_day_loop(config, plots, debug_flag=False, params=None):
-    eta, swe = None, None
+    etf, swe = None, None
     size = len(plots.input['order'])
     tracker = PlotTracker(size)
     tracker.load_soils(plots)
@@ -137,7 +137,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         tracker.setup_dataframe(targets)
     else:
         empty = np.zeros((len(plots.input['time_series']), len(targets))) * np.nan
-        eta, swe = empty.copy(), empty.copy()
+        etf, swe = empty.copy(), empty.copy()
 
     tracker.set_kc_max()
 
@@ -308,7 +308,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
                     # raise WaterBalanceError('Check November water balance')
 
         else:
-            eta[j, :] = tracker.etc_act
+            etf[j, :] = tracker.kc_act
             swe[j, :] = tracker.swe
 
     if debug_flag:
@@ -320,7 +320,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
     else:
         # if not debug, just return the actual ET and SWE results as ndarray
-        return eta, swe
+        return etf, swe
 
 
 if __name__ == '__main__':

@@ -22,10 +22,10 @@ def optimize_fields(ini_path, worker_dir, calibration_folder=None):
     df = obs_field_cycle.field_day_loop(config, fields, debug_flag=False)
 
     # debug_flag=False just returns the ndarray for writing
-    eta_result, swe_result = df
+    etf_result, swe_result = df
     for i, fid in enumerate(fields.input['order']):
-        pred_eta, pred_swe = eta_result[:, i], swe_result[:, i]
-        np.savetxt(os.path.join(worker_dir, 'pred', 'pred_eta_{}.np'.format(fid)), pred_eta)
+        pred_eta, pred_swe = etf_result[:, i], swe_result[:, i]
+        np.savetxt(os.path.join(worker_dir, 'pred', 'pred_etf_{}.np'.format(fid)), pred_eta)
         np.savetxt(os.path.join(worker_dir, 'pred', 'pred_swe_{}.np'.format(fid)), pred_swe)
         end_time = time.time()
     print('Execution time: {:.2f} seconds\n\n'.format(end_time - start_time))

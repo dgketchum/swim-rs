@@ -109,10 +109,10 @@ def preproc(field_ids, src, _dir):
         data = pd.read_csv(obs_file, index_col=0, parse_dates=True)
         data.index = list(range(data.shape[0]))
 
-        data['eta'] = data['etr_mm'] * data['etf_inv_irr']
-        et = data[['eta']]
-        print('preproc ET mean: {:.2f}'.format(np.nanmean(et.values)))
-        _file = os.path.join(project_dir, 'obs', 'obs_eta_{}.np'.format(fid))
+        data['etf'] = data['etf_inv_irr']
+        et = data[['etf']]
+        print('preproc ETof mean: {:.2f}'.format(np.nanmean(et.values)))
+        _file = os.path.join(project_dir, 'obs', 'obs_etf_{}.np'.format(fid))
         np.savetxt(_file, et.values)
         print('Wrote obs to {}'.format(_file))
         _file = os.path.join(project_dir, 'obs', 'obs_swe_{}.np'.format(fid))

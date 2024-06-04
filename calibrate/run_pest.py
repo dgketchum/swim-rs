@@ -32,7 +32,7 @@ if __name__ == '__main__':
     w_dir = os.path.join(d, 'workers')
     exe_ = 'pestpp-ies'
     _pst = '{}.pst'.format(project_)
-    _workers = 25
+    _workers = 6
 
     run_pst(p_dir, exe_, _pst, num_workers=_workers, worker_root=w_dir,
             master_dir=m_dir, verbose=False)

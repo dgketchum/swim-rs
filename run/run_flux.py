@@ -24,10 +24,10 @@ def run_flux_sites(ini_path, flux_file, debug_flag=False, project='tongue', cali
     df_dct = obs_field_cycle.field_day_loop(config, fields, debug_flag=debug_flag)
 
     if not debug_flag:
-        eta_result, swe_result = df_dct
+        etf_result, swe_result = df_dct
         for i, fid in enumerate(fields.input['order']):
-            pred_eta, pred_swe = eta_result[:, i], swe_result[:, i]
-            np.savetxt(os.path.join(d, 'pest', 'pred', 'pred_eta_{}.np'.format(fid)), pred_eta)
+            pred_eta, pred_swe = etf_result[:, i], swe_result[:, i]
+            np.savetxt(os.path.join(d, 'pest', 'pred', 'pred_etf_{}.np'.format(fid)), pred_eta)
             np.savetxt(os.path.join(d, 'pest', 'pred', 'pred_swe_{}.np'.format(fid)), pred_swe)
             end_time = time.time()
         print('\n\nExecution time: {:.2f} seconds'.format(end_time - start_time))
@@ -58,7 +58,7 @@ def run_flux_sites(ini_path, flux_file, debug_flag=False, project='tongue', cali
 
             flux_obs = pd.read_csv(flux_file.format(fid), index_col=0, parse_dates=True)
             cols = ['et_flux'] + list(df.columns)
-            df['et_flux'] = flux_obs['ET_fill']
+            df['et_flux'] = flux_obs['ET']
             df = df[cols]
             sdf = df.loc['2014-01-01': '2014-12-31']
 

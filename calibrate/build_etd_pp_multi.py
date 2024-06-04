@@ -1,12 +1,12 @@
-import os
 import json
+import os
 import shutil
 from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
+from pyemu import Pst, Matrix, ObservationEnsemble
 from pyemu.utils import PstFrom
-from pyemu import Pst, Matrix, Cov, geostats, ObservationEnsemble
 
 
 def build_pest(model_dir, pest_dir, **kwargs):
@@ -23,25 +23,25 @@ def build_pest(model_dir, pest_dir, **kwargs):
         pest.add_parameters(_file, 'constant', transform=transform, alt_inst_str='{}_'.format(k), **v)
 
     # pyemu writes observations to the control file, as expected, however it also writes the observtion
-    # source filename to the input/output section, e.g., 'et_1779.ins obs/obs_eta_1779.np' and during optimization
-    # uses obs/obs_eta_1779.np to compare to the observations already written to the control file.
+    # source filename to the input/output section, e.g., 'et_1779.ins obs/obs_etf_1779.np' and during optimization
+    # uses obs/obs_etf_1779.np to compare to the observations already written to the control file.
     # I think we've circumvented some functionality where we set things pest will 'observe' in the output of the model
     # see: github.com/gmdsi/GMDSI_notebooks/blob/main/tutorials/part2_02_obs_and_weights/freyberg_obs_and_weights.ipynb
 
-    # TODO: need to weight eta and swe according to their relative contribution to error (phi)
-    # i.e., weight eta higher, so the swe error doesn't dominate calibration
+    # TODO: need to weight etf and swe according to their relative contribution to error (phi)
+    # i.e., weight etf higher, so the swe error doesn't dominate calibration
     # does the fact we are providing a localization matrix obviate this?
     # might be worth it anyway so we have a representative phi
     # see: github.com/gmdsi/GMDSI_notebooks/blob/main/tutorials/part2_02_obs_and_weights/freyberg_obs_and_weights.ipynb
     # or automate this with pst.adjust_weights() which will be written to the control file
 
-    obsnme_str = 'oname:obs_eta_{}_otype:arr_i:{}_j:0'
+    obsnme_str = 'oname:obs_etf_{}_otype:arr_i:{}_j:0'
 
-    # TODO assign 'eta' and 'swe' to oname column in pst.observation_data df instead of 'obs'
+    # TODO assign 'etf' and 'swe' to oname column in pst.observation_data df instead of 'obs'
     for i, fid in enumerate(kwargs['targets']):
-        pest.add_observations(kwargs['et_obs']['file'][i], insfile=kwargs['et_obs']['insfile'][i])
+        pest.add_observations(kwargs['etf_obs']['file'][i], insfile=kwargs['etf_obs']['insfile'][i])
 
-        # only weight eta on capture dates
+        # only weight etf on capture dates
         et_df = pd.read_csv(kwargs['inputs'][i], index_col=0, parse_dates=True)
         et_df['dummy_idx'] = [obsnme_str.format(fid, j) for j in range(et_df.shape[0])]
         captures = [ix for ix, r in et_df.iterrows()
@@ -85,7 +85,7 @@ def build_pest(model_dir, pest_dir, **kwargs):
         d = pest.obs_dfs[j + count].copy()
         d['weight'] = 0.0
 
-        # TODO: adjust as needed for phi visibility of eta vs. swe
+        # TODO: adjust as needed for phi visibility of etf vs. swe
         try:
             d.loc[valid, 'weight'] = 0.03
         except KeyError:
@@ -133,8 +133,8 @@ def build_pest(model_dir, pest_dir, **kwargs):
     obs = pst.observation_data
 
     obs['standard_deviation'] = 0.00
-    eta_idx = [i for i in obs.index if 'eta' in i]
-    obs.loc[eta_idx, 'standard_deviation'] = obs['obsval'] * 0.1
+    etf_idx = [i for i in obs.index if 'etf' in i]
+    obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.1
 
     swe_idx = [i for i, r in obs.iterrows() if 'swe' in i and r['obsval'] > 0.0]
     obs.loc[swe_idx, 'standard_deviation'] = obs['obsval'] * 0.02
@@ -149,7 +149,7 @@ def build_localizer(pst_file):
     et_params = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad']
     snow_params = ['swe_alpha', 'swe_beta']
 
-    par_relation = {'eta': et_params, 'swe': snow_params}
+    par_relation = {'etf': et_params, 'swe': snow_params}
 
     pst = Pst(pst_file)
 
@@ -266,13 +266,13 @@ def get_pest_builder_args(input_json, data):
         if 'aw_' in ii:
             pars[ii]['initial_value'] = float(r['value'])
 
-    et_obs_files = ['obs/obs_eta_{}.np'.format(fid) for fid in targets]
+    etf_obs_files = ['obs/obs_etf_{}.np'.format(fid) for fid in targets]
     swe_obs_files = ['obs/obs_swe_{}.np'.format(fid) for fid in targets]
 
     dct = {'targets': targets,
            'inputs': input_csv,
-           'et_obs': {'file': et_obs_files,
-                      'insfile': et_ins},
+           'etf_obs': {'file': etf_obs_files,
+                       'insfile': et_ins},
            'swe_obs': {'file': swe_obs_files,
                        'insfile': swe_ins},
            'pars': pars
@@ -303,6 +303,6 @@ if __name__ == '__main__':
     dct_.update({'python_script': python_script})
     build_pest(d, pest_dir_, **dct_)
     build_localizer(pst_f)
-    write_control_settings(pst_f, 6, 100)
+    write_control_settings(pst_f, 4, 100)
 
 # ========================= EOF ====================================================================
