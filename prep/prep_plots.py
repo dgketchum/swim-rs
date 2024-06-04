@@ -110,16 +110,14 @@ def preproc(field_ids, src, _dir):
         data.index = list(range(data.shape[0]))
 
         data['etf'] = data['etf_inv_irr']
-        etf = data[['etf']]
-        print('preproc ETf mean: {:.2f}'.format(np.nanmean(etf.values)))
+        print('preproc ETf mean: {:.2f}'.format(np.nanmean(data['etf'].values)))
         _file = os.path.join(project_dir, 'obs', 'obs_etf_{}.np'.format(fid))
-        np.savetxt(_file, etf.values)
+        np.savetxt(_file, data['etf'].values)
 
-        data['eta'] = data['etr_mm'] * data['etf_inv_irr']
-        eta = data[['eta']]
-        print('preproc ET mean: {:.2f}'.format(np.nanmean(eta.values)))
+        data['eta'] = data['eto_mm'] * data['etf_inv_irr']
+        print('preproc ET mean: {:.2f}'.format(np.nanmean(data['eta'].values)))
         _file = os.path.join(project_dir, 'obs', 'obs_eta_{}.np'.format(fid))
-        np.savetxt(_file, eta.values)
+        np.savetxt(_file, data['eta'].values)
 
         _file = os.path.join(project_dir, 'obs', 'obs_swe_{}.np'.format(fid))
         np.savetxt(_file, data['obs_swe'].values)

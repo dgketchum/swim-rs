@@ -239,7 +239,7 @@ def get_pest_builder_args(input_json, data):
 
     input_csv = [os.path.join(data, '{}_daily.csv'.format(fid)) for fid in targets]
 
-    et_ins = ['et_{}.ins'.format(fid) for fid in targets]
+    et_ins = ['etf_{}.ins'.format(fid) for fid in targets]
     swe_ins = ['swe_{}.ins'.format(fid) for fid in targets]
     p_file = os.path.join(d, 'params.csv')
 

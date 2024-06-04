@@ -28,10 +28,10 @@ refet_type = 'eto'
 
 [CALIBRATION]
 ## PEST Calibration
-calibrate_flag = 1
+calibrate_flag = 0
 calibration_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/pest/mult'
 initial_values_csv = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/params.csv'
 
 [FORECAST]
-forecast_flag = 0
+forecast_flag = 1
 forecast_parameters = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/master/flux.5.par.csv'

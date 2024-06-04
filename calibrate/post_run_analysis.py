@@ -5,19 +5,25 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from bokeh.layouts import column
-from bokeh.models import DatetimeTickFormatter, Span
+from bokeh.models import DatetimeTickFormatter
 from bokeh.palettes import Category10
 from bokeh.plotting import figure, output_file, save
 from pyemu import Pst, ObservationEnsemble
 
 from prep.prep_plots import FLUX_SELECT
+from run.run_flux import run_flux_sites
 
 
 def plot_tseries_ensembles(pst_dir, glob='tongue', targets=1779, sample_n=30, idx_start=None, idx_end=None,
-                           flux_file=None, start_date='2000-01-01', moving_average_window=None, nopt=None):
+                           flux_file=None, start_date='2000-01-01', moving_average_window=None, nopt=None,
+                           evaluated=None):
     pst = Pst(os.path.join(pst_dir, '{}.pst'.format(glob)))
 
     for target in targets:
+
+        result = evaluated.format(target)
+        df = pd.read_csv(result, index_col=0, parse_dates=True)
+
         def reduce_obs_ens(obj):
             obj = pd.DataFrame(obj.T.values, obj.T.index)
             obj['time'] = [int(i.split(':')[-2].split('_')[0]) for i in obj.index]
@@ -32,12 +38,8 @@ def plot_tseries_ensembles(pst_dir, glob='tongue', targets=1779, sample_n=30, id
 
         if not nopt:
             nopt = pst.control_data.noptmax - 1
-        pt_oe = ObservationEnsemble.from_csv(pst=pst, filename=os.path.join(pst_dir,
-                                                                            '{}.{}.obs.csv'.format(glob, nopt)))
+        pt_oe = ObservationEnsemble.from_csv(pst=pst, filename=os.path.join(pst_dir, '{}.{}.obs.csv'.format(glob, nopt)))
         pt_oe = reduce_obs_ens(pt_oe)
-
-        noise = ObservationEnsemble.from_csv(pst=pst, filename=os.path.join(pst_dir, '{}.obs+noise.csv'.format(glob)))
-        noise = reduce_obs_ens(noise)
 
         obs = pst.observation_data.copy()
         obs['time'] = [int(i.split(':')[-2].split('_')[0]) for i in obs.index]
@@ -83,30 +85,42 @@ def plot_tseries_ensembles(pst_dir, glob='tongue', targets=1779, sample_n=30, id
                 p.line(tvals, yvals, line_width=0.5, alpha=0.7, color=colors[1], legend_label='Posterior')
 
             if moving_average_window:
-                yvals = pd.Series(yvals).rolling(window=moving_average_window, min_periods=1).mean().values
+                yvals = pd.Series(oobs.obsval).rolling(window=moving_average_window, min_periods=1).mean().values
             else:
                 yvals = oobs.obsval
             p.line(tvals, yvals, line_width=2, color='red', legend_label='Observed')
+
+            if og == 'etf':
+                if moving_average_window:
+                    df['kc_act'] = df['kc_act'].rolling(window=moving_average_window, min_periods=1).mean()
+                p.line(tvals, df['kc_act'], line_width=2, color='blue', legend_label='ETf Posterior Mean')
 
             p.legend.location = "top_left"
             p.xaxis.formatter = DatetimeTickFormatter(days=["%Y-%m-%d"], months=["%Y-%m-%d"], years=["%Y-%m-%d"])
             plots.append(p)
 
-            if flux_file is not None and og == 'eta':
-                end_date = start_dt + timedelta(days=len(tvals) - 1)
-                dt_index = pd.DatetimeIndex(pd.date_range(start_dt, end_date, freq='D'))
-                flux_df = pd.read_csv(flux_file.format(target), index_col=0, parse_dates=True)
-                flux_df = flux_df.reindex(dt_index)
-                p.scatter(tvals, flux_df['ET'], size=6, color='black', legend_label='Flux Obs')
-                if moving_average_window:
-                    flux_df['ET_fill'] = flux_df['ET_fill'].rolling(window=moving_average_window, min_periods=1).mean()
-                p.line(tvals, flux_df['ET_fill'], line_width=2, color='green', legend_label='Flux Fill')
+        p = figure(title='eta', x_axis_label='Time', y_axis_label='Value', width=2400, height=800,
+                   x_axis_type="datetime")
 
-            # if og == 'eta':
-            #     for time in obs.loc[obs['weight'] == 1.0, 'time']:
-            #         vline = Span(location=start_dt + timedelta(days=int(time)), dimension='height', line_color='red',
-            #                      line_width=1, line_dash='dashed')
-            #         p.add_layout(vline)
+        if flux_file is not None:
+            end_date = start_dt + timedelta(days=len(tvals) - 1)
+            dt_index = pd.DatetimeIndex(pd.date_range(start_dt, end_date, freq='D'))
+            flux_df = pd.read_csv(flux_file.format(target), index_col=0, parse_dates=True)
+            flux_df = flux_df.reindex(dt_index)
+            p.scatter(tvals, flux_df['ET'], size=6, color='black', legend_label='Flux Obs')
+            if moving_average_window:
+                flux_df['ET_fill'] = flux_df['ET_fill'].rolling(window=moving_average_window, min_periods=1).mean()
+            p.line(tvals, flux_df['ET_fill'], line_width=2, color='green', legend_label='Flux Fill')
+
+        if moving_average_window:
+            df['et_act'] = df['et_act'].rolling(window=moving_average_window, min_periods=1).mean()
+            df['eta_obs'] = df['eta_obs'].rolling(window=moving_average_window, min_periods=1).mean()
+        p.line(tvals, df['et_act'], line_width=2, color='blue', legend_label='ET Posterior Mean')
+        p.line(tvals, df['eta_obs'], line_width=2, color='red', legend_label='SSEBop ET')
+
+        p.legend.location = "top_left"
+        p.xaxis.formatter = DatetimeTickFormatter(days=["%Y-%m-%d"], months=["%Y-%m-%d"], years=["%Y-%m-%d"])
+        plots.append(p)
 
         # Create a layout and show/save the plot
         plot_dir = os.path.join(pest_dir_, 'plots')
@@ -223,21 +237,22 @@ if __name__ == '__main__':
         data_root = '/home/dgketchum/data/IrrigationGIS/swim'
 
     project = 'flux'
-
-    # pest_root = 'master'
-    # src = '/home/dgketchum/PycharmProjects/swim-rs'
-    # d = os.path.join(src, 'examples/{}'.format(project))
-    # pest_dir_ = os.path.join(d, pest_root)
-
     flux_obs_ = os.path.join('/media/research/IrrigationGIS/climate/flux_ET_dataset/'
                              'daily_data_files/{}_daily_data.csv')
 
-    pest_dir_ = '/media/research/IrrigationGIS/swim/examples/flux/calibrated_models/two_model_03JUN2024'
+    d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
+    conf = os.path.join(d, '{}_swim.toml'.format(project))
+
+    pest_dir_ = '/media/research/IrrigationGIS/swim/examples/flux/calibrated_models/two_model_04JUN2024'
     pst_f = os.path.join(pest_dir_, '{}.pst'.format(project))
 
-    # show_phi_evolution(pest_dir_, glob=project)
+    pars = os.path.join(pest_dir_, 'flux.4.par.csv')
+    results_files = os.path.join(pest_dir_, 'output_{}.csv')
 
-    plot_tseries_ensembles(pest_dir_, glob=project, targets=FLUX_SELECT[:2], sample_n=5, flux_file=flux_obs_,
-                           moving_average_window=15, nopt=3)
-    # plot_prediction_scatter(pest_dir_, glob=project, target='US-MJ1', sample_n=30)
+    # mean posterior parameter dist run
+    # run_flux_sites(conf, flux_file=None, project=project, calibration_dir=None, parameter_distribution=pars,
+    #                write_files=results_files)
+
+    plot_tseries_ensembles(pest_dir_, glob=project, targets=FLUX_SELECT[:2], sample_n=10, flux_file=flux_obs_,
+                           moving_average_window=15, nopt=4, evaluated=results_files)
 # ========================= EOF ====================================================================
