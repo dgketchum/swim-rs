@@ -113,7 +113,7 @@ def landsat_time_series_station(in_shp, csv_dir, years, out_csv, out_csv_ct):
             ct.loc[f_idx, sid] = ~pd.isna(field[sid])
 
         df = df.astype(float).interpolate()
-        df = df.interpolate(method='bfill')
+        df = df.bfill()
 
         ct = ct.fillna(0)
         ct = ct.astype(int)
