@@ -275,13 +275,23 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
     irr = pd.read_csv(irr_csv, index_col=0)
     irr.drop(columns=['LAT', 'LON'], inplace=True)
 
+    try:
+        _ = float(irr.index[0])
+        irr.index = [str(i) for i in irr.index]
+    except TypeError:
+        pass
+
     irrigated, fields = False, {}
     for c in cols:
 
+        print(c)
+
         if c not in irr.index:
+            print('{} not in index'.format(c))
             continue
 
         if np.all(np.isnan(irr.loc[c])):
+            print('{} is all nan in {}'.format(c, irr_csv))
             continue
 
         fields[c] = {}
@@ -294,6 +304,8 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
             try:
                 f_irr = irr.at[int(c), 'irr_{}'.format(yr)]
             except ValueError:
+                f_irr = irr.at[c, 'irr_{}'.format(yr)]
+            except KeyError:
                 f_irr = irr.at[c, 'irr_{}'.format(yr)]
 
             irrigated = f_irr > irr_threshold
@@ -427,7 +439,7 @@ if __name__ == '__main__':
     if not os.path.exists(d):
         d = d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'flux'
+    project = 'tongue'
     dtype = 'extracts'
 
     project_ws = os.path.join(d, 'examples', project)
@@ -439,7 +451,7 @@ if __name__ == '__main__':
     for mask_type in types_:
 
         for sensing_param in sensing_params:
-            yrs = [x for x in range(2000, 2021)]
+            yrs = [x for x in range(1987, 2022)]
             shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
 
             ee_data, src = None, None
