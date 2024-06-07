@@ -243,7 +243,7 @@ if __name__ == '__main__':
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
     conf = os.path.join(d, '{}_swim.toml'.format(project))
 
-    pest_dir_ = '/media/research/IrrigationGIS/swim/examples/flux/calibrated_models/two_model_04JUN2024'
+    pest_dir_ = '/media/research/IrrigationGIS/swim/examples/flux/calibrated_models/model_7JUN2024'
     pst_f = os.path.join(pest_dir_, '{}.pst'.format(project))
 
     pars = os.path.join(pest_dir_, 'flux.4.par.csv')
@@ -253,6 +253,6 @@ if __name__ == '__main__':
     # run_flux_sites(conf, flux_file=None, project=project, calibration_dir=None, parameter_distribution=pars,
     #                write_files=results_files)
 
-    plot_tseries_ensembles(pest_dir_, glob=project, targets=FLUX_SELECT[:2], sample_n=10, flux_file=flux_obs_,
-                           moving_average_window=15, nopt=4, evaluated=results_files)
+    plot_tseries_ensembles(pest_dir_, glob=project, targets=FLUX_SELECT, sample_n=10, flux_file=flux_obs_,
+                           moving_average_window=None, nopt=4, evaluated=results_files)
 # ========================= EOF ====================================================================

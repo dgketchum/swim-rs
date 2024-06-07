@@ -120,8 +120,10 @@ if __name__ == '__main__':
 
     calibration_folder = None
 
-    tuned = '/media/research/IrrigationGIS/swim/examples/flux/calibrated_models/two_model_04JUN2024'
+    tuned = '/media/research/IrrigationGIS/swim/examples/flux/calibrated_models/model_7JUN2024'
     pars = os.path.join(tuned, 'flux.4.par.csv')
 
+    results_files = os.path.join(tuned, 'output_{}.csv')
+
     run_flux_sites(conf, flux_file=flux_obs_, project=project, calibration_dir=calibration_folder,
-                   parameter_distribution=pars, write_files=None)
+                   parameter_distribution=pars, write_files=results_files)

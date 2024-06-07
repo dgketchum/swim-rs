@@ -11,6 +11,7 @@ import os
 import numpy as np
 import pandas as pd
 
+# All Sites
 # FLUX_SELECT = ['US-ADR', 'US-Bi1', 'US-Bi2', 'US-Blo', 'US-CZ3', 'US-Fmf',
 #                'US-Fuf', 'US-Fwf', 'US-GLE', 'US-Hn2', 'US-Hn3', 'US-Jo2',
 #                'US-MC1', 'US-Me1', 'US-Me2', 'US-Me5', 'US-Me6', 'US-Mj1',
@@ -24,10 +25,18 @@ import pandas as pd
 #                'AFS', 'BPHV', 'BPLV', 'DVDV', 'KV_1', 'KV_2', 'KV_4', 'SPV_1',
 #                'SPV_3', 'SV_5', 'SV_6', 'UMVW', 'UOVLO', 'UOVMD', 'UOVUP', 'WRV_1', 'WRV_2']
 
-FLUX_SELECT = ['US-ADR', 'US-Blo', 'US-CZ3', 'US-Fmf', 'US-Fuf', 'US-GLE', 'US-Hn2', 'US-Hn3', 'US-Jo2', 'US-MC1',
-               'US-Me1', 'US-Me2', 'US-Me5', 'US-Me6', 'US-Mj1', 'US-Mj2', 'US-NR1', 'US-Rwe', 'US-Rwf', 'US-Rws',
-               'US-SCg', 'US-SCs', 'US-SCw', 'US-SO2', 'US-SO3', 'US-SO4', 'US-Srr', 'US-Var', 'US-xJR', 'US-xNW',
-               'US-xRM', 'US-xYE', 'MB_Pch', 'Almond_Low']
+# Sites with clean records
+# FLUX_SELECT = ['US-ADR', 'US-Blo', 'US-CZ3', 'US-Fmf', 'US-Fuf', 'US-GLE', 'US-Hn2', 'US-Hn3', 'US-Jo2', 'US-MC1',
+#                'US-Me1', 'US-Me2', 'US-Me5', 'US-Me6', 'US-Mj1', 'US-Mj2', 'US-NR1', 'US-Rwe', 'US-Rwf', 'US-Rws',
+#                'US-SCg', 'US-SCs', 'US-SCw', 'US-SO2', 'US-SO3', 'US-SO4', 'US-Srr', 'US-Var', 'US-xJR', 'US-xNW',
+#                'US-xRM', 'US-xYE', 'MB_Pch', 'Almond_Low']
+
+# Sites in PNW
+# FLUX_SELECT = ['US-Me1', 'US-Me2', 'US-Me5', 'US-Me6', 'US-Mj1', 'US-Mj2',
+#                'US-Rwe', 'US-Rwf', 'US-Rws', 'US-xYE']
+
+
+FLUX_SELECT = ['US-MC1']
 
 REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
@@ -110,15 +119,16 @@ def preproc(field_ids, src, _dir):
         data.index = list(range(data.shape[0]))
 
         data['etf'] = data['etf_inv_irr']
-        print('preproc ETf mean: {:.2f}'.format(np.nanmean(data['etf'].values)))
+        print('\n{}\npreproc ETf mean: {:.2f}'.format(fid, np.nanmean(data['etf'].values)))
         _file = os.path.join(project_dir, 'obs', 'obs_etf_{}.np'.format(fid))
         np.savetxt(_file, data['etf'].values)
 
         data['eta'] = data['eto_mm'] * data['etf_inv_irr']
-        print('preproc ET mean: {:.2f}'.format(np.nanmean(data['eta'].values)))
+        print('preproc ETa mean: {:.2f}'.format(np.nanmean(data['eta'].values)))
         _file = os.path.join(project_dir, 'obs', 'obs_eta_{}.np'.format(fid))
         np.savetxt(_file, data['eta'].values)
 
+        print('preproc SWE mean: {:.2f}\n'.format(np.nanmean(data['obs_swe'].values)))
         _file = os.path.join(project_dir, 'obs', 'obs_swe_{}.np'.format(fid))
         np.savetxt(_file, data['obs_swe'].values)
 
@@ -141,9 +151,9 @@ if __name__ == '__main__':
     # select_fields = [str(f) for f in range(1, 1917)]
     select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input_sample.json'.format(project))
 
-    prep_fields_json(fields_props, FLUX_SELECT[:2], src_dir, select_fields_js, irr_data=cuttings)
+    prep_fields_json(fields_props, FLUX_SELECT, src_dir, select_fields_js, irr_data=cuttings)
 
     project_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
-    preproc(FLUX_SELECT[:2], src_dir, project_dir)
+    preproc(FLUX_SELECT, src_dir, project_dir)
 
 # ========================= EOF ====================================================================
