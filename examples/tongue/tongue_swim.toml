@@ -1,27 +1,27 @@
 ## SWIM Configuration
 [FIELDS]
-project_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue'
+project_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux'
+
 
 # data folder and alternate, so local and MCO machine paths get tried
 data_folder = '/media/research/IrrigationGIS/swim'
 alt_data_folder = '/home/dgketchum/data/IrrigationGIS/swim'
 
 # fields data; prepend with data_folder
-fields_path = 'examples/tongue/prepped_input/tongue_fields.json'
+fields_path = 'examples/flux/prepped_input/flux_input_sample.json'
 
-field_index = 'FID'
+field_index = 'field_1'
 
 # Crop Coefficient Proxy
 kc_proxy = 'etf'
 cover_proxy = 'ndvi'
 
 ## Date Range
-start_date = '2015-01-01'
-end_date = '2020-12-31'
+start_date = '2000-01-01'
+end_date = '2023-12-31'
 
 ## Static file names; prepend with data_folder
 input_data = 'examples/tongue/prepped_input/tongue_input_sample.json'
-
 ## Misc
 elev_units = 'm'
 refet_type = 'eto'
@@ -29,14 +29,9 @@ refet_type = 'eto'
 [CALIBRATION]
 ## PEST Calibration
 calibrate_flag = 0
-calibration_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue/master/mult'
+calibration_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue/pest/mult'
 initial_values_csv = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue/params.csv'
 
-[RUNSPEC]
-swb_mode = 'fao'
-rew_ceff = 1.0
-evap_ceff = 1.0
-ro_reinf_frac = 0.0
-winter_evap_limiter = 0.3
-winter_end_day = 92
-winter_start_day = 306
+[FORECAST]
+forecast_flag = 1
+forecast_parameters = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue/master/flux.5.par.csv'

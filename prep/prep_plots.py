@@ -38,6 +38,8 @@ import pandas as pd
 
 FLUX_SELECT = ['US-MC1']
 
+TONGUE_SELECT = ['1609']
+
 REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
             'prcp_hr_05', 'prcp_hr_06', 'prcp_hr_07', 'prcp_hr_08', 'prcp_hr_09', 'prcp_hr_10',
@@ -139,7 +141,7 @@ if __name__ == '__main__':
     if not os.path.exists(d):
         d = d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'flux'
+    project = 'tongue'
     project_ws = os.path.join(d, 'examples', project)
 
     src_dir = os.path.join(project_ws, 'input_timeseries')
@@ -147,13 +149,11 @@ if __name__ == '__main__':
     fields_props = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
     cuttings = os.path.join(d, 'examples/{}/landsat/{}_cuttings.json'.format(project, project))
 
-    # select_fields = ['1416'] + [str(f) for f in list(range(1779, 1805))]
-    # select_fields = [str(f) for f in range(1, 1917)]
     select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input_sample.json'.format(project))
 
-    prep_fields_json(fields_props, FLUX_SELECT, src_dir, select_fields_js, irr_data=cuttings)
+    prep_fields_json(fields_props, TONGUE_SELECT, src_dir, select_fields_js, irr_data=cuttings)
 
     project_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
-    preproc(FLUX_SELECT, src_dir, project_dir)
+    preproc(TONGUE_SELECT, src_dir, project_dir)
 
 # ========================= EOF ====================================================================

@@ -66,7 +66,7 @@ def write_field_properties(shp, irr, cdl, ssurgo, landfire, js, index_col='FID')
 if __name__ == '__main__':
     d = '/media/research/IrrigationGIS/swim'
 
-    project = 'flux'
+    project = 'tongue'
     project_ws = os.path.join(d, 'examples', project)
 
     fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
@@ -77,7 +77,7 @@ if __name__ == '__main__':
     _landfire = os.path.join(project_ws, 'properties', '{}_landfire.csv'.format(project))
     jsn = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
 
-    write_field_properties(fields_shp, irr_, cdl_, _ssurgo, _landfire, jsn, index_col='field_1')
+    write_field_properties(fields_shp, irr_, cdl_, _ssurgo, _landfire, jsn, index_col='FID')
 
     # flux_west = '/media/research/IrrigationGIS/swim/examples/flux/gis/flux_fields_west.csv'
 

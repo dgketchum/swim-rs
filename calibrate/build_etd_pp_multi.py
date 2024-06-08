@@ -287,7 +287,7 @@ if __name__ == '__main__':
     if not os.path.exists(data_root):
         data_root = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'flux'
+    project = 'tongue'
     src = '/home/dgketchum/PycharmProjects/swim-rs'.format(project)
     d = os.path.join(src, 'examples/{}'.format(project))
     python_script = os.path.join(src, 'calibrate', 'custom_forward_run.py')

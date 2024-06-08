@@ -4,13 +4,14 @@ import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+PROJECT = 'tongue'
+
 
 def run():
     p = '/home/dgketchum/PycharmProjects/swim-rs/run/run_mp.py'
     python_path = '/home/dgketchum/PycharmProjects/swim-rs'
     os.environ['PYTHONPATH'] = python_path
-
-    conf_file = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/flux_swim.toml'
+    conf_file = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/{}_swim.toml'.format(PROJECT, PROJECT)
 
     cwd = os.getcwd()
 

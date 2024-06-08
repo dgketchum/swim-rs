@@ -8,7 +8,8 @@ import geopandas as gpd
 from data_extraction.gridmet.gridmet import find_gridmet_points, download_gridmet
 from data_extraction.snodas.snodas import snodas_zonal_stats
 
-from prep.prep_plots import FLUX_SELECT
+from prep.prep_plots import FLUX_SELECT, TONGUE_SELECT
+
 
 def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, overwrite=False,
                           start_date=None, end_date=None, **kwargs):
@@ -76,8 +77,10 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
         for i, r in gridmet.iterrows():
             if np.isnan(r['ndvi_irr']) and np.isnan(r['ndvi_inv_irr']):
+                print('{} only nan in ndvi_irr and ndvi_inv_irr'.format(i.year))
                 accept = False
             if np.isnan(r['etf_irr']) and np.isnan(r['etf_inv_irr']):
+                print('{} only nan in etf_irr and etf_inv_irr'.format(i.year))
                 accept = False
 
         if accept:
@@ -95,7 +98,7 @@ if __name__ == '__main__':
     if not os.path.exists(d):
         d = d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'flux'
+    project = 'tongue'
     project_ws = os.path.join(d, 'examples', project)
 
     gridmet = os.path.join(d, 'gridmet')
@@ -107,9 +110,7 @@ if __name__ == '__main__':
     gridmet_factors = os.path.join(project_ws, 'gis', '{}_fields_gfid.json'.format(project))
     met = os.path.join(project_ws, 'met_timeseries')
 
-    flux_west = os.path.join(project_ws, 'gis', 'flux_fields_west.csv')
-    fdf = pd.read_csv(flux_west)
-    targets = FLUX_SELECT
+    targets = TONGUE_SELECT
 
     # TODO: write gridmet data to a common directory, instead of project ws
     # TODO: US-ADR is pulling data from the wrong lat/lon
@@ -119,10 +120,10 @@ if __name__ == '__main__':
     # targets = [1779, 1787, 1793, 1794, 1797, 1801, 1804]
     # targets = list(range(1770, 1805))
 
-    # download_gridmet(fields_gridmet, gridmet_factors, met, start='2000-01-01', end='2023-12-31',
+    # download_gridmet(fields_gridmet, gridmet_factors, met, start='1987-01-01', end='2021-12-31',
     #                  target_fields=targets, overwite=True)
 
-    fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields_west_wgs.shp'.format(project))
+    fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
     snow_ts = os.path.join(project_ws, 'snow_timeseries', 'snodas_{}.json'.format(project))
 
     # this extract is meant to be run on Montana Climate Office machine (Zoran)
@@ -142,7 +143,7 @@ if __name__ == '__main__':
     params += ['{}_ct'.format(p) for p in params]
 
     join_daily_timeseries(fields_gridmet, met, landsat, snow_ts, dst_dir_, overwrite=True,
-                          start_date='2000-01-01', end_date='2023-12-31', **{'params': params,
+                          start_date='1989-01-01', end_date='2021-12-31', **{'params': params,
                                                                              'target_fields': targets})
 
 # ========================= EOF ====================================================================

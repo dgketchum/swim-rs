@@ -10,7 +10,7 @@ from bokeh.palettes import Category10
 from bokeh.plotting import figure, output_file, save
 from pyemu import Pst, ObservationEnsemble
 
-from prep.prep_plots import FLUX_SELECT
+from prep.prep_plots import FLUX_SELECT, TONGUE_SELECT
 from run.run_flux import run_flux_sites
 
 
@@ -236,14 +236,14 @@ if __name__ == '__main__':
     if not os.path.exists(data_root):
         data_root = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'flux'
+    project = 'tongue'
     flux_obs_ = os.path.join('/media/research/IrrigationGIS/climate/flux_ET_dataset/'
                              'daily_data_files/{}_daily_data.csv')
 
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
     conf = os.path.join(d, '{}_swim.toml'.format(project))
 
-    pest_dir_ = '/media/research/IrrigationGIS/swim/examples/flux/calibrated_models/model_7JUN2024'
+    pest_dir_ = '/media/research/IrrigationGIS/swim/examples/{}/calibrated_models/model_tongue_7JUN2024'.format(project)
     pst_f = os.path.join(pest_dir_, '{}.pst'.format(project))
 
     pars = os.path.join(pest_dir_, 'flux.4.par.csv')
@@ -253,6 +253,6 @@ if __name__ == '__main__':
     # run_flux_sites(conf, flux_file=None, project=project, calibration_dir=None, parameter_distribution=pars,
     #                write_files=results_files)
 
-    plot_tseries_ensembles(pest_dir_, glob=project, targets=FLUX_SELECT, sample_n=10, flux_file=flux_obs_,
+    plot_tseries_ensembles(pest_dir_, glob=project, targets=TONGUE_SELECT, sample_n=10, flux_file=None,
                            moving_average_window=None, nopt=4, evaluated=results_files)
 # ========================= EOF ====================================================================

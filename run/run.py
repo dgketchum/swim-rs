@@ -9,84 +9,89 @@ from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
 
-def optimize_fields(ini_path, debug_flag=False, project='tongue'):
+def run_fields(ini_path, project='tongue', calibration_dir=None, parameter_distribution=None, write_files=None):
     start_time = time.time()
 
     config = ProjectConfig()
-    config.read_config(ini_path)
+    config.read_config(ini_path, calibration_folder=calibration_dir, parameter_dist_csv=parameter_distribution)
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)
 
-    df = obs_field_cycle.field_day_loop(config, fields, debug_flag=debug_flag)
+    df_dct = obs_field_cycle.field_day_loop(config, fields, debug_flag=True)
 
-    # debug_flag=False just returns the ndarray for writing
-    if not debug_flag:
-        eta_result, swe_result = df
-        for i, fid in enumerate(fields.input['order']):
-            pred_eta, pred_swe = eta_result[:, i], swe_result[:, i]
-            np.savetxt(os.path.join(d, 'pest', 'pred', 'pred_eta_{}.np'.format(fid)), pred_eta)
-            np.savetxt(os.path.join(d, 'pest', 'pred', 'pred_swe_{}.np'.format(fid)), pred_swe)
-            end_time = time.time()
-        print('\n\nExecution time: {:.2f} seconds'.format(end_time - start_time))
+    targets = fields.input['order']
 
-    # debug returns a dataframe
-    if debug_flag:
+    print('Warning: model runner is set to debug=True, it will not write results accessible to PEST++')
+    end_time = time.time()
+    print('\nExecution time: {:.2f} seconds\n'.format(end_time - start_time))
 
-        targets = fields.input['order']
-        first = True
+    for i, fid in enumerate(targets):
+        df = df_dct[fid].copy()
+        pred_et = df['et_act'].values
 
-        print('Warning: model runner is set to debug=True, it will not write results accessible to PEST++')
+        print(fid)
+        obs_etf = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/obs/obs_etf_{}.np'.format(project, fid)
+        obs_etf = np.loadtxt(obs_etf)
+        cols = ['etf_obs'] + list(df.columns)
+        df['etf_obs'] = obs_etf
 
-        for i, fid in enumerate(targets):
+        obs_eta = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/obs/obs_eta_{}.np'.format(project, fid)
+        obs_eta = np.loadtxt(obs_eta)
+        cols = ['eta_obs'] + cols
+        df['eta_obs'] = obs_eta
 
-            pred_et = df[fid]['et_act'].values
+        df = df[cols]
+        df.index = [pd.to_datetime(i) for i in df.index]
 
-            obs_et = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/obs/obs_eta_{}.np'.format(project, fid)
-            obs_et = np.loadtxt(obs_et)
-            cols = ['et_obs'] + list(df[fid].columns)
-            df[fid]['et_obs'] = obs_et
-            df[fid] = df[fid][cols]
-            sdf = df[fid].loc['2017-01-01': '2017-12-31']
-            if i == 10:
-                a = 1
+        if write_files:
+            file_ = write_files.format(fid)
+            df.to_csv(file_)
 
-            comp = pd.DataFrame(data=np.vstack([obs_et, pred_et]).T, columns=['obs', 'pred'], index=df[fid].index)
-            comp['eq'] = comp['obs'] == comp['pred']
-            comp['capture'] = df[fid]['capture']
+        comp = pd.DataFrame(data=np.vstack([obs_eta, pred_et]).T, columns=['obs', 'pred'], index=df.index)
+        comp['eq'] = comp['obs'] == comp['pred']
+        comp['capture'] = df['capture']
 
-            rmse = np.sqrt(((pred_et - obs_et) ** 2).mean())
-            end_time = time.time()
+        df = df[cols]
+        sdf = df.loc['2014-01-01': '2014-12-31']
 
-            if first:
-                print('Execution time: {:.2f} seconds'.format(end_time - start_time))
-                first = False
+        comp = df.loc[df[df['capture'] == 1.0].index].copy()
+        et_act, et_ssebop = comp['et_act'], comp['eta_obs']
+        rmse = np.sqrt(((et_act - et_ssebop) ** 2).mean())
 
-            print('{}: Mean Obs: {:.2f}, Mean Pred: {:.2f}'.format(fid, obs_et.mean(), pred_et.mean()))
-            print('{}: RMSE: {:.4f}'.format(fid, rmse))
+        print('{} Capture Dates; Mean SSEBop: {:.2f}, SWB Pred: {:.2f}, RMSE: {:.4f}'.format(comp.shape[0],
+                                                                                             et_ssebop.mean(),
+                                                                                             et_act.mean(), rmse))
 
-            comp = comp.loc[sdf[sdf['capture'] == 1.0].index]
-            pred_et, obs_et = comp['pred'], comp['obs']
-            rmse = np.sqrt(((pred_et - obs_et) ** 2).mean())
-            print('{}: RMSE Capture Dates: {:.4f}'.format(fid, rmse))
-
-            obs_swe = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/obs/obs_swe_{}.np'.format(project, fid)
-            obs_swe = np.loadtxt(obs_swe)
-            cols = ['swe_obs'] + list(df[fid].columns)
-            df[fid]['swe_obs'] = obs_swe
-            df[fid] = df[fid][cols]
-            swe_df = df[fid].loc['2010-01-01': '2021-01-01'][['swe_obs', 'swe']]
-            swe_df.dropna(axis=0, inplace=True)
-            pred_swe = swe_df['swe'].values
-            obs_swe = swe_df['swe_obs'].values
-            rmse = np.sqrt(((pred_swe - obs_swe) ** 2).mean())
-            print('{}: RMSE SWE: {:.4f}\n\n\n\n'.format(fid, rmse))
+        totals = df[['et_act', 'ppt', 'dperc', 'runoff', 'irrigation']].sum(axis=0)
+        water_out = totals[['dperc', 'et_act', 'runoff']].sum()
+        storage = df.loc[df.index[0], 'depl_root'] - df.loc[df.index[-1], 'depl_root']
+        balance = totals['irrigation'] + totals['ppt'] - storage - water_out
+        print('Water Balance = {:.1f}; input: {:.1f}; output: {:.1f}; storage: {:.1f}; irrigation: {:.1f}\n\n\n'.format(
+            balance,
+            totals['ppt'],
+            water_out,
+            storage,
+            totals['irrigation']))
+    return None
 
 
 if __name__ == '__main__':
-    project_ = 'tongue'
-    d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project_)
-    ini = os.path.join(d, '{}_swim.toml'.format(project_))
-    optimize_fields(ini_path=ini, debug_flag=True, project=project_)
 
+    root = '/media/research/IrrigationGIS'
+    if not os.path.exists(root):
+        root = '/home/dgketchum/data/IrrigationGIS'
 
+    project = 'tongue'
+    d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
+    conf = os.path.join(d, '{}_swim.toml'.format(project))
+
+    tuned = '/media/research/IrrigationGIS/swim/examples/{}/calibrated_models/model_{}_7JUN2024'.format(project,
+                                                                                                        project)
+    pars = os.path.join(tuned, '{}.4.par.csv'.format(project))
+
+    results_files = os.path.join(tuned, 'output_{}.csv')
+
+    run_fields(conf, project=project, write_files=results_files, parameter_distribution=pars)
+
+# ========================= EOF ====================================================================
