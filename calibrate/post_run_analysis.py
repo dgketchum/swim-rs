@@ -254,5 +254,5 @@ if __name__ == '__main__':
     #                write_files=results_files)
 
     plot_tseries_ensembles(pest_dir_, glob=project, targets=TONGUE_SELECT, sample_n=10, flux_file=None,
-                           moving_average_window=None, nopt=4, evaluated=results_files)
+                           moving_average_window=15, nopt=4, evaluated=results_files)
 # ========================= EOF ====================================================================
