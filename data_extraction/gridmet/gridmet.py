@@ -86,7 +86,7 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
     for i, field in tqdm(fields.iterrows(), total=fields.shape[0]):
 
         if field_select:
-            if field['FID'] not in field_select:
+            if str(field['FID']) not in field_select:
                 continue
 
         min_distance = 1e13
