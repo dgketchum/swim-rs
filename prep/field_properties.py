@@ -6,9 +6,10 @@ import pandas as pd
 import geopandas as gpd
 
 
-def write_field_properties(shp, irr, cdl, ssurgo, landfire, js, index_col='FID'):
+def write_field_properties(shp, irr, cdl, ssurgo, landfire, js, index_col='FID', shp_add=False):
     irr = pd.read_csv(irr, index_col=index_col)
     irr.drop(columns=['LAT', 'LON'], inplace=True)
+
     dct = irr.T.to_dict()
     dct = {k: {'irr': {int(kk.split('_')[1]): vv for kk, vv in v.items()}} for k, v in dct.items()}
     cdl = pd.read_csv(cdl, index_col=index_col)
@@ -59,6 +60,18 @@ def write_field_properties(shp, irr, cdl, ssurgo, landfire, js, index_col='FID')
             _ = d.pop(k)
             print('skipping {}: has small area'.format(k))
 
+    if shp_add:
+        gdf = gpd.read_file(shp_add)
+        gdf.index = gdf[index_col]
+        irr['irr_mean'] = irr.mean(axis=1)
+        irr['irr_std'] = irr.std(axis=1)
+
+        idx = [i for i in irr.index if i in gdf.index]
+        gdf.loc[idx, 'irr_mean'] = irr.loc[idx, 'irr_mean']
+        gdf.loc[idx, 'irr_std'] = irr.loc[idx, 'irr_std']
+        gdf.drop(columns=[index_col], inplace=True)
+        gdf.to_file(add_shp.replace('.shp', '_irr.shp'))
+
     with open(js, 'w') as fp:
         json.dump(d, fp, indent=4)
 
@@ -77,7 +90,9 @@ if __name__ == '__main__':
     _landfire = os.path.join(project_ws, 'properties', '{}_landfire.csv'.format(project))
     jsn = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
 
-    write_field_properties(fields_shp, irr_, cdl_, _ssurgo, _landfire, jsn, index_col='FID')
+    add_shp = os.path.join(d, 'examples/tongue/gis/tongue_fields.shp')
+
+    write_field_properties(fields_shp, irr_, cdl_, _ssurgo, _landfire, jsn, index_col='FID', shp_add=add_shp)
 
     # flux_west = '/media/research/IrrigationGIS/swim/examples/flux/gis/flux_fields_west.csv'
 

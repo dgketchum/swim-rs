@@ -32,7 +32,7 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
     for f, row in fields.iterrows():
 
         if 'target_fields' in kwargs.keys():
-            if f not in kwargs['target_fields']:
+            if str(f) not in kwargs['target_fields']:
                 continue
 
         if pd.isna(row['GFID']):
@@ -103,7 +103,8 @@ if __name__ == '__main__':
 
     gridmet = os.path.join(d, 'gridmet')
     rasters_ = os.path.join(gridmet, 'gridmet_corrected', 'correction_surfaces_aea')
-    grimet_cent = os.path.join(gridmet, 'gridmet_centroids.shp')
+    # grimet_cent = os.path.join(gridmet, 'gridmet_centroids.shp')
+    grimet_cent = os.path.join(gridmet, 'gridmet_centroids_tongue.shp')
 
     fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
     fields_gridmet = os.path.join(project_ws, 'gis', '{}_fields_gfid.shp'.format(project))
@@ -112,16 +113,10 @@ if __name__ == '__main__':
 
     targets = TONGUE_SELECT
 
-    # TODO: write gridmet data to a common directory, instead of project ws
-    # TODO: US-ADR is pulling data from the wrong lat/lon
-
-    # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=targets)
-
-    # targets = [1779, 1787, 1793, 1794, 1797, 1801, 1804]
-    # targets = list(range(1770, 1805))
-
+    # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=None)
+    #
     # download_gridmet(fields_gridmet, gridmet_factors, met, start='1987-01-01', end='2021-12-31',
-    #                  target_fields=targets, overwite=True)
+    #                  target_fields=None, overwite=True)
 
     fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
     snow_ts = os.path.join(project_ws, 'snow_timeseries', 'snodas_{}.json'.format(project))

@@ -38,7 +38,8 @@ import pandas as pd
 
 FLUX_SELECT = ['US-MC1']
 
-TONGUE_SELECT = ['1609']
+TONGUE_SELECT = [str(i) for i in [262, 334, 340, 346, 771, 875, 1377, 1378, 1483, 1526, 1581,
+                                  1698, 1815, 1851, 1865, 1872, 1881, 1888, 1901]]
 
 REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',

@@ -73,6 +73,7 @@ def run_fields(ini_path, project='tongue', calibration_dir=None, parameter_distr
             water_out,
             storage,
             totals['irrigation']))
+
     return None
 
 
@@ -92,6 +93,7 @@ if __name__ == '__main__':
 
     results_files = os.path.join(tuned, 'output_{}.csv')
 
-    run_fields(conf, project=project, write_files=results_files, parameter_distribution=pars)
+    # TODO: kwargs to override the forecast and calibration setting on the .toml
+    run_fields(conf, project=project, write_files=results_files, parameter_distribution=None)
 
 # ========================= EOF ====================================================================

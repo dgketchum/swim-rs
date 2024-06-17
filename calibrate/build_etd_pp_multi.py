@@ -61,6 +61,7 @@ def build_pest(model_dir, pest_dir, **kwargs):
             d.loc[captures, 'weight'] = 1.0
 
         d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
+        d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
 
         d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
         d = d.sort_values(by='idx')
@@ -145,7 +146,8 @@ def build_pest(model_dir, pest_dir, **kwargs):
     pst.write(pst.filename, version=2)
 
 
-def build_localizer(pst_file):
+def build_localizer(pst_file, ag_json=None, irr_thresh=0.5):
+    years = None
     et_params = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad']
     snow_params = ['swe_alpha', 'swe_beta']
 
@@ -168,11 +170,53 @@ def build_localizer(pst_file):
 
     sites = list(set([i.split('_')[2] for i in df.index]))
 
+    if ag_json:
+        with open(ag_json, 'r') as f:
+            input_dct = json.load(f)
+        dt = [pd.to_datetime(k) for k, v in input_dct['time_series'].items()]
+        dt = pd.Series(index=pd.DatetimeIndex(dt)).sort_index()
+        dt.loc[dt.index] = [i for i in range(len(dt))]
+        years = list(set([i.year for i in dt.index]))
+
+    track = {k: [] for k in sites}
+
     for s in sites:
+
         for ob_type, params in par_relation.items():
-            idx = [i for i in df.index if '{}_{}'.format(ob_type, s) in i]
-            cols = list(np.array([[c for c in df.columns if '{}_{}'.format(p, s) in c] for p in params]).flatten())
-            localizer.loc[idx, cols] = 1.0
+
+            if ag_json and ob_type == 'etf':
+
+                if s == '262':
+                    a = 1
+
+                for yr in years:
+
+                    irr = str(yr) in input_dct['irr_data'][s].keys()
+                    if irr:
+                        try:
+                            f_irr = input_dct['irr_data'][s][str(yr)]['f_irr']
+                            irr = f_irr > irr_thresh
+                        except KeyError:
+                            irr = False
+
+                    t_idx = ['_i:{}_'.format(int(r)) for i, r in dt.items() if i.year == yr]
+
+                    if irr:
+                        track[s].append(yr)
+                        subset_par = ['ndvi_alpha', 'ndvi_beta', 'mad']
+                    else:
+                        subset_par = ['aw', 'rew', 'tew']
+
+                    idx = [i for i in df.index if '{}_{}'.format(ob_type, s) in i]
+                    idx = [i for i in idx if '_{}_'.format(i.split('_')[4]) in t_idx]
+                    cols = list(
+                        np.array([[c for c in df.columns if '{}_{}'.format(p, s) in c] for p in subset_par]).flatten())
+                    localizer.loc[idx, cols] = 1.0
+
+            else:
+                idx = [i for i in df.index if '{}_{}'.format(ob_type, s) in i]
+                cols = list(np.array([[c for c in df.columns if '{}_{}'.format(p, s) in c] for p in params]).flatten())
+                localizer.loc[idx, cols] = 1.0
 
     mat_file = os.path.join(os.path.dirname(pst_file), 'loc.mat')
     Matrix.from_dataframe(localizer).to_ascii(mat_file)
@@ -298,11 +342,12 @@ if __name__ == '__main__':
     pest_dir_ = os.path.join(d, 'pest')
     pst_f = os.path.join(pest_dir_, '{}.pst'.format(project))
 
-    dct_ = get_pest_builder_args(input_, data_)
     # noinspection PyTypedDict
+    dct_ = get_pest_builder_args(input_, data_)
     dct_.update({'python_script': python_script})
     build_pest(d, pest_dir_, **dct_)
-    build_localizer(pst_f)
-    write_control_settings(pst_f, 4, 100)
+
+    build_localizer(pst_f, ag_json=input_)
+    write_control_settings(pst_f, 4, 400)
 
 # ========================= EOF ====================================================================

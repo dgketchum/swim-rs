@@ -159,7 +159,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
         out_cols = COLUMN_ORDER.copy() + ['nld_ppt_d'] + hr_cols
         df, first = pd.DataFrame(), True
 
-        if target_fields and k not in target_fields:
+        if target_fields and str(k) not in target_fields:
             continue
 
         g_fid = str(int(v['GFID']))
