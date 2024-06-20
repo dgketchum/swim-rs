@@ -2,6 +2,7 @@ import os
 
 import pandas as pd
 import toml
+from pprint import pprint
 
 
 class ProjectConfig:
@@ -93,6 +94,15 @@ class ProjectConfig:
         self.calibration = bool(config[calib_sec]['calibrate_flag'])
 
         if self.calibration:
+            stdout = 'ON'
+        else:
+            stdout = 'OFF'
+
+        print('\n')
+        print('Config: {}'.format(conf))
+        print('CALIBRATION {}'.format(stdout))
+
+        if self.calibration:
 
             if calibration_folder:
                 cf = calibration_folder
@@ -104,12 +114,19 @@ class ProjectConfig:
             pdf = pd.read_csv(initial_values_csv, index_col=0)
             self.calibrated_parameters = pdf.index
             _files = list(pdf['mult_name'])
-            assert set(os.listdir(self.calibration_folder)) == set(_files)
+            cal_files, mult_files = set(os.listdir(self.calibration_folder)), set(_files)
+            assert cal_files == mult_files
+
             _files = [os.path.join(self.calibration_folder, f) for f in _files]
             self.calibration_files = {k: v for k, v in zip(self.calibrated_parameters, _files)}
             self.calibration_groups = list(set(['_'.join(p.split('_')[:-1]) for p in pdf.index]))
 
         self.forecast = bool(config[forecast_sec]['forecast_flag'])
+        if self.forecast:
+            stdout = 'ON'
+        else:
+            stdout = 'OFF'
+        print('FORECAST {}'.format(stdout))
 
         if self.forecast:
 
