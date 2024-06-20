@@ -30,7 +30,9 @@ def run_fields(ini_path, project='tongue', calibration_dir=None, parameter_distr
         df = df_dct[fid].copy()
         pred_et = df['et_act'].values
 
-        print(fid)
+        irr_data = fields.input['irr_data'][fid]
+        f_irr = np.nanmean([irr_data[str(yr)]['f_irr'] for yr in range(1989, 2023) if str(yr) in irr_data.keys()])
+        print('\n{} Mean Irrigated Fraction: {:.2f}'.format(fid, f_irr))
         obs_etf = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/obs/obs_etf_{}.np'.format(project, fid)
         obs_etf = np.loadtxt(obs_etf)
         cols = ['etf_obs'] + list(df.columns)
@@ -53,7 +55,7 @@ def run_fields(ini_path, project='tongue', calibration_dir=None, parameter_distr
         comp['capture'] = df['capture']
 
         df = df[cols]
-        sdf = df.loc['2014-01-01': '2014-12-31']
+        sdf = df.loc['2020-01-01': '2020-12-31']
 
         comp = df.loc[df[df['capture'] == 1.0].index].copy()
         et_act, et_ssebop = comp['et_act'], comp['eta_obs']
@@ -87,8 +89,9 @@ if __name__ == '__main__':
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
     conf = os.path.join(d, '{}_swim.toml'.format(project))
 
-    tuned = '/media/research/IrrigationGIS/swim/examples/{}/calibrated_models/model_{}_7JUN2024'.format(project,
-                                                                                                        project)
+    tuned = '/media/research/IrrigationGIS/swim/examples/{}/calibrated_models/model_tongue_19JUN2024/'.format(project,
+                                                                                                              project)
+
     pars = os.path.join(tuned, '{}.4.par.csv'.format(project))
 
     results_files = os.path.join(tuned, 'output_{}.csv')
