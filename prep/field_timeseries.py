@@ -10,6 +10,10 @@ from data_extraction.snodas.snodas import snodas_zonal_stats
 
 from prep.prep_plots import FLUX_SELECT, TONGUE_SELECT
 
+import warnings
+
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 
 def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, overwrite=False,
                           start_date=None, end_date=None, **kwargs):
@@ -115,17 +119,17 @@ if __name__ == '__main__':
 
     # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=None)
     #
-    # download_gridmet(fields_gridmet, gridmet_factors, met, start='1987-01-01', end='2021-12-31',
-    #                  target_fields=None, overwite=True)
+    download_gridmet(fields_gridmet, gridmet_factors, met, start='1987-01-01', end='2023-12-31',
+                     target_fields=targets, overwite=True)
 
-    fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
+    fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields_wgs.shp'.format(project))
     snow_ts = os.path.join(project_ws, 'snow_timeseries', 'snodas_{}.json'.format(project))
 
     # this extract is meant to be run on Montana Climate Office machine (Zoran)
     s_dir = '/data/ssd1/snodas/processed/swe'
     if not os.path.isdir(s_dir):
         s_dir = '/media/research/IrrigationGIS/climate/snodas/processed/swe'
-    # snodas_zonal_stats(fields_shp_wgs, s_dir, snow_ts, targets=targets, index_col='field_1')
+    # snodas_zonal_stats(fields_shp_wgs, s_dir, snow_ts, targets=None, index_col='FID')
 
     landsat = os.path.join(project_ws, 'landsat', '{}_sensing.csv'.format(project))
     dst_dir_ = os.path.join(project_ws, 'input_timeseries')
@@ -137,8 +141,7 @@ if __name__ == '__main__':
 
     params += ['{}_ct'.format(p) for p in params]
 
-    join_daily_timeseries(fields_gridmet, met, landsat, snow_ts, dst_dir_, overwrite=True,
-                          start_date='1989-01-01', end_date='2021-12-31', **{'params': params,
-                                                                             'target_fields': targets})
+    # join_daily_timeseries(fields_gridmet, met, landsat, snow_ts, dst_dir_, overwrite=True,
+    #                       start_date='1989-01-01', end_date='2021-12-31', **{'params': params})
 
 # ========================= EOF ====================================================================

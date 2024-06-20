@@ -40,6 +40,14 @@ CLIMATE_COLS = {
         'nc': 'agg_met_tmmn_1979_CurrentYear_CONUS',
         'var': 'daily_minimum_temperature',
         'col': 'tmin_k'},
+    'vs': {
+        'nc': 'agg_met_tmmn_1979_CurrentYear_CONUS',
+        'var': 'daily_minimum_temperature',
+        'col': 'u2_ms'},
+    'sph': {
+        'nc': 'agg_met_tmmn_1979_CurrentYear_CONUS',
+        'var': 'daily_minimum_temperature',
+        'col': 'q'},
 }
 
 GRIDMET_GET = ['elev_m',
@@ -49,6 +57,8 @@ GRIDMET_GET = ['elev_m',
                'eto_mm',
                'prcp_mm',
                'srad_wm2',
+               'u2_ms',
+               'ea_kpa',
                ]
 
 BASIC_REQ = ['date', 'year', 'month', 'day', 'centroid_lat', 'centroid_lon']
@@ -123,7 +133,7 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
                 stats = zonal_stats(gdf, r, stats=['mean'])[0]['mean']
                 gridmet_targets[closest_fid][month].update({_var: stats})
 
-        g = GridMet('elev', lat=field['LAT'], lon=field['LON'])
+        g = GridMet('elev', lat=fields.at[i, 'LAT'], lon=fields.at[i, 'LON'])
         elev = g.get_point_elevation()
         fields.at[i, 'ELEV'] = elev
 
@@ -138,7 +148,6 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
 
 def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None, overwite=False,
                      target_fields=None):
-
     if not start:
         start = '1987-01-01'
     if not end:
@@ -156,6 +165,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
     print('Downloading GridMET')
     for k, v in fields.iterrows():
+        elev = None
         out_cols = COLUMN_ORDER.copy() + ['nld_ppt_d'] + hr_cols
         df, first = pd.DataFrame(), True
 
@@ -220,6 +230,10 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
                     df[hr_cols] = df[hr_cols].fillna(0.)
 
                 df['nld_ppt_d'] = df[hr_cols].sum(axis=1)
+
+        p_air = air_pressure(df['elev_m'])
+        ea_kpa = actual_vapor_pressure(df['q'], p_air)
+        df['ea_kpa'] = ea_kpa.copy()
 
         for _var in ['etr', 'eto']:
             variable = '{}_mm'.format(_var)
@@ -334,6 +348,21 @@ def wind_height_adjust(uz, zw):
     return uz * 4.87 / np.log(67.8 * zw - 5.42)
 
 
+def gridmet_elevation(lat, lon):
+    g = GridMet('elev', lat=lat, lon=lon)
+    elev = g.get_point_elevation()
+    return elev
+
+
 if __name__ == '__main__':
+    in_ = '/media/research/IrrigationGIS/swim/gridmet/gridmet_centroids_tongue.shp'
+    out_ = '/media/research/IrrigationGIS/swim/gridmet/gridmet_centroids_tongue_elev.shp'
+    df = gpd.read_file(in_)
+    l = []
+    for i, r in df.iterrows():
+        elev = gridmet_elevation(r['lat'], r['lon'])
+        l.append((i, elev))
     pass
+    df['ELEV_M'] = [i[1] for i in l]
+    df.to_file(out_)
 # ========================= EOF ====================================================================
