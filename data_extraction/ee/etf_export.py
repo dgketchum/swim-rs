@@ -251,9 +251,9 @@ if __name__ == '__main__':
 
     is_authorized()
     bucket_ = 'wudr'
-    fields = 'users/dgketchum/fields/tongue_9MAY2023'
+    fields = 'users/dgketchum/fields/tongue_annex_20OCT2023'
     for mask in ['inv_irr', 'irr']:
         chk = os.path.join(d, 'examples/tongue/landsat/extracts/etf/{}'.format(mask))
-        clustered_field_etf(fields, bucket_, debug=False, mask_type=mask, check_dir=chk)
+        clustered_field_etf(fields, bucket_, debug=False, mask_type=mask, check_dir=None)
 
 # ========================= EOF ====================================================================

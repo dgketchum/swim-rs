@@ -151,11 +151,11 @@ def get_landfire(fields, desc, debug=False, selector='FID'):
 
 
 if __name__ == '__main__':
-    ee.Initialize()
+    ee.Initialize(project='ee-dgketchum')
 
-    project = 'flux'
-    index_col = 'field_1'
-    fields_ = 'users/dgketchum/fields/flux'
+    project = 'tongue'
+    index_col = 'FID'
+    fields_ = 'users/dgketchum/fields/tongue_annex_20OCT2023'
 
     description = '{}_cdl'.format(project)
     get_cdl(fields_, description, selector=index_col)

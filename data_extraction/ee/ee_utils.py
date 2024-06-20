@@ -222,7 +222,7 @@ def export_openet_correction_surfaces(local_check):
 
 def is_authorized():
     try:
-        ee.Initialize()
+        ee.Initialize(project='ee-dgketchum')
         print('Authorized')
     except Exception as e:
         print('You are not authorized: {}'.format(e))

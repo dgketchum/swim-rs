@@ -439,7 +439,7 @@ if __name__ == '__main__':
     if not os.path.exists(d):
         d = d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'tongue'
+    project = 'tongue_annex'
     dtype = 'extracts'
 
     project_ws = os.path.join(d, 'examples', project)
@@ -465,7 +465,7 @@ if __name__ == '__main__':
             # landsat_time_series_image(shp, tif, yrs, src, src_ct)
 
     dst_ = os.path.join(project_ws, 'landsat', '{}_sensing.csv'.format(project))
-    # join_remote_sensing(tables, dst_)
+    join_remote_sensing(tables, dst_)
 
     irr_ = os.path.join(project_ws, 'properties', '{}_irr.csv'.format(project))
     js_ = os.path.join(project_ws, 'landsat', '{}_cuttings.json'.format(project))
