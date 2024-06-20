@@ -5,8 +5,10 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
+from prep.prep_plots import TONGUE_SELECT
 
-def write_field_properties(shp, irr, cdl, ssurgo, landfire, js, index_col='FID', shp_add=False):
+
+def write_field_properties(shp, irr, cdl, ssurgo, landfire, js, index_col='FID', shp_add=False, targets=None):
     irr = pd.read_csv(irr, index_col=index_col)
     irr.drop(columns=['LAT', 'LON'], inplace=True)
 
@@ -69,8 +71,13 @@ def write_field_properties(shp, irr, cdl, ssurgo, landfire, js, index_col='FID',
         idx = [i for i in irr.index if i in gdf.index]
         gdf.loc[idx, 'irr_mean'] = irr.loc[idx, 'irr_mean']
         gdf.loc[idx, 'irr_std'] = irr.loc[idx, 'irr_std']
+        areas = pd.Series(data=[dct[k]['area_sq_m'] for k in idx], index=idx)
+        gdf.loc[idx, 'area'] = areas.loc[idx]
+
         gdf.drop(columns=[index_col], inplace=True)
-        gdf.to_file(add_shp.replace('.shp', '_irr.shp'))
+        if targets:
+            gdf = gdf.iloc[targets]
+        gdf.to_file(add_shp.replace('.shp', '_sample_19JUNE2024.shp'))
 
     with open(js, 'w') as fp:
         json.dump(d, fp, indent=4)
@@ -90,9 +97,10 @@ if __name__ == '__main__':
     _landfire = os.path.join(project_ws, 'properties', '{}_landfire.csv'.format(project))
     jsn = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
 
-    add_shp = os.path.join(d, 'examples/tongue/gis/tongue_fields.shp')
+    add_shp = os.path.join(d, 'examples/{}/gis/{}_fields.shp'.format(project, project))
 
-    write_field_properties(fields_shp, irr_, cdl_, _ssurgo, _landfire, jsn, index_col='FID', shp_add=add_shp)
+    write_field_properties(fields_shp, irr_, cdl_, _ssurgo, _landfire, jsn, index_col='FID', shp_add=add_shp,
+                           targets=TONGUE_SELECT)
 
     # flux_west = '/media/research/IrrigationGIS/swim/examples/flux/gis/flux_fields_west.csv'
 
