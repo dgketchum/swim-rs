@@ -41,6 +41,17 @@ FLUX_SELECT = ['US-MC1']
 TONGUE_SELECT = [str(i) for i in [262, 334, 340, 346, 771, 875, 1377, 1378, 1483, 1526, 1581,
                                   1698, 1815, 1851, 1865, 1872, 1881, 1888, 1901]]
 
+
+TONGUE_SELECT = [str(f) for f in [15, 18, 57, 72, 77, 80, 115, 194, 195, 199, 208, 224, 225, 262, 280, 284, 310, 340,
+                 349, 358, 361, 362, 365, 394, 401, 444, 446, 461, 462, 468, 481, 485, 504, 541,
+                 553, 569, 573, 582, 594, 599, 602, 605, 681, 690, 695, 697, 701, 708, 742, 751,
+                 759, 762, 768, 771, 786, 802, 820, 823, 846, 866, 871, 876, 882, 893, 912, 920,
+                 921, 928, 962, 968, 978, 1008, 1014, 1045, 1063, 1152, 1155, 1188, 1196, 1197,
+                 1202, 1216, 1237, 1254, 1285, 1339, 1488, 1544, 1634, 1681, 1696, 1697, 1698,
+                 1705, 1712, 1758, 1786, 1809, 1815, 1872] if f not in TONGUE_SELECT]
+
+TONGUE_SELECT = [str(f) for f in [15, 18, 80, 1064, 803]]
+
 REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
             'prcp_hr_05', 'prcp_hr_06', 'prcp_hr_07', 'prcp_hr_08', 'prcp_hr_09', 'prcp_hr_10',
@@ -116,6 +127,9 @@ def prep_fields_json(fields, target_plots, input_ts, out_js, irr_data=None):
 
 
 def preproc(field_ids, src, _dir):
+
+    ct = 0
+
     for fid in field_ids:
         obs_file = os.path.join(src, '{}_daily.csv'.format(fid))
         data = pd.read_csv(obs_file, index_col=0, parse_dates=True)
@@ -134,6 +148,10 @@ def preproc(field_ids, src, _dir):
         print('preproc SWE mean: {:.2f}\n'.format(np.nanmean(data['obs_swe'].values)))
         _file = os.path.join(project_dir, 'obs', 'obs_swe_{}.np'.format(fid))
         np.savetxt(_file, data['obs_swe'].values)
+
+        ct += 1
+
+    print('Prepped {} fields input'.format(ct))
 
 
 if __name__ == '__main__':

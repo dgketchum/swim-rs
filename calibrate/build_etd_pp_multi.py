@@ -145,6 +145,8 @@ def build_pest(model_dir, pest_dir, **kwargs):
 
     pst.write(pst.filename, version=2)
 
+    print('Configured PEST++ for {} targets'.format(len(kwargs['targets'])))
+
 
 def build_localizer(pst_file, ag_json=None, irr_thresh=0.5):
     years = None
