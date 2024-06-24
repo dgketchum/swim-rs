@@ -1,9 +1,7 @@
 import os
-import shutil
-import os
 import json
-import subprocess
 import time
+import shutil
 
 import pandas as pd
 import geopandas as gpd
@@ -66,16 +64,15 @@ def run_pest_sequence(project_tracker, n_workers, index_col='FID', chunk_sz=10, 
 
     gdf = gpd.read_file(gmt)
     gdf.index = gdf[index_col]
-    ct = 0
 
-    covered = list(p_dct['fields'].keys())
+    covered, excluded = list(p_dct['fields'].keys()), []
 
     while len(gdf.index) > len(p_dct['fields']):
 
         targets = []
         for i in gdf.index:
 
-            if str(i) in covered:
+            if str(i) in covered or str(i) in excluded:
                 continue
 
             try:
@@ -90,7 +87,11 @@ def run_pest_sequence(project_tracker, n_workers, index_col='FID', chunk_sz=10, 
         join_daily_timeseries(gmt, met, lst, snow, ts, overwrite=True,
                               start_date=start_date, end_date=end_date, **{'target_fields': targets})
 
-        prep_fields_json(DATA_DIRS['props'], targets, ts, DATA_DIRS['prepped_input'], irr_data=DATA_DIRS['cuttings'])
+        prepped_targets, excluded_targets = prep_fields_json(DATA_DIRS['props'], targets, ts,
+                                                             DATA_DIRS['prepped_input'],
+                                                             irr_data=DATA_DIRS['cuttings'])
+
+        excluded += excluded_targets
 
         remove = [PEST_DATA['p_dir'], os.path.join(project_ws, 'obs'), PEST_DATA['m_dir'], PEST_DATA['w_dir']]
 
@@ -103,7 +104,7 @@ def run_pest_sequence(project_tracker, n_workers, index_col='FID', chunk_sz=10, 
 
         [os.mkdir(mkdir) for mkdir in remove[1:]]
 
-        preproc(targets, ts, project_ws)
+        preproc(prepped_targets, ts, project_ws)
 
         # noinspection PyTypedDict
         dct_ = get_pest_builder_args(project_ws, DATA_DIRS['prepped_input'], ts)
@@ -130,7 +131,7 @@ def run_pest_sequence(project_tracker, n_workers, index_col='FID', chunk_sz=10, 
         p_str = ['_'.join(s.split(':')[1].split('_')[1:-1]) for s in list(pdf.index)]
         pdf.index = p_str
 
-        for t in targets:
+        for t in prepped_targets:
             p_dct['fields'][t] = e = {}
             for p in pars:
                 key = '{}_{}'.format(p, t)
@@ -141,11 +142,7 @@ def run_pest_sequence(project_tracker, n_workers, index_col='FID', chunk_sz=10, 
 
         print('Write {} to \n{}'.format(targets, os.path.basename(project_tracker)))
 
-        ct += 1
-        covered += targets
-
-        if ct > 3:
-            exit()
+        covered += prepped_targets
 
 
 if __name__ == '__main__':

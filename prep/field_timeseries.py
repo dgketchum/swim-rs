@@ -81,11 +81,13 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
         for i, r in gridmet.iterrows():
             if np.isnan(r['ndvi_irr']) and np.isnan(r['ndvi_inv_irr']):
-                print('{} only nan in ndvi_irr and ndvi_inv_irr'.format(i.year))
+                print('{} in {} has only nan in ndvi_irr and ndvi_inv_irr'.format(f, i.year))
                 accept = False
+                break
             if np.isnan(r['etf_irr']) and np.isnan(r['etf_inv_irr']):
-                print('{} only nan in etf_irr and etf_inv_irr'.format(i.year))
+                print('{} in {} has only nan in etf_irr and etf_inv_irr'.format(f, i.year))
                 accept = False
+                break
 
         if accept:
             gridmet.to_csv(_file)

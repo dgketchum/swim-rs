@@ -125,6 +125,8 @@ def prep_fields_json(fields, target_plots, input_ts, out_js, irr_data=None):
     with open(out_js, 'w') as fp:
         json.dump(dct, fp, indent=4)
 
+    return target_plots, missing
+
 
 def preproc(field_ids, src, _dir):
 
@@ -170,9 +172,10 @@ if __name__ == '__main__':
 
     select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input_sample.json'.format(project))
 
-    prep_fields_json(fields_props, TONGUE_SELECT, src_dir, select_fields_js, irr_data=cuttings)
+    processed_targets, excluded_targets = prep_fields_json(fields_props, TONGUE_SELECT,
+                                                           src_dir, select_fields_js, irr_data=cuttings)
 
     project_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
-    preproc(TONGUE_SELECT, src_dir, project_dir)
+    preproc(processed_targets, src_dir, project_dir)
 
 # ========================= EOF ====================================================================
