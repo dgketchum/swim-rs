@@ -220,6 +220,10 @@ def build_localizer(pst_file, ag_json=None, irr_thresh=0.5):
                 cols = list(np.array([[c for c in df.columns if '{}_{}'.format(p, s) in c] for p in params]).flatten())
                 localizer.loc[idx, cols] = 1.0
 
+    vals = localizer.values
+    vals[np.isnan(vals)] = 0.0
+    vals[vals < 1.0] = 0.0
+    localizer.loc[localizer.index, localizer.columns] = vals.copy()
     mat_file = os.path.join(os.path.dirname(pst_file), 'loc.mat')
     Matrix.from_dataframe(localizer).to_ascii(mat_file)
 
@@ -275,7 +279,7 @@ def initial_parameter_dict(param_file):
     return p
 
 
-def get_pest_builder_args(input_json, data):
+def get_pest_builder_args(project_ws, input_json, data):
     with open(input_json, 'r') as f:
         input_dct = json.load(f)
 
@@ -287,7 +291,7 @@ def get_pest_builder_args(input_json, data):
 
     et_ins = ['etf_{}.ins'.format(fid) for fid in targets]
     swe_ins = ['swe_{}.ins'.format(fid) for fid in targets]
-    p_file = os.path.join(d, 'params.csv')
+    p_file = os.path.join(project_ws, 'params.csv')
 
     pars = initial_parameter_dict(param_file=p_file)
     pars = OrderedDict({'{}_{}'.format(k, fid): v.copy() for k, v in pars.items() for fid in targets})

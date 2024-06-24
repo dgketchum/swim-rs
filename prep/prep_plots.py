@@ -119,7 +119,7 @@ def prep_fields_json(fields, target_plots, input_ts, out_js, irr_data=None):
 
     for i, dt in enumerate(dts):
         for p in required_params:
-            data[dt][p] = list(arrays[p][i, :])
+            data[dt][p] = arrays[p][i, :].tolist()
 
     dct.update({'order': order, 'time_series': data})
     with open(out_js, 'w') as fp:
@@ -137,16 +137,16 @@ def preproc(field_ids, src, _dir):
 
         data['etf'] = data['etf_inv_irr']
         print('\n{}\npreproc ETf mean: {:.2f}'.format(fid, np.nanmean(data['etf'].values)))
-        _file = os.path.join(project_dir, 'obs', 'obs_etf_{}.np'.format(fid))
+        _file = os.path.join(_dir, 'obs', 'obs_etf_{}.np'.format(fid))
         np.savetxt(_file, data['etf'].values)
 
         data['eta'] = data['eto_mm'] * data['etf_inv_irr']
         print('preproc ETa mean: {:.2f}'.format(np.nanmean(data['eta'].values)))
-        _file = os.path.join(project_dir, 'obs', 'obs_eta_{}.np'.format(fid))
+        _file = os.path.join(_dir, 'obs', 'obs_eta_{}.np'.format(fid))
         np.savetxt(_file, data['eta'].values)
 
         print('preproc SWE mean: {:.2f}\n'.format(np.nanmean(data['obs_swe'].values)))
-        _file = os.path.join(project_dir, 'obs', 'obs_swe_{}.np'.format(fid))
+        _file = os.path.join(_dir, 'obs', 'obs_swe_{}.np'.format(fid))
         np.savetxt(_file, data['obs_swe'].values)
 
         ct += 1

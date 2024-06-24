@@ -4,7 +4,7 @@ import shutil
 from pyemu import os_utils
 
 
-def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, verbose=True):
+def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, verbose=True, cleanup=True):
 
     try:
         os.chdir(worker_root)
@@ -20,7 +20,7 @@ def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, ver
                            worker_root=worker_root,
                            verbose=verbose,
                            master_dir=master_dir,
-                           cleanup=True,
+                           cleanup=cleanup,
                            port=4269)
 
 
@@ -32,7 +32,7 @@ if __name__ == '__main__':
     w_dir = os.path.join(d, 'workers')
     exe_ = 'pestpp-ies'
     _pst = '{}.pst'.format(project_)
-    _workers = 6
+    _workers = 4
 
     run_pst(p_dir, exe_, _pst, num_workers=_workers, worker_root=w_dir,
             master_dir=m_dir, verbose=False)

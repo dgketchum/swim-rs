@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
-from data_extraction.gridmet.gridmet import find_gridmet_points, download_gridmet
-from data_extraction.snodas.snodas import snodas_zonal_stats
+# from data_extraction.gridmet.gridmet import find_gridmet_points, download_gridmet
+# from data_extraction.snodas.snodas import snodas_zonal_stats
 
 from prep.prep_plots import FLUX_SELECT, TONGUE_SELECT
 
@@ -119,8 +119,8 @@ if __name__ == '__main__':
 
     # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=None)
     #
-    download_gridmet(fields_gridmet, gridmet_factors, met, start='1987-01-01', end='2023-12-31',
-                     target_fields=targets, overwite=True)
+    # download_gridmet(fields_gridmet, gridmet_factors, met, start='1987-01-01', end='2023-12-31',
+    #                  target_fields=targets, overwite=True)
 
     fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields_wgs.shp'.format(project))
     snow_ts = os.path.join(project_ws, 'snow_timeseries', 'snodas_{}.json'.format(project))

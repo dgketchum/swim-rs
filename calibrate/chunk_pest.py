@@ -2,13 +2,17 @@ import os
 import shutil
 import os
 import json
+import subprocess
+import time
 
+import pandas as pd
 import geopandas as gpd
 
 from prep.field_timeseries import join_daily_timeseries
 from prep.prep_plots import prep_fields_json, preproc
 
-from calibrate.build_etd_pp_multi import get_pest_builder_args, build_pest, build_localizer, write_control_settings
+from calibrate.build_etd_pp_multi import get_pest_builder_args, initial_parameter_dict
+from calibrate.build_etd_pp_multi import build_pest, build_localizer, write_control_settings
 from calibrate.run_pest import run_pst
 
 d = '/media/research/IrrigationGIS/swim'
@@ -32,7 +36,6 @@ DATA_DIRS = {'fields_gridmet': os.path.join(data, 'gis', '{}_fields_gfid.shp'.fo
              }
 
 PEST_DATA = {'_pst': '{}.pst'.format(project),
-             '_workers': 6,
              'exe_': 'pestpp-ies',
              'm_dir': os.path.join(project_ws, 'master'),
              'p_dir': os.path.join(project_ws, 'pest'),
@@ -45,8 +48,10 @@ LST_PARAMS = ['etf_inv_irr',
               'ndvi_irr']
 
 
-def run_pest_sequence(project_tracker, index_col='FID', chunk_sz=10, realizations=100,
+def run_pest_sequence(project_tracker, n_workers, index_col='FID', chunk_sz=10, realizations=100, iterations=3,
                       start_date='2018-01-01', end_date='2021-12-31'):
+    pars = [k for k, v in initial_parameter_dict('').items()]
+
     if not os.path.exists(project_tracker):
         p_dct = {'project': project,
                  'start_date': start_date,
@@ -61,26 +66,44 @@ def run_pest_sequence(project_tracker, index_col='FID', chunk_sz=10, realization
 
     gdf = gpd.read_file(gmt)
     gdf.index = gdf[index_col]
+    ct = 0
+
+    covered = list(p_dct['fields'].keys())
 
     while len(gdf.index) > len(p_dct['fields']):
 
         targets = []
         for i in gdf.index:
+
+            if str(i) in covered:
+                continue
+
             try:
                 if len(targets) < chunk_sz:
                     targets.append(str(i))
                 else:
                     break
+
             except IndexError:
                 break
 
-        # join_daily_timeseries(gmt, met, lst, snow, ts, overwrite=True,
-        #                       start_date=start_date, end_date=end_date, **{'target_fields': targets,
-        #                                                                    'params': LST_PARAMS})
-        #
-        # prep_fields_json(DATA_DIRS['props'], targets, ts, DATA_DIRS['prepped_input'], irr_data=DATA_DIRS['cuttings'])
-        #
-        # preproc(targets, ts, project_ws)
+        join_daily_timeseries(gmt, met, lst, snow, ts, overwrite=True,
+                              start_date=start_date, end_date=end_date, **{'target_fields': targets})
+
+        prep_fields_json(DATA_DIRS['props'], targets, ts, DATA_DIRS['prepped_input'], irr_data=DATA_DIRS['cuttings'])
+
+        remove = [PEST_DATA['p_dir'], os.path.join(project_ws, 'obs'), PEST_DATA['m_dir'], PEST_DATA['w_dir']]
+
+        try:
+            os.chdir(project_ws)
+            [print('rmtree: {}'.format(rmdir)) for rmdir in remove]
+            [shutil.rmtree(rmdir) for rmdir in remove]
+        except FileNotFoundError:
+            pass
+
+        [os.mkdir(mkdir) for mkdir in remove[1:]]
+
+        preproc(targets, ts, project_ws)
 
         # noinspection PyTypedDict
         dct_ = get_pest_builder_args(project_ws, DATA_DIRS['prepped_input'], ts)
@@ -92,14 +115,42 @@ def run_pest_sequence(project_tracker, index_col='FID', chunk_sz=10, realization
         build_localizer(pst_f, ag_json=DATA_DIRS['prepped_input'])
         write_control_settings(pst_f, 3, realizations)
 
-        run_pst(PEST_DATA['p_dir'], PEST_DATA['exe_'], PEST_DATA['_pst'],
-                num_workers=PEST_DATA['_workers'], worker_root=PEST_DATA['w_dir'],
-                master_dir=PEST_DATA['m_dir'], verbose=False)
+        try:
+            run_pst(PEST_DATA['p_dir'], PEST_DATA['exe_'], PEST_DATA['_pst'],
+                    num_workers=n_workers, worker_root=PEST_DATA['w_dir'],
+                    master_dir=PEST_DATA['m_dir'], verbose=False, cleanup=True)
+        except Exception:
+            time.sleep(3)
+            run_pst(PEST_DATA['p_dir'], PEST_DATA['exe_'], PEST_DATA['_pst'],
+                    num_workers=n_workers, worker_root=PEST_DATA['w_dir'],
+                    master_dir=PEST_DATA['m_dir'], verbose=False, cleanup=False)
+
+        params = os.path.join(PEST_DATA['m_dir'], '{}.{}.par.csv'.format(project, iterations))
+        pdf = pd.read_csv(params, index_col=0).mean(axis=0)
+        p_str = ['_'.join(s.split(':')[1].split('_')[1:-1]) for s in list(pdf.index)]
+        pdf.index = p_str
+
+        for t in targets:
+            p_dct['fields'][t] = e = {}
+            for p in pars:
+                key = '{}_{}'.format(p, t)
+                e[p] = pdf.at[key]
+
+        with open(project_tracker, 'w') as fp:
+            json.dump(p_dct, fp, indent=4)
+
+        print('Write {} to \n{}'.format(targets, os.path.basename(project_tracker)))
+
+        ct += 1
+        covered += targets
+
+        if ct > 3:
+            exit()
 
 
 if __name__ == '__main__':
     p_tracker = os.path.join(data, '{}_params.json'.format(project))
 
-    run_pest_sequence(p_tracker, index_col='FID', chunk_sz=2, realizations=5,
+    run_pest_sequence(p_tracker, 6, index_col='FID', chunk_sz=2, realizations=5, iterations=3,
                       start_date='2018-01-01', end_date='2021-12-31')
 # ========================= EOF ====================================================================
