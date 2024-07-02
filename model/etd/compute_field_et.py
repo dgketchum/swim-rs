@@ -26,7 +26,12 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # limit so that few > 0
     foo.fc = np.minimum(foo.fc, 0.99)
     if np.any(np.isnan(foo.fc)):
-        raise ValueError('Found nan in foo.fc')
+        mask = np.isnan(foo.fc).flatten()
+        nan_ids = np.array(et_cell.input['order'])[mask]
+        for nan_id in nan_ids:
+            if not nan_id in foo.isnan:
+                foo.isnan.append(nan_id)
+                print('Found nan in foo.fc: {}'.format(nan_ids))
 
     # Estimate infiltrating precipitation
     # Yesterday's infiltration
