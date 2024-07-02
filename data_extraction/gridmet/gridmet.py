@@ -146,7 +146,7 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
         json.dump(gridmet_targets, fp, indent=4)
 
 
-def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None, overwite=False,
+def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None, overwrite=False,
                      target_fields=None):
     if not start:
         start = '1987-01-01'
@@ -179,7 +179,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
             print('Gridmet Cell {} downloaded for {}'.format(g_fid, downloaded[g_fid]))
 
         _file = os.path.join(gridmet_csv_dir, 'gridmet_historical_{}.csv'.format(g_fid))
-        if os.path.exists(_file) and not overwite:
+        if os.path.exists(_file) and not overwrite:
             print('{} exists, skipping'.format(_file))
             continue
 
