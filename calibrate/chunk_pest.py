@@ -18,19 +18,21 @@ if not os.path.exists(d):
     d = '/home/dgketchum/data/IrrigationGIS/swim'
 
 project = 'tongue'
-
 data = os.path.join(d, 'examples', project)
+
+annex_project = 'tongue_annex'
+annex_data = os.path.join(d, 'examples', annex_project)
 src = '/home/dgketchum/PycharmProjects/swim-rs'
 project_ws = os.path.join(src, 'examples', project)
 
-DATA_DIRS = {'fields_gridmet': os.path.join(data, 'gis', '{}_fields_gfid.shp'.format(project)),
-             'met_data': os.path.join(data, 'met_timeseries'),
-             'landsat': os.path.join(data, 'landsat', '{}_sensing.csv'.format(project)),
-             'snow_data': os.path.join(data, 'snow_timeseries', 'snodas_{}.json'.format(project)),
+DATA_DIRS = {'fields_gridmet': os.path.join(annex_data, 'gis', '{}_fields_gfid.shp'.format(annex_project)),
+             'met_data': os.path.join(annex_data, 'met_timeseries'),
+             'landsat': os.path.join(annex_data, 'landsat', '{}_sensing.csv'.format(annex_project)),
+             'snow_data': os.path.join(annex_data, 'snow_timeseries', 'snodas_{}.json'.format(annex_project)),
              'input_ts_out': os.path.join(data, 'input_timeseries'),
-             'props': os.path.join(data, 'properties', '{}_props.json'.format(project)),
+             'props': os.path.join(annex_data, 'properties', '{}_props.json'.format(annex_project)),
              'prepped_input': os.path.join(data, 'prepped_input', '{}_input_sample.json'.format(project)),
-             'cuttings': os.path.join(d, 'examples/{}/landsat/{}_cuttings.json'.format(project, project)),
+             'cuttings': os.path.join(d, 'examples/{}/landsat/{}_cuttings.json'.format(annex_project, annex_project)),
              }
 
 PEST_DATA = {'_pst': '{}.pst'.format(project),
@@ -39,11 +41,6 @@ PEST_DATA = {'_pst': '{}.pst'.format(project),
              'p_dir': os.path.join(project_ws, 'pest'),
              'w_dir': os.path.join(project_ws, 'workers'),
              'python_script': os.path.join(src, 'calibrate', 'custom_forward_run.py')}
-
-LST_PARAMS = ['etf_inv_irr',
-              'ndvi_inv_irr',
-              'etf_irr',
-              'ndvi_irr']
 
 
 def run_pest_sequence(project_tracker, n_workers, index_col='FID', chunk_sz=10, realizations=100, iterations=3,
@@ -67,7 +64,9 @@ def run_pest_sequence(project_tracker, n_workers, index_col='FID', chunk_sz=10, 
 
     covered, excluded = list(p_dct['fields'].keys()), []
 
-    while len(gdf.index) > len(p_dct['fields']):
+    unprocessed = [i for i in gdf.index if i not in list(p_dct['fields'].keys())]
+
+    while unprocessed:
 
         targets = []
         for i in gdf.index:
@@ -144,10 +143,12 @@ def run_pest_sequence(project_tracker, n_workers, index_col='FID', chunk_sz=10, 
 
         covered += prepped_targets
 
+        unprocessed = [i for i in gdf.index if i not in list(p_dct['fields'].keys())]
+
 
 if __name__ == '__main__':
     p_tracker = os.path.join(data, '{}_params.json'.format(project))
 
-    run_pest_sequence(p_tracker, 6, index_col='FID', chunk_sz=2, realizations=5, iterations=3,
-                      start_date='2018-01-01', end_date='2021-12-31')
+    run_pest_sequence(p_tracker, 6, index_col='FID', chunk_sz=50, realizations=100, iterations=3,
+                      start_date='2012-01-01', end_date='2021-12-31')
 # ========================= EOF ====================================================================
