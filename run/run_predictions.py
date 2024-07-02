@@ -32,7 +32,7 @@ DATA_DIRS = {'fields_gridmet': os.path.join(data, 'gis', '{}_fields_gfid.shp'.fo
              'conf': os.path.join(data, 'calibrated_models', '{}_swim.toml'.format(project)),
              'params': os.path.join(data, 'calibrated_models', '{}_params.json'.format(project)),
              'output': os.path.join(data, 'output', 'unirr_output'),
-             'unirr_ts': os.path.join(data, 'ts_cluster', 'median_ts.json')
+             'unirr_ts': os.path.join(data, 'ndvi_signals', 'median_ts.json')
              }
 
 REQUIRED_COLUMNS = ['et_act',
