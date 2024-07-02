@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
-# from data_extraction.gridmet.gridmet import find_gridmet_points, download_gridmet
-# from data_extraction.snodas.snodas import snodas_zonal_stats
+from data_extraction.gridmet.gridmet import find_gridmet_points, download_gridmet
+from data_extraction.snodas.snodas import snodas_zonal_stats
 
 from prep.prep_plots import FLUX_SELECT, TONGUE_SELECT
 
@@ -44,13 +44,23 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
             continue
 
         _file = os.path.join(dst_dir, '{}_daily.csv'.format(f))
-        if os.path.exists(_file) and not overwrite:
-            continue
 
         gridmet_file = os.path.join(gridmet_dir, 'gridmet_historical_{}.csv'.format(int(row['GFID'])))
 
         try:
             gridmet = pd.read_csv(gridmet_file, index_col='date', parse_dates=True).loc[start: end]
+
+            time_covered = ((pd.to_datetime(start_date) >= gridmet.index[0]) &
+                            (pd.to_datetime(end_date) >= gridmet.index[-1]))
+
+            if os.path.exists(_file) and not overwrite and time_covered:
+                continue
+
+            if not time_covered:
+                bias_factors = fields.replace('.shp', '.json')
+                download_gridmet(fields, bias_factors, gridmet_dir, start_date, end_date,
+                                 overwrite=True, target_fields=[f])
+
             drop_cols = [c for c in gridmet.columns if '.' in c]
             if drop_cols:
                 gridmet.drop(columns=drop_cols, inplace=True)
@@ -113,8 +123,10 @@ if __name__ == '__main__':
     grimet_cent = os.path.join(gridmet, 'gridmet_centroids_tongue.shp')
 
     fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
+
     fields_gridmet = os.path.join(project_ws, 'gis', '{}_fields_gfid.shp'.format(project))
     gridmet_factors = os.path.join(project_ws, 'gis', '{}_fields_gfid.json'.format(project))
+
     met = os.path.join(project_ws, 'met_timeseries')
 
     targets = TONGUE_SELECT
@@ -122,7 +134,7 @@ if __name__ == '__main__':
     # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=None)
     #
     # download_gridmet(fields_gridmet, gridmet_factors, met, start='1987-01-01', end='2023-12-31',
-    #                  target_fields=targets, overwite=True)
+    #                  target_fields=targets, overwrite=True)
 
     fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields_wgs.shp'.format(project))
     snow_ts = os.path.join(project_ws, 'snow_timeseries', 'snodas_{}.json'.format(project))
@@ -143,7 +155,7 @@ if __name__ == '__main__':
 
     params += ['{}_ct'.format(p) for p in params]
 
-    # join_daily_timeseries(fields_gridmet, met, landsat, snow_ts, dst_dir_, overwrite=True,
-    #                       start_date='1989-01-01', end_date='2021-12-31', **{'params': params})
+    join_daily_timeseries(fields_gridmet, met, landsat, snow_ts, dst_dir_, overwrite=False,
+                          start_date='1989-01-01', end_date='2021-12-31', **{'params': params})
 
 # ========================= EOF ====================================================================
