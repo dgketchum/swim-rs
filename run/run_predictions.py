@@ -1,10 +1,12 @@
-import json
 import os
+import json
+import time
 
-from model.etd import obs_field_cycle
-from prep.prep_plots import prep_fields_json
-from swim.config import ProjectConfig
 from swim.input import SamplePlots
+from model.etd import obs_field_cycle
+from swim.config import ProjectConfig
+from prep.prep_plots import prep_fields_json
+from prep.field_timeseries import join_daily_timeseries
 
 d = '/media/research/IrrigationGIS/swim'
 if not os.path.exists(d):
@@ -12,6 +14,9 @@ if not os.path.exists(d):
 
 project = 'tongue'
 data = os.path.join(d, 'examples', project)
+
+# project_annex = 'tongue_annex'
+# data_annex = os.path.join(d, 'examples', project_annex)
 
 DATA_DIRS = {'fields_gridmet': os.path.join(data, 'gis', '{}_fields_gfid.shp'.format(project)),
              'met_data': os.path.join(data, 'met_timeseries'),
@@ -23,7 +28,8 @@ DATA_DIRS = {'fields_gridmet': os.path.join(data, 'gis', '{}_fields_gfid.shp'.fo
              'cuttings': os.path.join(d, 'examples/{}/landsat/{}_cuttings.json'.format(project, project)),
              'conf': os.path.join(data, 'calibrated_models', '{}_swim.toml'.format(project)),
              'params': os.path.join(data, 'calibrated_models', '{}_params.json'.format(project)),
-             'output': os.path.join(data, 'output'),
+             'output': os.path.join(data, 'output', 'irr_output'),
+             'unirr_ts': os.path.join(data, 'ts_cluster', 'median_ts.json')
              }
 
 REQUIRED_COLUMNS = ['et_act',
@@ -37,7 +43,8 @@ REQUIRED_COLUMNS = ['et_act',
                     ]
 
 
-def run_fields(ini_path, parameter_set, write_files, chunk_sz=100, subset=None):
+def run_fields(ini_path, parameter_set, write_files, chunk_sz=100, subset=None, force_nonirr=None,
+               overwrite=False, overwrite_inputs=False):
     with open(parameter_set, 'r') as f:
         dct = json.load(f)
 
@@ -47,51 +54,93 @@ def run_fields(ini_path, parameter_set, write_files, chunk_sz=100, subset=None):
         sub_ = [str(i) for i in list(range(subset[0], subset[1] + 1))]
         all_sites = [s for s in all_sites if s in sub_]
 
-    covered, excluded = [x.split('_')[0] for x in os.listdir(write_files)], []
+    if overwrite:
+        covered, excluded = [], []
+    else:
+        covered, excluded = [x.split('_')[0] for x in os.listdir(write_files)], []
 
     unprocessed = [i for i in all_sites if i not in covered]
 
     while unprocessed:
 
         targets = []
+        to_download = []
         for i in unprocessed:
 
             if str(i) in covered or str(i) in excluded:
                 continue
 
             try:
-                if len(targets) < chunk_sz:
-                    targets.append(str(i))
+                if chunk_sz:
+                    if len(targets) < chunk_sz:
+                        targets.append(str(i))
+                    else:
+                        break
                 else:
-                    break
+                    targets.append(str(i))
+
+                if not os.path.exists(os.path.join(DATA_DIRS['input_ts'], '{}_daily.csv'.format(i))):
+                    to_download.append(str(i))
 
             except IndexError:
                 break
 
-        targets, excluded_targets = prep_fields_json(DATA_DIRS['props'], targets, DATA_DIRS['input_ts'],
-                                                     DATA_DIRS['prepped_input'], irr_data=DATA_DIRS['cuttings'])
+        try:
+            start_time = time.time()
 
-        config = ProjectConfig()
-        config.read_config(ini_path, parameter_set_json=parameter_set)
+            gmt, met, lst = DATA_DIRS['fields_gridmet'], DATA_DIRS['met_data'], DATA_DIRS['landsat']
+            snow, ts = DATA_DIRS['snow_data'], DATA_DIRS['input_ts']
 
-        fields = SamplePlots()
-        fields.initialize_plot_data(config)
+            if to_download:
+                join_daily_timeseries(gmt, met, lst, snow, ts, overwrite=True,
+                                      start_date='1989-01-01', end_date='2021-12-31', **{'target_fields': to_download})
 
-        df_dct = obs_field_cycle.field_day_loop(config, fields, debug_flag=True)
+            if overwrite_inputs:
+                join_daily_timeseries(gmt, met, lst, snow, ts, overwrite=True,
+                                      start_date='1989-01-01', end_date='2021-12-31', **{'target_fields': targets})
 
-        for i, fid in enumerate(targets):
-            df = df_dct[fid].copy()
-            df = df[[REQUIRED_COLUMNS]]
-            _fname = os.path.join(write_files, '{}_output.csv'.format(fid))
-            df.to_csv(_fname)
-            covered.append(fid)
+            if force_nonirr:
+                unirr_loc = DATA_DIRS['unirr_ts']
+            else:
+                unirr_loc = None
+            targets, excluded_targets = prep_fields_json(DATA_DIRS['props'], targets, ts,
+                                                         DATA_DIRS['prepped_input'], irr_data=DATA_DIRS['cuttings'],
+                                                         force_unirrigated=unirr_loc)
 
-        unprocessed = [i for i in all_sites if i not in covered]
+            excluded += excluded_targets
+
+            if len(targets) == 0:
+                unprocessed = [i for i in all_sites if i not in covered and i not in excluded]
+                continue
+
+            config = ProjectConfig()
+            config.read_config(ini_path, parameter_set_json=parameter_set)
+
+            fields = SamplePlots()
+            fields.initialize_plot_data(config)
+
+            df_dct = obs_field_cycle.field_day_loop(config, fields, debug_flag=True)
+
+            end_time = time.time()
+            print('\nExecution time: {:.2f} seconds\n'.format(end_time - start_time))
+
+            for i, fid in enumerate(targets):
+                df = df_dct[fid].copy()
+                df = df[REQUIRED_COLUMNS]
+                _fname = os.path.join(write_files, '{}_output.csv'.format(fid))
+                df.to_csv(_fname)
+                covered.append(fid)
+                print(fid)
+
+            unprocessed = [i for i in all_sites if i not in covered and i not in excluded_targets]
+
+        except Exception as e:
+            print('error', e)
+            covered += targets
 
 
 if __name__ == '__main__':
-
     run_fields(DATA_DIRS['conf'], parameter_set=DATA_DIRS['params'], write_files=DATA_DIRS['output'],
-               subset=(1000, 1090))
+               subset=None, chunk_sz=20, overwrite=False, force_nonirr=False, overwrite_inputs=True)
 
 # ========================= EOF ====================================================================

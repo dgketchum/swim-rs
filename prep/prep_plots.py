@@ -38,19 +38,7 @@ import pandas as pd
 
 FLUX_SELECT = ['US-MC1']
 
-TONGUE_SELECT = [str(i) for i in [262, 334, 340, 346, 771, 875, 1377, 1378, 1483, 1526, 1581,
-                                  1698, 1815, 1851, 1865, 1872, 1881, 1888, 1901]]
-
-
-TONGUE_SELECT = [str(f) for f in [15, 18, 57, 72, 77, 80, 115, 194, 195, 199, 208, 224, 225, 262, 280, 284, 310, 340,
-                 349, 358, 361, 362, 365, 394, 401, 444, 446, 461, 462, 468, 481, 485, 504, 541,
-                 553, 569, 573, 582, 594, 599, 602, 605, 681, 690, 695, 697, 701, 708, 742, 751,
-                 759, 762, 768, 771, 786, 802, 820, 823, 846, 866, 871, 876, 882, 893, 912, 920,
-                 921, 928, 962, 968, 978, 1008, 1014, 1045, 1063, 1152, 1155, 1188, 1196, 1197,
-                 1202, 1216, 1237, 1254, 1285, 1339, 1488, 1544, 1634, 1681, 1696, 1697, 1698,
-                 1705, 1712, 1758, 1786, 1809, 1815, 1872] if f not in TONGUE_SELECT]
-
-TONGUE_SELECT = [str(f) for f in [15, 18, 80, 1064, 803]]
+TONGUE_SELECT = [str(f) for f in [1609]]
 
 REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
@@ -76,28 +64,56 @@ REQ_IRR = ['etr_mm',
 ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['obs_swe']
 
 
-def prep_fields_json(fields, target_plots, input_ts, out_js, irr_data=None):
+def prep_fields_json(fields, target_plots, input_ts, out_js, irr_data=None, force_unirrigated=False):
     with open(fields, 'r') as fp:
         fields = json.load(fp)
 
     dct = {'props': {i: r for i, r in fields.items() if i in target_plots}}
 
     missing = [x for x in target_plots if x not in dct['props'].keys()]
+    missing += [x for x in target_plots if not os.path.exists(os.path.join(input_ts, '{}_daily.csv'.format(x)))]
+    missing = list(set(missing))
+
     if missing:
         print('Target sample missing: {}'.format(missing))
         [target_plots.remove(f) for f in missing]
+        if not target_plots:
+            return target_plots, missing
 
-    required_params = REQUIRED + REQ_IRR + REQ_UNIRR
     with open(irr_data, 'r') as fp:
         irr_data = json.load(fp)
-    dct['irr_data'] = {fid: v for fid, v in irr_data.items() if fid in target_plots}
+
+    if force_unirrigated:
+
+        with open(force_unirrigated, 'r') as fp:
+            ndvi = json.load(fp)
+
+        unirr_ndvi = ndvi['ndvi_inv_irr'] + [ndvi['ndvi_inv_irr'][-1]]
+        dt = ['{}-{}'.format(d.month, d.day) for d in pd.date_range('2000-01-01', '2000-12-31')]
+        unirr_ndvi = {d: unirr_ndvi[j] for j, d in enumerate(dt)}
+
+        if 'ndvi_inv_irr' in ACCEPT_NAN:
+            ACCEPT_NAN.remove('ndvi_inv_irr')
+
+        required_params = REQUIRED + REQ_UNIRR
+        dct['irr_data'] = {fid: {'fallow_years': []} for fid, v in irr_data.items() if fid in target_plots}
+
+    else:
+        required_params = REQUIRED + REQ_IRR + REQ_UNIRR
+        dct['irr_data'] = {fid: v for fid, v in irr_data.items() if fid in target_plots}
 
     dts, order = None, []
-    first, arrays = True, {r: [] for r in required_params}
+    first, arrays, shape = True, {r: [] for r in required_params}, None
     for fid, v in dct['props'].items():
+
+        if fid in missing:
+            continue
+            
         _file = os.path.join(input_ts, '{}_daily.csv'.format(fid))
         df = pd.read_csv(_file, index_col='date', parse_dates=True)
         if first:
+            shape = df.shape[0]
+            print('Input shape: {}'.format(df.shape))
             doys = [int(dt.strftime('%j')) for dt in df.index]
             dts = [(int(r['year']), int(r['month']), int(r['day'])) for i, r in df.iterrows()]
             dts = ['{}-{:02d}-{:02d}'.format(y, m, d) for y, m, d in dts]
@@ -106,11 +122,20 @@ def prep_fields_json(fields, target_plots, input_ts, out_js, irr_data=None):
             first = False
         else:
             order.append(fid)
+            if not df.shape[0] == shape:
+                print('{} does not have shape {}'.format(fid, df.shape[0]))
+                continue
 
         for p in required_params:
             a = df[p].values
             if np.any(np.isnan(a)) and p not in ACCEPT_NAN:
-                raise ValueError
+                if p == 'ndvi_inv_irr':
+                    for i, r in df[p].copy().items():
+                        if np.isnan(r):
+                            df.loc[i, p] = unirr_ndvi['{}-{}'.format(i.month, i.day)]
+                    a = df[p].values
+                else:
+                    raise ValueError
             arrays[p].append(a)
 
     for p in required_params:
@@ -160,7 +185,7 @@ if __name__ == '__main__':
 
     d = '/media/research/IrrigationGIS/swim'
     if not os.path.exists(d):
-        d = d = '/home/dgketchum/data/IrrigationGIS/swim'
+        d = '/home/dgketchum/data/IrrigationGIS/swim'
 
     project = 'tongue'
     project_ws = os.path.join(d, 'examples', project)
