@@ -2,6 +2,7 @@ import os
 import json
 
 import pandas as pd
+import geopandas as gpd
 
 
 def join_site_timeseries(irr_dir, unirr_dir, joined_dir, summary_json, missing_json):
@@ -53,7 +54,6 @@ def join_site_timeseries(irr_dir, unirr_dir, joined_dir, summary_json, missing_j
 
         output_file = os.path.join(joined_dir, f'{sid}_joined.csv')
 
-
         try:
             sum_ = joined_df.loc['2012-01-01': '2023-12-31', ['i_irrigation',
                                                               'i_et_act',
@@ -78,6 +78,19 @@ def join_site_timeseries(irr_dir, unirr_dir, joined_dir, summary_json, missing_j
         json.dump(missing, fp, indent=4)
 
 
+def write_summaries_to_shapefile(in_shp, meta_js, out_shp):
+    with open(meta_js, 'r') as f:
+        p_dct = json.load(f)
+
+    gdf = gpd.read_file(in_shp)
+    gdf.index = [str(f) for f in gdf['FID']]
+
+    for fid, data in p_dct.items():
+        gdf.loc[fid, ['irr', 'ieta', 'ueta']] = data
+
+    gdf.to_file(out_shp)
+
+
 if __name__ == '__main__':
 
     root = '/media/research/IrrigationGIS/swim'
@@ -92,6 +105,10 @@ if __name__ == '__main__':
     joined_ = os.path.join(data, 'output', 'joined_output')
     js_summary = os.path.join(data, 'output', 'summary.json')
     js_missing = os.path.join(data, 'output', 'missing.json')
-    join_site_timeseries(irr_, unirr_, joined_, js_summary, js_missing)
+    # join_site_timeseries(irr_, unirr_, joined_, js_summary, js_missing)
+
+    ishp = os.path.join(data, 'gis', 'tongue_fields_gfid.shp')
+    oshp = os.path.join(data, 'gis', 'tongue_fields_irr.shp')
+    write_summaries_to_shapefile(ishp, js_summary, oshp)
 
 # ========================= EOF ====================================================================
