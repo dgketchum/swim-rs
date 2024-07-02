@@ -9,7 +9,8 @@ from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
 
-def run_fields(ini_path, project='tongue', calibration_dir=None, parameter_distribution=None, write_files=None):
+def run_fields(ini_path, project='tongue', calibration_dir=None, parameter_distribution=None,
+               parameter_set=None, write_files=None):
     start_time = time.time()
 
     config = ProjectConfig()
@@ -89,14 +90,10 @@ if __name__ == '__main__':
     d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
     conf = os.path.join(d, '{}_swim.toml'.format(project))
 
-    tuned = '/media/research/IrrigationGIS/swim/examples/{}/calibrated_models/model_tongue_19JUN2024/'.format(project,
-                                                                                                              project)
-
+    tuned = os.path.join(root, 'swim/examples/{}/calibrated_models/model_tongue_7JUN2024/'.format(project, project))
     pars = os.path.join(tuned, '{}.4.par.csv'.format(project))
 
-    results_files = os.path.join(tuned, 'output_{}.csv')
-
     # TODO: kwargs to override the forecast and calibration setting on the .toml
-    run_fields(conf, project=project, write_files=results_files, parameter_distribution=None)
+    run_fields(conf, project=project, write_files=None, parameter_distribution=pars)
 
 # ========================= EOF ====================================================================

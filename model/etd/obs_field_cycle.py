@@ -46,6 +46,7 @@ OUTPUT_FMT = ['et_act',
               'zr',
               'p_rz',
               'p_eft',
+              'soil_water',
               'niwr',
               'irr_day',
               'season',
@@ -107,6 +108,10 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         for k, v in config.forecast_parameters.items():
 
             group, fid = '_'.join(k.split('_')[:-1]), k.split('_')[-1]
+
+            if fid not in plots.input['order']:
+                continue
+
             # PEST++ has lower-cased the FIDs
             l = [x.lower() for x in plots.input['order']]
             idx = l.index(fid)

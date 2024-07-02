@@ -1,4 +1,5 @@
 import os
+import json
 
 import pandas as pd
 import toml
@@ -49,7 +50,7 @@ class ProjectConfig:
         self.winter_end_day = None
         self.winter_start_day = None
 
-    def read_config(self, conf, calibration_folder=None, parameter_dist_csv=None):
+    def read_config(self, conf, calibration_folder=None, parameter_dist_csv=None, parameter_set_json=None):
 
         with open(conf, 'r') as f:
             config = toml.load(f)
@@ -132,25 +133,26 @@ class ProjectConfig:
 
             if parameter_dist_csv:
                 fcst = parameter_dist_csv
+                pdf = pd.read_csv(fcst, index_col=0).mean(axis=0)
+                p_str = ['_'.join(s.split(':')[1].split('_')[1:-1]) for s in list(pdf.index)]
+                pdf.index = p_str
+                self.forecast_parameters = pdf.copy()
+                self.forecast_parameter_groups = list(set(['_'.join(p.split('_')[:-1]) for p in pdf.index]))
+
+            elif parameter_set_json:
+                with open(parameter_set_json, 'r') as f:
+                    param_arr = json.load(f)
+                d = param_arr['fields']
+                self.forecast_parameter_groups = [list(v.keys()) for k, v in d.items()][0]
+                k = [['{}_{}'.format(s, key) for s, p in vals.items()] for key, vals in d.items()]
+                k = [item for sublist in k for item in sublist]
+                tup_ = [('_'.join(i.split('_')[:-1]), i.split('_')[-1]) for i in k]
+                v = [d[t[1]][t[0]] for t in tup_]
+                self.forecast_parameters = pd.Series(index=k, data=v)
+
             else:
                 fcst = config[forecast_sec]['forecast_parameters']
 
-            pdf = pd.read_csv(fcst, index_col=0).mean(axis=0)
-            p_str = ['_'.join(s.split(':')[1].split('_')[1:-1]) for s in list(pdf.index)]
-            pdf.index = p_str
-            self.forecast_parameters = pdf.copy()
-            self.forecast_parameter_groups = list(set(['_'.join(p.split('_')[:-1]) for p in pdf.index]))
 
-        # TODO: remove these ETRM-specific config attributes
-
-        self.static_keys = ('plant_height', 'rew', 'root_z', 'soil_ksat', 'taw', 'tew')
-
-        self.initial_keys = 'de', 'dr', 'drew'
-
-        self.date_range = (self.start_dt, self.end_dt)
-        self.swb_mode = config.get(runspec_sec, 'swb_mode')
-        self.rew_ceff = config.get(runspec_sec, 'rew_ceff')
-        self.evap_ceff = config.get(runspec_sec, 'evap_ceff')
-        self.winter_evap_limiter = config.get(runspec_sec, 'winter_evap_limiter')
-        self.winter_end_day = config.get(runspec_sec, 'winter_end_day')
-        self.winter_start_day = config.get(runspec_sec, 'winter_start_day')
+if __name__ == '__main__':
+    pass
