@@ -65,7 +65,7 @@ if __name__ == '__main__':
     data = os.path.join(d, 'examples', project)
 
     f_ = os.path.join(data, 'input_timeseries')
-    c = os.path.join(data, 'ts_cluster', 'plots')
-    j = os.path.join(data, 'ts_cluster', 'median_ts.json')
+    c = os.path.join(data, 'ndvi_signals', 'plots')
+    j = os.path.join(data, 'ndvi_signals', 'median_ts.json')
     cluster_ndvi(f_, j, c, sample_n=15000)
 # ========================= EOF ====================================================================
