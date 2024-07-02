@@ -193,6 +193,7 @@ class PlotTracker:
         self.sro = 0.
         self.swe = 0.
         self.z = 0.
+        self.isnan = []
 
         self.zr_min = 0.1
         self.zr_max = 1.7
