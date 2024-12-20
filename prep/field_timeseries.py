@@ -28,12 +28,12 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
     else:
         params = kwargs['params']
 
-    fields = gpd.read_file(fields)
-    fields.index = fields['FID']
+    field_df = gpd.read_file(fields)
+    field_df.index = field_df['FID']
 
     out_plots = []
 
-    for f, row in fields.iterrows():
+    for f, row in field_df.iterrows():
 
         if 'target_fields' in kwargs.keys():
             if str(f) not in kwargs['target_fields']:
@@ -114,13 +114,12 @@ if __name__ == '__main__':
     if not os.path.exists(d):
         d = d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'tongue'
+    project = 'flux'
     project_ws = os.path.join(d, 'examples', project)
 
     gridmet = os.path.join(d, 'gridmet')
     rasters_ = os.path.join(gridmet, 'gridmet_corrected', 'correction_surfaces_aea')
-    # grimet_cent = os.path.join(gridmet, 'gridmet_centroids.shp')
-    grimet_cent = os.path.join(gridmet, 'gridmet_centroids_tongue.shp')
+    grimet_cent = os.path.join(gridmet, 'gridmet_centroids.shp')
 
     fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
 
@@ -129,12 +128,13 @@ if __name__ == '__main__':
 
     met = os.path.join(project_ws, 'met_timeseries')
 
-    targets = TONGUE_SELECT
+    # targets = FLUX_SELECT
+    targets = None
 
-    # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=None)
-    #
+    # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=targets)
+
     # download_gridmet(fields_gridmet, gridmet_factors, met, start='1987-01-01', end='2023-12-31',
-    #                  target_fields=targets, overwrite=True)
+    #                  target_fields=targets, overwrite=False)
 
     fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields_wgs.shp'.format(project))
     snow_ts = os.path.join(project_ws, 'snow_timeseries', 'snodas_{}.json'.format(project))

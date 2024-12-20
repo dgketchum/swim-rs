@@ -17,22 +17,23 @@ d = '/media/research/IrrigationGIS/swim'
 if not os.path.exists(d):
     d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-project = 'tongue'
+project = 'flux'
 data = os.path.join(d, 'examples', project)
 
-annex_project = 'tongue_annex'
-annex_data = os.path.join(d, 'examples', annex_project)
+# annex_project = 'tongue_annex'
+# annex_data = os.path.join(d, 'examples', annex_project)
+
 src = '/home/dgketchum/PycharmProjects/swim-rs'
 project_ws = os.path.join(src, 'examples', project)
 
-DATA_DIRS = {'fields_gridmet': os.path.join(annex_data, 'gis', '{}_fields_gfid.shp'.format(annex_project)),
-             'met_data': os.path.join(annex_data, 'met_timeseries'),
-             'landsat': os.path.join(annex_data, 'landsat', '{}_sensing.csv'.format(annex_project)),
-             'snow_data': os.path.join(annex_data, 'snow_timeseries', 'snodas_{}.json'.format(annex_project)),
+DATA_DIRS = {'fields_gridmet': os.path.join(data, 'gis', '{}_fields_gfid.shp'.format(project)),
+             'met_data': os.path.join(data, 'met_timeseries'),
+             'landsat': os.path.join(data, 'landsat', '{}_sensing.csv'.format(project)),
+             'snow_data': os.path.join(data, 'snow_timeseries', 'snodas_{}.json'.format(project)),
              'input_ts_out': os.path.join(data, 'input_timeseries'),
-             'props': os.path.join(annex_data, 'properties', '{}_props.json'.format(annex_project)),
+             'props': os.path.join(data, 'properties', '{}_props.json'.format(project)),
              'prepped_input': os.path.join(data, 'prepped_input', '{}_input_sample.json'.format(project)),
-             'cuttings': os.path.join(d, 'examples/{}/landsat/{}_cuttings.json'.format(annex_project, annex_project)),
+             'cuttings': os.path.join(d, 'examples/{}/landsat/{}_cuttings.json'.format(project, project)),
              }
 
 PEST_DATA = {'_pst': '{}.pst'.format(project),

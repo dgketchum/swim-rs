@@ -165,6 +165,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
     print('Downloading GridMET')
     for k, v in fields.iterrows():
+
         elev = None
         out_cols = COLUMN_ORDER.copy() + ['nld_ppt_d'] + hr_cols
         df, first = pd.DataFrame(), True
@@ -217,7 +218,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
                 # shifting NLDAS to UTC-6 is the most straightforward alignment
                 s = pd.to_datetime(start) - timedelta(days=1)
                 e = pd.to_datetime(end) + timedelta(days=2)
-                nldas = nld.get_bycoords((lon, lat), start_date=s, end_date=e, variables=['prcp'])
+                nldas = nld.get_bycoords((lon, lat), start_date=s, end_date=e, variables=['prcp'], source='grib')
                 central = pytz.timezone('US/Central')
                 nldas = nldas.tz_convert(central)
                 hourly_ppt = nldas.pivot_table(columns=nldas.index.hour, index=nldas.index.date, values='prcp')
