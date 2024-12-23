@@ -72,7 +72,7 @@ def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_ty
         print(_name)
 
 
-def flux_tower_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None):
+def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None):
     df = gpd.read_file(shapefile)
 
     assert df.crs.srs == 'EPSG:5071'
@@ -98,7 +98,7 @@ def flux_tower_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_d
             if site not in ['US-Mj1', 'US-Mj2']:
                 continue
 
-            desc = 'etf_{}_{}_{}'.format(site, year, mask_type)
+            desc = 'etf_{}_{}_{}'.format(site, mask_type, year)
             if check_dir:
                 f = os.path.join(check_dir, '{}.csv'.format(desc))
                 if os.path.exists(f):
@@ -164,7 +164,8 @@ def flux_tower_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_d
             print(desc)
 
 
-def clustered_field_etf(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None):
+def clustered_sample_etf(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None,
+                         start_yr=2000, end_yr=2024):
 
     feature_coll = ee.FeatureCollection(feature_coll)
 
@@ -174,13 +175,13 @@ def clustered_field_etf(feature_coll, bucket=None, debug=False, mask_type='irr',
     remap = coll.map(lambda img: img.lt(1))
     irr_min_yr_mask = remap.sum().gte(5)
 
-    for year in range(1987, 2022):
+    for year in range(start_yr, end_yr + 1):
 
         irr = irr_coll.filterDate('{}-01-01'.format(year),
                                   '{}-12-31'.format(year)).select('classification').mosaic()
         irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
 
-        desc = 'etf_{}_{}'.format(year, mask_type)
+        desc = 'etf_{}_{}'.format(mask_type, year)
 
         if check_dir:
             f = os.path.join(check_dir, '{}.csv'.format(desc))
@@ -254,6 +255,6 @@ if __name__ == '__main__':
     fields = 'users/dgketchum/fields/tongue_annex_20OCT2023'
     for mask in ['inv_irr', 'irr']:
         chk = os.path.join(d, 'examples/tongue/landsat/extracts/etf/{}'.format(mask))
-        clustered_field_etf(fields, bucket_, debug=False, mask_type=mask, check_dir=None)
+        clustered_sample_etf(fields, bucket_, debug=False, mask_type=mask, check_dir=None)
 
 # ========================= EOF ====================================================================
