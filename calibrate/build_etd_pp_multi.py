@@ -337,7 +337,7 @@ if __name__ == '__main__':
     if not os.path.exists(data_root):
         data_root = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'tongue'
+    project = 'flux'
     src = '/home/dgketchum/PycharmProjects/swim-rs'.format(project)
     d = os.path.join(src, 'examples/{}'.format(project))
     python_script = os.path.join(src, 'calibrate', 'custom_forward_run.py')
@@ -349,11 +349,11 @@ if __name__ == '__main__':
     pst_f = os.path.join(pest_dir_, '{}.pst'.format(project))
 
     # noinspection PyTypedDict
-    dct_ = get_pest_builder_args(input_, data_)
+    dct_ = get_pest_builder_args(d, input_, data_)
     dct_.update({'python_script': python_script})
-    build_pest(d, pest_dir_, **dct_)
+    # build_pest(d, pest_dir_, **dct_)
 
     build_localizer(pst_f, ag_json=input_)
-    write_control_settings(pst_f, 4, 400)
+    write_control_settings(pst_f, 3, 400)
 
 # ========================= EOF ====================================================================

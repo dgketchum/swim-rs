@@ -1,6 +1,7 @@
 ## SWIM Configuration
 [FIELDS]
 project_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux'
+input_nc = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/input.nc'
 
 
 # data folder and alternate, so local and MCO machine paths get tried

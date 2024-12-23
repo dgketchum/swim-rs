@@ -187,7 +187,7 @@ if __name__ == '__main__':
     if not os.path.exists(d):
         d = '/home/dgketchum/data/IrrigationGIS/swim'
 
-    project = 'tongue'
+    project = 'flux'
     if project == 'tongue':
         fields = TONGUE_SELECT
     elif project == 'flux':
@@ -202,7 +202,7 @@ if __name__ == '__main__':
 
     select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input_sample.json'.format(project))
 
-    processed_targets, excluded_targets = prep_fields_json(fields_props, TONGUE_SELECT,
+    processed_targets, excluded_targets = prep_fields_json(fields_props, fields,
                                                            src_dir, select_fields_js, irr_data=cuttings)
 
     project_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
