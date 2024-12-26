@@ -72,7 +72,7 @@ def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_t
         print(_name)
 
 
-def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None):
+def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, feature_id='FID'):
     df = gpd.read_file(shapefile)
 
     assert df.crs.srs == 'EPSG:5071'
@@ -93,9 +93,9 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
             if state not in STATES:
                 continue
 
-            site = row['field_1']
+            site = row[feature_id]
 
-            desc = 'ndvi_{}_{}_{}'.format(site, year, mask_type)
+            desc = 'ndvi_{}_{}_{}'.format(site, mask_type, year)
             if check_dir:
                 f = os.path.join(check_dir, '{}.csv'.format(desc))
                 if os.path.exists(f):
@@ -108,7 +108,7 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
             point = ee.Geometry.Point([row['field_8'], row['field_7']])
             geo = point.buffer(150.)
-            fc = ee.FeatureCollection(ee.Feature(geo, {'field_1': site}))
+            fc = ee.FeatureCollection(ee.Feature(geo, {feature_id: site}))
 
             coll = landsat_masked(year, fc).map(lambda x: x.normalizedDifference(['B5', 'B4']))
             ndvi_scenes = coll.aggregate_histogram('system:index').getInfo()
@@ -157,7 +157,8 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
             print(desc)
 
 
-def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None):
+def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None,
+                          start_yr=2004, end_yr=2023, feature_id='FID'):
     feature_coll = ee.FeatureCollection(feature_coll)
 
     s, e = '1987-01-01', '2021-12-31'
@@ -166,16 +167,16 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
     remap = coll.map(lambda img: img.lt(1))
     irr_min_yr_mask = remap.sum().gte(5)
 
-    for year in range(1987, 2022):
+    for year in range(start_yr, end_yr + 1):
 
         irr = irr_coll.filterDate('{}-01-01'.format(year),
                                   '{}-12-31'.format(year)).select('classification').mosaic()
         irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
 
         first, bands = True, None
-        selectors = ['FID']
+        selectors = [feature_id]
 
-        desc = 'ndvi_{}_{}'.format(year, mask_type)
+        desc = 'ndvi_{}_{}'.format(mask_type, year)
 
         if check_dir:
             f = os.path.join(check_dir, '{}.csv'.format(desc))
@@ -212,7 +213,7 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
                 bands = bands.addBands([nd_img])
 
         if debug:
-            fc = ee.FeatureCollection([feature_coll.filterMetadata('FID', 'equals', 2).first()])
+            fc = ee.FeatureCollection([feature_coll.filterMetadata(feature_id, 'equals', 2).first()])
             data = bands.reduceRegions(collection=fc,
                                        reducer=ee.Reducer.mean(),
                                        scale=30).getInfo()

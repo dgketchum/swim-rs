@@ -72,7 +72,7 @@ def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_ty
         print(_name)
 
 
-def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None):
+def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, feature_id='FID'):
     df = gpd.read_file(shapefile)
 
     assert df.crs.srs == 'EPSG:5071'
@@ -93,7 +93,7 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
             if state not in STATES:
                 continue
 
-            site = row['field_1']
+            site = row[feature_id]
 
             if site not in ['US-Mj1', 'US-Mj2']:
                 continue
@@ -111,7 +111,7 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
             point = ee.Geometry.Point([row['field_8'], row['field_7']])
             geo = point.buffer(150.)
-            fc = ee.FeatureCollection(ee.Feature(geo, {'field_1': site}))
+            fc = ee.FeatureCollection(ee.Feature(geo, {feature_id: site}))
 
             etf_coll = ee.ImageCollection(ETF).filterDate('{}-01-01'.format(year),
                                                           '{}-12-31'.format(year))
@@ -165,7 +165,7 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
 
 def clustered_sample_etf(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None,
-                         start_yr=2000, end_yr=2024):
+                         start_yr=2000, end_yr=2024, feature_id='FID'):
 
     feature_coll = ee.FeatureCollection(feature_coll)
 
@@ -194,7 +194,7 @@ def clustered_sample_etf(feature_coll, bucket=None, debug=False, mask_type='irr'
         scenes = coll.aggregate_histogram('system:index').getInfo()
 
         first, bands = True, None
-        selectors = ['FID']
+        selectors = [feature_id]
 
         for img_id in scenes:
 
