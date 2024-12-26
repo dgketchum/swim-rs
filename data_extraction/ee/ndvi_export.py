@@ -25,7 +25,7 @@ def get_flynn():
                                            {'key': 'Flynn_Ex'}))
 
 
-def export_ndvi(feature_coll, year=2015, bucket=None, debug=False, mask_type='irr'):
+def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_type='irr'):
     s, e = '1987-01-01', '2021-12-31'
     irr_coll = ee.ImageCollection(IRR)
     coll = irr_coll.filterDate(s, e).select('classification')
@@ -72,7 +72,7 @@ def export_ndvi(feature_coll, year=2015, bucket=None, debug=False, mask_type='ir
         print(_name)
 
 
-def flux_tower_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None):
+def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None):
     df = gpd.read_file(shapefile)
 
     assert df.crs.srs == 'EPSG:5071'
@@ -157,7 +157,7 @@ def flux_tower_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_
             print(desc)
 
 
-def clustered_field_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None):
+def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None):
     feature_coll = ee.FeatureCollection(feature_coll)
 
     s, e = '1987-01-01', '2021-12-31'
@@ -246,6 +246,6 @@ if __name__ == '__main__':
     fields = 'users/dgketchum/fields/tongue_annex_20OCT2023'
     for mask in ['inv_irr', 'irr']:
         chk = os.path.join(d, 'examples/tongue/landsat/extracts/ndvi/{}'.format(mask))
-        clustered_field_ndvi(fields, bucket_, debug=False, mask_type=mask, check_dir=None)
+        clustered_sample_ndvi(fields, bucket_, debug=False, mask_type=mask, check_dir=None)
 
 # ========================= EOF ====================================================================
