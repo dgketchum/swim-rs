@@ -28,8 +28,7 @@ def list_and_copy_gcs_bucket(cmd_path, bucket_path, local_dir, glob='*', dry_run
 
             if copy_stderr:
                 print(f'Copying {file_path}: {copy_stderr.decode()}')
-            else:
-                print(f'Copied {file_path} to {local_dir}')
+            print(f'Copied {file_path} to {local_dir}')
 
 
 if __name__ == '__main__':
