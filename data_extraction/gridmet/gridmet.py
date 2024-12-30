@@ -67,7 +67,7 @@ COLUMN_ORDER = BASIC_REQ + GRIDMET_GET
 
 
 def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
-                        factors_js, field_select=None):
+                        factors_js, field_select=None, feature_id='FID'):
     """This depends on running 'Raster Pixels to Points' on a WGS Gridmet raster,
      attributing GFID, lat, and lon in the attribute table, and saving to project crs: 5071.
      GFID is an arbitrary identifier e.g., @row_number. It further depends on projecting the
@@ -96,7 +96,7 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
     for i, field in tqdm(fields.iterrows(), total=fields.shape[0]):
 
         if field_select:
-            if str(field['FID']) not in field_select:
+            if str(field[feature_id]) not in field_select:
                 continue
 
         min_distance = 1e13
@@ -119,7 +119,7 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
         fields.at[i, 'STATION_ID'] = closest_fid
 
         if first:
-            print('Matched {} to {}'.format(field['FID'], closest_fid))
+            print('Matched {} to {}'.format(field[feature_id], closest_fid))
             first = False
 
         if closest_fid not in gridmet_targets.keys():
@@ -137,7 +137,7 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
         elev = g.get_point_elevation()
         fields.at[i, 'ELEV'] = elev
 
-    fields.to_file(fields_join, crs='EPSG:5071')
+    fields.to_file(fields_join, crs='EPSG:5071', engine='fiona')
 
     len_ = len(gridmet_targets.keys())
     print('Get gridmet for {} target points'.format(len_))

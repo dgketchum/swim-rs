@@ -131,10 +131,10 @@ if __name__ == '__main__':
     # targets = FLUX_SELECT
     targets = None
 
-    # find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=targets)
+    find_gridmet_points(fields_shp, grimet_cent, rasters_, fields_gridmet, gridmet_factors, field_select=targets)
 
-    # download_gridmet(fields_gridmet, gridmet_factors, met, start='1987-01-01', end='2023-12-31',
-    #                  target_fields=targets, overwrite=False)
+    download_gridmet(fields_gridmet, gridmet_factors, met, start='1987-01-01', end='2023-12-31',
+                     target_fields=targets, overwrite=False)
 
     fields_shp_wgs = os.path.join(project_ws, 'gis', '{}_fields_wgs.shp'.format(project))
     snow_ts = os.path.join(project_ws, 'snow_timeseries', 'snodas_{}.json'.format(project))
