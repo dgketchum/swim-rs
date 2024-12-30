@@ -12,6 +12,7 @@ __pycache__/
 examples/flux/pest
 examples/flynn/pest
 examples/tongue/pest
+.ipynb_checkpoints/
 
 # =================================================
 
