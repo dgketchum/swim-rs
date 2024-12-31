@@ -7,6 +7,7 @@ from datetime import timedelta, date, datetime
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+
 import geopandas as gpd
 
 import pyproj
@@ -164,7 +165,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
     downloaded = {}
 
     print('Downloading GridMET')
-    for k, v in fields.iterrows():
+    for k, v in tqdm(fields.iterrows(), total=len(fields)):
 
         elev = None
         out_cols = COLUMN_ORDER.copy() + ['nld_ppt_d'] + hr_cols
@@ -179,9 +180,8 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
             downloaded[g_fid].append(k)
             print('Gridmet Cell {} downloaded for {}'.format(g_fid, downloaded[g_fid]))
 
-        _file = os.path.join(gridmet_csv_dir, 'gridmet_historical_{}.csv'.format(g_fid))
+        _file = os.path.join(gridmet_csv_dir, 'gridmet_{}.csv'.format(g_fid))
         if os.path.exists(_file) and not overwrite:
-            print('{} exists, skipping'.format(_file))
             continue
 
         r = gridmet_factors[g_fid]
