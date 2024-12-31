@@ -2,7 +2,7 @@ import subprocess
 import os
 
 
-def list_and_copy_gcs_bucket(cmd_path, bucket_path, local_dir, glob='*', dry_run=False):
+def list_and_copy_gcs_bucket(cmd_path, bucket_path, local_dir, glob='*', dry_run=False, overwrite=False):
     """"""
     prepend = 'gs://'
     list_cmd = [cmd_path, 'ls', os.path.join(prepend, bucket_path)]
@@ -22,7 +22,10 @@ def list_and_copy_gcs_bucket(cmd_path, bucket_path, local_dir, glob='*', dry_run
     for file_path in files_to_copy:
         if file_path:
             filename = os.path.basename(file_path)
-            copy_cmd = [cmd_path, 'cp', file_path, os.path.join(local_dir, filename)]
+            local_filepath = os.path.join(local_dir, filename)
+            if os.path.exists(local_filepath) and not overwrite:
+                print(f'{local_filepath} exists, skipping')
+            copy_cmd = [cmd_path, 'cp', file_path, local_filepath]
             copy_process = subprocess.Popen(copy_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             _, copy_stderr = copy_process.communicate()
 
