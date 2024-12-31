@@ -147,14 +147,14 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
 
 
 def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None, overwrite=False,
-                     target_fields=None):
+                     target_fields=None, feature_id='FID'):
     if not start:
         start = '1987-01-01'
     if not end:
         end = '2021-12-31'
 
     fields = gpd.read_file(fields)
-    fields.index = fields['FID']
+    fields.index = fields[feature_id]
 
     with open(gridmet_factors, 'r') as f:
         gridmet_factors = json.load(f)
