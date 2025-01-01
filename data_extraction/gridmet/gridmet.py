@@ -94,7 +94,7 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
 
     gridmet_targets = {}
     first = True
-    for i, field in tqdm(fields.iterrows(), total=fields.shape[0]):
+    for i, field in tqdm(fields.iterrows(), desc='Finding Nearest GridMET Neighbors', total=fields.shape[0]):
 
         if field_select:
             if str(field[feature_id]) not in field_select:
@@ -164,8 +164,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
     downloaded = {}
 
-    print('Downloading GridMET')
-    for k, v in tqdm(fields.iterrows(), total=len(fields)):
+    for k, v in tqdm(fields.iterrows(), desc='Downloading GridMET', total=len(fields)):
 
         elev = None
         out_cols = COLUMN_ORDER.copy() + ['nld_ppt_d'] + hr_cols

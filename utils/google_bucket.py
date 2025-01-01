@@ -25,6 +25,7 @@ def list_and_copy_gcs_bucket(cmd_path, bucket_path, local_dir, glob='*', dry_run
             local_filepath = os.path.join(local_dir, filename)
             if os.path.exists(local_filepath) and not overwrite:
                 print(f'{local_filepath} exists, skipping')
+                continue
             copy_cmd = [cmd_path, 'cp', file_path, local_filepath]
             copy_process = subprocess.Popen(copy_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             _, copy_stderr = copy_process.communicate()

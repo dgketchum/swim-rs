@@ -1,7 +1,7 @@
 import os
 import ee
 
-def sample_snodas_swe(feature_coll, bucket=None, debug=False, check_dir=None,
+def sample_snodas_swe(feature_coll, bucket=None, debug=False, check_dir=None, overwrite=False,
                       start_yr=2004, end_yr=2023, feature_id='FID'):
     feature_coll = ee.FeatureCollection(feature_coll)
     snodas = ee.ImageCollection('projects/earthengine-legacy/assets/projects/climate-engine/snodas/daily')
@@ -14,7 +14,7 @@ def sample_snodas_swe(feature_coll, bucket=None, debug=False, check_dir=None,
 
             desc = 'swe_{}_{}'.format(year, str(month).zfill(2))
 
-            if check_dir:
+            if check_dir and not overwrite:
                 f = os.path.join(check_dir, '{}.csv'.format(desc))
                 if os.path.exists(f):
                     print(desc, 'exists, skipping')

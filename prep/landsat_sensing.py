@@ -1,6 +1,7 @@
 import os
 import json
 
+from tqdm import tqdm
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -10,13 +11,14 @@ from rasterstats import zonal_stats
 from detecta import detect_cusum, detect_peaks, detect_onset
 
 
-def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_ct=100):
+def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_ct=100, feature_id='FID'):
     """
     Intended to process raw tif to tabular data using zonal statistics on polygons.
     See e.g., 'ndvi_export.export_ndvi() to export such images from Earth Engine. The output of this function
     should be the same format and structure as that from landsat_time_series_station() and
     landsat_time_series_multipolygon(). Ensure the .tif and
     .shp are both in the same coordinate reference system.
+    :param feature_id:
     :param in_shp:
     :param tif_dir:
     :param years:
@@ -26,7 +28,7 @@ def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_c
     :return:
     """
     gdf = gpd.read_file(in_shp)
-    gdf.index = gdf['FID']
+    gdf.index = gdf[feature_id]
 
     adf, ctdf, first = None, None, True
 
@@ -64,12 +66,13 @@ def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_c
     ctdf.to_csv(out_csv_ct)
 
 
-def landsat_time_series_station(in_shp, csv_dir, years, out_csv, out_csv_ct):
+def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feature_id='FID'):
     """
     Intended to process Earth Engine extracts of buffered point data, e.g., the area around flux tower
     stations. See e.g., ndvi_export.flux_tower_ndvi() to generate such data. The output of this function
     should be the same format and structure as that from landsat_time_series_image()
     and landsat_time_series_multipolygon().
+    :param feature_id:
     :param in_shp:
     :param csv_dir:
     :param years:
@@ -78,7 +81,7 @@ def landsat_time_series_station(in_shp, csv_dir, years, out_csv, out_csv_ct):
     :return:
     """
     gdf = gpd.read_file(in_shp)
-    gdf.index = gdf['FID']
+    gdf.index = gdf[feature_id]
 
     print(csv_dir)
 
@@ -131,12 +134,13 @@ def landsat_time_series_station(in_shp, csv_dir, years, out_csv, out_csv_ct):
     ctdf.to_csv(out_csv_ct)
 
 
-def landsat_time_series_multipolygon(in_shp, csv_dir, years, out_csv, out_csv_ct):
+def clustered_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feature_id='FID'):
     """
     Intended to process Earth Engine extracts of buffered point data, e.g., the area around flux tower
     stations. See e.g., ndvi_export.clustered_field_ndvi() to generate such data. The output of this function
     should be the same format and structure as that from landsat_time_series_image() and
     landsat_time_series_station().
+    :param feature_id:
     :param in_shp:
     :param csv_dir:
     :param years:
@@ -145,13 +149,13 @@ def landsat_time_series_multipolygon(in_shp, csv_dir, years, out_csv, out_csv_ct
     :return:
     """
     gdf = gpd.read_file(in_shp)
-    gdf.index = gdf['FID']
+    gdf.index = gdf[feature_id]
 
     print(csv_dir)
 
     adf, ctdf, first = None, None, True
 
-    for yr in years:
+    for yr in tqdm(years, desc='Processing Landsat Time Series', total=len(years)):
 
         dt_index = pd.date_range('{}-01-01'.format(yr), '{}-12-31'.format(yr), freq='D')
 
@@ -163,7 +167,7 @@ def landsat_time_series_multipolygon(in_shp, csv_dir, years, out_csv, out_csv_ct
             continue
 
         field = pd.read_csv(f)
-        field.index = field['FID']
+        field.index = field[feature_id]
         cols = [c for c in field.columns if len(c.split('_')) == 3]
         f_idx = [c.split('_')[-1] for c in cols]
         f_idx = [pd.to_datetime(i) for i in f_idx]
@@ -217,7 +221,6 @@ def landsat_time_series_multipolygon(in_shp, csv_dir, years, out_csv, out_csv_ct
         else:
             adf = pd.concat([adf, df], axis=0, ignore_index=False, sort=True)
             ctdf = pd.concat([ctdf, ct], axis=0, ignore_index=False, sort=True)
-        print(yr)
 
     adf.to_csv(out_csv)
     ctdf.to_csv(out_csv_ct)
@@ -270,7 +273,6 @@ def get_tif_list(tif_dir, year):
 
 def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
     lst = pd.read_csv(landsat, index_col=0, parse_dates=True)
-    cols = list(set([x.split('_')[0] for x in lst.columns]))
     years = list(set([i.year for i in lst.index]))
     irr = pd.read_csv(irr_csv, index_col=0)
     irr.drop(columns=['LAT', 'LON'], inplace=True)
@@ -282,9 +284,7 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
         pass
 
     irrigated, fields = False, {}
-    for c in cols:
-
-        print(c)
+    for c in tqdm(irr.index, desc='Analyzing Irrigation', total=len(irr.index)):
 
         if c not in irr.index:
             print('{} not in index'.format(c))
@@ -302,7 +302,7 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
         for yr in years:
 
             try:
-                f_irr = irr.at[int(c), 'irr_{}'.format(yr)]
+                f_irr = irr.at[c, 'irr_{}'.format(yr)]
             except ValueError:
                 f_irr = irr.at[c, 'irr_{}'.format(yr)]
             except KeyError:
