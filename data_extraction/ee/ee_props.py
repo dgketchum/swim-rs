@@ -57,7 +57,7 @@ def get_irrigation(fields, desc, debug=False, selector='FID'):
 
     area, irr_img = ee.Image.pixelArea(), None
 
-    for year in range(1987, 2022):
+    for year in range(1987, 2025):
 
         irr = irr_coll.filterDate('{}-01-01'.format(year),
                                   '{}-12-31'.format(year)).select('classification').mosaic()
