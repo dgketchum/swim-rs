@@ -8,25 +8,14 @@ import geopandas as gpd
 from prep.prep_plots import TONGUE_SELECT
 
 
-def write_field_properties(shp, irr, cdl, ssurgo, landfire, js, index_col='FID', shp_add=False, targets=None):
+def write_field_properties(shp, irr, ssurgo, js, cdl=None, landfire=None, index_col='FID',
+                           shp_add=False, targets=None):
+    """"""
     irr = pd.read_csv(irr, index_col=index_col)
     irr.drop(columns=['LAT', 'LON'], inplace=True)
 
     dct = irr.T.to_dict()
     dct = {k: {'irr': {int(kk.split('_')[1]): vv for kk, vv in v.items()}} for k, v in dct.items()}
-    cdl = pd.read_csv(cdl, index_col=index_col)
-    try:
-        cdl.drop(columns=['LAT', 'LON'], inplace=True)
-    except KeyError:
-        pass
-    cdl.fillna(0.0, axis=0, inplace=True)
-    cdl = cdl.T.to_dict()
-    [dct[k].update({'cdl': {int(kk.split('_')[1]): int(vv) for kk, vv in cdl[k].items()}}) for k in dct.keys()]
-
-    landfire = pd.read_csv(landfire, index_col=index_col)
-    plant_height = landfire[['height']].copy()
-    plant_height = plant_height.T.to_dict()
-    [dct[k].update({'plant_height': plant_height[k]['height']}) for k in dct.keys()]
 
     soils = pd.read_csv(ssurgo, index_col=index_col)
 
@@ -52,6 +41,22 @@ def write_field_properties(shp, irr, cdl, ssurgo, landfire, js, index_col='FID',
     area_sq_m = fields[['area_sq_m']].copy()
     area_sq_m = area_sq_m.T.to_dict()
     [dct[k].update({'area_sq_m': area_sq_m[k]['area_sq_m']}) for k in dct.keys()]
+
+    if cdl is not None:
+        cdl = pd.read_csv(cdl, index_col=index_col)
+        try:
+            cdl.drop(columns=['LAT', 'LON'], inplace=True)
+        except KeyError:
+            pass
+        cdl.fillna(0.0, axis=0, inplace=True)
+        cdl = cdl.T.to_dict()
+        [dct[k].update({'cdl': {int(kk.split('_')[1]): int(vv) for kk, vv in cdl[k].items()}}) for k in dct.keys()]
+
+    if landfire is not None:
+        landfire = pd.read_csv(landfire, index_col=index_col)
+        plant_height = landfire[['height']].copy()
+        plant_height = plant_height.T.to_dict()
+        [dct[k].update({'plant_height': plant_height[k]['height']}) for k in dct.keys()]
 
     d = dct.copy()
     for k, v in dct.items():
@@ -99,7 +104,7 @@ if __name__ == '__main__':
 
     add_shp = os.path.join(d, 'examples/{}/gis/{}_fields.shp'.format(project, project))
 
-    write_field_properties(fields_shp, irr_, cdl_, _ssurgo, _landfire, jsn, index_col='FID', shp_add=add_shp,
+    write_field_properties(fields_shp, irr_, _ssurgo, jsn, cdl_, _landfire, index_col='FID', shp_add=add_shp,
                            targets=TONGUE_SELECT)
 
     # flux_west = '/media/research/IrrigationGIS/swim/examples/flux/gis/flux_fields_west.csv'
