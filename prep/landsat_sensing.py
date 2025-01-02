@@ -157,6 +157,9 @@ def clustered_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, f
 
     for yr in tqdm(years, desc='Processing Landsat Time Series', total=len(years)):
 
+        # if yr != 2007:
+        #     continue
+
         dt_index = pd.date_range('{}-01-01'.format(yr), '{}-12-31'.format(yr), freq='D')
 
         try:
@@ -176,6 +179,8 @@ def clustered_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, f
         if not duplicates.empty:
             field = field.resample('D').max()
         field = field.sort_index()
+
+        # field = field[['043_000128']]
 
         field[field.values == 0.00] = np.nan
 
@@ -202,11 +207,11 @@ def clustered_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, f
             field[field.values < 0.2] = np.nan
 
         df = field.copy()
-
-        ct = ~pd.isna(field)
-
         df = df.astype(float).interpolate()
         df = df.reindex(dt_index)
+
+        ct = ~pd.isna(df)
+
         df = df.interpolate().bfill()
         df = df.interpolate().ffill()
 
@@ -435,15 +440,25 @@ def flatten_list(lst):
 
 if __name__ == '__main__':
 
-    d = '/media/research/IrrigationGIS/swim'
-    if not os.path.exists(d):
-        d = d = '/home/dgketchum/data/IrrigationGIS/swim'
+    types_ = ['inv_irr', 'irr']
+    sensing_params = ['ndvi', 'etf']
 
-    project = 'tongue_annex'
-    dtype = 'extracts'
+    root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    project_ws = os.path.join(d, 'examples', project)
-    tables = os.path.join(project_ws, 'landsat', 'tables')
+    # input properties files
+    irr = os.path.join(root, 'tutorial/step_2_earth_engine_extract/properties/tutorial_irr.csv')
+    ssurgo = os.path.join(root, 'tutorial/step_2_earth_engine_extract/properties/tutorial_ssurgo.csv')
+
+    # joined properties file
+    properties_json = os.path.join(root, 'tutorial/step_4_model_setup/tutorial_properties.json')
+
+    # the original study area shapefile
+    shapefile_path = os.path.join(root, 'tutorial/step_1_domain/mt_sid_boulder.shp')
+
+    tutorial_dir = os.path.join(root, 'tutorial')
+    landsat = os.path.join(tutorial_dir, 'step_2_earth_engine_extract', 'landsat')
+    tables = os.path.join(landsat, 'tables')
+    remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
 
     types_ = ['inv_irr', 'irr']
     sensing_params = ['ndvi', 'etf']
@@ -451,24 +466,18 @@ if __name__ == '__main__':
     for mask_type in types_:
 
         for sensing_param in sensing_params:
-            yrs = [x for x in range(1987, 2022)]
-            shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
+            yrs = [x for x in range(1987, 2024)]
 
-            ee_data, src = None, None
+            if not sensing_param == 'ndvi' and mask_type == 'irr':
+                continue
 
-            ee_data = os.path.join(project_ws, 'landsat', dtype, sensing_param, mask_type)
-            src = os.path.join(tables, '{}_{}_{}.csv'.format(project, sensing_param, mask_type))
-            src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(project, sensing_param, mask_type))
+            ee_data = os.path.join(landsat, 'extracts', sensing_param, mask_type)
+            src = os.path.join(tables, '{}_{}_{}.csv'.format('tutorial', sensing_param, mask_type))
+            src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format('tutorial', sensing_param, mask_type))
 
-            # landsat_time_series_station(shp, ee_data, yrs, src, src_ct)
-            # landsat_time_series_multipolygon(shp, ee_data, yrs, src, src_ct)
-            # landsat_time_series_image(shp, tif, yrs, src, src_ct)
+            clustered_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct, feature_id='FID_1')
 
-    dst_ = os.path.join(project_ws, 'landsat', '{}_sensing.csv'.format(project))
-    join_remote_sensing(tables, dst_)
-
-    irr_ = os.path.join(project_ws, 'properties', '{}_irr.csv'.format(project))
-    js_ = os.path.join(project_ws, 'landsat', '{}_cuttings.json'.format(project))
-    detect_cuttings(dst_, irr_, irr_threshold=0.1, out_json=js_)
+    # cuttings_json = os.path.join(landsat, 'tutorial_cuttings.json')
+    # detect_cuttings(remote_sensing_file, irr, irr_threshold=0.1, out_json=cuttings_json)
 
 # ========================= EOF ================================================================================
