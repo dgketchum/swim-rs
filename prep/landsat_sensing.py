@@ -9,6 +9,7 @@ import geopandas as gpd
 
 from rasterstats import zonal_stats
 from detecta import detect_cusum, detect_peaks, detect_onset
+from scipy.signal import savgol_filter
 
 
 def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_ct=100, feature_id='FID'):
@@ -302,15 +303,14 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
         fields[c] = {}
 
         selector = '{}_ndvi_irr'.format(c)
-        count, fallow = [], []
+
+        fallow = []
 
         for yr in years:
 
             try:
                 f_irr = irr.at[c, 'irr_{}'.format(yr)]
-            except ValueError:
-                f_irr = irr.at[c, 'irr_{}'.format(yr)]
-            except KeyError:
+            except (ValueError, KeyError):
                 f_irr = irr.at[c, 'irr_{}'.format(yr)]
 
             irrigated = f_irr > irr_threshold
@@ -320,7 +320,11 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
                 continue
 
             df = lst.loc['{}-01-01'.format(yr): '{}-12-31'.format(yr), [selector]]
-            diff = df.diff()
+            df['doy'] = [i.dayofyear for i in df.index]
+            df[selector] = df[selector].rolling(window=10, center=True).mean()
+            # df[selector] = savgol_filter(df[selector], window_length=7, polyorder=2)
+
+            df['diff'] = df[selector].diff()
 
             nan_ct = np.count_nonzero(np.isnan(df.values))
             if nan_ct > 200:
@@ -328,114 +332,47 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
                 fallow.append(yr)
                 continue
 
-            vals = df.values
+            local_min_indices = df[(df['diff'] > 0) & (df['diff'].shift(1) < 0)].index
 
-            try:
-                peaks = detect_peaks(vals.flatten(), mph=0.500, mpd=30, threshold=0, valley=False,
-                                     show=False)
+            # Find periods with positive slope for more than 10 days
+            positive_slope = (df['diff'] > 0)
+            groups = (positive_slope != positive_slope.shift()).cumsum()
+            df['groups'] = groups
+            group_counts = positive_slope.groupby(groups).sum()
+            long_positive_slope_groups = group_counts[group_counts >= 10].index
 
-                ta, tai, _, _ = detect_cusum(vals, threshold=0.100, ending=False, show=False,
-                                             drift=0.005)
+            irr_doys, periods = [], 0
+            for group in long_positive_slope_groups:
+                # Find the start and end indices of the group
+                group_indices = positive_slope[groups == group].index
+                start_index = group_indices[0]
+                end_index = group_indices[-1]
 
-                onsets = detect_onset(vals, threshold=0.550, show=False)
+                # Check if this group follows a local minimum
+                if start_index in local_min_indices:
+                    start_doy = (start_index - pd.Timedelta(days=5)).dayofyear
+                    end_doy = (end_index - pd.Timedelta(days=5)).dayofyear
+                    irr_doys.extend(range(start_doy, end_doy + 1))
+                    periods += 1
 
-            except ValueError:
-                print('Error', yr, c)
-                continue
+                else:
+                    # Otherwise, just add the days within the group
+                    start_doy = start_index.dayofyear
+                    end_doy = (end_index - pd.Timedelta(days=5)).dayofyear
+                    irr_doys.extend(range(start_doy, end_doy + 1))
+                    periods += 1
 
-            irr_doys = []
-            green_start_dates, cut_dates = [], []
-            green_start_doys, cut_doys = [], []
-            irr_dates, cut_dates, pk_dates = [], [], []
+            irr_doys = sorted(list(set(irr_doys)))
 
-            if irrigated:
-                for infl, green in zip(ta, tai):
-
-                    off_peak = False
-                    try:
-                        if np.all(~np.array([ons[0] < green < ons[1] for ons in onsets])):
-                            off_peak = True
-                    except TypeError:
-                        continue
-
-                    if not off_peak:
-                        continue
-                    try:
-                        sign = diff.loc[diff.index[green + 1]: diff.index[green + 10], selector].mean()
-                    except IndexError as e:
-                        print(c, e)
-                        continue
-
-                    if sign > 0:
-                        date = df.index[green]
-                        green_start_doys.append(date)
-                        dts = '{}-{:02d}-{:02d}'.format(date.year, date.month, date.day)
-                        green_start_dates.append(dts)
-
-                for pk in peaks:
-
-                    on_peak = False
-                    if np.any(np.array([ons[0] < pk < ons[1] for ons in onsets])):
-                        on_peak = True
-
-                    if on_peak:
-                        date = df.index[pk]
-                        cut_doys.append(date)
-                        dts = '{}-{:02d}-{:02d}'.format(date.year, date.month, date.day)
-                        cut_dates.append(dts)
-
-                irr_doys = [[i for i in range(s.dayofyear, e.dayofyear)] for s, e in zip(green_start_doys, cut_doys)]
-                irr_doys = flatten_list(irr_doys)
-                irr_windows = [(gu, cd) for gu, cd in zip(green_start_dates, cut_dates)]
-
-                if not irr_windows:
-                    # this dense code calculates the periods when NDVI is increasing
-                    roll = pd.DataFrame((diff.rolling(window=15).mean() > 0.0), columns=[selector])
-                    roll = roll.loc[[i for i in roll.index if 3 < i.month < 11]]
-                    roll['crossing'] = (roll[selector] != roll[selector].shift()).cumsum()
-                    roll['count'] = roll.groupby([selector, 'crossing']).cumcount(ascending=True)
-                    irr_doys = [i.dayofyear for i in roll[roll[selector]].index]
-                    roll = roll[(roll['count'] == 0 & roll[selector])]
-                    start_idx, end_idx = list(roll.loc[roll[selector] == 1].index), list(
-                        roll.loc[roll[selector] == 0].index)
-                    start_idx = ['{}-{:02d}-{:02d}'.format(d.year, d.month, d.day) for d in start_idx]
-                    end_idx = ['{}-{:02d}-{:02d}'.format(d.year, d.month, d.day) for d in end_idx]
-                    irr_windows = [(s, e) for s, e in zip(start_idx, end_idx)]
-
-            else:
-                irr_windows = []
-
-            count.append(len(pk_dates))
-
-            green_start_dates = list(np.unique(np.array(green_start_dates)))
-
-            fields[c][yr] = {'pk_count': len(pk_dates),
-                             'green_ups': green_start_dates,
-                             'cut_dates': cut_dates,
-                             'irr_windows': irr_windows,
-                             'irr_doys': irr_doys,
+            fields[c][yr] = {'irr_doys': irr_doys,
                              'irrigated': int(irrigated),
                              'f_irr': f_irr}
 
-        avg_ct = np.array(count).mean()
-        fields[c]['average_cuttings'] = float(avg_ct)
         fields[c]['fallow_years'] = fallow
 
     with open(out_json, 'w') as fp:
         json.dump(fields, fp, indent=4)
     print('wrote {}'.format(out_json))
-
-
-def flatten_list(lst):
-    flattened = []
-    for item in lst:
-        if isinstance(item, list):
-            flattened.extend(flatten_list(item))
-        else:
-            flattened.append(item)
-
-    flattened = sorted(list(set(flattened)))
-    return flattened
 
 
 if __name__ == '__main__':
@@ -475,9 +412,9 @@ if __name__ == '__main__':
             src = os.path.join(tables, '{}_{}_{}.csv'.format('tutorial', sensing_param, mask_type))
             src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format('tutorial', sensing_param, mask_type))
 
-            clustered_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct, feature_id='FID_1')
+            # clustered_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct, feature_id='FID_1')
 
-    # cuttings_json = os.path.join(landsat, 'tutorial_cuttings.json')
-    # detect_cuttings(remote_sensing_file, irr, irr_threshold=0.1, out_json=cuttings_json)
+    cuttings_json = os.path.join(landsat, 'tutorial_cuttings.json')
+    detect_cuttings(remote_sensing_file, irr, irr_threshold=0.1, out_json=cuttings_json)
 
 # ========================= EOF ================================================================================
