@@ -8,6 +8,7 @@ except ImportError:
 
 import os
 
+from tqdm import tqdm
 import numpy as np
 import pandas as pd
 
@@ -64,9 +65,12 @@ REQ_IRR = ['etr_mm',
 ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['obs_swe']
 
 
-def prep_fields_json(fields, target_plots, input_ts, out_js, irr_data=None, force_unirrigated=False):
+def prep_fields_json(fields, input_ts, out_js, target_plots=None, irr_data=None, force_unirrigated=False):
     with open(fields, 'r') as fp:
         fields = json.load(fp)
+
+    if target_plots is None:
+        target_plots = list(fields.keys())
 
     dct = {'props': {i: r for i, r in fields.items() if i in target_plots}}
 
@@ -75,7 +79,7 @@ def prep_fields_json(fields, target_plots, input_ts, out_js, irr_data=None, forc
     missing = list(set(missing))
 
     if missing:
-        print('Target sample missing: {}'.format(missing))
+        print('Target sample(s) missing: {}'.format(missing))
         [target_plots.remove(f) for f in missing]
         if not target_plots:
             return target_plots, missing
@@ -104,16 +108,15 @@ def prep_fields_json(fields, target_plots, input_ts, out_js, irr_data=None, forc
 
     dts, order = None, []
     first, arrays, shape = True, {r: [] for r in required_params}, None
-    for fid, v in dct['props'].items():
+    for fid, v in tqdm(dct['props'].items(), total=len(dct['props'])):
 
         if fid in missing:
             continue
-            
+
         _file = os.path.join(input_ts, '{}_daily.csv'.format(fid))
         df = pd.read_csv(_file, index_col='date', parse_dates=True)
         if first:
             shape = df.shape[0]
-            print('Input shape: {}'.format(df.shape))
             doys = [int(dt.strftime('%j')) for dt in df.index]
             dts = [(int(r['year']), int(r['month']), int(r['day'])) for i, r in df.iterrows()]
             dts = ['{}-{:02d}-{:02d}'.format(y, m, d) for y, m, d in dts]
@@ -154,7 +157,6 @@ def prep_fields_json(fields, target_plots, input_ts, out_js, irr_data=None, forc
 
 
 def preproc(field_ids, src, _dir):
-
     ct = 0
 
     for fid in field_ids:
@@ -182,30 +184,19 @@ def preproc(field_ids, src, _dir):
 
 
 if __name__ == '__main__':
+    root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    d = '/media/research/IrrigationGIS/swim'
-    if not os.path.exists(d):
-        d = '/home/dgketchum/data/IrrigationGIS/swim'
+    properties_json = os.path.join(root, 'tutorial', 'step_4_model_data_prep', 'tutorial_properties.json')
+    cuttings_json = os.path.join(root, 'tutorial', 'step_2_earth_engine_extract', 'landsat', 'tutorial_cuttings.json')
+    joined_timeseries = os.path.join(root, 'tutorial', 'step_4_model_data_prep', 'input_timeseries')
+    shapefile_path = os.path.join(root, 'tutorial', 'step_1_domain', 'mt_sid_boulder.shp')
 
-    project = 'flux'
-    if project == 'tongue':
-        fields = TONGUE_SELECT
-    elif project == 'flux':
-        fields = FLUX_SELECT
+    prepped_input = os.path.join(root, 'tutorial', 'step_5_model_setup', 'prepped_input.json')
 
-    project_ws = os.path.join(d, 'examples', project)
+    processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, prepped_input,
+                                                           target_plots=None, irr_data=cuttings_json)
 
-    src_dir = os.path.join(project_ws, 'input_timeseries')
-
-    fields_props = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
-    cuttings = os.path.join(d, 'examples/{}/landsat/{}_cuttings.json'.format(project, project))
-
-    select_fields_js = os.path.join(project_ws, 'prepped_input', '{}_input_sample.json'.format(project))
-
-    processed_targets, excluded_targets = prep_fields_json(fields_props, fields,
-                                                           src_dir, select_fields_js, irr_data=cuttings)
-
-    project_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
-    preproc(processed_targets, src_dir, project_dir)
+    # project_dir = os.path.join(root, 'tutorial', 'step_5_model_setup')
+    # preproc(processed_targets, joined_timeseries, project_dir)
 
 # ========================= EOF ====================================================================
