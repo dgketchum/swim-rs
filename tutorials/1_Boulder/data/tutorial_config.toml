@@ -23,6 +23,9 @@ input_data = '{project_root}/data/prepped_input.json'
 elev_units = 'm'
 refet_type = 'eto'
 
+## Below the irrigation threshold, the model will analyze the unirrigated portion
+irr_threshold = 0.3
+
 [CALIBRATION]
 ## PEST Calibration (0: calibrating, 1: not calibrating)
 calibrate_flag = 0

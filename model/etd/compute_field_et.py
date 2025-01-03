@@ -145,6 +145,9 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
         potential_irr = np.where((foo_day.irr_day & (foo.depl_root > foo.raw)),
                                  np.minimum(foo.max_irr_rate, foo.depl_root * 1.1), potential_irr)
 
+        # if np.any(potential_irr > 0.) and foo_day.doy > 190 and foo_day.irr_day[0, 46]:
+        #     a = 1
+
         foo.irr_continue = np.where((foo_day.irr_day & (foo.max_irr_rate < foo.depl_root * 1.1)), 1, 0)
 
         foo.irr_sim = potential_irr

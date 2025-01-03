@@ -40,40 +40,27 @@ def plot_timeseries(df, parameters, start='2007-05-01', end='2007-10-31'):
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
     bar_vars = ['rain', 'melt', 'snow_fall', 'dperc', 'irrigation']
-    bar_colors = ['lightpink', 'lightblue', 'blue', 'lightsalmon', 'lightgrey']
+    bar_colors = ['lightpink', 'lightblue', 'blue', 'lightsalmon', 'red']
 
-    if parameters[0] in bar_vars:
-        if parameters[0] in bar_vars:
-            vals = df[parameters[0]]
-            if parameters[0] == 'dperc':
-                vals *= -1
-                print(min(vals))
-            fig.add_trace(
-                go.Bar(x=df.index, y=vals, name=parameters[0],
-                       marker=dict(color=bar_colors[bar_vars.index(parameters[0])])),
-                secondary_y=False,
-            )
-    else:
-        fig.add_trace(
-            go.Scatter(x=df.index, y=df[parameters[0]], name=parameters[0]),
-            secondary_y=False,
-        )
-
-    for i, param in enumerate(parameters[1:]):
+    for i, param in enumerate(parameters):
         if param in bar_vars:
             vals = df[param]
             if param == 'dperc':
                 vals *= -1
-                print(min(vals))
             fig.add_trace(
                 go.Bar(x=df.index, y=vals, name=param,
                        marker=dict(color=bar_colors[bar_vars.index(param)])),
                 secondary_y=False,
             )
         else:
+            if param in ['et_act', 'etref'] and 'et_act' in parameters and 'etref' in parameters:
+                secondary_y = False
+            else:
+                secondary_y = True if i > 0 else False
+
             fig.add_trace(
                 go.Scatter(x=df.index, y=df[param], name=param),
-                secondary_y=True,
+                secondary_y=secondary_y,
             )
 
     for param in parameters:
@@ -90,6 +77,7 @@ def plot_timeseries(df, parameters, start='2007-05-01', end='2007-10-31'):
 
     kwargs = dict(title_text="SWIM Model Time Series",
                   xaxis_title="Date",
+                  yaxis_title="mm",
                   height=800,
                   template='plotly_dark',
                   xaxis=dict(showgrid=False),
@@ -101,6 +89,8 @@ def plot_timeseries(df, parameters, start='2007-05-01', end='2007-10-31'):
 
     fig.update_layout(**kwargs)
     fig.update_xaxes(rangeslider_visible=True)
+    # fig_name = '_'.join([c.split('_')[0] for c in parameters] + ['.png'])
+    # fig.write_image(fig_name)
     fig.show()
 
 
@@ -109,12 +99,15 @@ if __name__ == '__main__':
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
     config_file = os.path.join(root, 'tutorials', '1_Boulder', 'data', 'tutorial_config.toml')
     project_ws_ = os.path.join(root, 'tutorials', '1_Boulder')
-    out_csv = os.path.join(root, 'tutorials', '1_Boulder', 'step_5_model_setup', 'combined_output.csv')
 
-    run_fields(config_file, project_ws_, selected_feature='043_000161', output_csv=out_csv)
+    selected_feature = '043_000128'
+    out_csv = os.path.join(root, 'tutorials', '1_Boulder', 'step_5_model_run',
+                           f'combined_output_{selected_feature}.csv')
 
-    start = '2018-01-01'
-    end = '2018-12-31'
+    run_fields(config_file, project_ws_, selected_feature=selected_feature, output_csv=out_csv)
+
+    start = '2007-01-01'
+    end = '2009-12-31'
     plot_timeseries(out_csv, ['snow_fall', 'rain', 'melt', 'dperc'], start=start, end=end)
 
     # plot_timeseries(out_csv, ['et_act', 'etref', 'irrigation'], start=start, end=end)
