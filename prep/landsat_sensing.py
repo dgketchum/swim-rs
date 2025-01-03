@@ -1,15 +1,12 @@
 import os
 import json
 
-from tqdm import tqdm
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import geopandas as gpd
 
 from rasterstats import zonal_stats
-from detecta import detect_cusum, detect_peaks, detect_onset
-from scipy.signal import savgol_filter
 
 
 def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_ct=100, feature_id='FID'):
