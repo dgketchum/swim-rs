@@ -168,4 +168,17 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
-tutorial/step_3_meteorology_extract/met_timeseries
+
+/tutorials/1_Boulder/data/gis/mt_sid_boulder_gfid.cpg
+/tutorials/1_Boulder/data/gis/mt_sid_boulder_gfid.dbf
+/tutorials/1_Boulder/data/gis/mt_sid_boulder_gfid.json
+/tutorials/1_Boulder/data/gis/mt_sid_boulder_gfid.prj
+/tutorials/1_Boulder/data/gis/mt_sid_boulder_gfid.shp
+/tutorials/1_Boulder/data/gis/mt_sid_boulder_gfid.shx
+/tutorials/1_Boulder/data/input_timeseries/
+/tutorials/1_Boulder/data/landsat/
+/tutorials/1_Boulder/data/met_timeseries/
+/tutorials/1_Boulder/data/properties/
+/tutorials/1_Boulder/data/snodas/
+/tutorials/1_Boulder/data/tutorial_properties.json
+/tutorials/1_Boulder/data/prepped_input.json
