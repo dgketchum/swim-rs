@@ -1,6 +1,6 @@
 ## SWIM Configuration
 [FIELDS]
-project_folder = '{project_root}/step_5_model_setup'
+project_folder = '{project_root}/step_5_model_run'
 
 ## data folder and alternate, to check another location if necessary
 data_folder = '{project_root}/data'
