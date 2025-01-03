@@ -321,6 +321,8 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
         tracker.crop_df = {fid: pd.DataFrame().from_dict(tracker.crop_df[fid], orient='index')[OUTPUT_FMT]
                            for fid in targets}
+        for fid in tracker.crop_df:
+            tracker.crop_df[fid].index = pd.to_datetime(tracker.crop_df[fid].index)
         return tracker.crop_df
 
     else:
