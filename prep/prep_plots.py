@@ -152,6 +152,7 @@ def prep_fields_json(fields, input_ts, out_js, target_plots=None, irr_data=None,
     dct.update({'order': order, 'time_series': data})
     with open(out_js, 'w') as fp:
         json.dump(dct, fp, indent=4)
+    print(f'wrote {out_js}')
 
     return target_plots, missing
 
