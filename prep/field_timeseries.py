@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, overwrite=False,
-                          start_date=None, end_date=None, **kwargs):
+                          start_date=None, end_date=None, feature_id='FID',  **kwargs):
     with open(snow, 'r') as f:
         snow = json.load(f)
 
@@ -26,7 +26,7 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
         params = kwargs['params']
 
     field_df = gpd.read_file(fields)
-    field_df.index = field_df['FID']
+    field_df.index = field_df[feature_id]
 
     out_plots = []
 
@@ -37,12 +37,12 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
                 continue
 
         if pd.isna(row['GFID']):
-            print(row['FID'], 'was not assigned a Gridmet point')
+            print(row[feature_id], 'was not assigned a Gridmet point')
             continue
 
         _file = os.path.join(dst_dir, '{}_daily.csv'.format(f))
 
-        gridmet_file = os.path.join(gridmet_dir, 'gridmet_historical_{}.csv'.format(int(row['GFID'])))
+        gridmet_file = os.path.join(gridmet_dir, 'gridmet_{}.csv'.format(int(row['GFID'])))
 
         try:
             gridmet = pd.read_csv(gridmet_file, index_col='date', parse_dates=True).loc[start: end]
