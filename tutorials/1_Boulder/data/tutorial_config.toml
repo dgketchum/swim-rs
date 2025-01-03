@@ -1,0 +1,36 @@
+## SWIM Configuration
+[FIELDS]
+project_folder = '{project_root}/tutorials/1_Boulder/step_5_model_setup'
+
+## data folder and alternate, to check another location if necessary
+data_folder = '{project_root}/data'
+alt_data_folder = ''
+
+## The unique identifier from the original project shapefile that identifies sample plots (fields)
+field_index = 'FID_1'
+
+## Crop Coefficient Proxy
+kc_proxy = 'etf'
+cover_proxy = 'ndvi'
+
+## Date Range
+start_date = '2004-01-01'
+end_date = '2022-12-31'
+
+## Static file names; prepend with data_folder
+input_data = '{project_root}/tutorials/1_Boulder/step_5_model_setup/prepped_input.json'
+
+## Misc configs
+elev_units = 'm'
+refet_type = 'eto'
+
+[CALIBRATION]
+## PEST Calibration (0: calibrating, 1: not calibrating)
+calibrate_flag = 0
+calibration_folder = ''
+initial_values_csv = '{project_root}/examples/tongue/params.csv'
+
+[FORECAST]
+## Forecast means we're running with PEST++ calibrated parameters
+forecast_flag = 0
+forecast_parameters = ''
