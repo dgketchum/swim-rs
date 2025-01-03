@@ -1,8 +1,5 @@
 import json
 
-import geopandas as gpd
-import pandas as pd
-
 
 class SamplePlots:
     """A Container for input time series, historical, and static field information
@@ -15,6 +12,7 @@ class SamplePlots:
     def __init__(self):
         super().__init__()
         self.input = None
+        self.output = None
 
     def initialize_plot_data(self, config):
         f = config.input_data

@@ -50,10 +50,15 @@ class ProjectConfig:
         self.winter_end_day = None
         self.winter_start_day = None
 
-    def read_config(self, conf, calibration_folder=None, parameter_dist_csv=None, parameter_set_json=None):
+    def read_config(self, conf, project_root, calibration_folder=None, parameter_dist_csv=None, parameter_set_json=None):
 
         with open(conf, 'r') as f:
             config = toml.load(f)
+
+        for section in config:
+            for key in config[section]:
+                if isinstance(config[section][key], str) and '{project_root}' in config[section][key]:
+                    config[section][key] = config[section][key].format(project_root=project_root)
 
         crop_et_sec = 'FIELDS'
         calib_sec = 'CALIBRATION'
@@ -64,12 +69,13 @@ class ProjectConfig:
         self.cover_proxy = config[crop_et_sec]['cover_proxy']
 
         self.project_ws = config[crop_et_sec]['project_folder']
-        assert os.path.isdir(self.project_ws)
+        if not os.path.isdir(self.project_ws):
+            raise NotADirectoryError(f'{self.project_ws} is not a directory')
 
         self.data_folder = config[crop_et_sec]['data_folder']
+
         if not os.path.exists(self.data_folder):
-            self.data_folder = config[crop_et_sec]['alt_data_folder']
-        assert os.path.exists(self.data_folder)
+            raise NotADirectoryError(f'{self.data_folder} is not a directory')
 
         self.field_index = config[crop_et_sec]['field_index']
 
