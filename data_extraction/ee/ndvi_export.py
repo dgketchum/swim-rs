@@ -240,15 +240,36 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
 
 if __name__ == '__main__':
 
-    d = '/media/research/IrrigationGIS/swim'
-    if not os.path.exists(d):
-        d = '/home/dgketchum/data/IrrigationGIS/swim'
-
     is_authorized()
-    bucket_ = 'wudr'
-    fields = 'users/dgketchum/fields/tongue_annex_20OCT2023'
-    for mask in ['inv_irr', 'irr']:
-        chk = os.path.join(d, 'examples/tongue/landsat/extracts/ndvi/{}'.format(mask))
-        clustered_sample_ndvi(fields, bucket_, debug=False, mask_type=mask, check_dir=None)
+
+    bucket = 'wudr'
+
+    home = os.path.expanduser('~')
+    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
+    data = os.path.join(root, 'tutorials', '2_Fort_Peck', 'data')
+    shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
+    gdf = gpd.read_file(shapefile_path)
+    gdf.shape
+
+    FEATURE_ID = 'field_1'
+
+    from etf_export import sparse_sample_etf
+
+    for src in ['ndvi', 'etf']:
+        for mask in ['inv_irr', 'irr']:
+
+            dst = os.path.join(data, 'landsat', src, mask)
+
+            if not os.path.exists(dst):
+                os.makedirs(dst, exist_ok=True)
+
+            if src == 'etf':
+                print(src, mask)
+                sparse_sample_etf(shapefile_path, bucket, debug=False, mask_type=mask, check_dir=None,
+                                  start_yr=1987, end_yr=2022, feature_id=FEATURE_ID, select=['US-FPe'])
+            if src == 'ndvi':
+                print(src, mask)
+                sparse_sample_ndvi(shapefile_path, bucket, debug=False, mask_type=mask, check_dir=None,
+                                   start_yr=1987, end_yr=2022, feature_id=FEATURE_ID, select=['US-FPe'])
 
 # ========================= EOF ====================================================================
