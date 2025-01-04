@@ -64,7 +64,8 @@ def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_c
     ctdf.to_csv(out_csv_ct)
 
 
-def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feature_id='FID'):
+def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feature_id='FID',
+                               select=None):
     """
     Intended to process Earth Engine extracts of buffered point data, e.g., the area around flux tower
     stations. See e.g., ndvi_export.flux_tower_ndvi() to generate such data. The output of this function
@@ -81,6 +82,9 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
     gdf = gpd.read_file(in_shp)
     gdf.index = gdf[feature_id]
 
+    if select:
+        gdf = gdf.loc[select]
+
     print(csv_dir)
 
     adf, ctdf, first = None, None, True
@@ -88,6 +92,7 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
     for yr in years:
 
         dt_index = pd.date_range('{}-01-01'.format(yr), '{}-12-31'.format(yr), freq='D')
+
         df = pd.DataFrame(index=dt_index, columns=gdf.index)
         ct = pd.DataFrame(index=dt_index, columns=gdf.index)
 
@@ -97,6 +102,10 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
         for f in file_list:
             field = pd.read_csv(f)
             sid = field.columns[0]
+
+            if select and sid not in select:
+                continue
+
             cols = [c for c in field.columns if len(c.split('_')) == 3]
             f_idx = [c.split('_')[-1] for c in cols]
             f_idx = [pd.to_datetime(i) for i in f_idx]
@@ -274,7 +283,7 @@ def get_tif_list(tif_dir, year):
     return l, dates_
 
 
-def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
+def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1, select=None):
     lst = pd.read_csv(landsat, index_col=0, parse_dates=True)
     years = list(set([i.year for i in lst.index]))
     irr = pd.read_csv(irr_csv, index_col=0)
@@ -283,11 +292,14 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
     try:
         _ = float(irr.index[0])
         irr.index = [str(i) for i in irr.index]
-    except TypeError:
+    except (TypeError, ValueError):
         pass
 
     irrigated, fields = False, {}
     for c in tqdm(irr.index, desc='Analyzing Irrigation', total=len(irr.index)):
+
+        if select and c not in select:
+            continue
 
         if c not in irr.index:
             print('{} not in index'.format(c))
@@ -305,6 +317,8 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
 
         for yr in years:
 
+            irr_doys, periods = [], 0
+
             try:
                 f_irr = irr.at[c, 'irr_{}'.format(yr)]
             except (ValueError, KeyError):
@@ -314,6 +328,9 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
 
             if not irrigated:
                 fallow.append(yr)
+                fields[c][yr] = {'irr_doys': irr_doys,
+                                 'irrigated': int(irrigated),
+                                 'f_irr': f_irr}
                 continue
 
             df = lst.loc['{}-01-01'.format(yr): '{}-12-31'.format(yr), [selector]]
@@ -338,7 +355,6 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1):
             group_counts = positive_slope.groupby(groups).sum()
             long_positive_slope_groups = group_counts[group_counts >= 10].index
 
-            irr_doys, periods = [], 0
             for group in long_positive_slope_groups:
                 # Find the start and end indices of the group
                 group_indices = positive_slope[groups == group].index
@@ -379,20 +395,20 @@ if __name__ == '__main__':
 
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
+    data = os.path.join(root, 'tutorials', '2_Fort_Peck', 'data')
+    shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
+
     # input properties files
-    irr = os.path.join(root, 'tutorial/step_2_earth_engine_extract/properties/tutorial_irr.csv')
-    ssurgo = os.path.join(root, 'tutorial/step_2_earth_engine_extract/properties/tutorial_ssurgo.csv')
+    irr = os.path.join(data, 'properties', 'calibration_irr.csv')
+    ssurgo = os.path.join(data, 'properties', 'calibration_ssurgo.csv')
 
-    # joined properties file
-    properties_json = os.path.join(root, 'tutorial/step_4_model_setup/tutorial_properties.json')
-
-    # the original study area shapefile
-    shapefile_path = os.path.join(root, 'tutorial/step_1_domain/mt_sid_boulder.shp')
-
-    tutorial_dir = os.path.join(root, 'tutorial')
-    landsat = os.path.join(tutorial_dir, 'step_2_earth_engine_extract', 'landsat')
+    landsat = os.path.join(data, 'landsat')
+    extracts = os.path.join(landsat, 'extracts')
     tables = os.path.join(landsat, 'tables')
+
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
+
+    FEATURE_ID = 'field_1'
 
     types_ = ['inv_irr', 'irr']
     sensing_params = ['ndvi', 'etf']
@@ -402,16 +418,14 @@ if __name__ == '__main__':
         for sensing_param in sensing_params:
             yrs = [x for x in range(1987, 2024)]
 
-            if not sensing_param == 'ndvi' and mask_type == 'irr':
-                continue
-
             ee_data = os.path.join(landsat, 'extracts', sensing_param, mask_type)
-            src = os.path.join(tables, '{}_{}_{}.csv'.format('tutorial', sensing_param, mask_type))
-            src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format('tutorial', sensing_param, mask_type))
+            src = os.path.join(tables, '{}_{}_{}.csv'.format('calibration', sensing_param, mask_type))
+            src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format('calibration', sensing_param, mask_type))
 
-            # clustered_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct, feature_id='FID_1')
+            # sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
+            #                            feature_id=FEATURE_ID, select=['US-FPe'])
 
-    cuttings_json = os.path.join(landsat, 'tutorial_cuttings.json')
-    detect_cuttings(remote_sensing_file, irr, irr_threshold=0.1, out_json=cuttings_json)
+    cuttings_json = os.path.join(landsat, 'calibration_cuttings.json')
+    detect_cuttings(remote_sensing_file, irr, irr_threshold=0.1, out_json=cuttings_json, select=['US-FPe'])
 
 # ========================= EOF ================================================================================
