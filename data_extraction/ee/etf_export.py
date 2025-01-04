@@ -13,7 +13,7 @@ IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 
 ETF = 'projects/usgs-gee-nhm-ssebop/assets/ssebop/landsat/c02'
 
-EC_POINTS = 'users/dgketchum/flux_ET_dataset/stations'
+EC_POINTS =  'users/dgketchum/fields/flux'
 
 STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
 
@@ -72,8 +72,10 @@ def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_ty
         print(_name)
 
 
-def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, feature_id='FID'):
+def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, feature_id='FID',
+                      select=None, start_yr=2000, end_yr=2024):
     df = gpd.read_file(shapefile)
+    df.index = df[feature_id]
 
     assert df.crs.srs == 'EPSG:5071'
 
@@ -87,16 +89,16 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
     for fid, row in df.iterrows():
 
-        for year in range(2000, 2015):
+        for year in range(start_yr, end_yr + 1):
+
+            if select is not None and fid not in select:
+                continue
 
             state = row['field_3']
             if state not in STATES:
                 continue
 
             site = row[feature_id]
-
-            if site not in ['US-Mj1', 'US-Mj2']:
-                continue
 
             desc = 'etf_{}_{}_{}'.format(site, mask_type, year)
             if check_dir:

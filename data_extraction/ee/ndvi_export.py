@@ -11,7 +11,7 @@ sys.setrecursionlimit(5000)
 
 IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 
-EC_POINTS = 'users/dgketchum/flux_ET_dataset/stations'
+EC_POINTS =  'users/dgketchum/fields/flux'
 
 STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
 
@@ -72,8 +72,11 @@ def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_t
         print(_name)
 
 
-def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, feature_id='FID'):
+def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None,  feature_id='FID',
+                      select=None, start_yr=2000, end_yr=2024):
+
     df = gpd.read_file(shapefile)
+    df.index = df[feature_id]
 
     assert df.crs.srs == 'EPSG:5071'
 
@@ -87,10 +90,9 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
     for fid, row in df.iterrows():
 
-        for year in range(1987, 2022):
+        for year in range(start_yr, end_yr + 1):
 
-            state = row['field_3']
-            if state not in STATES:
+            if select is not None and fid not in select:
                 continue
 
             site = row[feature_id]
