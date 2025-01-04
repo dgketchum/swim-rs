@@ -147,6 +147,62 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
         json.dump(gridmet_targets, fp, indent=4)
 
 
+def get_gridmet_corrections(fields, gridmet_ras, fields_join,
+                            factors_js, field_select=None, feature_id='FID'):
+    print('Find field-gridmet joins')
+
+    convert_to_wgs84 = lambda x, y: pyproj.Transformer.from_crs('EPSG:5071', 'EPSG:4326').transform(x, y)
+
+    fields = gpd.read_file(fields)
+
+    oshape = fields.shape[0]
+
+    rasters = []
+    for v in ['eto', 'etr']:
+        [rasters.append(os.path.join(gridmet_ras, 'gridmet_corrected_{}_{}.tif'.format(v, m))) for m in range(1, 13)]
+
+    gridmet_targets = {}
+
+    for j, (i, field) in enumerate(tqdm(fields.iterrows(), desc='Assigning GridMET IDs', total=fields.shape[0])):
+
+        if field_select:
+            if str(field[feature_id]) not in field_select:
+                continue
+
+        xx, yy = field['geometry'].centroid.x, field['geometry'].centroid.y
+        lat, lon = convert_to_wgs84(xx, yy)
+        fields.at[i, 'LAT'] = lat
+        fields.at[i, 'LON'] = lon
+
+        closest_fid = j
+
+        fields.at[i, 'GFID'] = closest_fid
+
+        if closest_fid not in gridmet_targets.keys():
+            gridmet_targets[closest_fid] = {str(m): {} for m in range(1, 13)}
+            gdf = gpd.GeoDataFrame({'geometry': [field['geometry'].centroid]})
+            gridmet_targets[closest_fid]['lat'] = lat
+            gridmet_targets[closest_fid]['lon'] = lon
+            for r in rasters:
+                splt = r.split('_')
+                _var, month = splt[-2], splt[-1].replace('.tif', '')
+                stats = zonal_stats(gdf, r, stats=['mean'], nodata=np.nan)[0]['mean']
+                gridmet_targets[closest_fid][month].update({_var: stats})
+
+        g = GridMet('elev', lat=fields.at[i, 'LAT'], lon=fields.at[i, 'LON'])
+        elev = g.get_point_elevation()
+        fields.at[i, 'ELEV'] = elev
+
+    fields = fields[~np.isnan(fields['GFID'])]
+    print(f'Writing {fields.shape[0]} of {oshape} input features')
+    fields['GFID'] = fields['GFID'].fillna(-1).astype(int)
+
+    fields.to_file(fields_join, crs='EPSG:5071', engine='fiona')
+
+    with open(factors_js, 'w') as fp:
+        json.dump(gridmet_targets, fp, indent=4)
+
+
 def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None, overwrite=False,
                      target_fields=None, feature_id='FID'):
     if not start:
@@ -348,21 +404,37 @@ def wind_height_adjust(uz, zw):
     return uz * 4.87 / np.log(67.8 * zw - 5.42)
 
 
-def gridmet_elevation(lat, lon):
-    g = GridMet('elev', lat=lat, lon=lon)
-    elev = g.get_point_elevation()
-    return elev
+def gridmet_elevation(shp_in, shp_out):
 
-
-if __name__ == '__main__':
-    in_ = '/media/research/IrrigationGIS/swim/gridmet/gridmet_centroids_tongue.shp'
-    out_ = '/media/research/IrrigationGIS/swim/gridmet/gridmet_centroids_tongue_elev.shp'
-    df = gpd.read_file(in_)
+    df = gpd.read_file(shp_in)
     l = []
     for i, r in df.iterrows():
-        elev = gridmet_elevation(r['lat'], r['lon'])
+        lat, lon = r['lat'], r['lon']
+        g = GridMet('elev', lat=lat, lon=lon)
+        elev = g.get_point_elevation()
         l.append((i, elev))
-    pass
+
     df['ELEV_M'] = [i[1] for i in l]
-    df.to_file(out_)
+    df.to_file(shp_out)
+
+if __name__ == '__main__':
+    home = os.path.expanduser('~')
+
+    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
+
+    data = os.path.join(root, 'tutorials', '2_Fort_Peck', 'data')
+    shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
+    correction_tifs = os.path.join(data, 'bias_correction_tif')
+
+    fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
+    gridmet_factors = os.path.join(data, 'gis', 'flux_fields_gfid.json')
+
+    correction_tifs = os.path.join(data, 'bias_correction_tif')
+
+    get_gridmet_corrections(fields=shapefile_path,
+                            gridmet_ras=correction_tifs,
+                            fields_join=fields_gridmet,
+                            factors_js=gridmet_factors,
+                            feature_id='field_1',
+                            field_select=['US-FPe'])
 # ========================= EOF ====================================================================
