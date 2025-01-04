@@ -6,7 +6,7 @@ import pandas as pd
 from model.etd import obs_field_cycle
 from swim.config import ProjectConfig
 from swim.input import SamplePlots
-from viz.swim_timeseries import plot_timeseries
+from viz.swim_timeseries import plot_swim_timeseries
 
 
 def run_fields(ini_path, project_ws, selected_feature, output_csv):
@@ -44,7 +44,7 @@ if __name__ == '__main__':
 
     start = '2007-01-01'
     end = '2009-12-31'
-    plot_timeseries(out_csv, ['snow_fall', 'rain', 'melt', 'dperc'], start=start, end=end)
+    plot_swim_timeseries(out_csv, ['snow_fall', 'rain', 'melt', 'dperc'], start=start, end=end)
 
     # plot_timeseries(out_csv, ['et_act', 'etref', 'irrigation'], start=start, end=end)
 

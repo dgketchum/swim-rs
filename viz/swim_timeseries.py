@@ -5,7 +5,7 @@ from plotly import graph_objects as go
 from plotly.subplots import make_subplots
 
 
-def plot_timeseries(df, parameters, start='2007-05-01', end='2007-10-31', png_file=None):
+def plot_swim_timeseries(df, parameters, start='2007-05-01', end='2007-10-31', png_file=None):
     if not isinstance(df, pd.DataFrame):
         df = pd.read_csv(df, index_col=0, parse_dates=True)
 
