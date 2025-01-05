@@ -25,13 +25,17 @@ def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, ver
 
 
 if __name__ == '__main__':
-    project_ = 'tongue'
-    d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project_)
-    p_dir = os.path.join(d, 'pest')
-    m_dir = os.path.join(d, 'master')
-    w_dir = os.path.join(d, 'workers')
+    home = os.path.expanduser('~')
+    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
+    project_ws = os.path.join(root, 'tutorials', '2_Fort_Peck')
+
+    p_dir = os.path.join(project_ws, 'pest')
+    m_dir = os.path.join(project_ws, 'master')
+    w_dir = os.path.join(project_ws, 'workers')
     exe_ = 'pestpp-ies'
-    _pst = '{}.pst'.format(project_)
+
+    _pst = os.path.join(project_ws, 'pest', '2_Fort_Peck.pst')
+
     _workers = 4
 
     run_pst(p_dir, exe_, _pst, num_workers=_workers, worker_root=w_dir,
