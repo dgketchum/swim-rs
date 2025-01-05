@@ -422,8 +422,9 @@ if __name__ == '__main__':
             src = os.path.join(tables, '{}_{}_{}.csv'.format('calibration', sensing_param, mask_type))
             src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format('calibration', sensing_param, mask_type))
 
-            # sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-            #                            feature_id=FEATURE_ID, select=['US-FPe'])
+            # TODO: consider whether there is a case where ETf needs to be interpolated
+            sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
+                                       feature_id=FEATURE_ID, select=['US-FPe'])
 
     cuttings_json = os.path.join(landsat, 'calibration_cuttings.json')
     detect_cuttings(remote_sensing_file, irr, irr_threshold=0.1, out_json=cuttings_json, select=['US-FPe'])
