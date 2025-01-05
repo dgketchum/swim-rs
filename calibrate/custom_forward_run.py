@@ -4,18 +4,24 @@ import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-PROJECT = 'tongue'
-
 
 def run():
-    p = '/home/dgketchum/PycharmProjects/swim-rs/run/run_mp.py'
-    python_path = '/home/dgketchum/PycharmProjects/swim-rs'
-    os.environ['PYTHONPATH'] = python_path
-    conf_file = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/{}_swim.toml'.format(PROJECT, PROJECT)
+    """This script is meant to be executed by PEST++"""
+    home = os.path.expanduser('~')
+
+    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
+    os.environ['PYTHONPATH'] = root
+
+    model_script = os.path.join(root, 'run', 'run_mp.py')
+
+    project_ws = os.path.join(root, 'tutorials', '2_Fort_Peck')
+
+    conf_file = os.path.join(project_ws, 'data', 'tutorial_config.toml')
 
     cwd = os.getcwd()
 
-    args = ['python' + ' {}'.format(p),
+    args = ['python' + ' {}'.format(model_script),
+            '--project_dir', project_ws,
             '--config_path', conf_file,
             '--worker_dir', cwd]
 
