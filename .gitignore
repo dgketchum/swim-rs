@@ -190,3 +190,6 @@ cython_debug/
 /tutorials/2_Fort_Peck/data/snodas/
 /tutorials/2_Fort_Peck/data/input_timeseries/
 /tutorials/2_Fort_Peck/data/US-FPe_daily_data.csv
+/tutorials/2_Fort_Peck/pest/
+/tutorials/2_Fort_Peck/master/
+/tutorials/2_Fort_Peck/workers/
