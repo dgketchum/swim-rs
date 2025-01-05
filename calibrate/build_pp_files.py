@@ -182,21 +182,20 @@ def build_localizer(pst_file, ag_json=None, irr_thresh=0.5):
 
     track = {k: [] for k in sites}
 
+    irr_d = {k.lower(): v for k, v in input_dct['irr_data'].items()}
+
     for s in sites:
 
         for ob_type, params in par_relation.items():
 
             if ag_json and ob_type == 'etf':
 
-                if s == '262':
-                    a = 1
-
                 for yr in years:
 
-                    irr = str(yr) in input_dct['irr_data'][s].keys()
+                    irr = str(yr) in irr_d[s].keys()
                     if irr:
                         try:
-                            f_irr = input_dct['irr_data'][s][str(yr)]['f_irr']
+                            f_irr = irr_d[s][str(yr)]['f_irr']
                             irr = f_irr > irr_thresh
                         except KeyError:
                             irr = False
@@ -333,27 +332,31 @@ def get_pest_builder_args(project_ws, input_json, data):
 
 if __name__ == '__main__':
 
-    data_root = '/media/research/IrrigationGIS/swim'
-    if not os.path.exists(data_root):
-        data_root = '/home/dgketchum/data/IrrigationGIS/swim'
+    root = os.path.abspath('..')
 
-    project = 'flux'
-    src = '/home/dgketchum/PycharmProjects/swim-rs'.format(project)
-    d = os.path.join(src, 'examples/{}'.format(project))
-    python_script = os.path.join(src, 'calibrate', 'custom_forward_run.py')
+    project_ws = os.path.join(root, 'tutorials', '2_Fort_Peck')
+    data = os.path.join(project_ws, 'data')
 
-    input_ = os.path.join(data_root, 'examples/{}/prepped_input/{}_input_sample.json'.format(project, project))
-    data_ = os.path.join(data_root, 'examples/{}/input_timeseries'.format(project))
+    # for convenience, we put all the paths we'll need in a dict
+    PATHS = {'prepped_input': os.path.join(data, 'prepped_input.json'),
+             'input_ts_out': os.path.join(data, 'input_timeseries'),
+             '_pst': 'fort_peck.pst',
+             'exe_': 'pestpp-ies',
+             'p_dir': os.path.join(project_ws, 'pest'),
+             'm_dir': os.path.join(project_ws, 'master'),
+             'w_dir': os.path.join(project_ws, 'workers'),
+             'obs': os.path.join(project_ws, 'obs'),
+             'python_script': os.path.join(root, 'calibrate', 'custom_forward_run.py')}
 
-    pest_dir_ = os.path.join(d, 'pest')
-    pst_f = os.path.join(pest_dir_, '{}.pst'.format(project))
+    if not os.path.isdir(PATHS['obs']):
+        os.makedirs(PATHS['obs'], exist_ok=True)
 
-    # noinspection PyTypedDict
-    dct_ = get_pest_builder_args(d, input_, data_)
-    dct_.update({'python_script': python_script})
-    # build_pest(d, pest_dir_, **dct_)
+    # dct_ = get_pest_builder_args(project_ws, PATHS['prepped_input'], PATHS['input_ts_out'])
+    # # update the dict with the location of 'custom_forward_run.py'
+    # dct_.update({'python_script': PATHS['python_script']})
+    # build_pest(project_ws, PATHS['p_dir'], **dct_)
 
-    build_localizer(pst_f, ag_json=input_)
-    write_control_settings(pst_f, 3, 400)
+    pst_f = os.path.join(PATHS['p_dir'], '2_Fort_Peck.pst')
+    build_localizer(pst_f, ag_json=PATHS['prepped_input'])
 
 # ========================= EOF ====================================================================
