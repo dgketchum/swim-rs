@@ -63,13 +63,13 @@ if __name__ == '__main__':
     home = os.path.expanduser('~')
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
-    project_ws = os.path.join(root, 'tutorials', '2_Fort_Peck')
+    project_ws = os.path.join(root, 'tutorials', '3_Crane')
 
     data = os.path.join(project_ws, 'data')
     pst = os.path.join(project_ws, 'pest')
 
     inital_params = os.path.join(project_ws, 'params.csv')
-    steps = [os.path.join(pst, f'2_Fort_Peck.{i}.par.csv') for i in range(4)]
+    steps = [os.path.join(pst, f'3_Crane.{i}.par.csv') for i in range(4)]
     fig_dir = os.path.join(project_ws, 'figures', 'parameter_hist')
 
     if not os.path.isdir(fig_dir):
