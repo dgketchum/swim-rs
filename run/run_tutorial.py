@@ -71,15 +71,20 @@ if __name__ == '__main__':
     home = os.path.expanduser('~')
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
-    # project_ws = os.path.join(root, 'tutorials', '2_Fort_Peck')
-    project_ws = os.path.join(root, 'tutorials', '3_Crane')
+    project_ws = os.path.join(root, 'tutorials', '2_Fort_Peck')
+    # project_ws = os.path.join(root, 'tutorials', '3_Crane')
 
     data = os.path.join(project_ws, 'data')
 
     config_file = os.path.join(data, 'tutorial_config.toml')
     prepped_input = os.path.join(data, 'prepped_input.json')
 
-    selected_feature = 'S2'
+    selected_feature = 'US-FPe'
+    irr = False
+
+    # selected_feature = 'S2'
+    # irr = True
+
     out_csv = os.path.join(project_ws, 'step_2_uncalibrated_model', f'combined_output_{selected_feature}.csv')
 
     run_fields(config_file, project_ws, selected_feature=selected_feature, output_csv=out_csv)
@@ -87,7 +92,7 @@ if __name__ == '__main__':
     # plot_swim_timeseries(out_csv, ['et_act', 'etref', 'rain', 'melt', 'irrigation'],
     #                      start='2021-01-01', end='2021-12-31', png_file='et.png')
 
-    # flux_data = os.path.join(data, f'{selected_feature}_daily_data.csv')
-    # compare_etf_estimates(out_csv, flux_data, irr=True)
+    flux_data = os.path.join(data, f'{selected_feature}_daily_data.csv')
+    compare_etf_estimates(out_csv, flux_data, irr=False)
 
 # ========================= EOF ====================================================================
