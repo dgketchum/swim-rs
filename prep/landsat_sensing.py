@@ -390,12 +390,10 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1, select=None):
 
 if __name__ == '__main__':
 
-    types_ = ['inv_irr', 'irr']
-    sensing_params = ['ndvi', 'etf']
-
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    data = os.path.join(root, 'tutorials', '2_Fort_Peck', 'data')
+    # data = os.path.join(root, 'tutorials', '2_Fort_Peck', 'data')
+    data = os.path.join(root, 'tutorials', '3_Crane', 'data')
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 
     # input properties files
@@ -409,14 +407,17 @@ if __name__ == '__main__':
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
 
     FEATURE_ID = 'field_1'
+    selected_feature = 'S2'
 
-    types_ = ['inv_irr', 'irr']
+    # types_ = ['inv_irr', 'irr']
+
+    types_ = ['irr']
     sensing_params = ['ndvi', 'etf']
 
     for mask_type in types_:
 
         for sensing_param in sensing_params:
-            yrs = [x for x in range(1987, 2024)]
+            yrs = [x for x in range(1987, 2023)]
 
             ee_data = os.path.join(landsat, 'extracts', sensing_param, mask_type)
             src = os.path.join(tables, '{}_{}_{}.csv'.format('calibration', sensing_param, mask_type))
@@ -424,9 +425,9 @@ if __name__ == '__main__':
 
             # TODO: consider whether there is a case where ETf needs to be interpolated
             sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                                       feature_id=FEATURE_ID, select=['US-FPe'])
+                                       feature_id=FEATURE_ID, select=[selected_feature])
 
     cuttings_json = os.path.join(landsat, 'calibration_cuttings.json')
-    detect_cuttings(remote_sensing_file, irr, irr_threshold=0.1, out_json=cuttings_json, select=['US-FPe'])
+    detect_cuttings(remote_sensing_file, irr, irr_threshold=0.1, out_json=cuttings_json, select=[selected_feature])
 
 # ========================= EOF ================================================================================
