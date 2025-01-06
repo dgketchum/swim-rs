@@ -187,6 +187,7 @@ def get_gridmet_corrections(fields, gridmet_ras, fields_join,
                 splt = r.split('_')
                 _var, month = splt[-2], splt[-1].replace('.tif', '')
                 stats = zonal_stats(gdf, r, stats=['mean'], nodata=np.nan)[0]['mean']
+                # TODO: raise so tif/shp mismatch doesn't pass silent
                 gridmet_targets[closest_fid][month].update({_var: stats})
 
         g = GridMet('elev', lat=fields.at[i, 'LAT'], lon=fields.at[i, 'LON'])
@@ -422,7 +423,14 @@ if __name__ == '__main__':
 
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
-    data = os.path.join(root, 'tutorials', '2_Fort_Peck', 'data')
+    # data = os.path.join(root, 'tutorials', '2_Fort_Peck', 'data')
+    # selected_feature = 'US-FPe'
+
+    data = os.path.join(root, 'tutorials', '3_Crane', 'data')
+    selected_feature = 'S2'
+
+    FEATURE_ID = 'field_1'
+
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
     correction_tifs = os.path.join(data, 'bias_correction_tif')
 
@@ -431,10 +439,15 @@ if __name__ == '__main__':
 
     correction_tifs = os.path.join(data, 'bias_correction_tif')
 
-    get_gridmet_corrections(fields=shapefile_path,
-                            gridmet_ras=correction_tifs,
-                            fields_join=fields_gridmet,
-                            factors_js=gridmet_factors,
-                            feature_id='field_1',
-                            field_select=['US-FPe'])
+    # get_gridmet_corrections(fields=shapefile_path,
+    #                         gridmet_ras=correction_tifs,
+    #                         fields_join=fields_gridmet,
+    #                         factors_js=gridmet_factors,
+    #                         feature_id='field_1',
+    #                         field_select=['S2'])
+
+    met = os.path.join(data, 'met_timeseries')
+
+    download_gridmet(fields_gridmet, gridmet_factors, met, start='1987-01-01', end='2023-12-31',
+                     overwrite=True, feature_id=FEATURE_ID, target_fields=[selected_feature])
 # ========================= EOF ====================================================================
