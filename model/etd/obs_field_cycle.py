@@ -109,12 +109,12 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
             group, fid = '_'.join(k.split('_')[:-1]), k.split('_')[-1]
 
-            if fid not in plots.input['order']:
-                continue
-
             # PEST++ has lower-cased the FIDs
             l = [x.lower() for x in plots.input['order']]
             idx = l.index(fid)
+
+            if fid not in l:
+                continue
 
             if params:
                 value = params[k]
@@ -137,11 +137,15 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
     targets = plots.input['order']
 
+    valid_data = {dt: val for dt, val in plots.input['time_series'].items() if
+                  (config.start_dt <= pd.to_datetime(dt) <= config.end_dt)}
+
     # Initialize crop data frame
     if debug_flag:
         tracker.setup_dataframe(targets)
     else:
-        empty = np.zeros((len(plots.input['time_series']), len(targets))) * np.nan
+        time_range = pd.date_range(config.start_dt, config.end_dt, freq='D')
+        empty = np.zeros((len(time_range), len(targets))) * np.nan
         etf, swe = empty.copy(), empty.copy()
 
     tracker.set_kc_max()
@@ -149,10 +153,11 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     foo_day = DayData()
     foo_day.sdays = 0
     foo_day.doy_prev = 0
+    foo_day.irr_status = None
 
     hr_ppt_keys = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
 
-    for j, (step_dt, vals) in enumerate(plots.input['time_series'].items()):
+    for j, (step_dt, vals) in enumerate(valid_data.items()):
 
         # Track variables for each day
         # For now, cast all values to native Python types
@@ -160,6 +165,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         foo_day.doy = vals['doy']
         foo_day.dt_string = step_dt
         dt = pd.to_datetime(step_dt)
+
         foo_day.year = dt.year
         foo_day.month = dt.month
         foo_day.day = dt.day
@@ -169,7 +175,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         foo_day.refet = np.zeros((1, size))
         foo_day.irr_day = np.zeros((1, size), dtype=int)
 
-        if foo_day.doy == 1:
+        if foo_day.doy == 1 or foo_day.irr_status is None:
 
             foo_day.irr_status = np.zeros((1, len(plots.input['order'])))
             foo_day.irr_doys = []
@@ -212,9 +218,6 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
             foo_day.hr_precip = hr_ppt
 
         foo_day.precip = foo_day.precip.reshape(1, -1)
-
-        if step_dt == '2012-06-05':
-            a = 1
 
         # Calculate height of vegetation.
         # Moved up to this point 12/26/07 for use in adj. Kcb and kc_max
@@ -313,6 +316,12 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
                     # raise WaterBalanceError('Check November water balance')
 
         else:
+            if np.isnan(tracker.kc_act):
+                raise ValueError('NaN in Kc_act')
+
+            if np.isnan(tracker.swe):
+                raise ValueError('NaN in SWE')
+
             etf[j, :] = tracker.kc_act
             swe[j, :] = tracker.swe
 

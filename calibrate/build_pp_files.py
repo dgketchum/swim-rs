@@ -2,11 +2,14 @@ import json
 import os
 import shutil
 from collections import OrderedDict
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
 from pyemu import Pst, Matrix, ObservationEnsemble
 from pyemu.utils import PstFrom
+
+from swim.config import ProjectConfig
 
 
 def build_pest(model_dir, pest_dir, **kwargs):
@@ -39,10 +42,15 @@ def build_pest(model_dir, pest_dir, **kwargs):
 
     # TODO assign 'etf' and 'swe' to oname column in pst.observation_data df instead of 'obs'
     for i, fid in enumerate(kwargs['targets']):
-        pest.add_observations(kwargs['etf_obs']['file'][i], insfile=kwargs['etf_obs']['insfile'][i])
 
         # only weight etf on capture dates
         et_df = pd.read_csv(kwargs['inputs'][i], index_col=0, parse_dates=True)
+        if 'start' in kwargs.keys():
+            et_df = et_df.loc[kwargs['start']: kwargs['end']]
+            et_df.to_csv(kwargs['inputs'][i])
+
+        pest.add_observations(kwargs['etf_obs']['file'][i], insfile=kwargs['etf_obs']['insfile'][i])
+
         et_df['dummy_idx'] = [obsnme_str.format(fid, j) for j in range(et_df.shape[0])]
         captures = [ix for ix, r in et_df.iterrows()
                     if r['etf_irr_ct']
@@ -75,10 +83,15 @@ def build_pest(model_dir, pest_dir, **kwargs):
     obsnme_str = 'oname:obs_swe_{}_otype:arr_i:{}_j:0'
 
     for j, fid in enumerate(kwargs['targets']):
-        pest.add_observations(kwargs['swe_obs']['file'][j], insfile=kwargs['swe_obs']['insfile'][j])
 
         # only weight swe Nov - Apr
         swe_df = pd.read_csv(kwargs['inputs'][i], index_col=0, parse_dates=True)
+        if 'start' in kwargs.keys():
+            swe_df = swe_df.loc[kwargs['start']: kwargs['end']]
+            swe_df.to_csv(kwargs['inputs'][i])
+
+        pest.add_observations(kwargs['swe_obs']['file'][j], insfile=kwargs['swe_obs']['insfile'][j])
+
         swe_df['dummy_idx'] = [obsnme_str.format(fid, j) for j in range(swe_df.shape[0])]
         valid = [ix for ix, r in swe_df.iterrows() if ix.month in [11, 12, 1, 2, 3, 4]]
         valid = swe_df['dummy_idx'].loc[valid]
@@ -144,8 +157,8 @@ def build_pest(model_dir, pest_dir, **kwargs):
     obs['time'] = [float(i.split(':')[3].split('_')[0]) for i in obs.index]
 
     pst.write(pst.filename, version=2)
-
-    print('Configured PEST++ for {} targets'.format(len(kwargs['targets'])))
+    print(f'{len(swe_df)} rows in swe, {len(et_df)} rows in etf')
+    print('Configured PEST++ for {} targets, '.format(len(kwargs['targets'])))
 
 
 def build_localizer(pst_file, ag_json=None, irr_thresh=0.5):
@@ -278,7 +291,7 @@ def initial_parameter_dict(param_file):
     return p
 
 
-def get_pest_builder_args(project_ws, input_json, data):
+def get_pest_builder_args(project_ws, input_json, data, start=None, end=None):
     with open(input_json, 'r') as f:
         input_dct = json.load(f)
 
@@ -327,6 +340,9 @@ def get_pest_builder_args(project_ws, input_json, data):
            'pars': pars
            }
 
+    if start and end:
+        dct.update({'start': start, 'end': end})
+
     return dct
 
 
@@ -334,8 +350,14 @@ if __name__ == '__main__':
 
     root = os.path.abspath('..')
 
-    project_ws = os.path.join(root, 'tutorials', '2_Fort_Peck')
+    project_ws = os.path.join(root, 'tutorials', '3_Crane')
     data = os.path.join(project_ws, 'data')
+    ini_path = os.path.join(data, 'tutorial_config.toml')
+
+    config = ProjectConfig()
+    config.read_config(ini_path, project_ws)
+    start = datetime.strftime(config.start_dt, '%Y-%m-%d')
+    end = datetime.strftime(config.end_dt, '%Y-%m-%d')
 
     # for convenience, we put all the paths we'll need in a dict
     PATHS = {'prepped_input': os.path.join(data, 'prepped_input.json'),
@@ -351,12 +373,15 @@ if __name__ == '__main__':
     if not os.path.isdir(PATHS['obs']):
         os.makedirs(PATHS['obs'], exist_ok=True)
 
-    # dct_ = get_pest_builder_args(project_ws, PATHS['prepped_input'], PATHS['input_ts_out'])
-    # # update the dict with the location of 'custom_forward_run.py'
-    # dct_.update({'python_script': PATHS['python_script']})
-    # build_pest(project_ws, PATHS['p_dir'], **dct_)
+    dct_ = get_pest_builder_args(project_ws, PATHS['prepped_input'], PATHS['input_ts_out'],
+                                 start=start, end=end)
+    # update the dict with the location of 'custom_forward_run.py'
+    dct_.update({'python_script': PATHS['python_script']})
+    build_pest(project_ws, PATHS['p_dir'], **dct_)
 
-    pst_f = os.path.join(PATHS['p_dir'], '2_Fort_Peck.pst')
+    pst_f = os.path.join(PATHS['p_dir'], '3_Crane.pst')
     build_localizer(pst_f, ag_json=PATHS['prepped_input'])
+
+    write_control_settings(pst_f, noptmax=3, reals=5)
 
 # ========================= EOF ====================================================================
