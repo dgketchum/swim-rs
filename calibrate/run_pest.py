@@ -21,7 +21,7 @@ def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, ver
                            verbose=verbose,
                            master_dir=master_dir,
                            cleanup=cleanup,
-                           port=4269)
+                           port=5000)
 
 
 if __name__ == '__main__':

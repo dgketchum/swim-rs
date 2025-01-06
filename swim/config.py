@@ -50,7 +50,8 @@ class ProjectConfig:
         self.winter_end_day = None
         self.winter_start_day = None
 
-    def read_config(self, conf, project_root, calibration_folder=None, parameter_dist_csv=None, parameter_set_json=None):
+    def read_config(self, conf, project_root, calibration_folder=None, parameter_dist_csv=None,
+                    parameter_set_json=None):
 
         with open(conf, 'r') as f:
             config = toml.load(f)
@@ -136,6 +137,9 @@ class ProjectConfig:
         print('FORECAST {}'.format(stdout))
 
         if self.forecast:
+
+            if os.path.isfile(config[forecast_sec]['forecast_parameters']) and parameter_dist_csv is None:
+                parameter_dist_csv = config[forecast_sec]['forecast_parameters']
 
             if parameter_dist_csv:
                 fcst = parameter_dist_csv

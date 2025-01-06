@@ -11,6 +11,9 @@ import os
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
+from datetime import datetime
+
+from swim.config import ProjectConfig
 
 # All Sites
 FLUX_SELECT = ['US-ADR', 'US-Bi1', 'US-Bi2', 'US-Blo', 'US-CZ3', 'US-Fmf',
@@ -157,12 +160,15 @@ def prep_fields_json(fields, input_ts, out_js, target_plots=None, irr_data=None,
     return target_plots, missing
 
 
-def preproc(field_ids, src, _dir):
+def preproc(field_ids, src, _dir, start=None, end=None):
     ct = 0
 
     for fid in field_ids:
         obs_file = os.path.join(src, '{}_daily.csv'.format(fid))
         data = pd.read_csv(obs_file, index_col=0, parse_dates=True)
+        if start and end:
+            data = data.loc[start: end]
+
         data.index = list(range(data.shape[0]))
 
         data['etf'] = data['etf_inv_irr']
@@ -187,17 +193,32 @@ def preproc(field_ids, src, _dir):
 if __name__ == '__main__':
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    properties_json = os.path.join(root, 'tutorial', 'step_4_model_data_prep', 'tutorial_properties.json')
-    cuttings_json = os.path.join(root, 'tutorial', 'step_2_earth_engine_extract', 'landsat', 'tutorial_cuttings.json')
-    joined_timeseries = os.path.join(root, 'tutorial', 'step_4_model_data_prep', 'input_timeseries')
-    shapefile_path = os.path.join(root, 'tutorial', 'step_1_domain', 'mt_sid_boulder.shp')
+    # set up our work space directories
+    project_ws = os.path.join(root, 'tutorials', '3_Crane')
+    stations = ['S2']
 
-    prepped_input = os.path.join(root, 'tutorial', 'step_5_model_setup', 'prepped_input.json')
+    data = os.path.join(project_ws, 'data')
 
-    processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, prepped_input,
-                                                           target_plots=None, irr_data=cuttings_json)
+    joined_timeseries = os.path.join(data, 'input_timeseries')
 
-    # project_dir = os.path.join(root, 'tutorial', 'step_5_model_setup')
-    # preproc(processed_targets, joined_timeseries, project_dir)
+    obs_dir = os.path.join(project_ws, 'obs')
+
+    if not os.path.isdir(obs_dir):
+        os.makedirs(obs_dir, exist_ok=True)
+
+    # processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, prepped_input,
+    #                                                        target_plots=None, irr_data=cuttings_json)
+
+    os.path.join(data, 'input_timeseries')
+    project_ws = os.path.join(root, 'tutorials', '3_Crane')
+    ini_path = os.path.join(data, 'tutorial_config.toml')
+
+    config = ProjectConfig()
+    config.read_config(ini_path, project_ws)
+    start = datetime.strftime(config.start_dt, '%Y-%m-%d')
+    end = datetime.strftime(config.end_dt, '%Y-%m-%d')
+    print(start, end)
+
+    preproc(stations, joined_timeseries, project_ws, start=start, end=end)
 
 # ========================= EOF ====================================================================

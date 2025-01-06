@@ -193,3 +193,13 @@ cython_debug/
 /tutorials/2_Fort_Peck/pest/
 /tutorials/2_Fort_Peck/master/
 /tutorials/2_Fort_Peck/workers/
+/tutorials/3_Crane/data/gis/flux_fields_gfid.json
+/tutorials/3_Crane/data/landsat/
+/tutorials/3_Crane/data/met_timeseries/
+/tutorials/3_Crane/data/properties/
+/tutorials/3_Crane/data/snodas/
+/tutorials/3_Crane/data/input_timeseries/
+/tutorials/3_Crane/data/US-FPe_daily_data.csv
+/tutorials/3_Crane/pest/
+/tutorials/3_Crane/master/
+/tutorials/3_Crane/workers/
