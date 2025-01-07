@@ -203,3 +203,8 @@ cython_debug/
 /tutorials/3_Crane/pest/
 /tutorials/3_Crane/master/
 /tutorials/3_Crane/workers/
+/tutorials/4_Flux_Network/data/snodas/
+/tutorials/4_Flux_Network/data/properties/
+/tutorials/4_Flux_Network/data/met_timeseries/
+/tutorials/4_Flux_Network/data/landsat/
+/tutorials/4_Flux_Network/data/input_timeseries/

@@ -1,5 +1,7 @@
 import os
 import sys
+import time
+from tqdm import tqdm
 
 import ee
 import geopandas as gpd
@@ -87,8 +89,9 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
     coll = irr_coll.filterDate(s, e).select('classification')
     remap = coll.map(lambda img: img.lt(1))
     irr_min_yr_mask = remap.sum().gte(5)
+    skipped, exported = 0, 0
 
-    for fid, row in df.iterrows():
+    for fid, row in tqdm(df.iterrows(), desc='Processing Fields', total=df.shape[0]):
 
         for year in range(start_yr, end_yr + 1):
 
@@ -101,7 +104,7 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
             if check_dir:
                 f = os.path.join(check_dir, '{}.csv'.format(desc))
                 if os.path.exists(f):
-                    print(desc, 'exists, skipping')
+                    skipped += 1
                     continue
 
             irr = irr_coll.filterDate('{}-01-01'.format(year),
@@ -155,8 +158,15 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
                 fileFormat='CSV',
                 selectors=selectors)
 
-            task.start()
-            print(desc)
+            try:
+                task.start()
+            except ee.ee_exception.EEException as e:
+                print('{}, waiting on '.format(e), desc, '......')
+                time.sleep(600)
+                task.start()
+            exported += 1
+
+    print(f'NDVI: Exported {exported}, skipped {skipped} files found in {check_dir}')
 
 
 def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None,
@@ -246,7 +256,7 @@ if __name__ == '__main__':
 
     home = os.path.expanduser('~')
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
-    data = os.path.join(root, 'tutorials', '2_Fort_Peck', 'data')
+    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
     gdf = gpd.read_file(shapefile_path)
     gdf.shape
@@ -258,18 +268,18 @@ if __name__ == '__main__':
     for src in ['ndvi', 'etf']:
         for mask in ['inv_irr', 'irr']:
 
-            dst = os.path.join(data, 'landsat', src, mask)
+            dst = os.path.join(data, 'landsat', 'extracts', src, mask)
 
             if not os.path.exists(dst):
                 os.makedirs(dst, exist_ok=True)
 
             if src == 'etf':
                 print(src, mask)
-                sparse_sample_etf(shapefile_path, bucket, debug=False, mask_type=mask, check_dir=None,
-                                  start_yr=1987, end_yr=2022, feature_id=FEATURE_ID, select=['US-FPe'])
+                sparse_sample_etf(shapefile_path, bucket, debug=False, mask_type=mask, check_dir=dst,
+                                  start_yr=1987, end_yr=2022, feature_id=FEATURE_ID, select=None)
             if src == 'ndvi':
                 print(src, mask)
-                sparse_sample_ndvi(shapefile_path, bucket, debug=False, mask_type=mask, check_dir=None,
-                                   start_yr=1987, end_yr=2022, feature_id=FEATURE_ID, select=['US-FPe'])
+                sparse_sample_ndvi(shapefile_path, bucket, debug=False, mask_type=mask, check_dir=dst,
+                                   start_yr=1987, end_yr=2022, feature_id=FEATURE_ID, select=None)
 
 # ========================= EOF ====================================================================

@@ -1,5 +1,7 @@
 import os
 import sys
+import time
+from tqdm import tqdm
 
 import ee
 import geopandas as gpd
@@ -13,7 +15,7 @@ IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 
 ETF = 'projects/usgs-gee-nhm-ssebop/assets/ssebop/landsat/c02'
 
-EC_POINTS =  'users/dgketchum/fields/flux'
+EC_POINTS = 'users/dgketchum/fields/flux'
 
 STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
 
@@ -87,7 +89,9 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
     remap = coll.map(lambda img: img.lt(1))
     irr_min_yr_mask = remap.sum().gte(5)
 
-    for fid, row in df.iterrows():
+    skipped, exported = 0, 0
+
+    for fid, row in tqdm(df.iterrows(), desc='Processing Fields', total=df.shape[0]):
 
         for year in range(start_yr, end_yr + 1):
 
@@ -104,7 +108,7 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
             if check_dir:
                 f = os.path.join(check_dir, '{}.csv'.format(desc))
                 if os.path.exists(f):
-                    print(desc, 'exists, skipping')
+                    skipped += 1
                     continue
 
             irr = irr_coll.filterDate('{}-01-01'.format(year),
@@ -162,13 +166,19 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
                 fileFormat='CSV',
                 selectors=selectors)
 
-            task.start()
-            print(desc)
+            try:
+                task.start()
+            except ee.ee_exception.EEException as e:
+                print('{}, waiting on '.format(e), desc, '......')
+                time.sleep(600)
+                task.start()
+            exported += 1
+
+    print(f'ETf: Exported {exported}, skipped {skipped} files found in {check_dir}')
 
 
 def clustered_sample_etf(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None,
                          start_yr=2000, end_yr=2024, feature_id='FID'):
-
     feature_coll = ee.FeatureCollection(feature_coll)
 
     s, e = '1987-01-01', '2021-12-31'
