@@ -89,7 +89,7 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
 
     adf, ctdf, first = None, None, True
 
-    for yr in years:
+    for yr in tqdm(years, total=len(years), desc=f'Processing Time Series'):
 
         dt_index = pd.date_range('{}-01-01'.format(yr), '{}-12-31'.format(yr), freq='D')
 
@@ -135,7 +135,6 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
         else:
             adf = pd.concat([adf, df], axis=0, ignore_index=False, sort=True)
             ctdf = pd.concat([ctdf, ct], axis=0, ignore_index=False, sort=True)
-        print(yr)
 
     adf.to_csv(out_csv)
     ctdf.to_csv(out_csv_ct)
@@ -424,10 +423,10 @@ if __name__ == '__main__':
             src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format('calibration', sensing_param, mask_type))
 
             # TODO: consider whether there is a case where ETf needs to be interpolated
-            sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                                       feature_id=FEATURE_ID, select=[selected_feature])
+            # sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
+            #                            feature_id=FEATURE_ID, select=None)
 
     cuttings_json = os.path.join(landsat, 'calibration_cuttings.json')
-    detect_cuttings(remote_sensing_file, irr, irr_threshold=0.1, out_json=cuttings_json, select=[selected_feature])
+    detect_cuttings(remote_sensing_file, irr, irr_threshold=0.1, out_json=cuttings_json, select=None)
 
 # ========================= EOF ================================================================================

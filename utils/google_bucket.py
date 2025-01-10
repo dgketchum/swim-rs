@@ -1,5 +1,6 @@
 import subprocess
 import os
+from tqdm import tqdm
 
 
 def list_and_copy_gcs_bucket(cmd_path, bucket_path, local_dir, glob='*', dry_run=False, overwrite=False):
@@ -19,21 +20,21 @@ def list_and_copy_gcs_bucket(cmd_path, bucket_path, local_dir, glob='*', dry_run
         [print(f) for f in files_to_copy]
         return None
 
-    for file_path in files_to_copy:
+    copied, skipped = 0, 0
+    for file_path in tqdm(files_to_copy, desc=f'Copying Files from {bucket_path}', total=len(files_to_copy)):
         if file_path:
             filename = os.path.basename(file_path)
             local_filepath = os.path.join(local_dir, filename)
             if os.path.exists(local_filepath) and not overwrite:
-                print(f'{local_filepath} exists, skipping')
+                skipped += 1
                 continue
             copy_cmd = [cmd_path, 'cp', file_path, local_filepath]
             copy_process = subprocess.Popen(copy_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             _, copy_stderr = copy_process.communicate()
 
-            if copy_stderr:
-                print(f'Copying {file_path}: {copy_stderr.decode()}')
-            print(f'Copied {file_path} to {local_dir}')
+            copied += 1
 
+    print(f'Copied {copied} of {len(files_to_copy)}; skipped {skipped} existing files')
 
 if __name__ == '__main__':
     command = '/home/dgketchum/google-cloud-sdk/bin/gsutil'

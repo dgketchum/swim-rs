@@ -234,7 +234,6 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
         if g_fid in downloaded.keys():
             downloaded[g_fid].append(k)
-            print('Gridmet Cell {} downloaded for {}'.format(g_fid, downloaded[g_fid]))
 
         _file = os.path.join(gridmet_csv_dir, 'gridmet_{}.csv'.format(g_fid))
         if os.path.exists(_file) and not overwrite:
@@ -306,7 +305,6 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
         df = df[out_cols]
         df.to_csv(_file, index=False)
-        print(os.path.basename(_file))
         downloaded[g_fid] = [k]
 
 
