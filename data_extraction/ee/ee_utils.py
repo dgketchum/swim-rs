@@ -220,6 +220,36 @@ def export_openet_correction_surfaces(local_check):
             print(desc)
 
 
+def get_lanid():
+    first_image = ee.Image('users/xyhuwmir4/LANID_postCls/LANID_v2')
+    second_image = ee.Image('users/xyhuwmir/LANID/update/LANID2018-2020')
+
+    bands = None
+
+    for yr in range(1987, 2018):
+        if yr < 1997:
+            year = 1997
+        else:
+            year = yr
+        band_name = f'irr_{yr}'
+        image = ee.Image(first_image.select([f'irMap{str(year)[-2:]}'])).rename([band_name]).int().unmask(0)
+        if bands is None:
+            bands = ee.Image(image)
+        else:
+            bands = bands.addBands([image])
+
+    for yr in range(2018, 2025):
+        if yr > 2020:
+            year = 2020
+        else:
+            year = yr
+        band_name = f'irr_{yr}'
+        image = ee.Image(second_image.select([f'irMap{str(year)[-2:]}'])).rename([band_name]).int().unmask(0)
+        bands = bands.addBands([image])
+
+    return bands
+
+
 def is_authorized():
     try:
         ee.Initialize(project='ee-dgketchum')

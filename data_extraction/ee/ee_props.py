@@ -1,4 +1,5 @@
 import ee
+from ee_utils import get_lanid
 
 IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 
@@ -11,6 +12,11 @@ AWC = 'projects/openet/soil/ssurgo_AWC_WTA_0to152cm_composite'
 KSAT = 'projects/openet/soil/ssurgo_Ksat_WTA_0to152cm_composite'
 CLAY = 'projects/openet/soil/ssurgo_Clay_WTA_0to152cm_composite'
 SAND = 'projects/openet/soil/ssurgo_Sand_WTA_0to152cm_composite'
+
+STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
+
+WEST_STATES = 'users/dgketchum/boundaries/western_11_union'
+EAST_STATES = 'users/dgketchum/boundaries/eastern_38_dissolved'
 
 
 def get_cdl(fields, desc, selector='FID'):
@@ -48,9 +54,16 @@ def get_cdl(fields, desc, selector='FID'):
     task.start()
 
 
-def get_irrigation(fields, desc, debug=False, selector='FID'):
+def get_irrigation(fields, desc, debug=False, selector='FID', lanid=False):
+    """"""
+    east, west = None, None
     plots = ee.FeatureCollection(fields)
+
     irr_coll = ee.ImageCollection(IRR)
+    if lanid:
+        lanid = get_lanid()
+        west = ee.FeatureCollection(WEST_STATES)
+        east = ee.FeatureCollection(EAST_STATES)
 
     _selectors = [selector, 'LAT', 'LON']
     first = True
@@ -61,8 +74,12 @@ def get_irrigation(fields, desc, debug=False, selector='FID'):
 
         irr = irr_coll.filterDate('{}-01-01'.format(year),
                                   '{}-12-31'.format(year)).select('classification').mosaic()
+        irr = irr.lt(1).rename('irr_{}'.format(year)).int()
 
-        irr = irr.lt(1)
+        if lanid:
+            irr = irr.clip(west)
+            lanid_yr = lanid.select(f'irr_{year}').clip(east)
+            irr = ee.ImageCollection([irr, lanid_yr]).mosaic()
 
         _name = 'irr_{}'.format(year)
         _selectors.append(_name)
@@ -78,7 +95,7 @@ def get_irrigation(fields, desc, debug=False, selector='FID'):
                                   scale=30)
 
     if debug:
-        debug = means.filterMetadata('FID', 'equals', 1789).getInfo()
+        debug = means.filterMetadata('FID', 'equals', 'US-FPe').getInfo()
 
     task = ee.batch.Export.table.toCloudStorage(
         means,
@@ -153,20 +170,24 @@ def get_landfire(fields, desc, debug=False, selector='FID'):
 if __name__ == '__main__':
     ee.Initialize(project='ee-dgketchum')
 
-    project = 'tongue'
-    index_col = 'FID'
-    fields_ = 'users/dgketchum/fields/tongue_annex_20OCT2023'
+    # project = 'tongue'
+    # index_col = 'FID'
+    # fields_ = 'users/dgketchum/fields/tongue_annex_20OCT2023'
+
+    project = 'tutorial'
+    index_col = 'field_1'
+    fields_ = 'users/dgketchum/fields/flux'
 
     description = '{}_cdl'.format(project)
-    get_cdl(fields_, description, selector=index_col)
+    # get_cdl(fields_, description, selector=index_col)
 
     description = '{}_irr'.format(project)
-    get_irrigation(fields_, description, debug=False, selector=index_col)
+    get_irrigation(fields_, description, debug=True, selector=index_col, lanid=True)
 
     description = '{}_ssurgo'.format(project)
-    get_ssurgo(fields_, description, debug=False, selector=index_col)
+    # get_ssurgo(fields_, description, debug=False, selector=index_col)
 
     description = '{}_landfire'.format(project)
-    get_landfire(fields_, description, debug=False, selector=index_col)
+    # get_landfire(fields_, description, debug=False, selector=index_col)
 
 # ========================= EOF ====================================================================
