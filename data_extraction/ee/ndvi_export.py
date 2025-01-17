@@ -6,6 +6,7 @@ from tqdm import tqdm
 import ee
 import geopandas as gpd
 
+from data_extraction.ee.ee_utils import get_lanid
 from data_extraction.ee.ee_utils import landsat_masked, is_authorized
 
 sys.path.insert(0, os.path.abspath('../..'))
@@ -13,9 +14,11 @@ sys.setrecursionlimit(5000)
 
 IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 
-EC_POINTS =  'users/dgketchum/fields/flux'
+EC_POINTS = 'users/dgketchum/fields/flux'
 
 STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
+WEST_STATES = 'users/dgketchum/boundaries/western_11_union'
+EAST_STATES = 'users/dgketchum/boundaries/eastern_38_dissolved'
 
 
 def get_flynn():
@@ -74,9 +77,8 @@ def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_t
         print(_name)
 
 
-def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None,  feature_id='FID',
-                      select=None, start_yr=2000, end_yr=2024):
-
+def sparse_sample_ndvi(shapefile, lat_col, lon_col, bucket=None, debug=False, mask_type='irr', check_dir=None,
+                       feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3'):
     df = gpd.read_file(shapefile)
     df.index = df[feature_id]
 
@@ -89,6 +91,10 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
     coll = irr_coll.filterDate(s, e).select('classification')
     remap = coll.map(lambda img: img.lt(1))
     irr_min_yr_mask = remap.sum().gte(5)
+
+    lanid = get_lanid()
+    east = ee.FeatureCollection(EAST_STATES)
+
     skipped, exported = 0, 0
 
     for fid, row in tqdm(df.iterrows(), desc='Processing Fields', total=df.shape[0]):
@@ -107,11 +113,18 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
                     skipped += 1
                     continue
 
-            irr = irr_coll.filterDate('{}-01-01'.format(year),
-                                      '{}-12-31'.format(year)).select('classification').mosaic()
-            irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
+            if row[state_col] in STATES:
+                # TODO: remove continue statement; running on East only
+                continue
+                # irr = irr_coll.filterDate('{}-01-01'.format(year),
+                #                           '{}-12-31'.format(year)).select('classification').mosaic()
+                # irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
 
-            point = ee.Geometry.Point([row['field_8'], row['field_7']])
+            else:
+                irr_mask = lanid.select(f'irr_{year}').clip(east)
+                irr = ee.Image(1).subtract(irr_mask)
+
+            point = ee.Geometry.Point([row[lon_col], row[lat_col]])
             geo = point.buffer(150.)
             fc = ee.FeatureCollection(ee.Feature(geo, {feature_id: site}))
 
@@ -275,11 +288,13 @@ if __name__ == '__main__':
 
             if src == 'etf':
                 print(src, mask)
-                sparse_sample_etf(shapefile_path, bucket, debug=False, mask_type=mask, check_dir=dst,
-                                  start_yr=1987, end_yr=2022, feature_id=FEATURE_ID, select=None)
+                sparse_sample_etf(shapefile_path, lat_col='field_7', lon_col='field_8', bucket=bucket, debug=False,
+                                  mask_type=mask, check_dir=None, start_yr=1987, end_yr=2022, feature_id=FEATURE_ID,
+                                  select=None)
             if src == 'ndvi':
                 print(src, mask)
-                sparse_sample_ndvi(shapefile_path, bucket, debug=False, mask_type=mask, check_dir=dst,
-                                   start_yr=1987, end_yr=2022, feature_id=FEATURE_ID, select=None)
+                sparse_sample_ndvi(shapefile_path,  lat_col='field_7', lon_col='field_8', bucket=bucket, debug=False,
+                                   mask_type=mask, check_dir=None, start_yr=1987, end_yr=2022, feature_id=FEATURE_ID,
+                                   select=None)
 
-# ========================= EOF ====================================================================
+# ========================= EOF =======================================================================================

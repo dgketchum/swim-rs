@@ -7,6 +7,7 @@ import ee
 import geopandas as gpd
 
 from data_extraction.ee.ee_utils import is_authorized
+from data_extraction.ee.ee_utils import get_lanid
 
 sys.path.insert(0, os.path.abspath('../..'))
 sys.setrecursionlimit(5000)
@@ -18,6 +19,8 @@ ETF = 'projects/usgs-gee-nhm-ssebop/assets/ssebop/landsat/c02'
 EC_POINTS = 'users/dgketchum/fields/flux'
 
 STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
+WEST_STATES = 'users/dgketchum/boundaries/western_11_union'
+EAST_STATES = 'users/dgketchum/boundaries/eastern_38_dissolved'
 
 
 def get_flynn():
@@ -74,8 +77,8 @@ def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_ty
         print(_name)
 
 
-def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, feature_id='FID',
-                      select=None, start_yr=2000, end_yr=2024):
+def sparse_sample_etf(shapefile, lat_col, lon_col, bucket=None, debug=False, mask_type='irr', check_dir=None,
+                      feature_id='FID',  select=None, start_yr=2000, end_yr=2024, state_col='field_3'):
     df = gpd.read_file(shapefile)
     df.index = df[feature_id]
 
@@ -89,6 +92,9 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
     remap = coll.map(lambda img: img.lt(1))
     irr_min_yr_mask = remap.sum().gte(5)
 
+    lanid = get_lanid()
+    east = ee.FeatureCollection(EAST_STATES)
+
     skipped, exported = 0, 0
 
     for fid, row in tqdm(df.iterrows(), desc='Processing Fields', total=df.shape[0]):
@@ -96,10 +102,6 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
         for year in range(start_yr, end_yr + 1):
 
             if select is not None and fid not in select:
-                continue
-
-            state = row['field_3']
-            if state not in STATES:
                 continue
 
             site = row[feature_id]
@@ -111,11 +113,18 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
                     skipped += 1
                     continue
 
-            irr = irr_coll.filterDate('{}-01-01'.format(year),
-                                      '{}-12-31'.format(year)).select('classification').mosaic()
-            irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
+            if row[state_col] in STATES:
+                # TODO: remove continue statement; running on East only
+                continue
+                # irr = irr_coll.filterDate('{}-01-01'.format(year),
+                #                           '{}-12-31'.format(year)).select('classification').mosaic()
+                # irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
 
-            point = ee.Geometry.Point([row['field_8'], row['field_7']])
+            else:
+                irr_mask = lanid.select(f'irr_{year}').clip(east)
+                irr = ee.Image(1).subtract(irr_mask)
+
+            point = ee.Geometry.Point([row[lon_col], row[lat_col]])
             geo = point.buffer(150.)
             fc = ee.FeatureCollection(ee.Feature(geo, {feature_id: site}))
 
