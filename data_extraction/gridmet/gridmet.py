@@ -273,7 +273,11 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
                 # shifting NLDAS to UTC-6 is the most straightforward alignment
                 s = pd.to_datetime(start) - timedelta(days=1)
                 e = pd.to_datetime(end) + timedelta(days=2)
-                nldas = nld.get_bycoords((lon, lat), start_date=s, end_date=e, variables=['prcp'], source='grib')
+
+                nldas = nld.get_bycoords((lon, lat), start_date=s, end_date=e, variables=['prcp'], source='netcdf')
+                if nldas.size == 0:
+                    raise ValueError(f'Failed to download NLDAS-2 for {k} on GFID {g_fid}')
+
                 central = pytz.timezone('US/Central')
                 nldas = nldas.tz_convert(central)
                 hourly_ppt = nldas.pivot_table(columns=nldas.index.hour, index=nldas.index.date, values='prcp')
@@ -424,8 +428,7 @@ if __name__ == '__main__':
     # data = os.path.join(root, 'tutorials', '2_Fort_Peck', 'data')
     # selected_feature = 'US-FPe'
 
-    data = os.path.join(root, 'tutorials', '3_Crane', 'data')
-    selected_feature = 'S2'
+    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
 
     FEATURE_ID = 'field_1'
 
@@ -447,5 +450,5 @@ if __name__ == '__main__':
     met = os.path.join(data, 'met_timeseries')
 
     download_gridmet(fields_gridmet, gridmet_factors, met, start='1987-01-01', end='2023-12-31',
-                     overwrite=True, feature_id=FEATURE_ID, target_fields=[selected_feature])
+                     overwrite=False, feature_id=FEATURE_ID, target_fields=None)
 # ========================= EOF ====================================================================
