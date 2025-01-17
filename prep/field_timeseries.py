@@ -19,6 +19,7 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
         snow = json.load(f)
 
     lst = pd.read_csv(landsat_table, parse_dates=True, index_col=0)
+    lst = lst.sort_index(axis=1)
     start, end = lst.index[0], lst.index[-1]
 
     if 'params' not in kwargs.keys():
@@ -109,16 +110,17 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
 
 if __name__ == '__main__':
-    root = '/home/dgketchum/PycharmProjects/swim-rs'
-    fields_gridmet = os.path.join(root, 'tutorial', 'step_3_meteorology_extract', 'mt_sid_boulder_gfid.shp')
-    met = os.path.join(root, 'tutorial', 'step_3_meteorology_extract', 'met_timeseries')
-    landsat = os.path.join(root, 'tutorial/step_2_earth_engine_extract/landsat/remote_sensing.csv')
-    snow = os.path.join(root, 'tutorial/step_2_earth_engine_extract/snodas/snodas.json')
 
-    joined_timeseries = os.path.join(root, 'tutorial/step_4_model_data_prep/input_timeseries')
-    if not os.path.isdir(joined_timeseries):
-        os.mkdir(joined_timeseries)
-    shapefile_path = os.path.join(root, 'tutorial/step_1_domain/mt_sid_boulder.shp')
+    root = '/home/dgketchum/PycharmProjects/swim-rs'
+    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
+
+    landsat = os.path.join(data, 'landsat')
+    remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
+    FEATURE_ID = 'field_1'
+    fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
+    met = os.path.join(data, 'met_timeseries')
+    joined_timeseries = os.path.join(data, 'input_timeseries')
+    snow = os.path.join(data, 'snodas', 'snodas.json')
 
     params = ['etf_inv_irr',
               'ndvi_inv_irr',
@@ -128,13 +130,13 @@ if __name__ == '__main__':
 
     join_daily_timeseries(fields=fields_gridmet,
                           gridmet_dir=met,
-                          landsat_table=landsat,
+                          landsat_table=remote_sensing_file,
                           snow=snow,
                           dst_dir=joined_timeseries,
-                          overwrite=False,
-                          start_date='2004-01-01',
+                          overwrite=True,
+                          start_date='1987-01-01',
                           end_date='2022-12-31',
-                          feature_id='FID_1',
+                          feature_id=FEATURE_ID,
                           **{'params': params})
 
 # ========================= EOF ====================================================================
