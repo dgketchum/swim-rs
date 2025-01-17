@@ -1,5 +1,5 @@
 import ee
-from ee_utils import get_lanid
+from data_extraction.ee.ee_utils import get_lanid
 
 IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 

@@ -89,7 +89,7 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
 
     adf, ctdf, first = None, None, True
 
-    for yr in tqdm(years, total=len(years), desc=f'Processing Time Series'):
+    for yr in tqdm(years, total=len(years), desc=f'Processing Time Series by Year'):
 
         dt_index = pd.date_range('{}-01-01'.format(yr), '{}-12-31'.format(yr), freq='D')
 
@@ -316,6 +316,9 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1, select=None):
 
         for yr in years:
 
+            if yr > 2022:
+                continue
+
             irr_doys, periods = [], 0
 
             try:
@@ -339,9 +342,9 @@ def detect_cuttings(landsat, irr_csv, out_json, irr_threshold=0.1, select=None):
 
             df['diff'] = df[selector].diff()
 
-            nan_ct = np.count_nonzero(np.isnan(df.values))
+            nan_ct = np.count_nonzero(np.isnan(df[selector].values))
             if nan_ct > 200:
-                print('{}: {} has {}/{} nan'.format(c, yr, nan_ct, df.values.size))
+                # print('{}: {} has {}/{} nan'.format(c, yr, nan_ct, df.shape[0]))
                 fallow.append(yr)
                 continue
 
@@ -392,7 +395,9 @@ if __name__ == '__main__':
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
     # data = os.path.join(root, 'tutorials', '2_Fort_Peck', 'data')
-    data = os.path.join(root, 'tutorials', '3_Crane', 'data')
+    # data = os.path.join(root, 'tutorials', '3_Crane', 'data')
+    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
+
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 
     # input properties files
@@ -406,11 +411,9 @@ if __name__ == '__main__':
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
 
     FEATURE_ID = 'field_1'
-    selected_feature = 'S2'
+    selected_feature = None
 
-    # types_ = ['inv_irr', 'irr']
-
-    types_ = ['irr']
+    types_ = ['inv_irr', 'irr']
     sensing_params = ['ndvi', 'etf']
 
     for mask_type in types_:
@@ -423,8 +426,11 @@ if __name__ == '__main__':
             src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format('calibration', sensing_param, mask_type))
 
             # TODO: consider whether there is a case where ETf needs to be interpolated
-            # sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-            #                            feature_id=FEATURE_ID, select=None)
+            sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
+                                       feature_id=FEATURE_ID, select=None)
+
+    remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
+    join_remote_sensing(tables, remote_sensing_file)
 
     cuttings_json = os.path.join(landsat, 'calibration_cuttings.json')
     detect_cuttings(remote_sensing_file, irr, irr_threshold=0.1, out_json=cuttings_json, select=None)
