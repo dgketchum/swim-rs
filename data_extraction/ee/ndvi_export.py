@@ -135,6 +135,7 @@ def sparse_sample_ndvi(shapefile, lat_col, lon_col, bucket=None, debug=False, ma
             selectors = [site]
             for img_id in ndvi_scenes:
 
+
                 splt = img_id.split('_')
                 _name = '_'.join(splt[-3:])
 
@@ -289,12 +290,12 @@ if __name__ == '__main__':
             if src == 'etf':
                 print(src, mask)
                 sparse_sample_etf(shapefile_path, lat_col='field_7', lon_col='field_8', bucket=bucket, debug=False,
-                                  mask_type=mask, check_dir=None, start_yr=1987, end_yr=2022, feature_id=FEATURE_ID,
+                                  mask_type=mask, check_dir=dst, start_yr=1987, end_yr=2022, feature_id=FEATURE_ID,
                                   select=None)
             if src == 'ndvi':
                 print(src, mask)
                 sparse_sample_ndvi(shapefile_path,  lat_col='field_7', lon_col='field_8', bucket=bucket, debug=False,
-                                   mask_type=mask, check_dir=None, start_yr=1987, end_yr=2022, feature_id=FEATURE_ID,
+                                   mask_type=mask, check_dir=dst, start_yr=1987, end_yr=2022, feature_id=FEATURE_ID,
                                    select=None)
 
 # ========================= EOF =======================================================================================

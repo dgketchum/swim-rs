@@ -202,6 +202,7 @@ def get_gridmet_corrections(fields, gridmet_ras, fields_join,
 
     with open(factors_js, 'w') as fp:
         json.dump(gridmet_targets, fp, indent=4)
+    print(f'wrote {factors_js}')
 
 
 def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None, overwrite=False,
