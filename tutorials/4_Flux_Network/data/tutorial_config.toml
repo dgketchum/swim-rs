@@ -1,6 +1,6 @@
 ## SWIM Configuration
 [FIELDS]
-project_folder = '{project_root}/step_2_uncalibrated_model'
+project_folder = '{project_root}/step_2_calibration'
 
 ## data folder and alternate, to check another location if necessary
 data_folder = '{project_root}/data'

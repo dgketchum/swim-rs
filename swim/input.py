@@ -19,8 +19,10 @@ class SamplePlots:
 
     def initialize_plot_data(self, config):
         f = config.input_data
-        with open(f, 'r') as fp:
-            self.input = json.load(fp)
+        self.input = {}
+        with open(f, 'r', encoding='utf-8') as f:
+            for line in f:
+                self.input.update(json.loads(line))
 
     def input_to_dataframe(self, feature_id):
 

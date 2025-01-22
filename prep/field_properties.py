@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 
 import numpy as np
 import pandas as pd
@@ -82,31 +83,27 @@ def write_field_properties(shp, irr, ssurgo, js, cdl=None, landfire=None, index_
         gdf.drop(columns=[index_col], inplace=True)
         if targets:
             gdf = gdf.iloc[targets]
-        gdf.to_file(add_shp.replace('.shp', '_sample_19JUNE2024.shp'))
+        gdf.to_file(shp_add.replace('.shp', '_sample_19JUNE2024.shp'))
 
     with open(js, 'w') as fp:
         json.dump(d, fp, indent=4)
 
 
 if __name__ == '__main__':
-    d = '/media/research/IrrigationGIS/swim'
 
-    project = 'tongue'
-    project_ws = os.path.join(d, 'examples', project)
+    home = os.path.expanduser('~')
+    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
-    fields_shp = os.path.join(project_ws, 'gis', '{}_fields.shp'.format(project))
+    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
+    shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 
-    irr_ = os.path.join(project_ws, 'properties', '{}_irr.csv'.format(project))
-    cdl_ = os.path.join(project_ws, 'properties', '{}_cdl.csv'.format(project))
-    _ssurgo = os.path.join(project_ws, 'properties', '{}_ssurgo.csv'.format(project))
-    _landfire = os.path.join(project_ws, 'properties', '{}_landfire.csv'.format(project))
-    jsn = os.path.join(project_ws, 'properties', '{}_props.json'.format(project))
+    FEATURE_ID = 'field_1'
 
-    add_shp = os.path.join(d, 'examples/{}/gis/{}_fields.shp'.format(project, project))
+    irr = os.path.join(data, 'properties', 'calibration_irr.csv')
+    ssurgo = os.path.join(data, 'properties', 'calibration_ssurgo.csv')
+    properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
 
-    write_field_properties(fields_shp, irr_, _ssurgo, jsn, cdl_, _landfire, index_col='FID', shp_add=add_shp,
-                           targets=TONGUE_SELECT)
-
-    # flux_west = '/media/research/IrrigationGIS/swim/examples/flux/gis/flux_fields_west.csv'
+    write_field_properties(shapefile_path, irr, ssurgo, properties_json, index_col=FEATURE_ID, shp_add=None,
+                           targets=None)
 
 # ========================= EOF ====================================================================

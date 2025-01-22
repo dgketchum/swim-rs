@@ -23,6 +23,7 @@ class ProjectConfig:
         self.data_folder = None
 
         self.kc_proxy = None
+        self.irr_threshold = None
         self.cover_proxy = None
         self.project_ws = None
         self.field_index = None
@@ -86,6 +87,8 @@ class ProjectConfig:
         self.start_dt = pd.to_datetime(sdt)
         edt = config[crop_et_sec]['end_date']
         self.end_dt = pd.to_datetime(edt)
+
+        self.irr_threshold = config[crop_et_sec]['irr_threshold']
 
         # elevation units
         self.elev_units = config[crop_et_sec]['elev_units']

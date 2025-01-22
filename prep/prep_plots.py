@@ -14,35 +14,7 @@ import pandas as pd
 from datetime import datetime
 
 from swim.config import ProjectConfig
-
-# All Sites
-FLUX_SELECT = ['US-ADR', 'US-Bi1', 'US-Bi2', 'US-Blo', 'US-CZ3', 'US-Fmf',
-               'US-Fuf', 'US-Fwf', 'US-GLE', 'US-Hn2', 'US-Hn3', 'US-Jo2',
-               'US-MC1', 'US-Me1', 'US-Me2', 'US-Me5', 'US-Me6', 'US-Mj1',
-               'US-Mj2', 'US-NR1', 'US-Rwe', 'US-Rwf', 'US-Rws', 'US-SCg',
-               'US-SCs', 'US-SCw', 'US-Sne', 'US-SO2', 'US-SO3', 'US-SO4',
-               'US-Srr', 'US-Tw2', 'US-Tw3', 'US-Twt', 'US-Var', 'US-xJR',
-               'US-xNW', 'US-xRM', 'US-xYE', 'MB_Pch', 'S2', 'Almond_Low',
-               'Almond_Med', 'JPL1_JV114', 'UA1_JV187', 'UA1_KN18', 'UA2_JV330',
-               'UA2_KN20', 'UA3_JV108', 'UA3_KN15', 'BAR012', 'RIP760', 'SLM001',
-               'B_01', 'B_11', 'ET_1', 'ET_8', 'MOVAL', 'MR', 'TAM', 'VR', 'AFD',
-               'AFS', 'BPHV', 'BPLV', 'DVDV', 'KV_1', 'KV_2', 'KV_4', 'SPV_1',
-               'SPV_3', 'SV_5', 'SV_6', 'UMVW', 'UOVLO', 'UOVMD', 'UOVUP', 'WRV_1', 'WRV_2']
-
-# Sites with clean records
-# FLUX_SELECT = ['US-ADR', 'US-Blo', 'US-CZ3', 'US-Fmf', 'US-Fuf', 'US-GLE', 'US-Hn2', 'US-Hn3', 'US-Jo2', 'US-MC1',
-#                'US-Me1', 'US-Me2', 'US-Me5', 'US-Me6', 'US-Mj1', 'US-Mj2', 'US-NR1', 'US-Rwe', 'US-Rwf', 'US-Rws',
-#                'US-SCg', 'US-SCs', 'US-SCw', 'US-SO2', 'US-SO3', 'US-SO4', 'US-Srr', 'US-Var', 'US-xJR', 'US-xNW',
-#                'US-xRM', 'US-xYE', 'MB_Pch', 'Almond_Low']
-
-# Sites in PNW
-# FLUX_SELECT = ['US-Me1', 'US-Me2', 'US-Me5', 'US-Me6', 'US-Mj1', 'US-Mj2',
-#                'US-Rwe', 'US-Rwf', 'US-Rws', 'US-xYE']
-
-
-# FLUX_SELECT = ['US-MC1']
-
-TONGUE_SELECT = [str(f) for f in [1609]]
+from swim.input import SamplePlots
 
 REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
@@ -153,36 +125,50 @@ def prep_fields_json(fields, input_ts, out_js, target_plots=None, irr_data=None,
             data[dt][p] = arrays[p][i, :].tolist()
 
     dct.update({'order': order, 'time_series': data})
-    with open(out_js, 'w') as fp:
-        json.dump(dct, fp, indent=4)
+
+    # write large json line-by-line
+    with open(out_js, 'w') as f:
+        for key, value in dct.items():
+            json.dump({key: value}, f)
+            f.write('\n')
+
     print(f'wrote {out_js}')
 
     return target_plots, missing
 
 
-def preproc(field_ids, src, _dir, start=None, end=None):
+def preproc(conf_, dir_):
     ct = 0
 
-    for fid in field_ids:
-        obs_file = os.path.join(src, '{}_daily.csv'.format(fid))
-        data = pd.read_csv(obs_file, index_col=0, parse_dates=True)
-        if start and end:
-            data = data.loc[start: end]
+    print('Writing observations to file...')
+    config = ProjectConfig()
+    config.read_config(conf_, project_ws)
+    start = datetime.strftime(config.start_dt, '%Y-%m-%d')
+    end = datetime.strftime(config.end_dt, '%Y-%m-%d')
 
-        data.index = list(range(data.shape[0]))
+    fields = SamplePlots()
+    fields.initialize_plot_data(config)
+
+    for fid in fields.input['order']:
+
+        data = fields.input_to_dataframe(fid)
+        irr_threshold = config.irr_threshold
+        irr_years = [int(k) for k, v in fields.input['irr_data'][fid].items() if k != 'fallow_years'
+                     and v['f_irr'] >= irr_threshold]
+
+        irr_index = [i for i in data.index if i.year in irr_years]
+
+        data = data.loc[start: end]
 
         data['etf'] = data['etf_inv_irr']
+        data.loc[irr_index, 'etf'] = data.loc[irr_index, 'etf_irr']
+
         print('\n{}\npreproc ETf mean: {:.2f}'.format(fid, np.nanmean(data['etf'].values)))
-        _file = os.path.join(_dir, 'obs', 'obs_etf_{}.np'.format(fid))
+        _file = os.path.join(dir_, 'obs', 'obs_etf_{}.np'.format(fid))
         np.savetxt(_file, data['etf'].values)
 
-        data['eta'] = data['eto_mm'] * data['etf_inv_irr']
-        print('preproc ETa mean: {:.2f}'.format(np.nanmean(data['eta'].values)))
-        _file = os.path.join(_dir, 'obs', 'obs_eta_{}.np'.format(fid))
-        np.savetxt(_file, data['eta'].values)
-
         print('preproc SWE mean: {:.2f}\n'.format(np.nanmean(data['obs_swe'].values)))
-        _file = os.path.join(_dir, 'obs', 'obs_swe_{}.np'.format(fid))
+        _file = os.path.join(dir_, 'obs', 'obs_swe_{}.np'.format(fid))
         np.savetxt(_file, data['obs_swe'].values)
 
         ct += 1
@@ -193,32 +179,25 @@ def preproc(field_ids, src, _dir, start=None, end=None):
 if __name__ == '__main__':
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    # set up our work space directories
-    project_ws = os.path.join(root, 'tutorials', '3_Crane')
-    stations = ['S2']
-
+    project_ws = os.path.join(root, 'tutorials', '4_Flux_Network')
     data = os.path.join(project_ws, 'data')
+    landsat = os.path.join(data, 'landsat')
 
+    properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
+    cuttings_json = os.path.join(landsat, 'calibration_cuttings.json')
     joined_timeseries = os.path.join(data, 'input_timeseries')
+    prepped_input = os.path.join(data, 'prepped_input.json')
+
+    processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, prepped_input,
+                                                           target_plots=None, irr_data=cuttings_json)
 
     obs_dir = os.path.join(project_ws, 'obs')
-
     if not os.path.isdir(obs_dir):
         os.makedirs(obs_dir, exist_ok=True)
 
-    # processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, prepped_input,
-    #                                                        target_plots=None, irr_data=cuttings_json)
+    project_ws = os.path.join(root, 'tutorials', '4_Flux_Network')
+    config_path = os.path.join(data, 'tutorial_config.toml')
 
-    os.path.join(data, 'input_timeseries')
-    project_ws = os.path.join(root, 'tutorials', '3_Crane')
-    ini_path = os.path.join(data, 'tutorial_config.toml')
-
-    config = ProjectConfig()
-    config.read_config(ini_path, project_ws)
-    start = datetime.strftime(config.start_dt, '%Y-%m-%d')
-    end = datetime.strftime(config.end_dt, '%Y-%m-%d')
-    print(start, end)
-
-    preproc(stations, joined_timeseries, project_ws, start=start, end=end)
+    preproc(config_path, project_ws)
 
 # ========================= EOF ====================================================================
