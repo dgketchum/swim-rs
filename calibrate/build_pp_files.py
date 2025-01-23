@@ -25,22 +25,8 @@ def build_pest(model_dir, pest_dir, **kwargs):
             transform = 'log'
         pest.add_parameters(_file, 'constant', transform=transform, alt_inst_str='{}_'.format(k), **v)
 
-    # pyemu writes observations to the control file, as expected, however it also writes the observtion
-    # source filename to the input/output section, e.g., 'et_1779.ins obs/obs_etf_1779.np' and during optimization
-    # uses obs/obs_etf_1779.np to compare to the observations already written to the control file.
-    # I think we've circumvented some functionality where we set things pest will 'observe' in the output of the model
-    # see: github.com/gmdsi/GMDSI_notebooks/blob/main/tutorials/part2_02_obs_and_weights/freyberg_obs_and_weights.ipynb
-
-    # TODO: need to weight etf and swe according to their relative contribution to error (phi)
-    # i.e., weight etf higher, so the swe error doesn't dominate calibration
-    # does the fact we are providing a localization matrix obviate this?
-    # might be worth it anyway so we have a representative phi
-    # see: github.com/gmdsi/GMDSI_notebooks/blob/main/tutorials/part2_02_obs_and_weights/freyberg_obs_and_weights.ipynb
-    # or automate this with pst.adjust_weights() which will be written to the control file
-
     obsnme_str = 'oname:obs_etf_{}_otype:arr_i:{}_j:0'
 
-    # TODO assign 'etf' and 'swe' to oname column in pst.observation_data df instead of 'obs'
     for i, fid in enumerate(kwargs['targets']):
 
         # only weight etf on capture dates
@@ -78,8 +64,6 @@ def build_pest(model_dir, pest_dir, **kwargs):
         pest.obs_dfs[i] = d
 
     count = i + 1
-    # note the use of pest-style long names now removes our dependence on dgketchum's hacked fork of pyemu
-    # TODO: implement time dimension to observations
     obsnme_str = 'oname:obs_swe_{}_otype:arr_i:{}_j:0'
 
     for j, fid in enumerate(kwargs['targets']):
@@ -139,10 +123,6 @@ def build_pest(model_dir, pest_dir, **kwargs):
         except FileNotFoundError:
             continue
 
-    # hack to write measurement std post-build, which if not included, 'weight' will be interpreted as std dev
-    # this will be used to add noise to non-zero weighted obs data in e.g., tongue.obs+noise.csv
-    # TODO: pre-compute observation ensembles, implement autocorrelated transient noise
-    # see: github.com/gmdsi/GMDSI_notebooks/blob/main/tutorials/part2_02_obs_and_weights/freyberg_obs_and_weights.ipynb
     pst = Pst(os.path.join(pest.new_d, '{}.pst'.format(os.path.basename(model_dir))))
     obs = pst.observation_data
 
@@ -361,7 +341,7 @@ if __name__ == '__main__':
 
     # for convenience, we put all the paths we'll need in a dict
     PATHS = {'prepped_input': os.path.join(data, 'prepped_input.json'),
-             'input_ts_out': os.path.join(data, 'input_timeseries'),
+             'plot_timeseries': os.path.join(data, 'plot_timeseries'),
              '_pst': 'fort_peck.pst',
              'exe_': 'pestpp-ies',
              'p_dir': os.path.join(project_ws, 'pest'),
@@ -373,11 +353,12 @@ if __name__ == '__main__':
     if not os.path.isdir(PATHS['obs']):
         os.makedirs(PATHS['obs'], exist_ok=True)
 
-    dct_ = get_pest_builder_args(project_ws, PATHS['prepped_input'], PATHS['input_ts_out'],
+    dct_ = get_pest_builder_args(project_ws, PATHS['prepped_input'], PATHS['plot_timeseries'],
                                  start=start, end=end)
+
     # update the dict with the location of 'custom_forward_run.py'
     dct_.update({'python_script': PATHS['python_script']})
-    build_pest(project_ws, PATHS['p_dir'], **dct_)
+    # build_pest(project_ws, PATHS['p_dir'], **dct_)
 
     pst_f = os.path.join(PATHS['p_dir'], '3_Crane.pst')
     build_localizer(pst_f, ag_json=PATHS['prepped_input'])
