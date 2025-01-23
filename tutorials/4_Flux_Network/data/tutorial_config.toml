@@ -1,9 +1,10 @@
 ## SWIM Configuration
 [FIELDS]
+project_name = '4_Flux_Network'
 project_folder = '{project_root}/step_2_calibration'
 
-## data folder and alternate, to check another location if necessary
 data_folder = '{project_root}/data'
+obs_folder = '{project_root}/obs'
 
 ## The unique identifier from the original project shapefile that identifies sample plots (fields)
 field_index = 'field_1'
@@ -18,6 +19,7 @@ end_date = '2022-12-31'
 
 ## Static file names; prepend with data_folder
 input_data = '{project_root}/data/prepped_input.json'
+plot_timeseries = '{project_root}/data/plot_timeseries'
 
 ## Misc configs
 elev_units = 'm'
@@ -35,4 +37,4 @@ initial_values_csv = '{project_root}/params.csv'
 [FORECAST]
 ## Forecast means we're running with PEST++ calibrated parameters
 forecast_flag = 0
-forecast_parameters = '{project_root}/pest/2_Fort_Peck.3.par.csv'
+forecast_parameters = '{project_root}/pest/4_Flux_Network.3.par.csv'

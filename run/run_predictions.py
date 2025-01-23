@@ -27,7 +27,7 @@ DATA_DIRS = {'fields_gridmet': os.path.join(data, 'gis', '{}_fields_gfid.shp'.fo
              'props': os.path.join(data, 'properties', '{}_props.json'.format(project)),
              'cuttings': os.path.join(data, 'landsat', '{}_cuttings.json'.format(project)),
 
-             'input_ts': os.path.join(data, 'input_timeseries'),
+             'input_ts': os.path.join(data, 'plot_timeseries'),
              'prepped_input': os.path.join(data, 'prepped_input', '{}_input_sample.json'.format(project)),
              'conf': os.path.join(data, 'calibrated_models', '{}_swim.toml'.format(project)),
              'params': os.path.join(data, 'calibrated_models', '{}_params.json'.format(project)),

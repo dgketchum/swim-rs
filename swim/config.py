@@ -20,7 +20,12 @@ class ProjectConfig:
         self.forecast_parameter_groups = None
         self.forecast_parameters = None
         self.forecast = None
+
+        self.project_name = None
         self.data_folder = None
+        self.obs_folder = None
+        self.input_json = None
+        self.plot_timeseries = None
 
         self.kc_proxy = None
         self.irr_threshold = None
@@ -65,7 +70,8 @@ class ProjectConfig:
         crop_et_sec = 'FIELDS'
         calib_sec = 'CALIBRATION'
         forecast_sec = 'FORECAST'
-        runspec_sec = 'RUNSPEC'
+
+        self.project_name = config[crop_et_sec]['project_name']
 
         self.kc_proxy = config[crop_et_sec]['kc_proxy']
         self.cover_proxy = config[crop_et_sec]['cover_proxy']
@@ -78,6 +84,11 @@ class ProjectConfig:
 
         if not os.path.exists(self.data_folder):
             raise NotADirectoryError(f'{self.data_folder} is not a directory')
+
+        # this folder will be built if not exists
+        self.obs_folder = config[crop_et_sec]['obs_folder']
+
+        self.plot_timeseries = config[crop_et_sec]['plot_timeseries']
 
         self.field_index = config[crop_et_sec]['field_index']
 

@@ -119,7 +119,7 @@ if __name__ == '__main__':
     FEATURE_ID = 'field_1'
     fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
     met = os.path.join(data, 'met_timeseries')
-    joined_timeseries = os.path.join(data, 'input_timeseries')
+    joined_timeseries = os.path.join(data, 'plot_timeseries')
     snow = os.path.join(data, 'snodas', 'snodas.json')
 
     params = ['etf_inv_irr',

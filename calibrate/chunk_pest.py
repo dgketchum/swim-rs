@@ -30,7 +30,7 @@ DATA_DIRS = {'fields_gridmet': os.path.join(data, 'gis', '{}_fields_gfid.shp'.fo
              'met_data': os.path.join(data, 'met_timeseries'),
              'landsat': os.path.join(data, 'landsat', '{}_sensing.csv'.format(project)),
              'snow_data': os.path.join(data, 'snow_timeseries', 'snodas_{}.json'.format(project)),
-             'input_ts_out': os.path.join(data, 'input_timeseries'),
+             'plot_timeseries': os.path.join(data, 'plot_timeseries'),
              'props': os.path.join(data, 'properties', '{}_props.json'.format(project)),
              'prepped_input': os.path.join(data, 'prepped_input', '{}_input_sample.json'.format(project)),
              'cuttings': os.path.join(d, 'examples/{}/landsat/{}_cuttings.json'.format(project, project)),
@@ -58,7 +58,7 @@ def run_pest_sequence(project_tracker, n_workers, index_col='FID', chunk_sz=10, 
             p_dct = json.load(f)
 
     gmt, met, lst = DATA_DIRS['fields_gridmet'], DATA_DIRS['met_data'], DATA_DIRS['landsat']
-    snow, ts = DATA_DIRS['snow_data'], DATA_DIRS['input_ts_out']
+    snow, ts = DATA_DIRS['snow_data'], DATA_DIRS['plot_timeseries']
 
     gdf = gpd.read_file(gmt)
     gdf.index = gdf[index_col]

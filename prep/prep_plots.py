@@ -137,17 +137,20 @@ def prep_fields_json(fields, input_ts, out_js, target_plots=None, irr_data=None,
     return target_plots, missing
 
 
-def preproc(conf_, dir_):
+def preproc(config_file, project_ws):
     ct = 0
 
     print('Writing observations to file...')
     config = ProjectConfig()
-    config.read_config(conf_, project_ws)
+    config.read_config(config_file, project_ws)
     start = datetime.strftime(config.start_dt, '%Y-%m-%d')
     end = datetime.strftime(config.end_dt, '%Y-%m-%d')
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)
+
+    if not os.path.isdir(config.obs_folder):
+        os.mkdir(config.obs_folder)
 
     for fid in fields.input['order']:
 
@@ -164,11 +167,11 @@ def preproc(conf_, dir_):
         data.loc[irr_index, 'etf'] = data.loc[irr_index, 'etf_irr']
 
         print('\n{}\npreproc ETf mean: {:.2f}'.format(fid, np.nanmean(data['etf'].values)))
-        _file = os.path.join(dir_, 'obs', 'obs_etf_{}.np'.format(fid))
+        _file = os.path.join(config.obs_folder, 'obs_etf_{}.np'.format(fid))
         np.savetxt(_file, data['etf'].values)
 
         print('preproc SWE mean: {:.2f}\n'.format(np.nanmean(data['obs_swe'].values)))
-        _file = os.path.join(dir_, 'obs', 'obs_swe_{}.np'.format(fid))
+        _file = os.path.join(config.obs_folder, 'obs_swe_{}.np'.format(fid))
         np.savetxt(_file, data['obs_swe'].values)
 
         ct += 1
@@ -179,25 +182,25 @@ def preproc(conf_, dir_):
 if __name__ == '__main__':
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    project_ws = os.path.join(root, 'tutorials', '4_Flux_Network')
-    data = os.path.join(project_ws, 'data')
+    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
+    data = os.path.join(project_ws_, 'data')
     landsat = os.path.join(data, 'landsat')
 
     properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
     cuttings_json = os.path.join(landsat, 'calibration_cuttings.json')
-    joined_timeseries = os.path.join(data, 'input_timeseries')
+    joined_timeseries = os.path.join(data, 'plot_timeseries')
     prepped_input = os.path.join(data, 'prepped_input.json')
 
-    processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, prepped_input,
-                                                           target_plots=None, irr_data=cuttings_json)
+    # processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, prepped_input,
+    #                                                        target_plots=None, irr_data=cuttings_json)
 
-    obs_dir = os.path.join(project_ws, 'obs')
+    obs_dir = os.path.join(project_ws_, 'obs')
     if not os.path.isdir(obs_dir):
         os.makedirs(obs_dir, exist_ok=True)
 
-    project_ws = os.path.join(root, 'tutorials', '4_Flux_Network')
+    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
     config_path = os.path.join(data, 'tutorial_config.toml')
 
-    preproc(config_path, project_ws)
+    preproc(config_path, project_ws_)
 
 # ========================= EOF ====================================================================

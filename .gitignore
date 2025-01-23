@@ -176,7 +176,7 @@ cython_debug/
 /tutorials/1_Boulder/data/gis/mt_sid_boulder_gfid.prj
 /tutorials/1_Boulder/data/gis/mt_sid_boulder_gfid.shp
 /tutorials/1_Boulder/data/gis/mt_sid_boulder_gfid.shx
-/tutorials/1_Boulder/data/input_timeseries/
+/tutorials/1_Boulder/data/plot_timeseries/
 /tutorials/1_Boulder/data/landsat/
 /tutorials/1_Boulder/data/met_timeseries/
 /tutorials/1_Boulder/data/properties/
@@ -188,7 +188,7 @@ cython_debug/
 /tutorials/2_Fort_Peck/data/met_timeseries/
 /tutorials/2_Fort_Peck/data/properties/
 /tutorials/2_Fort_Peck/data/snodas/
-/tutorials/2_Fort_Peck/data/input_timeseries/
+/tutorials/2_Fort_Peck/data/plot_timeseries/
 /tutorials/2_Fort_Peck/data/US-FPe_daily_data.csv
 /tutorials/2_Fort_Peck/pest/
 /tutorials/2_Fort_Peck/master/
@@ -198,7 +198,7 @@ cython_debug/
 /tutorials/3_Crane/data/met_timeseries/
 /tutorials/3_Crane/data/properties/
 /tutorials/3_Crane/data/snodas/
-/tutorials/3_Crane/data/input_timeseries/
+/tutorials/3_Crane/data/plot_timeseries/
 /tutorials/3_Crane/data/US-FPe_daily_data.csv
 /tutorials/3_Crane/pest/
 /tutorials/3_Crane/master/
@@ -207,5 +207,5 @@ cython_debug/
 /tutorials/4_Flux_Network/data/properties/
 /tutorials/4_Flux_Network/data/met_timeseries/
 /tutorials/4_Flux_Network/data/landsat/
-/tutorials/4_Flux_Network/data/input_timeseries/
+/tutorials/4_Flux_Network/data/plot_timeseries/
 /tutorials/4_Flux_Network/data/bias_correction_tif/

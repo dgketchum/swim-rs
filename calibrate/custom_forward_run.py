@@ -14,7 +14,7 @@ def run():
 
     model_script = os.path.join(root, 'run', 'run_mp.py')
 
-    project_ws = os.path.join(root, 'tutorials', '3_Crane')
+    project_ws = os.path.join(root, 'tutorials', '4_Flux_Network')
 
     conf_file = os.path.join(project_ws, 'data', 'tutorial_config.toml')
 
