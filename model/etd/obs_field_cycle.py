@@ -60,6 +60,8 @@ DEFAULTS = {'ndvi_beta': 1.35,
             'swe_beta': 1.38}
 
 
+ALL_PARAMS = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad', 'swe_alpha', 'swe_beta']
+
 class DayData:
 
     def __init__(self):
@@ -77,13 +79,21 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     tracker.load_soils(plots)
 
     # apply calibration parameter updates here
-    if config.calibration:
+    if config.calibrate:
         # load PEST++ parameter proposition
         cal_arr = {k: np.zeros((1, size)) for k in config.calibration_groups}
 
         for k, f in config.calibration_files.items():
 
-            group, fid = '_'.join(k.split('_')[:-1]), k.split('_')[-1]
+            param_found = False
+
+            while not param_found:
+                for p in ALL_PARAMS:
+                    if p in k:
+                        group = p
+                        fid = k.replace(f'{group}_', '')
+                        param_found = True
+
             idx = plots.input['order'].index(fid)
 
             if params:
@@ -107,7 +117,14 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
         for k, v in config.forecast_parameters.items():
 
-            group, fid = '_'.join(k.split('_')[:-1]), k.split('_')[-1]
+            param_found = False
+
+            while not param_found:
+                for p in ALL_PARAMS:
+                    if p in k:
+                        group = p
+                        fid = k.replace(f'{group}_', '')
+                        param_found = True
 
             # PEST++ has lower-cased the FIDs
             l = [x.lower() for x in plots.input['order']]
@@ -316,10 +333,10 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
                     # raise WaterBalanceError('Check November water balance')
 
         else:
-            if np.isnan(tracker.kc_act):
+            if np.any(np.isnan(tracker.kc_act)):
                 raise ValueError('NaN in Kc_act')
 
-            if np.isnan(tracker.swe):
+            if np.any(np.isnan(tracker.swe)):
                 raise ValueError('NaN in SWE')
 
             etf[j, :] = tracker.kc_act

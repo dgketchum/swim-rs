@@ -26,6 +26,7 @@ class ProjectConfig:
         self.obs_folder = None
         self.input_json = None
         self.plot_timeseries = None
+        self.shapefile = None
 
         self.kc_proxy = None
         self.irr_threshold = None
@@ -38,8 +39,8 @@ class ProjectConfig:
         self.elev_units = None
         self.refet_type = None
         self.input_data = None
-        self.calibration = None
-        self.calibration_folder = None
+        self.calibrate = None
+        self.calibration_dir = None
         self.calibrated_parameters = None
         self.calibration_files = None
         self.calibration_groups = None
@@ -56,7 +57,7 @@ class ProjectConfig:
         self.winter_end_day = None
         self.winter_start_day = None
 
-    def read_config(self, conf, project_root, calibration_folder=None, parameter_dist_csv=None,
+    def read_config(self, conf, project_root, calibrate=False, forecast=False, calibration_dir=None,
                     parameter_set_json=None):
 
         with open(conf, 'r') as f:
@@ -71,7 +72,12 @@ class ProjectConfig:
         calib_sec = 'CALIBRATION'
         forecast_sec = 'FORECAST'
 
+        self.calibrate = calibrate
+        self.calibration_dir = calibration_dir
+        self.forecast = forecast
+
         self.project_name = config[crop_et_sec]['project_name']
+        self.shapefile = config[crop_et_sec]['shapefile']
 
         self.kc_proxy = config[crop_et_sec]['kc_proxy']
         self.cover_proxy = config[crop_et_sec]['cover_proxy']
@@ -113,47 +119,46 @@ class ProjectConfig:
 
         self.input_data = os.path.join(self.data_folder, config[crop_et_sec]['input_data'])
 
-        self.calibration = bool(config[calib_sec]['calibrate_flag'])
-
-        if self.calibration:
-            stdout = 'ON'
-        else:
-            stdout = 'OFF'
-
         print('\n')
         print('Config: {}'.format(conf))
-        print('CALIBRATION {}'.format(stdout))
 
-        if self.calibration:
+        if self.calibrate is True or self.calibration_dir is not None:
 
-            if calibration_folder:
-                cf = calibration_folder
-            else:
-                cf = config[calib_sec]['calibration_folder']
+            print('CALIBRATION ON')
+            if not self.calibrate:
+                self.calibrate = True
 
-            self.calibration_folder = cf
+            if not self.calibration_dir:
+                self.calibration_dir = config[calib_sec]['calibration_dir']
+
+            if not os.path.isdir(self.calibration_dir):
+                raise ValueError(f'Calibration is on but calibration folder {self.calibration_dir} does not exist')
+
             initial_values_csv = config[calib_sec]['initial_values_csv']
+
             pdf = pd.read_csv(initial_values_csv, index_col=0)
             self.calibrated_parameters = pdf.index
             _files = list(pdf['mult_name'])
-            cal_files, mult_files = set(os.listdir(self.calibration_folder)), set(_files)
+            cal_files, mult_files = set(os.listdir(self.calibration_dir)), set(_files)
             assert cal_files == mult_files
 
-            _files = [os.path.join(self.calibration_folder, f) for f in _files]
+            _files = [os.path.join(self.calibration_dir, f) for f in _files]
             self.calibration_files = {k: v for k, v in zip(self.calibrated_parameters, _files)}
             self.calibration_groups = list(set(['_'.join(p.split('_')[:-1]) for p in pdf.index]))
 
-        self.forecast = bool(config[forecast_sec]['forecast_flag'])
-        if self.forecast:
-            stdout = 'ON'
         else:
-            stdout = 'OFF'
-        print('FORECAST {}'.format(stdout))
+            print('CALIBRATION OFF')
+            self.calibrate = 0
+            self.calibration_dir = None
 
         if self.forecast:
 
-            if os.path.isfile(config[forecast_sec]['forecast_parameters']) and parameter_dist_csv is None:
-                parameter_dist_csv = config[forecast_sec]['forecast_parameters']
+            print('FORECAST ON')
+
+            parameter_dist_csv = config[forecast_sec]['forecast_parameters']
+
+            if not os.path.isfile(parameter_dist_csv):
+                raise ValueError(f'Forecast is on but forecast csv {parameter_dist_csv} does not exist')
 
             if parameter_dist_csv:
                 fcst = parameter_dist_csv
@@ -174,9 +179,8 @@ class ProjectConfig:
                 v = [d[t[1]][t[0]] for t in tup_]
                 self.forecast_parameters = pd.Series(index=k, data=v)
 
-            else:
-                fcst = config[forecast_sec]['forecast_parameters']
-
+        else:
+            print('FORECAST OFF')
 
 if __name__ == '__main__':
     pass
