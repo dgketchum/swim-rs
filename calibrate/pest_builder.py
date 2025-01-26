@@ -72,7 +72,7 @@ class PestBuilder:
         for i, (k, v) in enumerate(pars.items()):
             if 'aw_' in k:
                 aw_ = aw[i] * 1000.
-                if np.isnan(aw_):
+                if np.isnan(aw_) or aw_ < pars[k]['lower_bound']:
                     aw_ = 150.0
                 params.append((k, aw_, 'p_{}_0_constant.csv'.format(k)))
             else:
@@ -259,7 +259,9 @@ class PestBuilder:
 
         localizer = df.copy()
 
-        sites = list(set([i.split('_')[2] for i in df.index]))
+        # TODO: fix this
+        # most brittle line of code ever written
+        sites = list(set(['_'.join(i.split('_')[2:-3]) for i in df.index]))
 
         track = {k: [] for k in sites}
 
@@ -365,13 +367,19 @@ class PestBuilder:
 if __name__ == '__main__':
 
     root_ = os.path.abspath('..')
+    # project_ws_ = os.path.join(root_, 'tutorials', '4_Flux_Network')
     project_ws_ = os.path.join(root_, 'tutorials', '3_Crane')
-    data_ = os.path.join(project_ws_, 'data')
-    config_path_ = os.path.join(data_, 'tutorial_config.toml')
+    if not os.path.isdir(project_ws_):
+        root_ = os.path.abspath('')
+        project_ws_ = os.path.join(root_, 'tutorials', '3_Crane')
 
-    builder = PestBuilder(project_ws=project_ws_, config_file=config_path_, use_existing=False)
+    config_path_ = os.path.join(project_ws_, 'config.toml')
+    py_script = os.path.join(project_ws_, 'custom_forward_run.py')
+
+    builder = PestBuilder(project_ws=project_ws_, config_file=config_path_,
+                          use_existing=False, python_script=py_script)
     builder.build_pest()
     builder.build_localizer()
-    builder.write_control_settings(noptmax=3, reals=5)
+    builder.write_control_settings(noptmax=3, reals=10)
 
 # ========================= EOF ====================================================================
