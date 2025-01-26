@@ -1,12 +1,9 @@
 import json
 import os
-import sys
 
 import numpy as np
 import pandas as pd
 import geopandas as gpd
-
-from prep.prep_plots import TONGUE_SELECT
 
 
 def write_field_properties(shp, irr, ssurgo, js, cdl=None, landfire=None, index_col='FID',
