@@ -9,12 +9,12 @@ from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
 
-def optimize_fields(ini_path, project_dir, worker_dir, calibration_folder=None):
+def optimize_fields(ini_path, project_dir, worker_dir, calibration_dir=False):
     start_time = time.time()
     end_time = None
 
     config = ProjectConfig()
-    config.read_config(ini_path, project_dir, calibration_folder=calibration_folder)
+    config.read_config(ini_path, project_dir, calibration_dir=calibration_dir)
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)
@@ -38,7 +38,7 @@ def main():
     parser.add_argument('--worker_dir', required=True, help='Worker directory')
     parser.add_argument('--calibration_dir', required=False, help='Calibration (mult) directory')
     args = parser.parse_args()
-    optimize_fields(args.config_path,  args.project_dir, args.worker_dir, calibration_folder=args.calibration_dir)
+    optimize_fields(args.config_path, args.project_dir, args.worker_dir, calibration_dir=args.calibration_dir)
 
 
 if __name__ == '__main__':
