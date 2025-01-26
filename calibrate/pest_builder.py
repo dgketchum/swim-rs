@@ -1,8 +1,6 @@
-import json
 import os
 import shutil
 from collections import OrderedDict
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -367,11 +365,11 @@ class PestBuilder:
 if __name__ == '__main__':
 
     root_ = os.path.abspath('..')
-    # project_ws_ = os.path.join(root_, 'tutorials', '4_Flux_Network')
-    project_ws_ = os.path.join(root_, 'tutorials', '3_Crane')
+    project = '4_Flux_Network'
+    project_ws_ = os.path.join(root_, 'tutorials', project)
     if not os.path.isdir(project_ws_):
         root_ = os.path.abspath('')
-        project_ws_ = os.path.join(root_, 'tutorials', '3_Crane')
+        project_ws_ = os.path.join(root_, 'tutorials', project)
 
     config_path_ = os.path.join(project_ws_, 'config.toml')
     py_script = os.path.join(project_ws_, 'custom_forward_run.py')
