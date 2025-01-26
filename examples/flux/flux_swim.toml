@@ -12,6 +12,7 @@ alt_data_folder = '/home/dgketchum/data/IrrigationGIS/swim'
 fields_path = 'examples/flux/prepped_input/flux_input_sample.json'
 
 field_index = 'field_1'
+shapefile = '{project_root}/data/gis/flux_fields.shp'
 
 # Crop Coefficient Proxy
 kc_proxy = 'etf'
@@ -29,8 +30,8 @@ refet_type = 'eto'
 
 [CALIBRATION]
 ## PEST Calibration
-calibrate_flag = 0
-calibration_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/pest/mult'
+
+calibration_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/pest/mult'
 initial_values_csv = '/home/dgketchum/PycharmProjects/swim-rs/examples/flux/params.csv'
 
 [FORECAST]
