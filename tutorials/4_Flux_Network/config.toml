@@ -1,13 +1,14 @@
 ## SWIM Configuration
 [FIELDS]
-project_folder = '{project_root}/step_2_uncalibrated_model'
+project_name = '4_Flux_Network'
+project_folder = '{project_root}/step_2_calibration'
 
-## data folder and alternate, to check another location if necessary
 data_folder = '{project_root}/data'
 obs_folder = '{project_root}/obs'
 
 ## The unique identifier from the original project shapefile that identifies sample plots (fields)
 field_index = 'field_1'
+shapefile = '{project_root}/data/gis/flux_fields.shp'
 
 ## Crop Coefficient Proxy
 kc_proxy = 'etf'
@@ -29,12 +30,11 @@ refet_type = 'eto'
 irr_threshold = 0.3
 
 [CALIBRATION]
-## PEST Calibration (1: calibrating, 0: not calibrating)
-calibrate_flag = 0
-calibration_folder = '{project_root}/pest/mult'
+
+calibration_dir = '{project_root}/pest/mult'
 initial_values_csv = '{project_root}/params.csv'
 
 [FORECAST]
 ## Forecast means we're running with PEST++ calibrated parameters
-forecast_flag = 0
-forecast_parameters = '{project_root}/pest/2_Fort_Peck.3.par.csv'
+
+forecast_parameters = '{project_root}/pest/4_Flux_Network.3.par.csv'

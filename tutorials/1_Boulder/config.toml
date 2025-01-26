@@ -1,5 +1,6 @@
 ## SWIM Configuration
 [FIELDS]
+project_name = '1_Boulder'
 project_folder = '{project_root}/step_5_model_run'
 
 ## data folder and alternate, to check another location if necessary
@@ -8,6 +9,7 @@ obs_folder = '{project_root}/obs'
 
 ## The unique identifier from the original project shapefile that identifies sample plots (fields)
 field_index = 'FID_1'
+shapefile = '{project_root}/data/gis/mt_sid_boulder.shp'
 
 ## Crop Coefficient Proxy
 kc_proxy = 'etf'
@@ -30,11 +32,11 @@ irr_threshold = 0.3
 
 [CALIBRATION]
 ## PEST Calibration (0: calibrating, 1: not calibrating)
-calibrate_flag = 0
-calibration_folder = ''
+
+calibration_dir = ''
 initial_values_csv = ''
 
 [FORECAST]
 ## Forecast means we're running with PEST++ calibrated parameters
-forecast_flag = 0
+
 forecast_parameters = ''

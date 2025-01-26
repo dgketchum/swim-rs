@@ -25,10 +25,10 @@ refet_type = 'eto'
 
 [CALIBRATION]
 ## PEST Calibration
-calibrate_flag = 1
-calibration_folder = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue_annex/pest/mult'
+
+calibration_dir = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue_annex/pest/mult'
 initial_values_csv = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue_annex/params.csv'
 
 [FORECAST]
-forecast_flag = 0
+
 forecast_parameters = '/home/dgketchum/PycharmProjects/swim-rs/examples/tongue_annex/master/flux.5.par.csv'
