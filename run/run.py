@@ -14,7 +14,7 @@ def run_fields(ini_path, project='tongue', calibration_dir=None, parameter_distr
     start_time = time.time()
 
     config = ProjectConfig()
-    config.read_config(ini_path, calibration_folder=calibration_dir, parameter_dist_csv=parameter_distribution)
+    config.read_config(ini_path, calibration_dir=calibration_dir, parameter_dist_csv=parameter_distribution)
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)

@@ -76,7 +76,7 @@ if __name__ == '__main__':
 
     data = os.path.join(project_ws, 'data')
 
-    config_file = os.path.join(data, 'tutorial_config.toml')
+    config_file = os.path.join(data, 'config.toml')
     prepped_input = os.path.join(data, 'prepped_input.json')
 
     selected_feature = 'US-FPe'

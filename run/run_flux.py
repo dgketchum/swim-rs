@@ -16,7 +16,7 @@ def run_flux_sites(ini_path, flux_file, project='tongue', calibration_dir=None, 
     start_time = time.time()
 
     config = ProjectConfig()
-    config.read_config(ini_path, calibration_folder=calibration_dir, parameter_dist_csv=parameter_distribution)
+    config.read_config(ini_path, calibration_dir=calibration_dir, parameter_dist_csv=parameter_distribution)
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)
@@ -118,12 +118,12 @@ if __name__ == '__main__':
 
     flux_obs_ = os.path.join(root, 'climate/flux_ET_dataset/daily_data_files/{}_daily_data.csv')
 
-    calibration_folder = None
+    calibration_dir = None
 
     tuned = '/media/research/IrrigationGIS/swim/examples/flux/calibrated_models/model_6JUN2024'
     pars = os.path.join(tuned, 'flux.4.par.csv')
 
     results_files = os.path.join(tuned, 'output_{}.csv')
 
-    run_flux_sites(conf, flux_file=flux_obs_, project=project, calibration_dir=calibration_folder,
+    run_flux_sites(conf, flux_file=flux_obs_, project=project, calibration_dir=calibration_dir,
                    parameter_distribution=pars, write_files=results_files)

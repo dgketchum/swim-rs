@@ -199,7 +199,7 @@ if __name__ == '__main__':
         os.makedirs(obs_dir, exist_ok=True)
 
     project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
-    config_path = os.path.join(data, 'tutorial_config.toml')
+    config_path = os.path.join(data, 'config.toml')
 
     preproc(config_path, project_ws_)
 
