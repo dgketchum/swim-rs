@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from pyemu import Pst, Matrix, ObservationEnsemble
 from pyemu.utils import PstFrom
+from pyemu.utils.os_utils import run_ossystem
 
 from swim.config import ProjectConfig
 from swim.input import SamplePlots
@@ -361,11 +362,17 @@ class PestBuilder:
 
         return p
 
+    def dry_run(self, exe='pestpp-ies'):
+        cmd = ' '.join([exe, os.path.join(self.pest_dir, self.pst_file)])
+        wd = self.pest_dir
+        run_ossystem(cmd, wd, verbose=True)
+
 
 if __name__ == '__main__':
 
     root_ = os.path.abspath('..')
-    project = '4_Flux_Network'
+    # project = '4_Flux_Network'
+    project = '2_Fort_Peck'
     project_ws_ = os.path.join(root_, 'tutorials', project)
     if not os.path.isdir(project_ws_):
         root_ = os.path.abspath('')
@@ -378,6 +385,7 @@ if __name__ == '__main__':
                           use_existing=False, python_script=py_script)
     builder.build_pest()
     builder.build_localizer()
+    builder.dry_run()
     builder.write_control_settings(noptmax=3, reals=10)
 
 # ========================= EOF ====================================================================

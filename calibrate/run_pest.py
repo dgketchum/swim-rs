@@ -5,15 +5,23 @@ from pyemu import os_utils
 
 
 def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, verbose=True, cleanup=True):
-
     try:
         os.chdir(worker_root)
         [print('rmtree: {}'.format(os.path.join(worker_root, d))) for d in os.listdir(worker_root)]
         [shutil.rmtree(os.path.join(worker_root, d)) for d in os.listdir(worker_root)]
     except FileNotFoundError:
         os.mkdir(worker_root)
-        if master_dir:
-            os.mkdir(master_dir)
+
+    try:
+        shutil.rmtree(master_dir)
+        os.mkdir(master_dir)
+    except FileNotFoundError:
+        pass
+
+    if not os.path.isdir(_dir):
+        raise ValueError(f'The pest directory {_dir} does not exist, run pest_builder.py')
+
+    os.chdir(_dir)
 
     os_utils.start_workers(_dir,
                            _cmd,
@@ -28,7 +36,8 @@ def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, ver
 
 if __name__ == '__main__':
     home = os.path.expanduser('~')
-    project = '3_Crane'
+    # project = '4_Flux_Network'
+    project = '2_Fort_Peck'
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
     project_ws = os.path.join(root, 'tutorials', project)
 
@@ -42,5 +51,6 @@ if __name__ == '__main__':
     _workers = 2
 
     run_pst(p_dir, exe_, _pst, num_workers=_workers, worker_root=w_dir,
-            master_dir=m_dir, verbose=True, cleanup=True)
+            master_dir=m_dir, verbose=True, cleanup=False)
+
 # ========================= EOF ====================================================================
