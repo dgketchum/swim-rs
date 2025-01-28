@@ -209,3 +209,6 @@ cython_debug/
 /tutorials/4_Flux_Network/data/landsat/
 /tutorials/4_Flux_Network/data/plot_timeseries/
 /tutorials/4_Flux_Network/data/bias_correction_tif/
+/tutorials/4_Flux_Network/pest/
+/tutorials/4_Flux_Network/master/
+/tutorials/4_Flux_Network/workers/
