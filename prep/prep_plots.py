@@ -40,17 +40,17 @@ REQ_IRR = ['etr_mm',
 ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['obs_swe']
 
 
-def prep_fields_json(fields, input_ts, out_js, target_plots=None, irr_data=None, force_unirrigated=False):
-    with open(fields, 'r') as fp:
-        fields = json.load(fp)
+def prep_fields_json(properties, time_series, dynamics, out_js, target_plots=None, force_unirrigated=False):
+    with open(properties, 'r') as fp:
+        properties = json.load(fp)
 
     if target_plots is None:
-        target_plots = list(fields.keys())
+        target_plots = list(properties.keys())
 
-    dct = {'props': {i: r for i, r in fields.items() if i in target_plots}}
+    dct = {'props': {i: r for i, r in properties.items() if i in target_plots}}
 
     missing = [x for x in target_plots if x not in dct['props'].keys()]
-    missing += [x for x in target_plots if not os.path.exists(os.path.join(input_ts, '{}_daily.csv'.format(x)))]
+    missing += [x for x in target_plots if not os.path.exists(os.path.join(time_series, '{}_daily.csv'.format(x)))]
     missing = list(set(missing))
 
     if missing:
@@ -59,8 +59,8 @@ def prep_fields_json(fields, input_ts, out_js, target_plots=None, irr_data=None,
         if not target_plots:
             return target_plots, missing
 
-    with open(irr_data, 'r') as fp:
-        irr_data = json.load(fp)
+    with open(dynamics, 'r') as fp:
+        dynamics = json.load(fp)
 
     if force_unirrigated:
 
@@ -75,11 +75,14 @@ def prep_fields_json(fields, input_ts, out_js, target_plots=None, irr_data=None,
             ACCEPT_NAN.remove('ndvi_inv_irr')
 
         required_params = REQUIRED + REQ_UNIRR
-        dct['irr_data'] = {fid: {'fallow_years': []} for fid, v in irr_data.items() if fid in target_plots}
+        dct['irr_data'] = {fid: {'fallow_years': []} for fid, v in dynamics['irr'].items() if fid in target_plots}
+        # TODO: are we going to use this?
+        dct['gwsub_data'] = {fid: {'fallow_years': []} for fid, v in dynamics['gwsub_'].items() if fid in target_plots}
 
     else:
         required_params = REQUIRED + REQ_IRR + REQ_UNIRR
-        dct['irr_data'] = {fid: v for fid, v in irr_data.items() if fid in target_plots}
+        dct['irr_data'] = {fid: v for fid, v in dynamics['irr'].items() if fid in target_plots}
+        dct['gwsub_data'] = {fid: v for fid, v in dynamics['gwsub'].items() if fid in target_plots}
 
     dts, order = None, []
     first, arrays, shape = True, {r: [] for r in required_params}, None
@@ -88,7 +91,7 @@ def prep_fields_json(fields, input_ts, out_js, target_plots=None, irr_data=None,
         if fid in missing:
             continue
 
-        _file = os.path.join(input_ts, '{}_daily.csv'.format(fid))
+        _file = os.path.join(time_series, '{}_daily.csv'.format(fid))
         df = pd.read_csv(_file, index_col='date', parse_dates=True)
         if first:
             shape = df.shape[0]
@@ -182,24 +185,27 @@ def preproc(config_file, project_ws):
 if __name__ == '__main__':
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
+    # project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
+    project_ws_ = os.path.join(root, 'tutorials', 'muddy_test')
     data = os.path.join(project_ws_, 'data')
     landsat = os.path.join(data, 'landsat')
 
     properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
-    cuttings_json = os.path.join(landsat, 'calibration_cuttings.json')
+    dynamics_data = os.path.join(landsat, 'calibration_dynamics.json')
     joined_timeseries = os.path.join(data, 'plot_timeseries')
+
     prepped_input = os.path.join(data, 'prepped_input.json')
 
-    # processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, prepped_input,
-    #                                                        target_plots=None, irr_data=cuttings_json)
+    # processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, dynamics_data,
+    #                                                        prepped_input, target_plots=None)
 
     obs_dir = os.path.join(project_ws_, 'obs')
     if not os.path.isdir(obs_dir):
         os.makedirs(obs_dir, exist_ok=True)
 
-    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
-    config_path = os.path.join(data, 'config.toml')
+    # project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
+    project_ws_ = os.path.join(root, 'tutorials', 'muddy_test')
+    config_path = os.path.join(project_ws_, 'config.toml')
 
     preproc(config_path, project_ws_)
 
