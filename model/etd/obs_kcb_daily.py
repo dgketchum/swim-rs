@@ -9,7 +9,7 @@ import logging
 
 import numpy as np
 
-def kcb_daily(config, et_cell, foo, foo_day):
+def kcb_daily(foo, foo_day):
     """Compute basal ET
 
     Parameters

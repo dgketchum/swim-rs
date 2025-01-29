@@ -1,12 +1,3 @@
-"""compute_crop_et.py
-Function for calculating crop et
-Called by crop_cycle.py
-
-"""
-
-import logging
-import math
-
 import numpy as np
 
 from model.etd import grow_root
@@ -14,77 +5,77 @@ from model.etd import runoff
 from model.etd import compute_snow
 
 
-def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
-    foo.height = np.maximum(0.05, foo.height)
+def compute_field_et(ts_data, swb, day_data, debug_flag=False):
+    swb.height = np.maximum(0.05, swb.height)
 
-    kc_max = np.maximum(foo.kc_max, foo.kc_bas + 0.05)
+    kc_max = np.maximum(swb.kc_max, swb.kc_bas + 0.05)
 
-    foo.kc_bas = np.maximum(foo.kc_min, foo.kc_bas)
+    swb.kc_bas = np.maximum(swb.kc_min, swb.kc_bas)
 
-    foo.fc = ((foo.kc_bas - foo.kc_min) / (kc_max - foo.kc_min)) ** (1 + 0.5 * foo.height)
+    swb.fc = ((swb.kc_bas - swb.kc_min) / (kc_max - swb.kc_min)) ** (1 + 0.5 * swb.height)
 
     # limit so that few > 0
-    foo.fc = np.minimum(foo.fc, 0.99)
-    if np.any(np.isnan(foo.fc)):
-        mask = np.isnan(foo.fc).flatten()
-        nan_ids = np.array(et_cell.input['order'])[mask]
+    swb.fc = np.minimum(swb.fc, 0.99)
+    if np.any(np.isnan(swb.fc)):
+        mask = np.isnan(swb.fc).flatten()
+        nan_ids = np.array(ts_data.input['order'])[mask]
         for nan_id in nan_ids:
-            if not nan_id in foo.isnan:
-                foo.isnan.append(nan_id)
+            if not nan_id in swb.isnan:
+                swb.isnan.append(nan_id)
                 print('Found nan in foo.fc: {}'.format(nan_ids))
 
     # Estimate infiltrating precipitation
     # Yesterday's infiltration
 
-    foo.ppt_inf_prev = foo.ppt_inf
-    foo.ppt_inf = np.zeros_like(foo_day.precip)
-    foo.sro = np.zeros_like(foo_day.precip)
+    swb.ppt_inf_prev = swb.ppt_inf
+    swb.ppt_inf = np.zeros_like(day_data.precip)
+    swb.sro = np.zeros_like(day_data.precip)
 
-    if np.any(foo_day.precip > 0) or np.any(foo.swe > 0.0):
+    if np.any(day_data.precip > 0) or np.any(swb.swe > 0.0):
 
-        compute_snow.calculate_snow(foo, foo_day)
+        compute_snow.calculate_snow(swb, day_data)
 
         # runoff.runoff_curve_number(foo, foo_day, debug_flag)
-        runoff.runoff_infiltration_excess(foo, foo_day)
+        runoff.runoff_infiltration_excess(swb, day_data)
 
-        foo.ppt_inf = (foo.melt + foo.rain) - foo.sro
+        swb.ppt_inf = (swb.melt + swb.rain) - swb.sro
 
     else:
-        foo.rain = np.zeros_like(foo_day.precip)
-        foo.snow_fall = np.zeros_like(foo_day.precip)
-        foo.melt = np.zeros_like(foo_day.precip)
-        foo.swe = np.zeros_like(foo_day.precip)
+        swb.rain = np.zeros_like(day_data.precip)
+        swb.snow_fall = np.zeros_like(day_data.precip)
+        swb.melt = np.zeros_like(day_data.precip)
+        swb.swe = np.zeros_like(day_data.precip)
 
     # setup for water balance of evaporation layer
     # Deep percolation from Ze layer (not root zone, only surface soil)
-    foo.depl_ze = foo.depl_ze - (foo.melt + foo.rain + foo.irr_sim)
+    swb.depl_ze = swb.depl_ze - (swb.melt + swb.rain + swb.irr_sim)
 
-    foo.few = 1 - foo.fc
+    swb.few = 1 - swb.fc
 
-    foo.kr = np.minimum((foo.tew - foo.depl_ze) / (foo.tew - foo.rew), 1.)
+    swb.kr = np.minimum((swb.tew - swb.depl_ze) / (swb.tew - swb.rew), 1.)
 
-    foo.ke = np.minimum(foo.kr * (foo.kc_max - foo.kc_bas), foo.few * foo.kc_max)
-    foo.ke = np.maximum(foo.ke, 0.0)
+    swb.ke = np.minimum(swb.kr * (swb.kc_max - swb.kc_bas), swb.few * swb.kc_max)
+    swb.ke = np.maximum(swb.ke, 0.0)
 
     # Transpiration coefficient for moisture stress
-    foo.taw = foo.aw * foo.zr
-    foo.taw = np.maximum(foo.taw, 0.001)
-    foo.taw = np.maximum(foo.taw, foo.tew)
-    foo.raw = foo.mad * foo.taw
+    swb.taw = swb.aw * swb.zr
+    swb.taw = np.maximum(swb.taw, 0.001)
+    swb.taw = np.maximum(swb.taw, swb.tew)
+    swb.raw = swb.mad * swb.taw
 
-    foo.ks = np.where(foo.depl_root > foo.raw,
-                      np.maximum((foo.taw - foo.depl_root) / (foo.taw - foo.raw), 0), 1)
+    swb.ks = np.where(swb.depl_root > swb.raw,
+                      np.maximum((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0), 1)
 
-    if 90 > foo_day.doy > 306:
+    if 90 > day_data.doy > 306:
         # Calculate Kc during snow cover
 
-        kc_mult = np.ones_like(foo_day.swe)
-        condition = foo_day.swe > 0.01
+        kc_mult = np.ones_like(day_data.swe)
+        condition = day_data.swe > 0.01
 
         # Radiation term for reducing Kc to actCount for snow albedo
         k_rad = (
-            0.000000022 * foo_day.doy ** 3 - 0.0000242 * foo_day.doy ** 2 +
-            0.006 * foo_day.doy + 0.011)
+            0.000000022 * day_data.doy ** 3 - 0.0000242 * day_data.doy ** 2 +
+            0.006 * day_data.doy + 0.011)
         albedo_snow = 0.8
         albedo_soil = 0.25
         kc_mult[condition] = 1 - k_rad + (1 - albedo_snow) / (1 - albedo_soil) * k_rad
@@ -92,83 +83,83 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
         # Was 0.9, reduced another 30% to account for latent heat of fusion of melting snow
         kc_mult = kc_mult * 0.7
 
-        foo.ke *= kc_mult
+        swb.ke *= kc_mult
 
     else:
         kc_mult = 1
 
-    foo.kc_act = kc_mult * foo.ks * foo.kc_bas * foo.fc + foo.ke
+    swb.kc_act = kc_mult * swb.ks * swb.kc_bas * swb.fc + swb.ke
 
-    foo.t = kc_mult * foo.ks * foo.kc_bas * foo.fc
+    swb.t = kc_mult * swb.ks * swb.kc_bas * swb.fc
 
-    foo.kc_pot = foo.kc_bas + foo.ke
+    swb.kc_pot = swb.kc_bas + swb.ke
 
-    foo.etc_act = foo.kc_act * foo_day.refet
+    swb.etc_act = swb.kc_act * day_data.refet
 
-    foo.e = foo.ke * foo_day.refet
-    depl_ze_prev = foo.depl_ze
-    foo.depl_ze = depl_ze_prev + foo.e
-    foo.depl_ze = np.where(foo.depl_ze < 0, 0.0, foo.depl_ze)
+    swb.e = swb.ke * day_data.refet
+    depl_ze_prev = swb.depl_ze
+    swb.depl_ze = depl_ze_prev + swb.e
+    swb.depl_ze = np.where(swb.depl_ze < 0, 0.0, swb.depl_ze)
 
-    if np.any(foo.depl_ze > foo.tew):
-        potential_e = foo.depl_ze - depl_ze_prev
+    if np.any(swb.depl_ze > swb.tew):
+        potential_e = swb.depl_ze - depl_ze_prev
         potential_e = np.maximum(potential_e, 0.0001)
-        e_factor = 1 - (foo.depl_ze - foo.tew) / potential_e
+        e_factor = 1 - (swb.depl_ze - swb.tew) / potential_e
         e_factor = np.minimum(np.maximum(e_factor, 0), 1)
-        foo.e *= e_factor
-        foo.depl_ze = depl_ze_prev + foo.e
+        swb.e *= e_factor
+        swb.depl_ze = depl_ze_prev + swb.e
 
-    foo.cum_evap_prev = foo.cum_evap_prev + foo.e - (foo.ppt_inf - depl_ze_prev)
-    foo.cum_evap_prev = np.maximum(foo.cum_evap_prev, 0)
+    swb.cum_evap_prev = swb.cum_evap_prev + swb.e - (swb.ppt_inf - depl_ze_prev)
+    swb.cum_evap_prev = np.maximum(swb.cum_evap_prev, 0)
 
-    foo.soil_water_prev = foo.soil_water.copy()
-    foo.depl_root_prev = foo.depl_root.copy()
-    foo.depl_root += foo.etc_act - foo.ppt_inf
+    swb.soil_water_prev = swb.soil_water.copy()
+    swb.depl_root_prev = swb.depl_root.copy()
+    swb.depl_root += swb.etc_act - swb.ppt_inf
 
-    foo.irr_sim = np.zeros_like(foo.aw)
+    swb.irr_sim = np.zeros_like(swb.aw)
 
-    if np.any(foo_day.irr_day) or np.any(foo.irr_continue):
+    if np.any(day_data.irr_day) or np.any(swb.irr_continue):
         # account for the case where depletion exceeded the maximum daily irr rate yesterday
-        irr_waiting = foo.next_day_irr
+        irr_waiting = swb.next_day_irr
 
-        foo.next_day_irr = np.where(foo.next_day_irr > foo.max_irr_rate,
-                                    foo.next_day_irr - foo.max_irr_rate,
+        swb.next_day_irr = np.where(swb.next_day_irr > swb.max_irr_rate,
+                                    swb.next_day_irr - swb.max_irr_rate,
                                     0.0)
 
-        next_day_cond = (foo_day.irr_day & (foo.depl_root > foo.raw) & (foo.max_irr_rate < foo.depl_root * 1.1))
-        foo.next_day_irr = np.where(next_day_cond,
-                                    foo.depl_root * 1.1 - foo.max_irr_rate,
-                                    foo.next_day_irr)
+        next_day_cond = (day_data.irr_day & (swb.depl_root > swb.raw) & (swb.max_irr_rate < swb.depl_root * 1.1))
+        swb.next_day_irr = np.where(next_day_cond,
+                                    swb.depl_root * 1.1 - swb.max_irr_rate,
+                                    swb.next_day_irr)
 
-        potential_irr = np.where(foo.irr_continue, np.minimum(irr_waiting, foo.max_irr_rate), 0.0)
+        potential_irr = np.where(swb.irr_continue, np.minimum(irr_waiting, swb.max_irr_rate), 0.0)
 
-        potential_irr = np.where((foo_day.irr_day & (foo.depl_root > foo.raw)),
-                                 np.minimum(foo.max_irr_rate, foo.depl_root * 1.1), potential_irr)
+        potential_irr = np.where((day_data.irr_day & (swb.depl_root > swb.raw)),
+                                 np.minimum(swb.max_irr_rate, swb.depl_root * 1.1), potential_irr)
 
         # if np.any(potential_irr > 0.) and foo_day.doy > 190 and foo_day.irr_day[0, 46]:
         #     a = 1
 
-        foo.irr_continue = np.where((foo_day.irr_day & (foo.max_irr_rate < foo.depl_root * 1.1)), 1, 0)
+        swb.irr_continue = np.where((day_data.irr_day & (swb.max_irr_rate < swb.depl_root * 1.1)), 1, 0)
 
-        foo.irr_sim = potential_irr
+        swb.irr_sim = potential_irr
 
     # Update depletion of root zone
 
-    foo.depl_root -= foo.irr_sim
+    swb.depl_root -= swb.irr_sim
 
-    foo.cum_evap[foo.irr_sim > 0] = foo.cum_evap_prev[foo.irr_sim > 0]
-    foo.cum_evap_prev[foo.irr_sim > 0] = 0.0
+    swb.cum_evap[swb.irr_sim > 0] = swb.cum_evap_prev[swb.irr_sim > 0]
+    swb.cum_evap_prev[swb.irr_sim > 0] = 0.0
 
-    foo.dperc = np.where(foo.depl_root < 0.0, -1. * foo.depl_root, np.zeros_like(foo.depl_root))
-    foo.depl_root += foo.dperc
-    foo.depl_root = np.where(foo.depl_root > foo.taw, foo.taw, foo.depl_root)
+    swb.dperc = np.where(swb.depl_root < 0.0, -1. * swb.depl_root, np.zeros_like(swb.depl_root))
+    swb.depl_root += swb.dperc
+    swb.depl_root = np.where(swb.depl_root > swb.taw, swb.taw, swb.depl_root)
 
-    gross_dperc = foo.dperc + (0.1 * foo.irr_sim)
+    gross_dperc = swb.dperc + (0.1 * swb.irr_sim)
 
     # aw3 is mm/m and daw3 is mm in layer 3.
     # aw3 is layer between current root depth and max root
 
-    foo.daw3_prev = foo.daw3.copy()
+    swb.daw3_prev = swb.daw3.copy()
 
     # foo.taw3 = foo.aw * (foo.zr_max - foo.zr)
     # foo.daw3 = np.maximum(foo.daw3, 0)
@@ -176,23 +167,23 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
 
     # Increase water in layer 3 for deep percolation from root zone
 
-    foo.daw3 += gross_dperc
-    foo.daw3 = np.maximum(foo.daw3, 0.0)
+    swb.daw3 += gross_dperc
+    swb.daw3 = np.maximum(swb.daw3, 0.0)
 
-    foo.dperc = np.where(foo.daw3 > foo.taw3, foo.daw3 - foo.taw3, np.zeros_like(foo.dperc))
-    foo.daw3 = np.where(foo.daw3 > foo.taw3, foo.taw3, foo.daw3)
+    swb.dperc = np.where(swb.daw3 > swb.taw3, swb.daw3 - swb.taw3, np.zeros_like(swb.dperc))
+    swb.daw3 = np.where(swb.daw3 > swb.taw3, swb.taw3, swb.daw3)
 
-    foo.aw3 = np.where(foo.zr_max > foo.zr, foo.daw3 / (foo.zr_max - foo.zr), np.zeros_like(foo.aw3))
+    swb.aw3 = np.where(swb.zr_max > swb.zr, swb.daw3 / (swb.zr_max - swb.zr), np.zeros_like(swb.aw3))
 
-    foo.niwr = np.where(foo.irr_sim > 0, foo.etc_act - ((foo.melt + foo.rain) - foo.sro),
-                        foo.etc_act - ((foo.melt + foo.rain) - foo.sro - foo.dperc))
+    swb.niwr = np.where(swb.irr_sim > 0, swb.etc_act - ((swb.melt + swb.rain) - swb.sro),
+                        swb.etc_act - ((swb.melt + swb.rain) - swb.sro - swb.dperc))
 
-    foo.p_rz = np.where(foo.irr_sim > 0, (foo.melt + foo.rain) - foo.sro, (foo.melt + foo.rain) - foo.sro - foo.dperc)
-    foo.p_rz = np.maximum(foo.p_rz, 0)
+    swb.p_rz = np.where(swb.irr_sim > 0, (swb.melt + swb.rain) - swb.sro, (swb.melt + swb.rain) - swb.sro - swb.dperc)
+    swb.p_rz = np.maximum(swb.p_rz, 0)
 
-    foo.p_eft = np.where(foo.irr_sim > 0, (foo.melt + foo.rain) - foo.sro - foo.e,
-                         (foo.melt + foo.rain) - foo.sro - foo.dperc - foo.e)
-    foo.p_eft = np.maximum(foo.p_eft, 0)
+    swb.p_eft = np.where(swb.irr_sim > 0, (swb.melt + swb.rain) - swb.sro - swb.e,
+                         (swb.melt + swb.rain) - swb.sro - swb.dperc - swb.e)
+    swb.p_eft = np.maximum(swb.p_eft, 0)
 
     # Note, at end of season (harvest or death), aw3 and zr need to be reset
     #   according to depl_root at that time and zr for dormant season.
@@ -201,12 +192,12 @@ def compute_field_et(config, et_cell, foo, foo_day, debug_flag=False):
     # Get setup for next time step.
     # if foo.in_season:
 
-    foo.delta_daw3 = foo.daw3 - foo.daw3_prev
+    swb.delta_daw3 = swb.daw3 - swb.daw3_prev
 
-    foo.soil_water = (foo.aw * foo.zr) - foo.depl_root + foo.daw3
+    swb.soil_water = (swb.aw * swb.zr) - swb.depl_root + swb.daw3
 
-    foo.delta_soil_water = foo.soil_water - foo.soil_water_prev
+    swb.delta_soil_water = swb.soil_water - swb.soil_water_prev
 
-    grow_root.grow_root(foo, foo_day, debug_flag)
+    grow_root.grow_root(swb, day_data, debug_flag)
 
 
