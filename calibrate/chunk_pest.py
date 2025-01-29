@@ -88,7 +88,7 @@ def run_pest_sequence(project_tracker, n_workers, index_col='FID', chunk_sz=10, 
                               start_date=start_date, end_date=end_date, **{'target_fields': targets})
 
         prepped_targets, excluded_targets = prep_fields_json(DATA_DIRS['props'], ts, DATA_DIRS['prepped_input'],
-                                                             targets, irr_data=DATA_DIRS['cuttings'])
+                                                             dynamics=DATA_DIRS['cuttings'], target_plots=targets)
 
         excluded += excluded_targets
 
