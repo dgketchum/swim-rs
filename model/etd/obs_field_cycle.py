@@ -5,7 +5,6 @@ Defines crop_cycle_mp, crop_cycle, crop_day_loop_mp, crop_day_loop,
 Called by mod_crop_et.py
 
 """
-import os.path
 
 import numpy as np
 import pandas as pd
@@ -13,7 +12,7 @@ import pandas as pd
 from model.etd import calculate_height
 from model.etd import compute_field_et
 from model.etd import obs_kcb_daily
-from model.etd.initialize_tracker import PlotTracker
+from model.etd.initialize_tracker import SampleTracker
 
 OUTPUT_FMT = ['et_act',
               'etref',
@@ -53,14 +52,8 @@ OUTPUT_FMT = ['et_act',
               'capture',
               ]
 
-DEFAULTS = {'ndvi_beta': 1.35,
-            'ndvi_alpha': -0.44,
-            'mad': 1.0,
-            'swe_alpha': 0.073,
-            'swe_beta': 1.38}
 
 
-ALL_PARAMS = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad', 'swe_alpha', 'swe_beta']
 
 class DayData:
 
@@ -72,81 +65,16 @@ class WaterBalanceError(Exception):
     pass
 
 
+
+
 def field_day_loop(config, plots, debug_flag=False, params=None):
+    """"""
     etf, swe = None, None
     size = len(plots.input['order'])
-    tracker = PlotTracker(size)
+
+    tracker = SampleTracker(size)
     tracker.load_soils(plots)
-
-    # apply calibration parameter updates here
-    if config.calibrate:
-        # load PEST++ parameter proposition
-        cal_arr = {k: np.zeros((1, size)) for k in config.calibration_groups}
-
-        for k, f in config.calibration_files.items():
-
-            param_found = False
-
-            while not param_found:
-                for p in ALL_PARAMS:
-                    if p in k:
-                        group = p
-                        fid = k.replace(f'{group}_', '')
-                        param_found = True
-
-            idx = plots.input['order'].index(fid)
-
-            if params:
-                value = params[k]
-            else:
-                v = pd.read_csv(f, index_col=None, header=0)
-                value = v.loc[0, '1']
-
-            cal_arr[group][0, idx] = value
-
-        for k, v in cal_arr.items():
-
-            tracker.__setattr__(k, v)
-
-            if debug_flag:
-                print('{}: {}'.format(k, ['{:.2f}'.format(p) for p in v.flatten()]))
-
-    elif config.forecast:
-
-        param_arr = {k: np.zeros((1, size)) for k in config.forecast_parameter_groups}
-
-        for k, v in config.forecast_parameters.items():
-
-            param_found = False
-
-            while not param_found:
-                for p in ALL_PARAMS:
-                    if p in k:
-                        group = p
-                        fid = k.replace(f'{group}_', '')
-                        param_found = True
-
-            # PEST++ has lower-cased the FIDs
-            l = [x.lower() for x in plots.input['order']]
-            idx = l.index(fid)
-
-            if fid not in l:
-                continue
-
-            if params:
-                value = params[k]
-            else:
-                value = v
-
-            param_arr[group][0, idx] = value
-
-        for k, v in param_arr.items():
-            tracker.__setattr__(k, v)
-
-    else:
-        for k, v in DEFAULTS.items():
-            arr = np.ones((1, size)) * v
-            tracker.__setattr__(k, arr)
+    tracker.apply_parameters(config, plots, params=params)
 
     targets = plots.input['order']
 
@@ -237,11 +165,10 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         calculate_height.calculate_height(tracker)
 
         # Interpolate Kcb and make climate adjustment (for ETo basis)
-        obs_kcb_daily.kcb_daily(config, plots, tracker, foo_day)
+        obs_kcb_daily.kcb_daily(tracker, foo_day)
 
         # Calculate Kcb, Ke, ETc
-        compute_field_et.compute_field_et(config, plots, tracker, foo_day,
-                                          debug_flag)
+        compute_field_et.compute_field_et(plots, tracker, foo_day, debug_flag)
 
         # Retrieve values from foo_day and write to output data frame
         # Eventually let compute_crop_et() write directly to output df

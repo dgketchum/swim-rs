@@ -4,6 +4,7 @@ Called by crop_cycle.py
 """
 
 import numpy as np
+import pandas as pd
 
 de_initial = 10.0
 
@@ -109,8 +110,18 @@ TRACKER_PARAMS = ['taw',
                   'kc_bas_prev',
                   'irr_min']
 
+TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad', 'swe_alpha', 'swe_beta']
 
-class PlotTracker:
+# params not included here (e.g., 'tew') are taken from soils data
+TUNABLE_DEFAULTS = {'ndvi_beta': 1.35,
+            'ndvi_alpha': -0.44,
+            'mad': 1.0,
+            'swe_alpha': 0.073,
+            'swe_beta': 1.38}
+
+
+class SampleTracker:
+
     def __init__(self, size):
         """Initialize for crops cycle"""
 
@@ -323,3 +334,72 @@ class PlotTracker:
 
     def set_kc_max(self):
         self.kc_max = 1.05
+
+    def apply_parameters(self, conf, sample_plots, params=None):
+        size = len(sample_plots.input['order'])
+
+        if conf.calibrate:
+
+            cal_arr = {k: np.zeros((1, size)) for k in conf.calibration_groups}
+
+            for k, f in conf.calibration_files.items():
+
+                param_found = False
+
+                while not param_found:
+                    for p in TUNABLE_PARAMS:
+                        if p in k:
+                            group = p
+                            fid = k.replace(f'{group}_', '')
+                            param_found = True
+
+                idx = sample_plots.input['order'].index(fid)
+
+                if params:
+                    value = params[k]
+                else:
+                    v = pd.read_csv(f, index_col=None, header=0)
+                    value = v.loc[0, '1']
+
+                cal_arr[group][0, idx] = value
+
+            for k, v in cal_arr.items():
+
+                self.__setattr__(k, v)
+
+        elif conf.forecast:
+
+            param_arr = {k: np.zeros((1, size)) for k in conf.forecast_parameter_groups}
+
+            for k, v in conf.forecast_parameters.items():
+
+                param_found = False
+
+                while not param_found:
+                    for p in TUNABLE_PARAMS:
+                        if p in k:
+                            group = p
+                            fid = k.replace(f'{group}_', '')
+                            param_found = True
+
+                # PEST++ has lower-cased the FIDs
+                l = [x.lower() for x in sample_plots.input['order']]
+                idx = l.index(fid)
+
+                if fid not in l:
+                    continue
+
+                if params:
+                    value = params[k]
+                else:
+                    value = v
+
+                param_arr[group][0, idx] = value
+
+            for k, v in param_arr.items():
+                self.__setattr__(k, v)
+
+        else:
+            for k, v in TUNABLE_DEFAULTS.items():
+                arr = np.ones((1, size)) * v
+                self.__setattr__(k, arr)
