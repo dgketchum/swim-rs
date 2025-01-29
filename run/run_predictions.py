@@ -109,8 +109,9 @@ def run_fields(ini_path, parameter_set, write_files, chunk_sz=100, subset=None, 
         if not targets:
             raise NotImplementedError('No targets in target list')
 
-        targets, excluded_targets = prep_fields_json(DATA_DIRS['props'], ts, DATA_DIRS['prepped_input'], targets,
-                                                     irr_data=DATA_DIRS['cuttings'], force_unirrigated=unirr_loc)
+        targets, excluded_targets = prep_fields_json(DATA_DIRS['props'], ts, DATA_DIRS['prepped_input'],
+                                                     dynamics=DATA_DIRS['cuttings'], target_plots=targets,
+                                                     force_unirrigated=unirr_loc)
 
         excluded += excluded_targets
 
