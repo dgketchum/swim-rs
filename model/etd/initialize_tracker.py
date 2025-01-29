@@ -403,3 +403,85 @@ class SampleTracker:
             for k, v in TUNABLE_DEFAULTS.items():
                 arr = np.ones((1, size)) * v
                 self.__setattr__(k, arr)
+
+    def update_dataframe(self, targets, day_data, step_dt):
+        for i, fid in enumerate(targets):
+            self.crop_df[fid][step_dt] = {}
+            sample_idx = 0, i
+            self.crop_df[fid][step_dt]['etref'] = day_data.refet[sample_idx]
+
+            eta_act = self.etc_act[sample_idx]
+            self.crop_df[fid][step_dt]['capture'] = day_data.capture[sample_idx]
+            self.crop_df[fid][step_dt]['t'] = self.t[sample_idx]
+            self.crop_df[fid][step_dt]['e'] = self.e[sample_idx]
+            self.crop_df[fid][step_dt]['kc_act'] = self.kc_act[sample_idx]
+            self.crop_df[fid][step_dt]['ks'] = self.ks[sample_idx]
+            self.crop_df[fid][step_dt]['ke'] = self.ke[sample_idx]
+
+            # water balance components
+            self.crop_df[fid][step_dt]['et_act'] = eta_act
+
+            ppt = day_data.precip[sample_idx]
+            self.crop_df[fid][step_dt]['ppt'] = ppt
+
+            melt = self.melt[sample_idx]
+            self.crop_df[fid][step_dt]['melt'] = melt
+            rain = self.rain[sample_idx]
+            self.crop_df[fid][step_dt]['rain'] = rain
+
+            runoff = self.sro[sample_idx]
+            self.crop_df[fid][step_dt]['runoff'] = runoff
+            dperc = self.dperc[sample_idx]
+            self.crop_df[fid][step_dt]['dperc'] = dperc
+
+            depl_root = self.depl_root[sample_idx]
+            self.crop_df[fid][step_dt]['depl_root'] = depl_root
+            depl_root_prev = self.depl_root_prev[sample_idx]
+            self.crop_df[fid][step_dt]['depl_root_prev'] = depl_root_prev
+
+            daw3 = self.daw3[sample_idx]
+            self.crop_df[fid][step_dt]['daw3'] = daw3
+            daw3_prev = self.daw3_prev[sample_idx]
+            self.crop_df[fid][step_dt]['daw3_prev'] = daw3_prev
+            delta_daw3 = daw3 - daw3_prev
+            self.crop_df[fid][step_dt]['delta_daw3'] = delta_daw3
+
+            soil_water = self.soil_water[sample_idx]
+            self.crop_df[fid][step_dt]['soil_water'] = soil_water
+            soil_water_prev = self.soil_water_prev[sample_idx]
+            self.crop_df[fid][step_dt]['soil_water_prev'] = soil_water_prev
+            delta_soil_water = self.delta_soil_water[sample_idx]
+            self.crop_df[fid][step_dt]['delta_soil_water'] = delta_soil_water
+
+            depl_ze = self.depl_ze[sample_idx]
+            self.crop_df[fid][step_dt]['depl_ze'] = depl_ze
+            self.crop_df[fid][step_dt]['p_rz'] = self.p_rz[sample_idx]
+            self.crop_df[fid][step_dt]['p_eft'] = self.p_eft[sample_idx]
+            self.crop_df[fid][step_dt]['fc'] = self.fc[sample_idx]
+            self.crop_df[fid][step_dt]['few'] = self.few[sample_idx]
+            self.crop_df[fid][step_dt]['aw'] = self.aw[sample_idx]
+            self.crop_df[fid][step_dt]['aw3'] = self.aw3[sample_idx]
+            self.crop_df[fid][step_dt]['taw'] = self.taw[sample_idx]
+            self.crop_df[fid][step_dt]['taw3'] = self.taw3[sample_idx]
+            self.crop_df[fid][step_dt]['irrigation'] = self.irr_sim[sample_idx]
+            self.crop_df[fid][step_dt]['irr_day'] = day_data.irr_day[sample_idx]
+            self.crop_df[fid][step_dt]['swe'] = self.swe[sample_idx]
+            self.crop_df[fid][step_dt]['snow_fall'] = self.snow_fall[sample_idx]
+            self.crop_df[fid][step_dt]['tavg'] = day_data.temp_avg[sample_idx]
+            self.crop_df[fid][step_dt]['tmax'] = day_data.max_temp[sample_idx]
+            self.crop_df[fid][step_dt]['zr'] = self.zr[sample_idx]
+            self.crop_df[fid][step_dt]['kc_bas'] = self.kc_bas[sample_idx]
+            self.crop_df[fid][step_dt]['niwr'] = self.niwr[sample_idx]
+            self.crop_df[fid][step_dt]['et_bas'] = self.etc_bas
+            self.crop_df[fid][step_dt]['season'] = self.in_season
+
+            water_out = eta_act + dperc + runoff
+            water_stored = soil_water - soil_water_prev
+            water_in = melt + rain
+            balance = water_in - water_stored - water_out
+
+            self.crop_df[fid][step_dt]['wbal'] = balance
+
+            if abs(balance) > 0.1 and day_data.year > 2000:
+                pass
+                # raise WaterBalanceError('Check November water balance')
