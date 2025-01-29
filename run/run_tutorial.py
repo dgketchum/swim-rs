@@ -9,11 +9,11 @@ from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
 
-def run_fields(ini_path, project_ws, output_csv, forecast=False):
+def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False):
     start_time = time.time()
 
     config = ProjectConfig()
-    config.read_config(ini_path, project_ws, forecast=forecast)
+    config.read_config(ini_path, project_ws, forecast=forecast, calibrate=calibrate)
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)
@@ -47,7 +47,10 @@ def compare_results(project_ws):
 
     for fid, row in df.iterrows():
 
-        if row['General classification'] != 'Croplands':
+        if row['General classification'] == 'Croplands':
+            continue
+
+        if fid != 'MR':
             continue
 
         flux_data = os.path.join(data_dir, 'daily_flux_files', f'{fid}_daily_data.csv')
@@ -62,7 +65,7 @@ if __name__ == '__main__':
     home = os.path.expanduser('~')
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
-    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
+    project_ws_ = os.path.join(root, 'tutorials', 'muddy_test')
     # project_ws_ = os.path.join(root, 'tutorials', '2_Fort_Peck')
 
     data_ = os.path.join(project_ws_, 'data')
@@ -71,7 +74,7 @@ if __name__ == '__main__':
     config_file = os.path.join(project_ws_, 'config.toml')
     prepped_input = os.path.join(data_, 'prepped_input.json')
 
-    # run_fields(config_file, project_ws_, out_csv_dir, forecast=True)
+    run_fields(config_file, project_ws_, out_csv_dir, forecast=True, calibrate=False)
 
     compare_results(project_ws_)
 

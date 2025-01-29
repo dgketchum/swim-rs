@@ -372,7 +372,7 @@ if __name__ == '__main__':
 
     root_ = os.path.abspath('..')
     # project = '4_Flux_Network'
-    project = '2_Fort_Peck'
+    project = 'muddy_test'
     project_ws_ = os.path.join(root_, 'tutorials', project)
     if not os.path.isdir(project_ws_):
         root_ = os.path.abspath('')

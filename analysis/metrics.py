@@ -1,5 +1,3 @@
-import os
-
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error, r2_score
@@ -29,7 +27,7 @@ def compare_etf_estimates(combined_output_path, flux_data_path, irr=False):
 
     # filter for days that have a SSEBop ETf retrieval and a flux observation
     df = df.dropna()
-    df = df.loc[df['ct'] == 1]
+    df = df[df['ct'] == 1]
 
     if df.shape[0] < 2:
         print(f'Too few overpass dates: {df.shape[0]}')
@@ -53,4 +51,5 @@ def compare_etf_estimates(combined_output_path, flux_data_path, irr=False):
 
 if __name__ == '__main__':
     pass
+
 # ========================= EOF ====================================================================
