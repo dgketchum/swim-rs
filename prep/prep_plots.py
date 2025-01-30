@@ -185,8 +185,8 @@ def preproc(config_file, project_ws):
 if __name__ == '__main__':
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    # project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
-    project_ws_ = os.path.join(root, 'tutorials', 'muddy_test')
+    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
+    # project_ws_ = os.path.join(root, 'tutorials', 'muddy_test')
     data = os.path.join(project_ws_, 'data')
     landsat = os.path.join(data, 'landsat')
 
@@ -196,8 +196,8 @@ if __name__ == '__main__':
 
     prepped_input = os.path.join(data, 'prepped_input.json')
 
-    # processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, dynamics_data,
-    #                                                        prepped_input, target_plots=None)
+    processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, dynamics_data,
+                                                           prepped_input, target_plots=None)
 
     obs_dir = os.path.join(project_ws_, 'obs')
     if not os.path.isdir(obs_dir):

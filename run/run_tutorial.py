@@ -66,7 +66,7 @@ if __name__ == '__main__':
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
     project_ws_ = os.path.join(root, 'tutorials', 'muddy_test')
-    # project_ws_ = os.path.join(root, 'tutorials', '2_Fort_Peck')
+    # project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
 
     data_ = os.path.join(project_ws_, 'data')
     out_csv_dir = os.path.join(data_, 'model_output')

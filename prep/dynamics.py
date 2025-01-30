@@ -107,6 +107,7 @@ class SamplePlotDynamics:
             if irrigated:
                 field_data[yr] = {'subsidized': 0,
                                   'f_sub': 0,
+                                  'f_irr': f_irr,
                                   'ratio': ratio,
                                   'months': [],
                                   'ppt': ppt,
@@ -125,6 +126,7 @@ class SamplePlotDynamics:
 
             field_data[yr] = {'subsidized': subsidized,
                               'f_sub': f_sub,
+                              'f_irr': f_irr,
                               'ratio': eta / ppt,
                               'months': months,
                               'ppt': ppt,

@@ -143,9 +143,15 @@ def compute_field_et(ts_data, swb, day_data, debug_flag=False):
 
         swb.irr_sim = potential_irr
 
+    swb.gw_sim = np.zeros_like(swb.aw)
+
+    if np.any(day_data.gwsub_status) and np.any((swb.depl_root > swb.raw)):
+
+        swb.gw_sim = np.where(day_data.gwsub_status, swb.depl_root - swb.raw, 0.0)
+
     # Update depletion of root zone
 
-    swb.depl_root -= swb.irr_sim
+    swb.depl_root -= (swb.irr_sim + swb.gw_sim)
 
     swb.cum_evap[swb.irr_sim > 0] = swb.cum_evap_prev[swb.irr_sim > 0]
     swb.cum_evap_prev[swb.irr_sim > 0] = 0.0

@@ -8,30 +8,6 @@ import pandas as pd
 
 de_initial = 10.0
 
-FOO_FMT = ['et_act',
-           'etref',
-           'kc_act',
-           'kc_bas',
-           'ks',
-           'ke',
-           'ppt',
-           'depl_root',
-           'depl_surface',
-           'irrigation',
-           'dperc',
-           'fc',
-           'few',
-           'zr',
-           'aw3',
-           'p_rz',
-           'p_eft',
-           'niwr',
-           'runoff',
-           'season',
-           'cutting',
-           'et_bas',
-           ]
-
 TRACKER_PARAMS = ['taw',
                   'taw3',
                   'albedo',
@@ -63,6 +39,7 @@ TRACKER_PARAMS = ['taw',
                   'etref_30',
                   'fc',
                   'grow_root',
+                  'gw_sim',
                   'height_min',
                   'height_max',
                   'height',
@@ -158,6 +135,7 @@ class SampleTracker:
         self.etref_30 = 0.  # thirty day mean ETref  ' added 12/2007
         self.fc = 0.
         self.grow_root = 0.
+        self.gw_sub = 0
         self.height = 0
         self.height_min = 0.1
         self.height_max = 2.0
@@ -177,6 +155,7 @@ class SampleTracker:
         self.ksat_hourly = None
 
         self.irr_continue = False
+        self.gw_sim = 0
         self.next_day_irr = 0.
 
         self.min_albedo = 0.45
@@ -463,8 +442,12 @@ class SampleTracker:
             self.crop_df[fid][step_dt]['aw3'] = self.aw3[sample_idx]
             self.crop_df[fid][step_dt]['taw'] = self.taw[sample_idx]
             self.crop_df[fid][step_dt]['taw3'] = self.taw3[sample_idx]
+
             self.crop_df[fid][step_dt]['irrigation'] = self.irr_sim[sample_idx]
             self.crop_df[fid][step_dt]['irr_day'] = day_data.irr_day[sample_idx]
+
+            self.crop_df[fid][step_dt]['gw_sim'] = self.gw_sim[sample_idx]
+
             self.crop_df[fid][step_dt]['swe'] = self.swe[sample_idx]
             self.crop_df[fid][step_dt]['snow_fall'] = self.snow_fall[sample_idx]
             self.crop_df[fid][step_dt]['tavg'] = day_data.temp_avg[sample_idx]

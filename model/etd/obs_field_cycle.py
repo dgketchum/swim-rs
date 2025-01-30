@@ -4,7 +4,7 @@ import pandas as pd
 from model.etd import calculate_height
 from model.etd import compute_field_et
 from model.etd import obs_kcb_daily
-from model.etd.initialize_tracker import SampleTracker
+from model.etd.tracker import SampleTracker
 from model.etd.day_data import DayData
 
 OUTPUT_FMT = ['et_act',
@@ -31,6 +31,7 @@ OUTPUT_FMT = ['et_act',
               'tavg',
               'tmax',
               'irrigation',
+              'gw_sim',
               'fc',
               't',
               'e',
@@ -81,6 +82,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
         if day_data.doy == 1 or day_data.irr_status is None:
             day_data.update_annual_irrigation(plots)
+            day_data.update_annual_groundwater_subsidy(plots)
 
         day_data.update_daily_irrigation(plots, vals, config)
 
@@ -106,7 +108,6 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
     if debug_flag:
         # pass final dataframe to calling script
-
         tracker.crop_df = {fid: pd.DataFrame().from_dict(tracker.crop_df[fid], orient='index')[OUTPUT_FMT]
                            for fid in targets}
 

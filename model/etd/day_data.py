@@ -23,6 +23,8 @@ class DayData:
         self.irr_day = None
         self.irr_doys = None
 
+        self.gwsub_status = None
+
         self.capture = None
         self.ndvi = None
         self.refet = None
@@ -60,6 +62,17 @@ class DayData:
             except KeyError:
                 self.irr_status[0, i] = 0
                 self.irr_doys.append([])
+
+    def update_annual_groundwater_subsidy(self, plots):
+        self.gwsub_status = np.zeros((1, len(plots.input['order'])))
+
+        for i, fid in enumerate(plots.input['order']):
+            try:
+                gw_sub = plots.input['gwsub_data'][fid][str(self.year)]['f_sub']
+                if gw_sub > 0.2:
+                    self.gwsub_status[0, i] = 1
+            except KeyError:
+                self.gwsub_status[0, i] = 0
 
     def update_daily_irrigation(self, plots, vals, config):
         for i, fid in enumerate(plots.input['order']):
