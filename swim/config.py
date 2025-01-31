@@ -124,7 +124,6 @@ class ProjectConfig:
 
         if self.calibrate is True or self.calibration_dir is not None:
 
-            print('CALIBRATION ON')
             if not self.calibrate:
                 self.calibrate = True
 
@@ -136,24 +135,21 @@ class ProjectConfig:
 
             initial_values_csv = config[calib_sec]['initial_values_csv']
 
-            pdf = pd.read_csv(initial_values_csv, index_col=0)
-            self.calibrated_parameters = pdf.index
-            _files = list(pdf['mult_name'])
+            param_init = pd.read_csv(initial_values_csv, index_col=0)
+            self.calibrated_parameters = param_init.index
+            _files = list(param_init['mult_name'])
             cal_files, mult_files = set(os.listdir(self.calibration_dir)), set(_files)
             assert cal_files == mult_files
 
             _files = [os.path.join(self.calibration_dir, f) for f in _files]
             self.calibration_files = {k: v for k, v in zip(self.calibrated_parameters, _files)}
-            self.calibration_groups = list(set(['_'.join(p.split('_')[:-1]) for p in pdf.index]))
 
-        else:
-            print('CALIBRATION OFF')
+
+        elif self.forecast:
+
             self.calibrate = 0
             self.calibration_dir = None
 
-        if self.forecast:
-
-            print('FORECAST ON')
 
             parameter_dist_csv = config[forecast_sec]['forecast_parameters']
 
@@ -162,11 +158,12 @@ class ProjectConfig:
 
             if parameter_dist_csv:
                 fcst = parameter_dist_csv
-                pdf = pd.read_csv(fcst, index_col=0).mean(axis=0)
-                p_str = ['_'.join(s.split(':')[1].split('_')[1:-1]) for s in list(pdf.index)]
-                pdf.index = p_str
-                self.forecast_parameters = pdf.copy()
-                self.forecast_parameter_groups = list(set(['_'.join(p.split('_')[:-1]) for p in pdf.index]))
+                param_dist = pd.read_csv(fcst, index_col=0)
+                param_mean = param_dist.mean(axis=0)
+                p_str = ['_'.join(s.split(':')[1].split('_')[1:-1]) for s in list(param_mean.index)]
+                param_mean.index = p_str
+                self.forecast_parameters = param_mean.copy()
+                self.forecast_parameter_groups = list(set(['_'.join(p.split('_')[:-1]) for p in param_mean.index]))
 
             elif parameter_set_json:
                 with open(parameter_set_json, 'r') as f:
@@ -179,8 +176,6 @@ class ProjectConfig:
                 v = [d[t[1]][t[0]] for t in tup_]
                 self.forecast_parameters = pd.Series(index=k, data=v)
 
-        else:
-            print('FORECAST OFF')
 
 if __name__ == '__main__':
     pass

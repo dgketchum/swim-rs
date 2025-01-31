@@ -92,7 +92,7 @@ TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad', 'swe_alp
 # params not included here (e.g., 'tew') are taken from soils data
 TUNABLE_DEFAULTS = {'ndvi_beta': 1.35,
             'ndvi_alpha': -0.44,
-            'mad': 1.0,
+            'mad': 0.3,
             'swe_alpha': 0.073,
             'swe_beta': 1.38}
 
@@ -318,8 +318,9 @@ class SampleTracker:
         size = len(sample_plots.input['order'])
 
         if conf.calibrate:
+            print('CALIBRATION')
 
-            cal_arr = {k: np.zeros((1, size)) for k in conf.calibration_groups}
+            cal_arr = {k: np.zeros((1, size)) for k in TUNABLE_PARAMS}
 
             for k, f in conf.calibration_files.items():
 
@@ -347,6 +348,7 @@ class SampleTracker:
                 self.__setattr__(k, v)
 
         elif conf.forecast:
+            print('FORECAST')
 
             param_arr = {k: np.zeros((1, size)) for k in conf.forecast_parameter_groups}
 
@@ -379,6 +381,8 @@ class SampleTracker:
                 self.__setattr__(k, v)
 
         else:
+            print('USING PARAMETER DEFAULTS')
+
             for k, v in TUNABLE_DEFAULTS.items():
                 arr = np.ones((1, size)) * v
                 self.__setattr__(k, arr)
