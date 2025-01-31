@@ -1,5 +1,6 @@
 import os
 import time
+import json
 
 import pandas as pd
 
@@ -27,6 +28,8 @@ def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False
     for fid in fields.input['order']:
         out_df = fields.output[fid].copy()
 
+        print(f"eta mean: {out_df['et_act'].mean()}")
+
         in_df = fields.input_to_dataframe(fid)
 
         df = pd.concat([out_df, in_df], axis=1, ignore_index=False)
@@ -38,35 +41,40 @@ def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False
         print(f'\nWrote {fid} output file')
 
 
-def compare_results(project_ws):
+def compare_results(project_ws, properties, select=None):
 
     data_dir = os.path.join(project_ws, 'data')
 
     flux_meta = os.path.join(data_dir, 'station_metadata.csv')
     df = pd.read_csv(flux_meta, header=1, skip_blank_lines=True, index_col='Site ID')
 
+    with open(properties, 'r') as fp:
+        dct = json.load(fp)
+
     for fid, row in df.iterrows():
 
-        if row['General classification'] == 'Croplands':
-            continue
+        irr_dct = dct[fid]['irr']
 
-        if fid != 'MR':
+        if select and fid not in select:
             continue
 
         flux_data = os.path.join(data_dir, 'daily_flux_files', f'{fid}_daily_data.csv')
+        if not os.path.exists(flux_data):
+            flux_data = os.path.join(data_dir, f'{fid}_daily_data.csv')
 
         out_csv = os.path.join(data_dir, 'model_output', f'{fid}.csv')
 
         print(f'\nReading {fid} output file')
-        compare_etf_estimates(out_csv, flux_data, irr=False)
+
+        # TODO: instantiate the SamplePlot class to get real irrigation information
+        compare_etf_estimates(out_csv, flux_data, irr=irr_dct, monthly=True, target='et')
 
 
 if __name__ == '__main__':
     home = os.path.expanduser('~')
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
-    project_ws_ = os.path.join(root, 'tutorials', 'muddy_test')
-    # project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
+    project_ws_ = os.path.join(root, 'tutorials', '3_Crane')
 
     data_ = os.path.join(project_ws_, 'data')
     out_csv_dir = os.path.join(data_, 'model_output')
@@ -74,8 +82,10 @@ if __name__ == '__main__':
     config_file = os.path.join(project_ws_, 'config.toml')
     prepped_input = os.path.join(data_, 'prepped_input.json')
 
-    run_fields(config_file, project_ws_, out_csv_dir, forecast=True, calibrate=False)
+    # run_fields(config_file, project_ws_, out_csv_dir, forecast=True, calibrate=False)
 
-    compare_results(project_ws_)
+    # open properties instead of SamplePlots object for speed
+    properties_json = os.path.join(data_, 'properties', 'calibration_properties.json')
+    compare_results(project_ws_, properties_json,  select=['S2'])
 
 # ========================= EOF ====================================================================
