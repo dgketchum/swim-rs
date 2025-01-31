@@ -5,10 +5,14 @@ import json
 import pandas as pd
 
 from analysis.metrics import compare_etf_estimates
+
 from model.etd import obs_field_cycle
+from model.etd.tracker import TUNABLE_PARAMS
+
 from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
+from calibrate.pest_builder import PestBuilder
 
 def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False):
     start_time = time.time()
@@ -28,7 +32,7 @@ def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False
     for fid in fields.input['order']:
         out_df = fields.output[fid].copy()
 
-        print(f"eta mean: {out_df['et_act'].mean()}")
+        # print(f"eta mean: {out_df['et_act'].mean()}")
 
         in_df = fields.input_to_dataframe(fid)
 
@@ -41,22 +45,31 @@ def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False
         print(f'\nWrote {fid} output file')
 
 
-def compare_results(project_ws, properties, select=None):
+def compare_results(conf_path, project_ws, select=None):
+    """"""
+
+    config = ProjectConfig()
+    config.read_config(conf_path, project_ws)
+
+    fields = SamplePlots()
+    fields.initialize_plot_data(config)
 
     data_dir = os.path.join(project_ws, 'data')
 
     flux_meta = os.path.join(data_dir, 'station_metadata.csv')
     df = pd.read_csv(flux_meta, header=1, skip_blank_lines=True, index_col='Site ID')
 
-    with open(properties, 'r') as fp:
-        dct = json.load(fp)
+    irr = fields.input['irr_data']
 
     for fid, row in df.iterrows():
 
-        irr_dct = dct[fid]['irr']
+        if row['General classification'] not in ['Croplands']:
+            continue
 
         if select and fid not in select:
             continue
+
+        irr_dct = irr[fid]
 
         flux_data = os.path.join(data_dir, 'daily_flux_files', f'{fid}_daily_data.csv')
         if not os.path.exists(flux_data):
@@ -67,14 +80,42 @@ def compare_results(project_ws, properties, select=None):
         print(f'\nReading {fid} output file')
 
         # TODO: instantiate the SamplePlot class to get real irrigation information
-        compare_etf_estimates(out_csv, flux_data, irr=irr_dct, monthly=True, target='et')
+        compare_etf_estimates(out_csv, flux_data, irr=irr_dct, monthly=False, target='et')
+
+
+def debug_calibration(conf_path, project_ws):
+    """"""
+
+    config = ProjectConfig()
+    config.read_config(conf_path, project_ws)
+
+    fields = SamplePlots()
+    fields.initialize_plot_data(config)
+
+    builder = PestBuilder(conf_path, project_ws)
+
+    workers = [os.path.join(builder.workers_dir, w) for w in os.listdir(builder.workers_dir)]
+
+    caldata = {}
+
+    sites = fields.input['order']
+
+    for site in sites:
+
+        for worker in workers:
+
+            for tp in TUNABLE_PARAMS:
+
+                proposal = os.path.join(worker, f'p_{tp}_{site}_0_constant.csv')
+                val = pd.read_csv(proposal)['1']
+
 
 
 if __name__ == '__main__':
     home = os.path.expanduser('~')
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
-    project_ws_ = os.path.join(root, 'tutorials', '3_Crane')
+    project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
 
     data_ = os.path.join(project_ws_, 'data')
     out_csv_dir = os.path.join(data_, 'model_output')
@@ -82,10 +123,10 @@ if __name__ == '__main__':
     config_file = os.path.join(project_ws_, 'config.toml')
     prepped_input = os.path.join(data_, 'prepped_input.json')
 
-    # run_fields(config_file, project_ws_, out_csv_dir, forecast=True, calibrate=False)
+    run_fields(config_file, project_ws_, out_csv_dir, forecast=True, calibrate=False)
 
     # open properties instead of SamplePlots object for speed
-    properties_json = os.path.join(data_, 'properties', 'calibration_properties.json')
-    compare_results(project_ws_, properties_json,  select=['S2'])
+    properties_json = os.path.join(data_, 'landsat', 'calibration_dynamics.json')
+    compare_results(config_file, project_ws_, select=['ALARC2_Smith6'])
 
 # ========================= EOF ====================================================================
