@@ -54,8 +54,9 @@ def prep_fields_json(properties, time_series, dynamics, out_js, target_plots=Non
     missing = list(set(missing))
 
     if missing:
-        print('Target sample(s) missing: {}'.format(missing))
+        print('Target sample(s) missing from time series data: {}'.format(missing))
         [target_plots.remove(f) for f in missing]
+        dct['props'] = {k: v for k, v in dct['props'].items() if k not in missing}
         if not target_plots:
             return target_plots, missing
 
@@ -128,6 +129,7 @@ def prep_fields_json(properties, time_series, dynamics, out_js, target_plots=Non
             data[dt][p] = arrays[p][i, :].tolist()
 
     dct.update({'order': order, 'time_series': data})
+    dct.update({'missing': missing})
 
     # write large json line-by-line
     with open(out_js, 'w') as f:
@@ -185,8 +187,8 @@ def preproc(config_file, project_ws):
 if __name__ == '__main__':
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
-    # project_ws_ = os.path.join(root, 'tutorials', 'muddy_test')
+    # project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
+    project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
     data = os.path.join(project_ws_, 'data')
     landsat = os.path.join(data, 'landsat')
 
@@ -204,7 +206,7 @@ if __name__ == '__main__':
         os.makedirs(obs_dir, exist_ok=True)
 
     # project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
-    project_ws_ = os.path.join(root, 'tutorials', 'muddy_test')
+    project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
     config_path = os.path.join(project_ws_, 'config.toml')
 
     preproc(config_path, project_ws_)

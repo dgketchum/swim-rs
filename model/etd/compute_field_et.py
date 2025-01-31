@@ -147,7 +147,8 @@ def compute_field_et(ts_data, swb, day_data, debug_flag=False):
 
     if np.any(day_data.gwsub_status) and np.any((swb.depl_root > swb.raw)):
 
-        swb.gw_sim = np.where(day_data.gwsub_status, swb.depl_root - swb.raw, 0.0)
+        gw_subsidy = np.where(day_data.gwsub_status, swb.depl_root - swb.raw, 0.0)
+        swb.gw_sim = gw_subsidy
 
     # Update depletion of root zone
 

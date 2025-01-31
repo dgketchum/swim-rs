@@ -84,6 +84,7 @@ def write_field_properties(shp, irr, ssurgo, js, cdl=None, landfire=None, index_
 
     with open(js, 'w') as fp:
         json.dump(d, fp, indent=4)
+    print(f'wrote {len(d)} fields')
 
 
 if __name__ == '__main__':

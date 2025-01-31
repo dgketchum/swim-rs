@@ -323,6 +323,7 @@ class PestBuilder:
         oe = ObservationEnsemble.from_gaussian_draw(pst=pst, num_reals=reals)
         oe.to_csv(self.pst_file.replace('.pst', '.oe.csv'))
         pst.write(self.pst_file, version=2)
+        print(f'writing {self.pst_file} with noptmax={noptmax}, {reals} realizations')
 
     def initial_parameter_dict(self):
         p = OrderedDict({
@@ -371,8 +372,9 @@ class PestBuilder:
 if __name__ == '__main__':
 
     root_ = os.path.abspath('..')
-    # project = '4_Flux_Network'
-    project = 'muddy_test'
+
+    project = '2_Fort_Peck'
+
     project_ws_ = os.path.join(root_, 'tutorials', project)
     if not os.path.isdir(project_ws_):
         root_ = os.path.abspath('')
@@ -386,6 +388,6 @@ if __name__ == '__main__':
     builder.build_pest()
     builder.build_localizer()
     builder.dry_run()
-    builder.write_control_settings(noptmax=3, reals=10)
+    builder.write_control_settings(noptmax=3, reals=100)
 
 # ========================= EOF ====================================================================

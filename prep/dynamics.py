@@ -215,7 +215,10 @@ class SamplePlotDynamics:
 
 if __name__ == '__main__':
     root = '/home/dgketchum/PycharmProjects/swim-rs'
-    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
+
+    project = '4_Flux_Network'
+
+    data = os.path.join(root, 'tutorials', project, 'data')
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 
     irr = os.path.join(data, 'properties', 'calibration_irr.csv')

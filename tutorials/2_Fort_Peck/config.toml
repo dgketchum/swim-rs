@@ -38,4 +38,4 @@ initial_values_csv = '{project_root}/params.csv'
 [FORECAST]
 ## Forecast means we're running with PEST++ calibrated parameters
 
-forecast_parameters = '{project_root}/pest/2_Fort_Peck.3.par.csv'
+forecast_parameters = '{project_root}/master/2_Fort_Peck.3.par.csv'
