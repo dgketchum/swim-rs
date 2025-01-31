@@ -18,7 +18,8 @@ def compare_etf_estimates(combined_output_path, flux_data_path, irr=None, target
     # get irrigated and un-irrigated year's etf data
     output.index = pd.to_datetime(output.index)
     irr_threshold = 0.3
-    irr_years = [int(k) for k, v in irr.items() if v >= irr_threshold]
+    irr_years = [int(k) for k, v in irr.items() if k != 'fallow_years'
+                     and v['f_irr'] >= irr_threshold]
     irr_index = [i for i in output.index if i.year in irr_years]
 
     output['etf'] = output['etf_inv_irr']
