@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from pyemu import Pst, Matrix, ObservationEnsemble
 from pyemu.utils import PstFrom
-from pyemu.utils.os_utils import run_ossystem
+from pyemu.utils.os_utils import run_ossystem, run_sp
 
 from swim.config import ProjectConfig
 from swim.input import SamplePlots
@@ -136,7 +136,7 @@ class PestBuilder:
             captures = [ix for ix, r in et_df.iterrows()
                         if r['etf_irr_ct']
                         or r['etf_inv_irr_ct']
-                        and ix.month in list(range(5, 11))]
+                        and ix.month in list(range(1, 13))]
 
             captures = et_df['dummy_idx'].loc[captures]
 
@@ -319,6 +319,7 @@ class PestBuilder:
         pst = Pst(self.pst_file)
         pst.pestpp_options["ies_localizer"] = "loc.mat"
         pst.pestpp_options["ies_num_reals"] = reals
+        pst.pestpp_options["ies_drop_conflicts"] = True
         pst.control_data.noptmax = noptmax
         oe = ObservationEnsemble.from_gaussian_draw(pst=pst, num_reals=reals)
         oe.to_csv(self.pst_file.replace('.pst', '.oe.csv'))
@@ -366,14 +367,17 @@ class PestBuilder:
     def dry_run(self, exe='pestpp-ies'):
         cmd = ' '.join([exe, os.path.join(self.pest_dir, self.pst_file)])
         wd = self.pest_dir
-        run_ossystem(cmd, wd, verbose=True)
+        try:
+            run_ossystem(cmd, wd, verbose=False)
+        except Exception:
+            run_sp(cmd, wd, verbose=False)
 
 
 if __name__ == '__main__':
 
     root_ = os.path.abspath('..')
 
-    project = '2_Fort_Peck'
+    project = 'alarc_test'
 
     project_ws_ = os.path.join(root_, 'tutorials', project)
     if not os.path.isdir(project_ws_):
@@ -387,7 +391,7 @@ if __name__ == '__main__':
                           use_existing=False, python_script=py_script)
     builder.build_pest()
     builder.build_localizer()
-    builder.dry_run()
-    builder.write_control_settings(noptmax=3, reals=100)
+    builder.dry_run('/home/dgketchum/Downloads/pestpp-5.2.7-linux/bin/pestpp-ies')
+    builder.write_control_settings(noptmax=3, reals=10)
 
 # ========================= EOF ====================================================================
