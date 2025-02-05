@@ -14,6 +14,7 @@ from swim.input import SamplePlots
 
 from calibrate.pest_builder import PestBuilder
 
+
 def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False):
     start_time = time.time()
 
@@ -105,10 +106,8 @@ def debug_calibration(conf_path, project_ws):
         for worker in workers:
 
             for tp in TUNABLE_PARAMS:
-
                 proposal = os.path.join(worker, f'p_{tp}_{site}_0_constant.csv')
                 val = pd.read_csv(proposal)['1']
-
 
 
 if __name__ == '__main__':
@@ -123,7 +122,7 @@ if __name__ == '__main__':
     config_file = os.path.join(project_ws_, 'config.toml')
     prepped_input = os.path.join(data_, 'prepped_input.json')
 
-    run_fields(config_file, project_ws_, out_csv_dir, forecast=True, calibrate=False)
+    # run_fields(config_file, project_ws_, out_csv_dir, forecast=True, calibrate=False)
 
     # open properties instead of SamplePlots object for speed
     properties_json = os.path.join(data_, 'landsat', 'calibration_dynamics.json')

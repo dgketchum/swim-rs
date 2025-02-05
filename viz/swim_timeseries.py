@@ -5,7 +5,7 @@ from plotly import graph_objects as go
 from plotly.subplots import make_subplots
 
 
-def plot_swim_timeseries(df, parameters, start='2007-05-01', end='2007-10-31', png_file=None):
+def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', png_file=None):
     if not isinstance(df, pd.DataFrame):
         df = pd.read_csv(df, index_col=0, parse_dates=True)
 
@@ -67,11 +67,11 @@ def plot_swim_timeseries(df, parameters, start='2007-05-01', end='2007-10-31', p
     fig.update_xaxes(rangeslider_visible=True)
     if png_file:
         fig.write_image(png_file)
+        return
     fig.show()
 
 
 def plot_etd_timeseries(df, parameters, start='2007-05-01', end='2007-10-31', png_file=None):
-
     if not isinstance(df, pd.DataFrame):
         df = pd.read_csv(df, skiprows=[0], index_col=0, parse_dates=True)
         df.index = pd.to_datetime(df[['Year', 'Month', 'Day']])
@@ -120,11 +120,28 @@ def plot_etd_timeseries(df, parameters, start='2007-05-01', end='2007-10-31', pn
         fig.write_image(png_file)
     fig.show()
 
-if __name__ == '__main__':
-    data = '/home/dgketchum/PycharmProjects/et-demands/examples/tongue/daily_stats/18_crop_03.csv'
-    png = '/home/dgketchum/Downloads/swim_figs/alfalfa_tongue_etd_Kc.png'
-    # params_ = ['ETact', 'ETpot', 'Irrigation', 'PPT']
-    params_ = ['Kc']
-    plot_etd_timeseries(data, params_, start='2007-01-01', end='2007-12-31', png_file=png)
 
+if __name__ == '__main__':
+    root = '/home/dgketchum/PycharmProjects/swim-rs'
+
+    project = 'alarc_test'
+    feature_ = 'ALARC2_Smith6'
+
+    data = os.path.join(root, 'tutorials', project, 'data')
+    out_csv_dir = os.path.join(data, 'model_output')
+    out_csv = os.path.join(out_csv_dir, f'{feature_}.csv')
+
+    out_fig_dir = os.path.join(root, 'tutorials', project, 'figures')
+
+
+    df = pd.read_csv(out_csv, index_col=0, parse_dates=True)
+
+    plot_swim_timeseries(df, ['snow_fall', 'rain', 'melt', 'dperc'], start='2018-01-01', end='2019-01-01',
+                         png_file=os.path.join(out_fig_dir, 'dperc_lessIrrDOY.png'))
+
+    plot_swim_timeseries(df, ['soil_water', 'irrigation', 'rain', 'melt'], start='2018-01-01',
+                         end='2018-10-01', png_file=os.path.join(out_fig_dir, 'soil_water_lessIrrDOY.png'))
+
+    plot_swim_timeseries(df, ['et_act', 'etref', 'rain', 'melt', 'irrigation'], start='2018-01-01', end='2018-12-31',
+                         png_file=os.path.join(out_fig_dir, 'irr_et_lessIrrDOY.png'))
 # ========================= EOF ====================================================================

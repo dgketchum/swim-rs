@@ -37,7 +37,7 @@ def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, ver
 if __name__ == '__main__':
     home = os.path.expanduser('~')
 
-    project = '2_Fort_Peck'
+    project = 'alarc_test'
 
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
     project_ws = os.path.join(root, 'tutorials', project)
@@ -49,7 +49,7 @@ if __name__ == '__main__':
 
     _pst = f'{project}.pst'
 
-    _workers = 4
+    _workers = 3
 
     run_pst(p_dir, exe_, _pst, num_workers=_workers, worker_root=w_dir,
             master_dir=m_dir, verbose=True, cleanup=False)

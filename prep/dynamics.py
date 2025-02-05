@@ -194,12 +194,12 @@ class SamplePlotDynamics:
 
                 if start_index in local_min_indices:
                     start_doy = (start_index - pd.Timedelta(days=5)).dayofyear
-                    end_doy = (end_index - pd.Timedelta(days=5)).dayofyear
+                    end_doy = (end_index + pd.Timedelta(days=5)).dayofyear
                     irr_doys.extend(range(start_doy, end_doy + 1))
                     periods += 1
                 else:
                     start_doy = start_index.dayofyear
-                    end_doy = (end_index - pd.Timedelta(days=5)).dayofyear
+                    end_doy = (end_index + pd.Timedelta(days=5)).dayofyear
                     irr_doys.extend(range(start_doy, end_doy + 1))
                     periods += 1
 
@@ -216,7 +216,7 @@ class SamplePlotDynamics:
 if __name__ == '__main__':
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    project = '4_Flux_Network'
+    project = 'alarc_test'
 
     data = os.path.join(root, 'tutorials', project, 'data')
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
@@ -229,7 +229,7 @@ if __name__ == '__main__':
     cuttings_json = os.path.join(landsat, 'calibration_dynamics.json')
 
     dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3,
-                                  out_json_file=cuttings_json)
+                                  out_json_file=cuttings_json, select=['ALARC2_Smith6'])
     dynamics.analyze_groundwater_subsidy()
     dynamics.analyze_irrigation()
     dynamics.save_json()

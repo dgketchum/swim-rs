@@ -49,7 +49,7 @@ def irrigation_timeseries(dynamics_json, remote_sensing_file, feature, out_dir=N
 
     plt.tight_layout()
     if out_dir:
-        fig_file = os.path.join(out_dir, 'irrigation_timeseries.png')
+        fig_file = os.path.join(out_dir, 'irrigation_timeseries_endPlusFive.png')
         plt.savefig(fig_file)
     else:
         plt.show()
@@ -65,6 +65,8 @@ if __name__ == '__main__':
     landsat = os.path.join(data, 'landsat')
     joined_timeseries = os.path.join(data, 'plot_timeseries', f'{feature_}_daily.csv')
     cuttings_json = os.path.join(landsat, 'calibration_dynamics.json')
+    out_fig_dir = os.path.join(root, 'tutorials', project, 'figures', 'irrigation_dynamics')
 
-    irrigation_timeseries(cuttings_json, remote_sensing_file=joined_timeseries, feature=feature_)
+    irrigation_timeseries(cuttings_json, remote_sensing_file=joined_timeseries, feature=feature_,
+                          out_dir=out_fig_dir)
 # ========================= EOF ====================================================================

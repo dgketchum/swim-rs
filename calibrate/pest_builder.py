@@ -368,9 +368,9 @@ class PestBuilder:
         cmd = ' '.join([exe, os.path.join(self.pest_dir, self.pst_file)])
         wd = self.pest_dir
         try:
-            run_ossystem(cmd, wd, verbose=False)
+            run_ossystem(cmd, wd, verbose=True)
         except Exception:
-            run_sp(cmd, wd, verbose=False)
+            run_sp(cmd, wd, verbose=True)
 
 
 if __name__ == '__main__':
@@ -391,7 +391,7 @@ if __name__ == '__main__':
                           use_existing=False, python_script=py_script)
     builder.build_pest()
     builder.build_localizer()
-    builder.dry_run('/home/dgketchum/Downloads/pestpp-5.2.7-linux/bin/pestpp-ies')
+    builder.dry_run('pestpp-ies')
     builder.write_control_settings(noptmax=3, reals=10)
 
 # ========================= EOF ====================================================================
