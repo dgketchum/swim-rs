@@ -45,7 +45,7 @@ def irrigation_timeseries(dynamics_json, remote_sensing_file, feature, out_dir=N
 
         ax.set_xlabel('Date')
         ax.set_ylabel('Value')
-        ax.set_title('NDVI Time Series for 2018')
+        ax.set_title(f'NDVI Time Series for {year}')
         ax.legend()
 
         plt.tight_layout()
@@ -53,6 +53,7 @@ def irrigation_timeseries(dynamics_json, remote_sensing_file, feature, out_dir=N
             fig_file = os.path.join(out_dir, f'irrigation_timeseries_{year}.png')
             plt.savefig(fig_file)
             print(fig_file)
+            plt.close()
         else:
             plt.show()
 
