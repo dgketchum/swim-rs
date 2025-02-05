@@ -166,7 +166,8 @@ class SampleTracker:
         self.snow_fall = 0.
 
         self.mad = 0.
-        self.max_irr_rate = 25.4
+        # TODO: set with irrigation type mask
+        self.max_irr_rate = 70.0
 
         self.niwr = 0.
         self.p_rz = 0.
@@ -294,20 +295,6 @@ class SampleTracker:
         self.depl_root = self.aw * self.zr
 
     def setup_dataframe(self, targets):
-        """Initialize output dataframe
-
-        Attributes
-        ----------
-        et_cell :
-
-
-        Returns
-        -------
-
-        Notes
-        -----
-
-        """
 
         self.crop_df = {target: {} for target in targets}
 
@@ -350,7 +337,7 @@ class SampleTracker:
         elif conf.forecast:
             print('FORECAST')
 
-            param_arr = {k: np.zeros((1, size)) for k in conf.forecast_parameter_groups}
+            param_arr = {k: np.zeros((1, size)) for k in TUNABLE_PARAMS}
 
             for k, v in conf.forecast_parameters.items():
 

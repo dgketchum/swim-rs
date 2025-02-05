@@ -84,32 +84,6 @@ def compare_results(conf_path, project_ws, select=None):
         compare_etf_estimates(out_csv, flux_data, irr=irr_dct, monthly=False, target='et')
 
 
-def debug_calibration(conf_path, project_ws):
-    """"""
-
-    config = ProjectConfig()
-    config.read_config(conf_path, project_ws)
-
-    fields = SamplePlots()
-    fields.initialize_plot_data(config)
-
-    builder = PestBuilder(conf_path, project_ws)
-
-    workers = [os.path.join(builder.workers_dir, w) for w in os.listdir(builder.workers_dir)]
-
-    caldata = {}
-
-    sites = fields.input['order']
-
-    for site in sites:
-
-        for worker in workers:
-
-            for tp in TUNABLE_PARAMS:
-                proposal = os.path.join(worker, f'p_{tp}_{site}_0_constant.csv')
-                val = pd.read_csv(proposal)['1']
-
-
 if __name__ == '__main__':
     home = os.path.expanduser('~')
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
@@ -122,7 +96,7 @@ if __name__ == '__main__':
     config_file = os.path.join(project_ws_, 'config.toml')
     prepped_input = os.path.join(data_, 'prepped_input.json')
 
-    # run_fields(config_file, project_ws_, out_csv_dir, forecast=True, calibrate=False)
+    run_fields(config_file, project_ws_, out_csv_dir, forecast=True, calibrate=False)
 
     # open properties instead of SamplePlots object for speed
     properties_json = os.path.join(data_, 'landsat', 'calibration_dynamics.json')

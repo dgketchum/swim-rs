@@ -12,7 +12,7 @@ def irrigation_timeseries(dynamics_json, remote_sensing_file, feature, out_dir=N
     with open(dynamics_json, 'r') as f:
         input_dct = json.load(f)
 
-    field = input_dct['irr'][f'{feature}']['2007']
+    field = input_dct['irr'][f'{feature}']['2018']
 
     column, desc, color = f'ndvi_irr', f'Irrigated NDVI (Smoothed) - {feature}', 'green'
 
@@ -20,7 +20,7 @@ def irrigation_timeseries(dynamics_json, remote_sensing_file, feature, out_dir=N
 
     df = pd.read_csv(remote_sensing_file, index_col=0)
 
-    df_year = df.loc['2007-01-01': '2007-07-31'].copy()
+    df_year = df.loc['2018-01-01': '2018-07-31'].copy()
     df_year.index = pd.to_datetime(df_year.index)
     df_year['doy'] = [i.dayofyear for i in df_year.index]
 
@@ -35,7 +35,7 @@ def irrigation_timeseries(dynamics_json, remote_sensing_file, feature, out_dir=N
     scatter_data[df_year[ct_column] == 0] = np.nan
     ax.scatter(scatter_data.index, scatter_data, marker='o', s=50, c=color, label='Capture Date Retrieval')
 
-    irr_dates = [pd.to_datetime('2007-01-01') + pd.Timedelta(days=doy - 1) for doy in field['irr_doys']
+    irr_dates = [pd.to_datetime('2018-01-01') + pd.Timedelta(days=doy - 1) for doy in field['irr_doys']
                  if doy in df_year['doy'].tolist()]
 
     ax.scatter(irr_dates, df_year.loc[irr_dates, column + '_rolling'], marker='o', s=80, facecolors='none',
@@ -44,13 +44,14 @@ def irrigation_timeseries(dynamics_json, remote_sensing_file, feature, out_dir=N
 
     ax.set_xlabel('Date')
     ax.set_ylabel('Value')
-    ax.set_title('NDVI Time Series for 2007')
+    ax.set_title('NDVI Time Series for 2018')
     ax.legend()
 
     plt.tight_layout()
     if out_dir:
         fig_file = os.path.join(out_dir, 'irrigation_timeseries_endPlusFive.png')
         plt.savefig(fig_file)
+        print(fig_file)
     else:
         plt.show()
 

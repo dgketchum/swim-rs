@@ -37,6 +37,7 @@ class PestBuilder:
         self.obs_dir = os.path.join(project_ws, 'obs')
 
         self.pst_file = os.path.join(self.pest_dir, f'{self.config.project_name}.pst')
+        self.obs_idx_file = os.path.join(self.pest_dir, f'{self.config.project_name}.idx.csv')
 
         self.pest_args = self.get_pest_builder_args()
 
@@ -132,13 +133,16 @@ class PestBuilder:
             self.pest.add_observations(self.pest_args['etf_obs']['file'][i],
                                        insfile=self.pest_args['etf_obs']['insfile'][i])
 
-            et_df['dummy_idx'] = [obsnme_str.format(fid, j) for j in range(et_df.shape[0])]
+            et_df['obs_id'] = [obsnme_str.format(fid, j).lower() for j in range(et_df.shape[0])]
+            idx = et_df['obs_id']
+            idx.to_csv(self.obs_idx_file)
+
             captures = [ix for ix, r in et_df.iterrows()
                         if r['etf_irr_ct']
                         or r['etf_inv_irr_ct']
                         and ix.month in list(range(1, 13))]
 
-            captures = et_df['dummy_idx'].loc[captures]
+            captures = et_df['obs_id'].loc[captures]
 
             d = self.pest.obs_dfs[i].copy()
             d['weight'] = 0.0
@@ -172,9 +176,9 @@ class PestBuilder:
             self.pest.add_observations(self.pest_args['swe_obs']['file'][j],
                                        insfile=self.pest_args['swe_obs']['insfile'][j])
 
-            swe_df['dummy_idx'] = [obsnme_str.format(fid, j) for j in range(swe_df.shape[0])]
+            swe_df['obs_id'] = [obsnme_str.format(fid, j) for j in range(swe_df.shape[0])]
             valid = [ix for ix, r in swe_df.iterrows() if ix.month in [11, 12, 1, 2, 3, 4]]
-            valid = swe_df['dummy_idx'].loc[valid]
+            valid = swe_df['obs_id'].loc[valid]
 
             d = self.pest.obs_dfs[j + count].copy()
             d['weight'] = 0.0
@@ -231,6 +235,7 @@ class PestBuilder:
 
         # add time information
         obs['time'] = [float(i.split(':')[3].split('_')[0]) for i in obs.index]
+
 
         pst.write(pst.filename, version=2)
         print(f'{len(swe_df)} rows in swe, {len(et_df)} rows in etf')
