@@ -171,7 +171,7 @@ class SamplePlotDynamics:
 
             df = field_time_series.loc[f'{yr}-01-01': f'{yr}-12-31', [selector]]
             df['doy'] = [i.dayofyear for i in df.index]
-            df[selector] = df[selector].rolling(window=10, center=True).mean()
+            df[selector] = df[selector].rolling(window=32, center=True).mean()
 
             df['diff'] = df[selector].diff()
 
@@ -181,7 +181,6 @@ class SamplePlotDynamics:
                 continue
 
             local_min_indices = df[(df['diff'] > 0) & (df['diff'].shift(1) < 0)].index
-            local_max_indices = df[(df['diff'] < 0) & (df['diff'].shift(1) > 0)].index
 
             positive_slope = (df['diff'] > 0)
             groups = (positive_slope != positive_slope.shift()).cumsum()
@@ -195,21 +194,28 @@ class SamplePlotDynamics:
                 end_index = group_indices[-1]
 
                 if start_index in local_min_indices:
-                    start_doy = (start_index - pd.Timedelta(days=5)).dayofyear
+                    start_doy = (start_index - pd.Timedelta(days=2)).dayofyear
                 else:
                     start_doy = start_index.dayofyear
 
-                end_doy = (end_index + pd.Timedelta(days=5)).dayofyear
+                end_doy = (end_index + pd.Timedelta(days=2))
+                if df.loc[end_doy - pd.Timedelta(days=1)][selector] > 0.3:
+                    ndvi_doy = df.loc[end_doy - pd.Timedelta(days=1)][selector]
+                    while ndvi_doy > 0.3:
+                        end_doy += pd.Timedelta(days=1)
+                        ndvi_doy = df.loc[end_doy - pd.Timedelta(days=1)][selector]
 
-                irr_doys.extend(range(start_doy, end_doy + 1))
+                elif df.loc[end_doy - pd.Timedelta(days=1)][selector] < 0.5:
+                    continue
+
+                end_doy = (end_doy + pd.Timedelta(days=1)).dayofyear
+                irr_doys.extend(range(start_doy, end_doy))
                 periods += 1
 
-                if end_index in local_max_indices:
-                    while end_index < df.index[-1] and df.at[end_index, selector] >= 0.3:
-                        end_index += pd.Timedelta(days=1)
-                        irr_doys.append(end_index.dayofyear)
-
             irr_doys = sorted(list(set(irr_doys)))
+
+            if yr == 2017:
+                a = 1
 
             field_data[yr] = {'irr_doys': irr_doys,
                               'irrigated': int(irrigated),

@@ -12,7 +12,7 @@ def irrigation_timeseries(dynamics_json, remote_sensing_file, feature, out_dir=N
     with open(dynamics_json, 'r') as f:
         input_dct = json.load(f)
 
-    for year in range(1987, 2023):
+    for year in range(2018, 2019):
         field = input_dct['irr'][f'{feature}'][str(year)]
 
         column, desc, color = f'ndvi_irr', f'Irrigated NDVI (Smoothed) - {feature}', 'green'
