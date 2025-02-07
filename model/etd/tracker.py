@@ -166,8 +166,9 @@ class SampleTracker:
         self.snow_fall = 0.
 
         self.mad = 0.
-        # TODO: set with irrigation type mask
-        self.max_irr_rate = 70.0
+
+        # TODO: apply this according to irrigation type
+        self.max_irr_rate = 25.4
 
         self.niwr = 0.
         self.p_rz = 0.
@@ -295,6 +296,20 @@ class SampleTracker:
         self.depl_root = self.aw * self.zr
 
     def setup_dataframe(self, targets):
+        """Initialize output dataframe
+
+        Attributes
+        ----------
+        et_cell :
+
+
+        Returns
+        -------
+
+        Notes
+        -----
+
+        """
 
         self.crop_df = {target: {} for target in targets}
 
