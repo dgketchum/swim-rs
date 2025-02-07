@@ -21,7 +21,7 @@ def irrigation_timeseries(dynamics_json, remote_sensing_file, feature, out_dir=N
 
         df = pd.read_csv(remote_sensing_file, index_col=0)
 
-        df_year = df.loc[f'{year}-01-01': f'{year}-07-31'].copy()
+        df_year = df.loc[f'{year}-01-01': f'{year}-12-31'].copy()
         df_year.index = pd.to_datetime(df_year.index)
         df_year['doy'] = [i.dayofyear for i in df_year.index]
 
@@ -50,10 +50,15 @@ def irrigation_timeseries(dynamics_json, remote_sensing_file, feature, out_dir=N
 
         plt.tight_layout()
         if out_dir:
+
+            if not os.path.isdir(out_dir):
+                os.mkdir(out_dir)
+
             fig_file = os.path.join(out_dir, f'irrigation_timeseries_{year}.png')
             plt.savefig(fig_file)
             print(fig_file)
             plt.close()
+
         else:
             plt.show()
 

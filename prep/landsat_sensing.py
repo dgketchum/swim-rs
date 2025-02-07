@@ -1,4 +1,5 @@
 import os
+import glob
 
 import numpy as np
 import pandas as pd
@@ -6,8 +7,6 @@ from tqdm import tqdm
 import geopandas as gpd
 
 from rasterstats import zonal_stats
-
-from prep.dynamics import plot_dynamics
 
 
 def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_ct=100, feature_id='FID'):
@@ -88,7 +87,7 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
 
     print(csv_dir)
 
-    adf, ctdf, first = None, None, True
+    adf, ctdf, first, prev_df = None, None, True, None
 
     for yr in tqdm(years, total=len(years), desc=f'Processing Time Series by Year'):
 
@@ -123,6 +122,10 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
 
             ct.loc[f_idx, sid] = ~pd.isna(field[sid])
 
+        if prev_df is not None and df.loc[f'{yr}-01'].isna().all().any():
+            df.loc[f'{yr}-01-01'] = prev_df.loc[f'{yr-1}-12-31']
+
+        df[df[sid] == 0.0] = np.nan
         df = df.astype(float).interpolate()
         df = df.bfill()
 
@@ -136,6 +139,8 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
         else:
             adf = pd.concat([adf, df], axis=0, ignore_index=False, sort=True)
             ctdf = pd.concat([ctdf, ct], axis=0, ignore_index=False, sort=True)
+
+        prev_df = df.copy()
 
     adf.to_csv(out_csv)
     ctdf.to_csv(out_csv_ct)
@@ -289,7 +294,7 @@ if __name__ == '__main__':
 
     # data = os.path.join(root, 'tutorials', '2_Fort_Peck', 'data')
     # data = os.path.join(root, 'tutorials', '3_Crane', 'data')
-    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
+    data = os.path.join(root, 'tutorials', 'alarc_test', 'data')
 
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 
@@ -306,7 +311,7 @@ if __name__ == '__main__':
     FEATURE_ID = 'field_1'
     selected_feature = None
 
-    types_ = ['inv_irr', 'irr']
+    types_ = ['irr', 'inv_irr']
     sensing_params = ['ndvi', 'etf']
 
     for mask_type in types_:
@@ -320,7 +325,7 @@ if __name__ == '__main__':
 
             # TODO: consider whether there is a case where ETf needs to be interpolated
             sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                                       feature_id=FEATURE_ID, select=None)
+                                       feature_id=FEATURE_ID, select=['ALARC2_Smith6'])
 
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
     join_remote_sensing(tables, remote_sensing_file)

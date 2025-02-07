@@ -9,6 +9,7 @@ from tqdm import tqdm
 class SamplePlotDynamics:
     def __init__(self, plot_timeseries, irr_csv_file, out_json_file, irr_threshold=0.1, select=None):
         self.time_series = plot_timeseries
+
         self.irr_csv_file = irr_csv_file
         self.out_json_file = out_json_file
         self.irr_threshold = irr_threshold
@@ -180,6 +181,7 @@ class SamplePlotDynamics:
                 continue
 
             local_min_indices = df[(df['diff'] > 0) & (df['diff'].shift(1) < 0)].index
+            local_max_indices = df[(df['diff'] < 0) & (df['diff'].shift(1) > 0)].index
 
             positive_slope = (df['diff'] > 0)
             groups = (positive_slope != positive_slope.shift()).cumsum()
@@ -194,14 +196,18 @@ class SamplePlotDynamics:
 
                 if start_index in local_min_indices:
                     start_doy = (start_index - pd.Timedelta(days=5)).dayofyear
-                    end_doy = (end_index + pd.Timedelta(days=5)).dayofyear
-                    irr_doys.extend(range(start_doy, end_doy + 1))
-                    periods += 1
                 else:
                     start_doy = start_index.dayofyear
-                    end_doy = (end_index + pd.Timedelta(days=5)).dayofyear
-                    irr_doys.extend(range(start_doy, end_doy + 1))
-                    periods += 1
+
+                end_doy = (end_index + pd.Timedelta(days=5)).dayofyear
+
+                irr_doys.extend(range(start_doy, end_doy + 1))
+                periods += 1
+
+                if end_index in local_max_indices:
+                    while end_index < df.index[-1] and df.at[end_index, selector] >= 0.3:
+                        end_index += pd.Timedelta(days=1)
+                        irr_doys.append(end_index.dayofyear)
 
             irr_doys = sorted(list(set(irr_doys)))
 

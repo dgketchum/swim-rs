@@ -112,7 +112,7 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 if __name__ == '__main__':
 
     root = '/home/dgketchum/PycharmProjects/swim-rs'
-    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
+    data = os.path.join(root, 'tutorials', 'alarc_test', 'data')
 
     landsat = os.path.join(data, 'landsat')
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
@@ -137,6 +137,7 @@ if __name__ == '__main__':
                           start_date='1987-01-01',
                           end_date='2022-12-31',
                           feature_id=FEATURE_ID,
-                          **{'params': params})
+                          **{'params': params,
+                             'target_fields': ['ALARC2_Smith6']})
 
 # ========================= EOF ====================================================================
