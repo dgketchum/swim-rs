@@ -161,8 +161,13 @@ def preproc(config_file, project_ws):
 
         data = fields.input_to_dataframe(fid)
         irr_threshold = config.irr_threshold
-        irr_years = [int(k) for k, v in fields.input['irr_data'][fid].items() if k != 'fallow_years'
-                     and v['f_irr'] >= irr_threshold]
+
+        try:
+            irr_years = [int(k) for k, v in fields.input['irr_data'][fid].items() if k != 'fallow_years'
+                         and v['f_irr'] >= irr_threshold]
+        except KeyError:
+            print(f'missing {fid}')
+            continue
 
         irr_index = [i for i in data.index if i.year in irr_years]
 
@@ -187,8 +192,8 @@ def preproc(config_file, project_ws):
 if __name__ == '__main__':
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    # project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
-    project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
+    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
+    # project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
     data = os.path.join(project_ws_, 'data')
     landsat = os.path.join(data, 'landsat')
 
@@ -205,8 +210,8 @@ if __name__ == '__main__':
     if not os.path.isdir(obs_dir):
         os.makedirs(obs_dir, exist_ok=True)
 
-    # project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
-    project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
+    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
+    # project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
     config_path = os.path.join(project_ws_, 'config.toml')
 
     preproc(config_path, project_ws_)
