@@ -228,7 +228,7 @@ class PestBuilder:
 
         obs['standard_deviation'] = 0.00
         etf_idx = [i for i in obs.index if 'etf' in i]
-        obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.1
+        obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.3
 
         swe_idx = [i for i, r in obs.iterrows() if 'swe' in i and r['obsval'] > 0.0]
         obs.loc[swe_idx, 'standard_deviation'] = obs['obsval'] * 0.02
@@ -324,7 +324,7 @@ class PestBuilder:
         pst = Pst(self.pst_file)
         pst.pestpp_options["ies_localizer"] = "loc.mat"
         pst.pestpp_options["ies_num_reals"] = reals
-        pst.pestpp_options["ies_drop_conflicts"] = True
+        pst.pestpp_options["ies_drop_conflicts"] = 'true'
         pst.control_data.noptmax = noptmax
         oe = ObservationEnsemble.from_gaussian_draw(pst=pst, num_reals=reals)
         oe.to_csv(self.pst_file.replace('.pst', '.oe.csv'))
@@ -334,35 +334,35 @@ class PestBuilder:
     def initial_parameter_dict(self):
         p = OrderedDict({
             'aw': {'file': self.params_file,
-                   'initial_value': None, 'lower_bound': 15.0, 'upper_bound': 900.0,
+                   'initial_value': None, 'lower_bound': 0.0, 'upper_bound': 1000.0,
                    'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'rew': {'file': self.params_file,
-                    'initial_value': 3.0, 'lower_bound': 2.0, 'upper_bound': 6.0,
+                    'initial_value': 3.0, 'lower_bound': 0.0, 'upper_bound': 6.0,
                     'pargp': 'rew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'tew': {'file': self.params_file,
-                    'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
+                    'initial_value': 18.0, 'lower_bound': 0.0, 'upper_bound': 29.0,
                     'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_alpha': {'file': self.params_file,
-                           'initial_value': 0.2, 'lower_bound': -0.7, 'upper_bound': 1.5,
+                           'initial_value': 0.0, 'lower_bound': -1.5, 'upper_bound': 1.5,
                            'pargp': 'ndvi_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_beta': {'file': self.params_file,
-                          'initial_value': 1.25, 'lower_bound': 0.5, 'upper_bound': 1.7,
+                          'initial_value': 1.25, 'lower_bound': 0.1, 'upper_bound': 4.0,
                           'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'mad': {'file': self.params_file,
-                    'initial_value': 0.6, 'lower_bound': 0.1, 'upper_bound': 0.9,
+                    'initial_value': 0.6, 'lower_bound': 0.01, 'upper_bound': 0.99,
                     'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'swe_alpha': {'file': self.params_file,
-                          'initial_value': 0.15, 'lower_bound': -0.5, 'upper_bound': 1.,
+                          'initial_value': 0.15, 'lower_bound': -0.1, 'upper_bound': 1.,
                           'pargp': 'swe_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'swe_beta': {'file': self.params_file,
-                         'initial_value': 1.5, 'lower_bound': 0.5, 'upper_bound': 2.5,
+                         'initial_value': 1.5, 'lower_bound': 0.1, 'upper_bound': 3.0,
                          'pargp': 'snow_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         })
@@ -383,6 +383,7 @@ if __name__ == '__main__':
     root_ = os.path.abspath('..')
 
     project = 'alarc_test'
+    # project = '4_Flux_Network'
 
     project_ws_ = os.path.join(root_, 'tutorials', project)
     if not os.path.isdir(project_ws_):
