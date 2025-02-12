@@ -212,10 +212,9 @@ class SamplePlotDynamics:
                 irr_doys.extend(range(start_doy, end_doy))
                 periods += 1
 
+            # print('Warning: setting irrigaiton to ON all days')
+            # irr_doys = list(range(1, df.shape[0] + 1))
             irr_doys = sorted(list(set(irr_doys)))
-
-            if yr == 2017:
-                a = 1
 
             field_data[yr] = {'irr_doys': irr_doys,
                               'irrigated': int(irrigated),
@@ -228,7 +227,7 @@ class SamplePlotDynamics:
 if __name__ == '__main__':
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    project = 'alarc_test'
+    project = '4_Flux_Network'
 
     data = os.path.join(root, 'tutorials', project, 'data')
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
@@ -241,7 +240,7 @@ if __name__ == '__main__':
     cuttings_json = os.path.join(landsat, 'calibration_dynamics.json')
 
     dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3,
-                                  out_json_file=cuttings_json, select=['ALARC2_Smith6'])
+                                  out_json_file=cuttings_json, select=None)
     dynamics.analyze_groundwater_subsidy()
     dynamics.analyze_irrigation()
     dynamics.save_json()

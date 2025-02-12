@@ -37,9 +37,13 @@ def debug_calibration(conf_path, project_ws, fid, params=None):
     output['capture'] = output['etf_inv_irr_ct']
     output.loc[irr_index, 'capture'] = output.loc[irr_index, 'etf_irr_ct']
 
+    output['ndvi'] = output['ndvi_inv_irr']
+    output.loc[irr_index, 'ndvi'] = output.loc[irr_index, 'ndvi_irr']
+
     output['pdc'] = 0
 
     df = pd.DataFrame({'kc_act': output['kc_act'],
+                       'ndvi': output['ndvi'],
                        'etf': output['etf'],
                        'EToF': flux_data['EToF'],
                        'ET_corr': flux_data['ET_corr'],
@@ -47,7 +51,6 @@ def debug_calibration(conf_path, project_ws, fid, params=None):
                        'eto': output['eto_mm']})
     if params:
         df[params] = output[params]
-
 
     pdc_file = os.path.join(builder.master_dir, f'{builder.config.project_name}.pdc.csv')
     if os.path.exists(pdc_file):
@@ -57,6 +60,10 @@ def debug_calibration(conf_path, project_ws, fid, params=None):
         idx['pdc'] = [1 if obs_id in pdc.index else 0 for obs_id in idx['obs_id']]
 
     df['pdc'] = idx['pdc']
+    pdc_yr = df[['pdc']].resample('A').sum()
+    dfpdc = df[df['pdc'] == 1]
+
+    a = 1
 
 
 if __name__ == '__main__':
