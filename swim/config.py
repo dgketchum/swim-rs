@@ -58,7 +58,7 @@ class ProjectConfig:
         self.winter_start_day = None
 
     def read_config(self, conf, project_root, calibrate=False, forecast=False, calibration_dir=None,
-                    parameter_set_json=None):
+                    parameter_set_json=None, forecast_param_csv=None):
 
         with open(conf, 'r') as f:
             config = toml.load(f)
@@ -150,8 +150,10 @@ class ProjectConfig:
             self.calibrate = 0
             self.calibration_dir = None
 
-
-            parameter_dist_csv = config[forecast_sec]['forecast_parameters']
+            if forecast_param_csv:
+                parameter_dist_csv = forecast_param_csv
+            else:
+                parameter_dist_csv = config[forecast_sec]['forecast_parameters']
 
             if not os.path.isfile(parameter_dist_csv):
                 raise ValueError(f'Forecast is on but forecast csv {parameter_dist_csv} does not exist')
