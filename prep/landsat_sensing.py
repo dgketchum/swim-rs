@@ -67,17 +67,6 @@ def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_c
 def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feature_id='FID',
                                select=None):
     """
-    Intended to process Earth Engine extracts of buffered point data, e.g., the area around flux tower
-    stations. See e.g., ndvi_export.flux_tower_ndvi() to generate such data. The output of this function
-    should be the same format and structure as that from landsat_time_series_image()
-    and landsat_time_series_multipolygon().
-    :param feature_id:
-    :param in_shp:
-    :param csv_dir:
-    :param years:
-    :param out_csv:
-    :param out_csv_ct:
-    :return:
     """
     gdf = gpd.read_file(in_shp)
     gdf.index = gdf[feature_id]
@@ -110,6 +99,10 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
             f_idx = [c.split('_')[-1] for c in cols]
             f_idx = [pd.to_datetime(i) for i in f_idx]
             field = pd.DataFrame(columns=[sid], data=field[cols].values.T, index=f_idx)
+
+            field = field.replace([0.0], np.nan)
+            field = field.dropna()
+
             duplicates = field[field.index.duplicated(keep=False)]
             if not duplicates.empty:
                 field = field.resample('D').mean()
@@ -129,7 +122,8 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
         df = df.astype(float).interpolate()
         df = df.bfill()
 
-        ct = ct.fillna(0)
+        ct = ct.astype(float)
+        ct = ct.fillna(0.0)
         ct = ct.astype(int)
 
         if first:
@@ -292,9 +286,8 @@ if __name__ == '__main__':
 
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    # data = os.path.join(root, 'tutorials', '2_Fort_Peck', 'data')
-    # data = os.path.join(root, 'tutorials', '3_Crane', 'data')
-    data = os.path.join(root, 'tutorials', 'alarc_test', 'data')
+    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
+    # data = os.path.join(root, 'tutorials', 'alarc_test', 'data')
 
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 
@@ -312,7 +305,7 @@ if __name__ == '__main__':
     selected_feature = None
 
     types_ = ['irr', 'inv_irr']
-    sensing_params = ['ndvi', 'etf']
+    sensing_params = ['etf', 'ndvi']
 
     for mask_type in types_:
 
@@ -325,7 +318,7 @@ if __name__ == '__main__':
 
             # TODO: consider whether there is a case where ETf needs to be interpolated
             sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                                       feature_id=FEATURE_ID, select=['ALARC2_Smith6'])
+                                       feature_id=FEATURE_ID, select=None)
 
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
     join_remote_sensing(tables, remote_sensing_file)
