@@ -131,17 +131,21 @@ if __name__ == '__main__':
     out_csv_dir = os.path.join(data, 'model_output')
     out_csv = os.path.join(out_csv_dir, f'{feature_}.csv')
 
-    out_fig_dir = os.path.join(root, 'tutorials', project, 'figures')
+    pdc = os.path.join(root, 'tutorials', project, 'master', 'alarc_test.pdc.csv')
 
+    out_fig_dir = os.path.join(root, 'tutorials', project, 'figures')
 
     df = pd.read_csv(out_csv, index_col=0, parse_dates=True)
 
-    plot_swim_timeseries(df, ['snow_fall', 'rain', 'melt', 'dperc'], start='2018-01-01', end='2019-01-01',
-                         png_file=os.path.join(out_fig_dir, 'dperc_lessIrrDOY.png'))
+    # png = os.path.join(out_fig_dir, 'dperc_lessIrrDOY.png')
+    # plot_swim_timeseries(df, ['snow_fall', 'rain', 'melt', 'dperc'], start='2018-01-01', end='2019-01-01',
+    #                      png_file=None)
 
-    plot_swim_timeseries(df, ['soil_water', 'irrigation', 'rain', 'melt'], start='2018-01-01',
-                         end='2018-10-01', png_file=os.path.join(out_fig_dir, 'soil_water_lessIrrDOY.png'))
+    png = os.path.join(out_fig_dir, 'soil_water_lessIrrDOY.png')
+    plot_swim_timeseries(df, ['soil_water', 'irrigation', 'rain', 'etf_irr', 'kc_act', 'ndvi_irr'], start='2004-01-01',
+                         end='2004-12-31', png_file=None)
 
-    plot_swim_timeseries(df, ['et_act', 'etref', 'rain', 'melt', 'irrigation'], start='2018-01-01', end='2018-12-31',
-                         png_file=os.path.join(out_fig_dir, 'irr_et_lessIrrDOY.png'))
+    # png = os.path.join(out_fig_dir, 'irr_et_lessIrrDOY.png')
+    # plot_swim_timeseries(df, ['et_act', 'etref', 'rain', 'melt', 'irrigation'], start='2018-01-01', end='2018-12-31',
+    #                      png_file=None)
 # ========================= EOF ====================================================================

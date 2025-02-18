@@ -8,11 +8,13 @@ from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
 
-def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False):
+
+def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False, forecast_param_csv=None):
     start_time = time.time()
 
     config = ProjectConfig()
-    config.read_config(ini_path, project_ws, forecast=forecast, calibrate=calibrate)
+    config.read_config(ini_path, project_ws, forecast=forecast,
+                       calibrate=calibrate, forecast_param_csv=forecast_param_csv)
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)

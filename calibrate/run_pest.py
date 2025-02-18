@@ -38,20 +38,23 @@ if __name__ == '__main__':
     home = os.path.expanduser('~')
 
     project = 'alarc_test'
+    # project = '4_Flux_Network'
+
+    prior_constraint = 'tight'
 
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
     project_ws = os.path.join(root, 'tutorials', project)
 
     p_dir = os.path.join(project_ws, 'pest')
-    m_dir = os.path.join(project_ws, 'master')
+    m_dir = os.path.join(project_ws, f'{prior_constraint}_master')
     w_dir = os.path.join(project_ws, 'workers')
     exe_ = 'pestpp-ies'
 
     _pst = f'{project}.pst'
 
-    _workers = 3
+    _workers = 10
 
     run_pst(p_dir, exe_, _pst, num_workers=_workers, worker_root=w_dir,
-            master_dir=m_dir, verbose=True, cleanup=False)
+            master_dir=m_dir, verbose=True, cleanup=True)
 
 # ========================= EOF ====================================================================
