@@ -11,10 +11,12 @@ from pyemu.utils.os_utils import run_ossystem, run_sp
 from swim.config import ProjectConfig
 from swim.input import SamplePlots
 
+from calibrate.run_pest import run_pst
+
 
 class PestBuilder:
 
-    def __init__(self, config_file, project_ws, use_existing=False, python_script=None):
+    def __init__(self, config_file, project_ws, use_existing=False, python_script=None, prior_constraint='tight'):
 
         self.project_ws = project_ws
 
@@ -31,8 +33,10 @@ class PestBuilder:
         self.params_file = None
         self.pest = None
 
-        self.pest_dir = os.path.join(project_ws, 'pest')
-        self.master_dir = os.path.join(project_ws, 'master')
+        self.prior_contstraint = prior_constraint
+
+        self.pest_dir = os.path.join(project_ws, f'{prior_constraint}_pest')
+        self.master_dir = os.path.join(project_ws, f'{prior_constraint}_master')
         self.workers_dir = os.path.join(project_ws, 'workers')
         self.obs_dir = os.path.join(project_ws, 'obs')
 
@@ -332,40 +336,56 @@ class PestBuilder:
         print(f'writing {self.pst_file} with noptmax={noptmax}, {reals} realizations')
 
     def initial_parameter_dict(self):
+
         p = OrderedDict({
             'aw': {'file': self.params_file,
-                   'initial_value': None, 'lower_bound': 0.0, 'upper_bound': 1000.0,
+                   'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 400.0,
                    'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'rew': {'file': self.params_file,
-                    'initial_value': 3.0, 'lower_bound': 0.0, 'upper_bound': 6.0,
+                    'initial_value': 3.0, 'lower_bound': 2.0, 'upper_bound': 6.0,
                     'pargp': 'rew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'tew': {'file': self.params_file,
-                    'initial_value': 18.0, 'lower_bound': 0.0, 'upper_bound': 29.0,
+                    'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
                     'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_alpha': {'file': self.params_file,
-                           'initial_value': 0.0, 'lower_bound': -1.5, 'upper_bound': 1.5,
+                           'initial_value': 0.2, 'lower_bound': -0.7, 'upper_bound': 1.5,
                            'pargp': 'ndvi_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_beta': {'file': self.params_file,
-                          'initial_value': 1.25, 'lower_bound': 0.1, 'upper_bound': 4.0,
+                          'initial_value': 1.25, 'lower_bound': 0.5, 'upper_bound': 1.7,
                           'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'mad': {'file': self.params_file,
-                    'initial_value': 0.6, 'lower_bound': 0.01, 'upper_bound': 0.99,
+                    'initial_value': 0.6, 'lower_bound': 0.1, 'upper_bound': 0.9,
                     'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'swe_alpha': {'file': self.params_file,
-                          'initial_value': 0.15, 'lower_bound': -0.1, 'upper_bound': 1.,
+                          'initial_value': 0.15, 'lower_bound': -0.5, 'upper_bound': 1.,
                           'pargp': 'swe_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'swe_beta': {'file': self.params_file,
-                         'initial_value': 1.5, 'lower_bound': 0.1, 'upper_bound': 3.0,
+                         'initial_value': 1.5, 'lower_bound': 0.5, 'upper_bound': 2.5,
                          'pargp': 'snow_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         })
+
+        if self.prior_contstraint == 'loose':
+            loose_params = {
+                'aw': {'lower_bound': 0.0, 'upper_bound': 1000.0},
+                'rew': {'lower_bound': 0.0, 'upper_bound': 6.0},
+                'tew': {'lower_bound': 0.0, 'upper_bound': 29.0},
+                'ndvi_alpha': {'lower_bound': -1.5, 'upper_bound': 1.5},
+                'ndvi_beta': {'lower_bound': 0.1, 'upper_bound': 4.0},
+                'mad': {'lower_bound': 0.01, 'upper_bound': 0.99},
+                'swe_alpha': {'lower_bound': -0.1, 'upper_bound': 1.},
+                'swe_beta': {'lower_bound': 0.1, 'upper_bound': 3.0},
+            }
+            for key, updates in loose_params.items():
+                if key in p:
+                    p[key].update(updates)
 
         return p
 
@@ -382,22 +402,38 @@ if __name__ == '__main__':
 
     root_ = os.path.abspath('..')
 
-    project = 'alarc_test'
-    # project = '4_Flux_Network'
+    # project = 'alarc_test'
+    project = '4_Flux_Network'
 
-    project_ws_ = os.path.join(root_, 'tutorials', project)
-    if not os.path.isdir(project_ws_):
-        root_ = os.path.abspath('')
+    # prior_constraint = 'tight'
+
+    for prior_constraint in ['loose', 'tight']:
+
         project_ws_ = os.path.join(root_, 'tutorials', project)
+        if not os.path.isdir(project_ws_):
+            root_ = os.path.abspath('')
+            project_ws_ = os.path.join(root_, 'tutorials', project)
 
-    config_path_ = os.path.join(project_ws_, 'config.toml')
-    py_script = os.path.join(project_ws_, 'custom_forward_run.py')
+        config_path_ = os.path.join(project_ws_, 'config.toml')
+        py_script = os.path.join(project_ws_, 'custom_forward_run.py')
 
-    builder = PestBuilder(project_ws=project_ws_, config_file=config_path_,
-                          use_existing=False, python_script=py_script)
-    builder.build_pest()
-    builder.build_localizer()
-    builder.dry_run('pestpp-ies')
-    builder.write_control_settings(noptmax=3, reals=10)
+        builder = PestBuilder(project_ws=project_ws_, config_file=config_path_,
+                              use_existing=False, python_script=py_script, prior_constraint=prior_constraint)
+        builder.build_pest()
+        builder.build_localizer()
+        builder.dry_run('pestpp-ies')
+        builder.write_control_settings(noptmax=4, reals=300)
+
+        p_dir = os.path.join(project_ws_, 'pest')
+        m_dir = os.path.join(project_ws_, f'{prior_constraint}_master')
+        w_dir = os.path.join(project_ws_, 'workers')
+        exe_ = 'pestpp-ies'
+
+        _pst = f'{project}.pst'
+
+        _workers = 10
+
+        run_pst(p_dir, exe_, _pst, num_workers=_workers, worker_root=w_dir,
+                master_dir=m_dir, verbose=True, cleanup=True)
 
 # ========================= EOF ====================================================================
