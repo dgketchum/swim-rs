@@ -9,12 +9,16 @@ from swim.input import SamplePlots
 
 
 
-def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False, forecast_param_csv=None):
+def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False, calibration_dir=None):
     start_time = time.time()
 
     config = ProjectConfig()
+    fcst_file = os.path.join(calibration_dir, f'{os.path.basename(project_ws)}.3.par.csv')
+    if not os.path.exists(fcst_file):
+        fcst_file = os.path.join(calibration_dir, f'{os.path.basename(project_ws)}.2.par.csv')
+
     config.read_config(ini_path, project_ws, forecast=forecast,
-                       calibrate=calibrate, forecast_param_csv=forecast_param_csv)
+                       calibrate=calibrate, forecast_param_csv=fcst_file)
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)
