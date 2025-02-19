@@ -1,155 +1,107 @@
-import os
 import json
-import time
+import os
 import shutil
 
 import pandas as pd
-import geopandas as gpd
 
-from prep.field_timeseries import join_daily_timeseries
+from calibrate.pest_builder import PestBuilder
+from calibrate.run_pest import run_pst
+from swim.config import ProjectConfig
+from swim.input import SamplePlots
 from prep.prep_plots import prep_fields_json, preproc
 
-from calibrate.build_pp_files import get_pest_builder_args, initial_parameter_dict
-from calibrate.build_pp_files import build_pest, build_localizer, write_control_settings
-from calibrate.run_pest import run_pst
 
-d = '/media/research/IrrigationGIS/swim'
-if not os.path.exists(d):
-    d = '/home/dgketchum/data/IrrigationGIS/swim'
+def run_pest_sequence(conf_path, project_ws, workers, realizations):
+    """"""
+    config = ProjectConfig()
+    config.read_config(conf_path, project_ws)
 
-project = 'flux'
-data = os.path.join(d, 'examples', project)
+    project = os.path.basename(project_ws)
 
-# annex_project = 'tongue_annex'
-# annex_data = os.path.join(d, 'examples', annex_project)
+    fields = SamplePlots()
+    fields.initialize_plot_data(config)
 
-src = '/home/dgketchum/PycharmProjects/swim-rs'
-project_ws = os.path.join(src, 'examples', project)
+    data_dir = os.path.join(project_ws, 'data')
+    properties_json = os.path.join(data_dir, 'properties', 'calibration_properties.json')
+    landsat = os.path.join(data_dir, 'landsat')
+    dynamics_data = os.path.join(landsat, 'calibration_dynamics.json')
+    joined_timeseries = os.path.join(data_dir, 'plot_timeseries')
 
-DATA_DIRS = {'fields_gridmet': os.path.join(data, 'gis', '{}_fields_gfid.shp'.format(project)),
-             'met_data': os.path.join(data, 'met_timeseries'),
-             'landsat': os.path.join(data, 'landsat', '{}_sensing.csv'.format(project)),
-             'snow_data': os.path.join(data, 'snow_timeseries', 'snodas_{}.json'.format(project)),
-             'plot_timeseries': os.path.join(data, 'plot_timeseries'),
-             'props': os.path.join(data, 'properties', '{}_props.json'.format(project)),
-             'prepped_input': os.path.join(data, 'prepped_input', '{}_input_sample.json'.format(project)),
-             'cuttings': os.path.join(d, 'examples/{}/landsat/{}_cuttings.json'.format(project, project)),
-             }
+    flux_meta_csv = os.path.join(data_dir, 'station_metadata.csv')
+    flux_meta_df = pd.read_csv(flux_meta_csv, header=1, skip_blank_lines=True, index_col='Site ID')
 
-PEST_DATA = {'_pst': '{}.pst'.format(project),
-             'exe_': 'pestpp-ies',
-             'm_dir': os.path.join(project_ws, 'master'),
-             'p_dir': os.path.join(project_ws, 'pest'),
-             'w_dir': os.path.join(project_ws, 'workers'),
-             'python_script': os.path.join(src, 'calibrate', 'custom_forward_run.py')}
+    for fid, row in flux_meta_df.iterrows():
 
+        for prior_constraint in ['loose', 'tight']:
 
-def run_pest_sequence(project_tracker, n_workers, index_col='FID', chunk_sz=10, realizations=100, iterations=3,
-                      start_date='2018-01-01', end_date='2021-12-31'):
-    pars = [k for k, v in initial_parameter_dict('').items()]
+            prepped_input = os.path.join(data_dir, 'prepped_input.json')
 
-    if not os.path.exists(project_tracker):
-        p_dct = {'project': project,
-                 'start_date': start_date,
-                 'end_data': end_date,
-                 'fields': {}}
-    else:
-        with open(project_tracker, 'r') as f:
-            p_dct = json.load(f)
+            prep_fields_json(properties_json, joined_timeseries, dynamics_data,
+                             prepped_input, target_plots=[fid])
 
-    gmt, met, lst = DATA_DIRS['fields_gridmet'], DATA_DIRS['met_data'], DATA_DIRS['landsat']
-    snow, ts = DATA_DIRS['snow_data'], DATA_DIRS['plot_timeseries']
+            obs_dir = os.path.join(project_ws_, 'obs')
+            if not os.path.isdir(obs_dir):
+                os.makedirs(obs_dir, exist_ok=True)
 
-    gdf = gpd.read_file(gmt)
-    gdf.index = gdf[index_col]
+            preproc(conf_path, project_ws_)
 
-    covered, excluded = list(p_dct['fields'].keys()), []
+            config_path_ = os.path.join(project_ws_, 'config.toml')
+            py_script = os.path.join(project_ws_, 'custom_forward_run.py')
 
-    unprocessed = [i for i in gdf.index if i not in list(p_dct['fields'].keys())]
+            builder = PestBuilder(project_ws=project_ws_, config_file=config_path_,
+                                  use_existing=False, python_script=py_script, prior_constraint=prior_constraint)
+            builder.build_pest()
+            builder.build_localizer()
+            builder.dry_run('pestpp-ies')
+            builder.write_control_settings(noptmax=3, reals=realizations)
 
-    while unprocessed:
+            p_dir = os.path.join(project_ws_, f'{prior_constraint}_pest')
+            m_dir = os.path.join(project_ws_, f'{prior_constraint}_master')
+            w_dir = os.path.join(project_ws_, 'workers')
 
-        targets = []
-        for i in gdf.index:
+            r_dir = os.path.join(project_ws_, 'results')
+            if not os.path.isdir(r_dir):
+                os.mkdir(r_dir)
 
-            if str(i) in covered or str(i) in excluded:
-                continue
+            exe_ = 'pestpp-ies'
 
-            try:
-                if len(targets) < chunk_sz:
-                    targets.append(str(i))
-                else:
-                    break
+            _pst = f'{project}.pst'
 
-            except IndexError:
-                break
+            run_pst(p_dir, exe_, _pst, num_workers=workers, worker_root=w_dir,
+                    master_dir=m_dir, verbose=False, cleanup=True)
 
-        join_daily_timeseries(gmt, met, lst, snow, ts, overwrite=True,
-                              start_date=start_date, end_date=end_date, **{'target_fields': targets})
+            fcst_file = os.path.join(project_ws_, m_dir, f'{project}.3.par.csv')
+            fcst_out = os.path.join(project_ws_, r_dir, f'{fid}.3.par.csv')
+            if not os.path.exists(fcst_file):
+                fcst_file = os.path.join(project_ws_, m_dir, f'{project}.2.par.csv')
+                fcst_out = os.path.join(project_ws_, r_dir, f'{fid}.2.par.csv')
 
-        prepped_targets, excluded_targets = prep_fields_json(DATA_DIRS['props'], ts, DATA_DIRS['prepped_input'],
-                                                             dynamics=DATA_DIRS['cuttings'], target_plots=targets)
+            shutil.copyfile(fcst_file, fcst_out)
+            print(f'Wrote {os.path.basename(fcst_out)} to {r_dir}.')
 
-        excluded += excluded_targets
+            pdc_file = os.path.join(m_dir, f'{project}.pdc.csv')
+            pdc_out = os.path.join(r_dir, f'{fid}.pdc.csv')
 
-        remove = [PEST_DATA['p_dir'], os.path.join(project_ws, 'obs'), PEST_DATA['m_dir'], PEST_DATA['w_dir']]
+            obs_idx_file = os.path.join(m_dir, f'{project}.idx.csv')
+            obs_idx_out = os.path.join(r_dir, f'{fid}.idx.csv')
 
-        try:
-            os.chdir(project_ws)
-            [print('rmtree: {}'.format(rmdir)) for rmdir in remove]
-            [shutil.rmtree(rmdir) for rmdir in remove]
-        except FileNotFoundError:
-            pass
+            if os.path.exists(pdc_file):
+                shutil.copyfile(pdc_file, pdc_out)
+                shutil.copyfile(obs_idx_file, obs_idx_out)
+                print(f'Wrote {os.path.basename(pdc_out)} to {r_dir}.')
+                print(f'Wrote {os.path.basename(obs_idx_out)} to {r_dir}.')
+                print('')
 
-        [os.mkdir(mkdir) for mkdir in remove[1:]]
-
-        preproc(prepped_targets, ts, project_ws)
-
-        # noinspection PyTypedDict
-        dct_ = get_pest_builder_args(project_ws, DATA_DIRS['prepped_input'], ts)
-        dct_.update({'python_script': PEST_DATA['python_script']})
-        build_pest(project_ws, PEST_DATA['p_dir'], **dct_)
-
-        pst_f = os.path.join(PEST_DATA['p_dir'], '{}.pst'.format(project))
-
-        build_localizer(pst_f, ag_json=DATA_DIRS['prepped_input'])
-        write_control_settings(pst_f, 3, realizations)
-
-        try:
-            run_pst(PEST_DATA['p_dir'], PEST_DATA['exe_'], PEST_DATA['_pst'],
-                    num_workers=n_workers, worker_root=PEST_DATA['w_dir'],
-                    master_dir=PEST_DATA['m_dir'], verbose=False, cleanup=True)
-        except Exception:
-            time.sleep(3)
-            run_pst(PEST_DATA['p_dir'], PEST_DATA['exe_'], PEST_DATA['_pst'],
-                    num_workers=n_workers, worker_root=PEST_DATA['w_dir'],
-                    master_dir=PEST_DATA['m_dir'], verbose=False, cleanup=False)
-
-        params = os.path.join(PEST_DATA['m_dir'], '{}.{}.par.csv'.format(project, iterations))
-        pdf = pd.read_csv(params, index_col=0).mean(axis=0)
-        p_str = ['_'.join(s.split(':')[1].split('_')[1:-1]) for s in list(pdf.index)]
-        pdf.index = p_str
-
-        for t in prepped_targets:
-            p_dct['fields'][t] = e = {}
-            for p in pars:
-                key = '{}_{}'.format(p, t)
-                e[p] = pdf.at[key]
-
-        with open(project_tracker, 'w') as fp:
-            json.dump(p_dct, fp, indent=4)
-
-        print('Write {} to \n{}'.format(targets, os.path.basename(project_tracker)))
-
-        covered += prepped_targets
-
-        unprocessed = [i for i in gdf.index if i not in list(p_dct['fields'].keys())]
 
 
 if __name__ == '__main__':
+    d = '/data/ssd2/swim'
 
-    p_tracker = os.path.join(data, '{}_params.json'.format(project))
+    project_ = '4_Flux_Network'
+    project_ws_ = os.path.join(d, project_)
 
-    run_pest_sequence(p_tracker, 6, index_col='FID', chunk_sz=50, realizations=100, iterations=3,
-                      start_date='2012-01-01', end_date='2021-12-31')
+    config_file = os.path.join(project_ws_, 'config.toml')
+
+    run_pest_sequence(config_file, project_ws_, workers=50, realizations=300)
+
 # ========================= EOF ====================================================================
