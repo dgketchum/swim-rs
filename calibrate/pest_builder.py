@@ -16,7 +16,8 @@ from calibrate.run_pest import run_pst
 
 class PestBuilder:
 
-    def __init__(self, config_file, project_ws, use_existing=False, python_script=None, prior_constraint='tight'):
+    def __init__(self, config_file, project_ws, use_existing=False, python_script=None, prior_constraint='tight',
+                 conflicted_obs=None):
 
         self.project_ws = project_ws
 
@@ -34,6 +35,8 @@ class PestBuilder:
         self.pest = None
 
         self.prior_contstraint = prior_constraint
+
+        self.conflicted_obs = conflicted_obs
 
         self.pest_dir = os.path.join(project_ws, f'{prior_constraint}_pest')
         self.master_dir = os.path.join(project_ws, f'{prior_constraint}_master')
@@ -113,95 +116,12 @@ class PestBuilder:
                                       'running "build_pest" will overwrite it.')
 
         self.pest = PstFrom(self.project_ws, self.pest_dir, remove_existing=True)
-        _file, count = None, None
 
-        for k, v in self.pest_args['pars'].items():
-            if 'file' in v.keys():
-                _file = v.pop('file')
-            if v['lower_bound'] <= 0.0:
-                transform = 'none'
-            else:
-                transform = 'log'
-            self.pest.add_parameters(_file, 'constant', transform=transform, alt_inst_str='{}_'.format(k), **v)
+        self._write_params()
 
-        obsnme_str = 'oname:obs_etf_{}_otype:arr_i:{}_j:0'
-
-        for i, fid in enumerate(self.pest_args['targets']):
-
-            # only weight etf on capture dates
-            et_df = pd.read_csv(self.pest_args['inputs'][i], index_col=0, parse_dates=True)
-            if 'start' in self.pest_args.keys():
-                et_df = et_df.loc[self.config.start_dt: self.config.end_dt]
-                et_df.to_csv(self.pest_args['inputs'][i])
-
-            self.pest.add_observations(self.pest_args['etf_obs']['file'][i],
-                                       insfile=self.pest_args['etf_obs']['insfile'][i])
-
-            et_df['obs_id'] = [obsnme_str.format(fid, j).lower() for j in range(et_df.shape[0])]
-            idx = et_df['obs_id']
-            idx.to_csv(self.obs_idx_file)
-
-            captures = [ix for ix, r in et_df.iterrows()
-                        if r['etf_irr_ct']
-                        or r['etf_inv_irr_ct']
-                        and ix.month in list(range(1, 13))]
-
-            captures = et_df['obs_id'].loc[captures]
-
-            d = self.pest.obs_dfs[i].copy()
-            d['weight'] = 0.0
-
-            try:
-                d.loc[captures, 'weight'] = 1.0
-            except KeyError:
-                captures = [v.lower() for v in captures.values]
-                d.loc[captures, 'weight'] = 1.0
-
-            d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
-            d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
-
-            d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
-            d = d.sort_values(by='idx')
-            d.drop(columns=['idx'], inplace=True)
-
-            self.pest.obs_dfs[i] = d
-
+        i = self._write_etf_obs()
         count = i + 1
-        obsnme_str = 'oname:obs_swe_{}_otype:arr_i:{}_j:0'
-
-        for j, fid in enumerate(self.pest_args['targets']):
-
-            # only weight swe Nov - Apr
-            swe_df = pd.read_csv(self.pest_args['inputs'][i], index_col=0, parse_dates=True)
-            if 'start' in self.pest_args.keys():
-                swe_df = swe_df.loc[self.config.start_dt: self.config.end_dt]
-                swe_df.to_csv(self.pest_args['inputs'][i])
-
-            self.pest.add_observations(self.pest_args['swe_obs']['file'][j],
-                                       insfile=self.pest_args['swe_obs']['insfile'][j])
-
-            swe_df['obs_id'] = [obsnme_str.format(fid, j) for j in range(swe_df.shape[0])]
-            valid = [ix for ix, r in swe_df.iterrows() if ix.month in [11, 12, 1, 2, 3, 4]]
-            valid = swe_df['obs_id'].loc[valid]
-
-            d = self.pest.obs_dfs[j + count].copy()
-            d['weight'] = 0.0
-
-            # TODO: adjust as needed for phi visibility of etf vs. swe
-            try:
-                d.loc[valid, 'weight'] = 0.03
-            except KeyError:
-                valid = [v.lower() for v in valid.values]
-                d.loc[valid, 'weight'] = 0.03
-
-            d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
-            d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
-
-            d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
-            d = d.sort_values(by='idx')
-            d.drop(columns=['idx'], inplace=True)
-
-            self.pest.obs_dfs[j + count] = d
+        self._write_swe_obs(count, i)
 
         ofiles = [str(x).replace('obs', 'pred') for x in self.pest.output_filenames]
         self.pest.output_filenames = ofiles
@@ -211,38 +131,14 @@ class PestBuilder:
         self.pest.py_run_file = 'custom_forward_run.py'
         self.pest.mod_command = 'python custom_forward_run.py'
 
-        # the build function doesn't appear to write standard_deviation column in obs data
         self.pest.build_pst(version=2)
 
-        # the build function wrote a generic python runner that we replace with our own
-        # with some work, pymeu build can do this for us
-        auto_gen = os.path.join(self.pest_dir, 'custom_forward_run.py')
+        auto_gen = os.path.join(self.pest_dir, self.pest.py_run_file)
         runner = self.pest_args['python_script']
         shutil.copyfile(runner, auto_gen)
 
-        # clean up the new pest directory
-        for dd in ['master', 'workers', 'obs']:
-            try:
-                shutil.rmtree(os.path.join(self.pest_dir, dd))
-            except FileNotFoundError:
-                continue
+        self._finalize_obs()
 
-        pst = Pst(self.pst_file)
-        obs = pst.observation_data
-
-        obs['standard_deviation'] = 0.00
-        etf_idx = [i for i in obs.index if 'etf' in i]
-        obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.3
-
-        swe_idx = [i for i, r in obs.iterrows() if 'swe' in i and r['obsval'] > 0.0]
-        obs.loc[swe_idx, 'standard_deviation'] = obs['obsval'] * 0.02
-
-        # add time information
-        obs['time'] = [float(i.split(':')[3].split('_')[0]) for i in obs.index]
-
-
-        pst.write(pst.filename, version=2)
-        print(f'{len(swe_df)} rows in swe, {len(et_df)} rows in etf')
         print('Configured PEST++ for {} targets, '.format(len(self.pest_args['targets'])))
 
     def build_localizer(self):
@@ -397,6 +293,135 @@ class PestBuilder:
         except Exception:
             run_sp(cmd, wd, verbose=True)
 
+    def _write_params(self):
+        _file = None
+
+        for k, v in self.pest_args['pars'].items():
+            if 'file' in v.keys():
+                _file = v.pop('file')
+            if v['lower_bound'] <= 0.0:
+                transform = 'none'
+            else:
+                transform = 'log'
+            self.pest.add_parameters(_file, 'constant', transform=transform, alt_inst_str='{}_'.format(k), **v)
+
+    def _write_swe_obs(self, count, i):
+        obsnme_str = 'oname:obs_swe_{}_otype:arr_i:{}_j:0'
+
+        for j, fid in enumerate(self.pest_args['targets']):
+
+            # only weight swe Nov - Apr
+            swe_df = pd.read_csv(self.pest_args['inputs'][i], index_col=0, parse_dates=True)
+            if 'start' in self.pest_args.keys():
+                swe_df = swe_df.loc[self.config.start_dt: self.config.end_dt]
+                swe_df.to_csv(self.pest_args['inputs'][i])
+
+            self.pest.add_observations(self.pest_args['swe_obs']['file'][j],
+                                       insfile=self.pest_args['swe_obs']['insfile'][j])
+
+            swe_df['obs_id'] = [obsnme_str.format(fid, j) for j in range(swe_df.shape[0])]
+            valid = [ix for ix, r in swe_df.iterrows() if ix.month in [11, 12, 1, 2, 3, 4]]
+            valid = swe_df['obs_id'].loc[valid]
+
+            d = self.pest.obs_dfs[j + count].copy()
+            d['weight'] = 0.0
+
+            # TODO: adjust as needed for phi visibility of etf vs. swe
+            try:
+                d.loc[valid, 'weight'] = 0.03
+            except KeyError:
+                valid = [v.lower() for v in valid.values]
+                d.loc[valid, 'weight'] = 0.03
+
+            d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
+            d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
+
+            d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
+            d = d.sort_values(by='idx')
+            d.drop(columns=['idx'], inplace=True)
+
+            self.pest.obs_dfs[j + count] = d
+
+    def _write_etf_obs(self):
+        obsnme_str = 'oname:obs_etf_{}_otype:arr_i:{}_j:0'
+
+        for i, fid in enumerate(self.pest_args['targets']):
+
+            # only weight etf on capture dates
+            et_df = pd.read_csv(self.pest_args['inputs'][i], index_col=0, parse_dates=True)
+            if 'start' in self.pest_args.keys():
+                et_df = et_df.loc[self.config.start_dt: self.config.end_dt]
+                et_df.to_csv(self.pest_args['inputs'][i])
+
+            self.pest.add_observations(self.pest_args['etf_obs']['file'][i],
+                                       insfile=self.pest_args['etf_obs']['insfile'][i])
+
+            et_df['obs_id'] = [obsnme_str.format(fid, j).lower() for j in range(et_df.shape[0])]
+            idx = et_df['obs_id']
+            idx.to_csv(self.obs_idx_file)
+
+            captures = [ix for ix, r in et_df.iterrows()
+                        if r['etf_irr_ct']
+                        or r['etf_inv_irr_ct']
+                        and ix.month in list(range(1, 13))]
+
+            captures = et_df['obs_id'].loc[captures]
+
+            d = self.pest.obs_dfs[i].copy()
+            d['weight'] = 0.0
+
+            try:
+                d.loc[captures, 'weight'] = 1.0
+            except KeyError:
+                captures = [v.lower() for v in captures.values]
+                d.loc[captures, 'weight'] = 1.0
+
+            d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
+            d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
+
+            d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
+            d = d.sort_values(by='idx')
+            d.drop(columns=['idx'], inplace=True)
+
+            self.pest.obs_dfs[i] = d
+
+            if self.conflicted_obs:
+                self._drop_conflicts()
+
+        return i
+
+    def _finalize_obs(self):
+        pst = Pst(self.pst_file)
+        obs = pst.observation_data
+
+        obs['standard_deviation'] = 0.00
+        etf_idx = [i for i in obs.index if 'etf' in i]
+        obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.3
+
+        swe_idx = [i for i, r in obs.iterrows() if 'swe' in i and r['obsval'] > 0.0]
+        obs.loc[swe_idx, 'standard_deviation'] = obs['obsval'] * 0.02
+
+        # add time information
+        obs['time'] = [float(i.split(':')[3].split('_')[0]) for i in obs.index]
+
+        pst.write(pst.filename, version=2)
+
+    def _drop_conflicts(self):
+
+        pdc = pd.read_csv(self.conflicted_obs, index_col=0)
+
+        for i, fid in enumerate(self.pest_args['targets']):
+            d = self.pest.obs_dfs[i].copy()
+            start_weight = d['weight'].sum()
+            idx = [i for i in pdc.index if 'etf' in i and fid.lower() in i]
+            d.loc[idx, 'weight'] = 0.0
+            end_weight = d['weight'].sum()
+            removed = start_weight - end_weight
+            self.pest.obs_dfs[i] = d
+            print(f'Removed {int(removed)} conflicted obs from {fid} etf')
+
+        self.pest.build_pst(version=2)
+
 
 if __name__ == '__main__':
 
@@ -407,7 +432,7 @@ if __name__ == '__main__':
 
     # prior_constraint = 'tight'
 
-    for prior_constraint in ['loose', 'tight']:
+    for prior_constraint_ in ['loose', 'tight']:
 
         project_ws_ = os.path.join(root_, 'tutorials', project)
         if not os.path.isdir(project_ws_):
@@ -418,14 +443,14 @@ if __name__ == '__main__':
         py_script = os.path.join(project_ws_, 'custom_forward_run.py')
 
         builder = PestBuilder(project_ws=project_ws_, config_file=config_path_,
-                              use_existing=False, python_script=py_script, prior_constraint=prior_constraint)
+                              use_existing=False, python_script=py_script, prior_constraint=prior_constraint_)
         builder.build_pest()
         builder.build_localizer()
         builder.dry_run('pestpp-ies')
         builder.write_control_settings(noptmax=4, reals=300)
 
         p_dir = os.path.join(project_ws_, 'pest')
-        m_dir = os.path.join(project_ws_, f'{prior_constraint}_master')
+        m_dir = os.path.join(project_ws_, f'{prior_constraint_}_master')
         w_dir = os.path.join(project_ws_, 'workers')
         exe_ = 'pestpp-ies'
 
