@@ -77,7 +77,7 @@ def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_ty
         print(_name)
 
 
-def sparse_sample_etf(shapefile, lat_col, lon_col, bucket=None, debug=False, mask_type='irr', check_dir=None,
+def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None,
                       feature_id='FID',  select=None, start_yr=2000, end_yr=2024, state_col='field_3'):
     df = gpd.read_file(shapefile)
     df.index = df[feature_id]
@@ -105,8 +105,9 @@ def sparse_sample_etf(shapefile, lat_col, lon_col, bucket=None, debug=False, mas
                 continue
 
             site = row[feature_id]
+            grid_sz = row['grid_size']
 
-            desc = 'etf_{}_{}_{}'.format(site, mask_type, year)
+            desc = 'etf_{}_p{}_{}_{}'.format(site, grid_sz, mask_type, year)
             if check_dir:
                 f = os.path.join(check_dir, '{}.csv'.format(desc))
                 if os.path.exists(f):
@@ -114,23 +115,20 @@ def sparse_sample_etf(shapefile, lat_col, lon_col, bucket=None, debug=False, mas
                     continue
 
             if row[state_col] in STATES:
-                # TODO: remove continue statement; running on East only
-                continue
-                # irr = irr_coll.filterDate('{}-01-01'.format(year),
-                #                           '{}-12-31'.format(year)).select('classification').mosaic()
-                # irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
+                irr = irr_coll.filterDate('{}-01-01'.format(year),
+                                          '{}-12-31'.format(year)).select('classification').mosaic()
+                irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
 
             else:
                 irr_mask = lanid.select(f'irr_{year}').clip(east)
                 irr = ee.Image(1).subtract(irr_mask)
 
-            point = ee.Geometry.Point([row[lon_col], row[lat_col]])
-            geo = point.buffer(150.)
-            fc = ee.FeatureCollection(ee.Feature(geo, {feature_id: site}))
+            polygon = ee.Geometry.Polygon([[c[0], c[1]] for c in row['geometry'].exterior.coords])
+            fc = ee.FeatureCollection(ee.Feature(polygon, {feature_id: site}))
 
             etf_coll = ee.ImageCollection(ETF).filterDate('{}-01-01'.format(year),
                                                           '{}-12-31'.format(year))
-            etf_coll = etf_coll.filterBounds(geo)
+            etf_coll = etf_coll.filterBounds(polygon)
             etf_scenes = etf_coll.aggregate_histogram('system:index').getInfo()
 
             first, bands = True, None
