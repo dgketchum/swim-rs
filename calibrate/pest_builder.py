@@ -16,7 +16,7 @@ from calibrate.run_pest import run_pst
 
 class PestBuilder:
 
-    def __init__(self, config_file, project_ws, use_existing=False, python_script=None, prior_constraint='tight',
+    def __init__(self, config_file, project_ws, use_existing=False, python_script=None, prior_constraint=None,
                  conflicted_obs=None):
 
         self.project_ws = project_ws
@@ -38,8 +38,13 @@ class PestBuilder:
 
         self.conflicted_obs = conflicted_obs
 
-        self.pest_dir = os.path.join(project_ws, f'{prior_constraint}_pest')
-        self.master_dir = os.path.join(project_ws, f'{prior_constraint}_master')
+        if prior_constraint:
+            self.pest_dir = os.path.join(project_ws, f'{prior_constraint}_pest')
+            self.master_dir = os.path.join(project_ws, f'{prior_constraint}_master')
+        else:
+            self.pest_dir = os.path.join(project_ws, 'pest')
+            self.master_dir = os.path.join(project_ws, 'master')
+
         self.workers_dir = os.path.join(project_ws, 'workers')
         self.obs_dir = os.path.join(project_ws, 'obs')
 
@@ -418,7 +423,7 @@ class PestBuilder:
             end_weight = d['weight'].sum()
             removed = start_weight - end_weight
             self.pest.obs_dfs[i] = d
-            print(f'Removed {int(removed)} conflicted obs from {fid} etf')
+            print(f'Removed {int(removed)} conflicted obs from {fid} etf, leaving {end_weight}')
 
         self.pest.build_pst(version=2)
 

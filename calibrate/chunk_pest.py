@@ -9,9 +9,9 @@ from calibrate.run_pest import run_pst
 from prep.prep_plots import prep_fields_json, preproc
 from swim.config import ProjectConfig
 from swim.input import SamplePlots
+from run.run_tutorial import run_fields
 
-
-def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=None):
+def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=None, pdc_remove=False):
     """"""
     config = ProjectConfig()
     config.read_config(conf_path, project_ws)
@@ -37,6 +37,9 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
     for fid, row in flux_meta_df.iterrows():
 
+        if fid != 'US-Blo':
+            continue
+
         os.chdir(os.path.dirname(__file__))
 
         prepped_input = os.path.join(data_dir, 'prepped_input.json')
@@ -53,6 +56,14 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
         py_script = os.path.join(project_ws, 'custom_forward_run.py')
 
         for prior_constraint in ['loose', 'tight']:
+
+            if prior_constraint != 'loose':
+                continue
+
+            station_prepped_input = os.path.join(project_ws, 'results', prior_constraint,
+                                                 fid, f'prepped_input_{fid}.json')
+
+            shutil.copyfile(prepped_input, station_prepped_input)
 
             p_dir = os.path.join(project_ws, f'{prior_constraint}_pest')
             if os.path.isdir(p_dir):
@@ -76,14 +87,17 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
             builder.build_localizer()
 
             # short run sets up base realization and checks for prior-data conflict
-            builder.write_control_settings(noptmax=-1, reals=5)
+            if pdc_remove:
+                builder.write_control_settings(noptmax=-1, reals=5)
+            else:
+                builder.write_control_settings(noptmax=0)
+
             builder.dry_run('pestpp-ies')
 
             # Check for prior-data conflict, remove and rebuild if necessary
             pdc_file = os.path.join(p_dir, f'{project}.pdc.csv')
 
-            if os.path.exists(pdc_file):
-
+            if os.path.exists(pdc_file) and pdc_remove:
                 with tempfile.TemporaryDirectory() as temp_dir:
                     temp_pdc = os.path.join(temp_dir, f'{project}.pdc.csv')
                     shutil.copyfile(pdc_file, temp_pdc)
@@ -95,7 +109,6 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
                     builder.build_localizer()
                     builder.write_control_settings(noptmax=0)
                     builder.dry_run('pestpp-ies')
-
 
             builder.write_control_settings(noptmax=3, reals=realizations)
 
@@ -157,6 +170,7 @@ if __name__ == '__main__':
 
     bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
 
-    run_pest_sequence(config_file, project_ws_, workers=10, realizations=10, bad_params=bad_parameters)
+    run_pest_sequence(config_file, project_ws_, workers=10, realizations=10, bad_params=bad_parameters,
+                      pdc_remove=False)
 
-# ========================= EOF ========================================================================
+# ========================= EOF ============================================================================

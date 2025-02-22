@@ -6,7 +6,7 @@ from pyemu import Pst
 from calibrate.pest_builder import PestBuilder
 
 
-def debug_calibration(conf_path, project_ws, fid, params=None):
+def debug_calibration(conf_path, project_ws, fid, params=None, pdc_file=None):
     """"""
 
     builder = PestBuilder(project_ws=project_ws_, config_file=conf_path,
@@ -52,10 +52,9 @@ def debug_calibration(conf_path, project_ws, fid, params=None):
     if params:
         df[params] = output[params]
 
-    pdc_file = os.path.join(builder.master_dir, f'{builder.config.project_name}.pdc.csv')
-    if os.path.exists(pdc_file):
+    if pdc_file is not None and os.path.exists(pdc_file):
         pdc = pd.read_csv(pdc_file, index_col=0)
-        idx_file = builder.obs_idx_file
+        idx_file = pdc_file.replace('.pdc', '.idx')
         idx = pd.read_csv(idx_file, index_col=0, parse_dates=True)
         idx['pdc'] = [1 if obs_id in pdc.index else 0 for obs_id in idx['obs_id']]
 
@@ -68,13 +67,17 @@ def debug_calibration(conf_path, project_ws, fid, params=None):
 
 if __name__ == '__main__':
     home = os.path.expanduser('~')
+
+    project = '4_Flux_Network'
+
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
-    project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
+    project_ws_ = os.path.join(root, 'tutorials', project)
     config_file = os.path.join(project_ws_, 'config.toml')
-    pdc = os.path.join(project_ws_, 'master', 'alarc_test.pdc.csv')
+    pdc = os.path.join(project_ws_, 'master', f'{project}.pdc.csv')
 
     add_params = ['irr_day', 'irrigation', 'depl_root', 'ks', 'depl_ze']
 
-    debug_calibration(config_file, project_ws_, 'ALARC2_Smith6', add_params)
+    pdc_ = '/data/ssd2/swim/4_Flux_Network/results/loose/US-Blo/US-Blo.pdc.csv'
+    debug_calibration(config_file, project_ws_, 'US-Blo', add_params, pdc_file=pdc_)
 
 # ========================= EOF ====================================================================

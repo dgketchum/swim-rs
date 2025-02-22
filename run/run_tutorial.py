@@ -9,16 +9,15 @@ from swim.input import SamplePlots
 
 
 
-def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False, calibration_dir=None):
+def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False, forecast_file=None,
+               input_data=None):
     start_time = time.time()
 
     config = ProjectConfig()
-    fcst_file = os.path.join(calibration_dir, f'{os.path.basename(project_ws)}.3.par.csv')
-    if not os.path.exists(fcst_file):
-        fcst_file = os.path.join(calibration_dir, f'{os.path.basename(project_ws)}.2.par.csv')
-
     config.read_config(ini_path, project_ws, forecast=forecast,
-                       calibrate=calibrate, forecast_param_csv=fcst_file)
+                       calibrate=calibrate, forecast_param_csv=forecast_file)
+    if input_data:
+        config.input_data = input_data
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)
@@ -58,8 +57,13 @@ if __name__ == '__main__':
     out_csv_dir = os.path.join(data_, 'model_output')
 
     config_file = os.path.join(project_ws_, 'config.toml')
-    prepped_input = os.path.join(data_, 'prepped_input.json')
+    # prepped_input = os.path.join(data_, 'prepped_input.json')
+    prepped_input = os.path.join('/data/ssd2/swim/4_Flux_Network',
+                                 'results', 'loose',  'US-Blo', f'prepped_input_US-Blo.json')
 
-    run_fields(config_file, project_ws_, out_csv_dir, forecast=True, calibrate=False)
+    fcst_params = '/data/ssd2/swim/4_Flux_Network/results/loose/US-Blo/US-Blo.3.par.csv'
+
+    run_fields(config_file, project_ws_, out_csv_dir, forecast=True, calibrate=False, forecast_file=fcst_params,
+               input_data=prepped_input)
 
 # ========================= EOF ====================================================================
