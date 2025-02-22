@@ -142,18 +142,16 @@ def get_ssurgo(fields, desc, debug=False, selector='FID'):
 def get_landfire(fields, desc, debug=False, selector='FID'):
     plots = ee.FeatureCollection(fields)
 
-    height = ee.ImageCollection('LANDFIRE/Vegetation/EVH/v1_4_0').select('EVH').first().rename('plant_height')
+    vtype = ee.ImageCollection('MODIS/061/MCD12Q1').select('LC_Type1').first().rename('veg_type')
 
-    img = height
+    _selectors = [selector, 'LAT', 'LON'] + ['veg_type']
 
-    _selectors = [selector, 'LAT', 'LON'] + ['height']
-
-    means = img.reduceRegions(collection=plots,
-                              reducer=ee.Reducer.mean(),
-                              scale=30)
+    means = vtype.reduceRegions(collection=plots,
+                                reducer=ee.Reducer.mode(),
+                                scale=30)
 
     if debug:
-        debug = means.filterMetadata('FID', 'equals', 1789).getInfo()
+        debug = means.filterMetadata('FID', 'equals', 'US-CRT').getInfo()
 
     task = ee.batch.Export.table.toCloudStorage(
         means,
@@ -182,12 +180,12 @@ if __name__ == '__main__':
     # get_cdl(fields_, description, selector=index_col)
 
     description = '{}_irr'.format(project)
-    get_irrigation(fields_, description, debug=True, selector=index_col, lanid=True)
+    # get_irrigation(fields_, description, debug=True, selector=index_col, lanid=True)
 
     description = '{}_ssurgo'.format(project)
     # get_ssurgo(fields_, description, debug=False, selector=index_col)
 
     description = '{}_landfire'.format(project)
-    # get_landfire(fields_, description, debug=False, selector=index_col)
+    get_landfire(fields_, description, debug=True, selector=index_col)
 
 # ========================= EOF ====================================================================

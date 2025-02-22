@@ -5,8 +5,10 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
+from prep import MAX_EFFECTIVE_ROOTING_DEPTH as RZ
 
-def write_field_properties(shp, irr, ssurgo, js, cdl=None, landfire=None, index_col='FID',
+
+def write_field_properties(shp, irr, ssurgo, js, cdl=None, lulc=None, flux_meta=None, index_col='FID',
                            shp_add=False, targets=None):
     """"""
     irr = pd.read_csv(irr, index_col=index_col)
@@ -50,11 +52,19 @@ def write_field_properties(shp, irr, ssurgo, js, cdl=None, landfire=None, index_
         cdl = cdl.T.to_dict()
         [dct[k].update({'cdl': {int(kk.split('_')[1]): int(vv) for kk, vv in cdl[k].items()}}) for k in dct.keys()]
 
-    if landfire is not None:
-        landfire = pd.read_csv(landfire, index_col=index_col)
-        plant_height = landfire[['height']].copy()
-        plant_height = plant_height.T.to_dict()
-        [dct[k].update({'plant_height': plant_height[k]['height']}) for k in dct.keys()]
+    if lulc is not None:
+        lulc = pd.read_csv(lulc, index_col=index_col)
+        rz = lulc[['mode']].copy()
+        rz = rz.T.to_dict()
+        # inches to mm
+        [dct[k].update({'root_depth': RZ[str(rz['US-KLS']['mode'])]['rooting_depth'] * 1000.}) for k in dct.keys()]
+
+    if flux_meta is not None:
+        flux = pd.read_csv(flux_meta, header=1, skip_blank_lines=True, index_col='Site ID')
+        lulc = flux[['General classification']].copy()
+        lulc = lulc.T.to_dict()
+        # inches to mm
+        [dct[k].update({'flux_lulc': lulc[k]['General classification']}) for k in dct.keys()]
 
     d = dct.copy()
     for k, v in dct.items():
@@ -88,7 +98,6 @@ def write_field_properties(shp, irr, ssurgo, js, cdl=None, landfire=None, index_
 
 
 if __name__ == '__main__':
-
     home = os.path.expanduser('~')
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
@@ -99,9 +108,12 @@ if __name__ == '__main__':
 
     irr = os.path.join(data, 'properties', 'calibration_irr.csv')
     ssurgo = os.path.join(data, 'properties', 'calibration_ssurgo.csv')
+    modis_lulc = os.path.join(data, 'properties', 'calibration_lulc.csv')
     properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
 
-    write_field_properties(shapefile_path, irr, ssurgo, properties_json, index_col=FEATURE_ID, shp_add=None,
-                           targets=None)
+    flux_metadata = os.path.join(data, 'station_metadata.csv')
+
+    write_field_properties(shapefile_path, irr, ssurgo, properties_json, lulc=modis_lulc, index_col=FEATURE_ID,
+                           flux_meta=flux_metadata, shp_add=None, targets=None)
 
 # ========================= EOF ====================================================================
