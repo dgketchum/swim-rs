@@ -10,7 +10,8 @@ from swim.input import SamplePlots
 
 from run.run_tutorial import run_fields
 
-def compare_results(conf_path, project_ws, result_csv_dir, mode, summary_csv, cal_dir=None, select=None):
+def compare_results(conf_path, project_ws, result_csv_dir, mode, summary_csv, cal_dir=None, select=None,
+                    updates=None):
     """
     Compares results for different model modes, creating a summary table.
     Now handles daily, overpass, and monthly results separately.
@@ -32,8 +33,10 @@ def compare_results(conf_path, project_ws, result_csv_dir, mode, summary_csv, ca
 
     for fid, row in flux_meta_df.iterrows():
 
-        # if row['General classification'] not in ['Croplands']:
-        #     continue
+        if fid != 'US-Blo':
+            continue
+
+        out_csv, updated, fcst_file = None, False, None
 
         if select and fid not in select:
             continue
@@ -49,20 +52,43 @@ def compare_results(conf_path, project_ws, result_csv_dir, mode, summary_csv, ca
                 continue
 
         if not mode == 'uncal':
-            fcst_file = os.path.join(project_ws_, f'{mode_}_master', f'{os.path.basename(project_ws)}.3.par.csv')
-            if not os.path.exists(fcst_file):
-                fcst_file = os.path.join(project_ws_, f'{mode_}_master', f'{os.path.basename(project_ws)}.2.par.csv')
 
-            pdc_file = os.path.join(cal_dir, f'{os.path.basename(project_ws)}.pdc.csv')
+            if updates:
+                fcst_file = os.path.join(updates, mode, fid, f'{fid}.3.par.csv')
+                if not os.path.exists(fcst_file):
+                    fcst_file = os.path.join(updates, mode, fid, f'{fid}.2.par.csv')
 
-            if os.path.exists(pdc_file):
-                pdc = pd.read_csv(pdc_file, index_col=0)
-                pdc_ct = pdc.shape[0]
+                if os.path.exists(fcst_file):
+                    input_file = os.path.join(updates, mode, fid, f'prepped_input_{fid}.json')
+                    output_dir = os.path.join(updates, mode, fid)
+                    out_csv = os.path.join(output_dir, f'{fid}.csv')
+                    if not os.path.exists(out_csv):
+                        print(f'\nRunning inference on updated parameters at {fid}')
+                        run_fields(config_file, project_ws, output_dir, forecast=True, forecast_file=fcst_file,
+                                   input_data=input_file)
+                    else:
+                        print(f'\nInference on updated parameters at {fid} exists, skipping')
+                    updated = True
+                else:
+                    fcst_file = None
 
-        out_csv = os.path.join(result_csv_dir, f'{fid}.csv')
-        if not os.path.exists(out_csv):
-            print(f"WARNING: Model output file not found for {fid}")
-            continue
+            if not fcst_file:
+                fcst_file = os.path.join(project_ws, f'{mode_}_master', f'{os.path.basename(project_ws)}.3.par.csv')
+                if not os.path.exists(fcst_file):
+                    fcst_file = os.path.join(project_ws, f'{mode_}_master', f'{os.path.basename(project_ws)}.2.par.csv')
+
+                pdc_file = os.path.join(cal_dir, f'{os.path.basename(project_ws)}.pdc.csv')
+
+                if os.path.exists(pdc_file):
+                    pdc = pd.read_csv(pdc_file, index_col=0)
+                    pdc_ct = pdc.shape[0]
+
+        if not out_csv:
+            updated = False
+            out_csv = os.path.join(result_csv_dir, f'{fid}.csv')
+            if not os.path.exists(out_csv):
+                print(f"WARNING: Model output file not found for {fid}")
+                continue
 
         print(f'\nProcessing {fid} for mode: {mode}')
 
@@ -70,7 +96,8 @@ def compare_results(conf_path, project_ws, result_csv_dir, mode, summary_csv, ca
             out_csv, flux_data, irr=irr_dct, target='et'
         )
 
-        site_results = {'fid': fid, 'mode': mode, 'lulc': row['General classification'], 'pdc': pdc_ct}
+        site_results = {'fid': fid, 'mode': mode, 'lulc': row['General classification'],
+                        'pdc': pdc_ct, 'updated': updated}
 
         if daily_results:
             rmse_diff_daily = ((daily_results['rmse_ssebop'] - daily_results['rmse_swim']) /
@@ -187,7 +214,7 @@ def compare_results(conf_path, project_ws, result_csv_dir, mode, summary_csv, ca
                 df_combined[original_col] = df_combined[original_col].fillna(df_combined[col])
                 df_combined.drop(columns=[col], inplace=True)
 
-        cols = ['fid', 'mode', 'lulc', 'pdc']
+        cols = ['fid', 'mode', 'lulc', 'pdc', 'updated']
         for prefix in ['monthly_', 'daily_', 'overpass_']:
             cols.extend([f'{prefix}rmse_swim', f'{prefix}rmse_ssebop', f'{prefix}rmse_diff_pct',
                          f'{prefix}r2_swim', f'{prefix}r2_ssebop', f'{prefix}n_samples'])
@@ -204,7 +231,7 @@ def compare_results(conf_path, project_ws, result_csv_dir, mode, summary_csv, ca
                                            ascending=[True, True],
                                            sort_remaining=True)
 
-        cols = ['fid', 'mode', 'lulc', 'pdc']
+        cols = ['fid', 'mode', 'lulc', 'pdc', 'updated']
         for prefix in ['monthly_', 'daily_', 'overpass_']:
             cols.extend([f'{prefix}rmse_swim', f'{prefix}rmse_ssebop', f'{prefix}rmse_diff_pct',
                          f'{prefix}r2_swim', f'{prefix}r2_ssebop', f'{prefix}n_samples'])
@@ -275,9 +302,11 @@ if __name__ == '__main__':
         if mode_ == 'uncal':
             forecast_ = False
             calibration_dir = None
+            update_params = None
         else:
             ct = 3
             forecast_ = True
+            update_params = '/data/ssd2/swim/4_Flux_Network/results'
             calibration_dir = os.path.join(project_ws_, f'{mode_}_master')
 
 
@@ -291,7 +320,7 @@ if __name__ == '__main__':
         # open properties instead of SamplePlots object for speed
         properties_json = os.path.join(data_, 'landsat', 'calibration_dynamics.json')
         compare_results(config_file, project_ws_, out_csv_dir, summary_csv=summary, select=None,
-                        cal_dir=calibration_dir, mode=mode_)
+                        cal_dir=calibration_dir, mode=mode_, updates=update_params)
 
     insert_blank_rows(summary, bad_data_csv=summary.replace('.csv', '_bad.csv'))
 
