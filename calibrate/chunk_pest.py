@@ -8,8 +8,8 @@ from calibrate.pest_builder import PestBuilder
 from calibrate.run_pest import run_pst
 from prep.prep_plots import prep_fields_json, preproc
 from swim.config import ProjectConfig
-from swim.input import SamplePlots
-from run.run_tutorial import run_fields
+from swim.sampleplots import SamplePlots
+
 
 def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=None, pdc_remove=False):
     """"""
@@ -30,14 +30,14 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
     flux_meta_csv = os.path.join(data_dir, 'station_metadata.csv')
     flux_meta_df = pd.read_csv(flux_meta_csv, header=1, skip_blank_lines=True, index_col='Site ID')
 
-    if bad_parameters:
+    if bad_params:
         bad_df = pd.read_csv(bad_params, index_col=0)
         bad_stations = bad_df.index.unique().to_list()
         flux_meta_df = flux_meta_df.loc[bad_stations]
 
     for fid, row in flux_meta_df.iterrows():
 
-        if fid != 'US-Blo':
+        if fid != 'S2':
             continue
 
         os.chdir(os.path.dirname(__file__))
@@ -60,9 +60,11 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
             if prior_constraint != 'loose':
                 continue
 
-            station_prepped_input = os.path.join(project_ws, 'results', prior_constraint,
-                                                 fid, f'prepped_input_{fid}.json')
+            target_dir =  os.path.join(project_ws, 'results', prior_constraint, fid)
+            if not os.path.isdir(target_dir):
+                os.mkdir(target_dir)
 
+            station_prepped_input = os.path.join(target_dir, f'prepped_input_{fid}.json')
             shutil.copyfile(prepped_input, station_prepped_input)
 
             p_dir = os.path.join(project_ws, f'{prior_constraint}_pest')
@@ -76,6 +78,14 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
             w_dir = os.path.join(project_ws, 'workers')
             if os.path.isdir(w_dir):
                 shutil.rmtree(w_dir)
+
+            r_dir = os.path.join(project_ws, 'results')
+            if not os.path.isdir(r_dir):
+                os.mkdir(r_dir)
+
+            station_results = os.path.join(r_dir, prior_constraint, fid)
+            if not os.path.exists(station_results):
+                os.mkdir(station_results)
 
             # cwd must be reset to avoid FileNotFound on PstFrom.log
             os.chdir(os.path.dirname(__file__))
@@ -91,6 +101,12 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
                 builder.write_control_settings(noptmax=-1, reals=5)
             else:
                 builder.write_control_settings(noptmax=0)
+
+            builder.spinup(overwrite=True)
+            # copy spinup to station results location
+
+            spinup_out = os.path.join(station_results, f'spinup_{fid}.json')
+            shutil.copyfile(builder.config.spinup, spinup_out)
 
             builder.dry_run('pestpp-ies')
 
@@ -112,20 +128,12 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
             builder.write_control_settings(noptmax=3, reals=realizations)
 
-            r_dir = os.path.join(project_ws, 'results')
-            if not os.path.isdir(r_dir):
-                os.mkdir(r_dir)
-
             exe_ = 'pestpp-ies'
 
             _pst = f'{project}.pst'
 
             run_pst(p_dir, exe_, _pst, num_workers=workers, worker_root=w_dir,
                     master_dir=m_dir, verbose=False, cleanup=False)
-
-            station_results = os.path.join(r_dir, prior_constraint, fid)
-            if not os.path.exists(station_results):
-                os.mkdir(station_results)
 
             fcst_file = os.path.join(m_dir, f'{project}.3.par.csv')
             fcst_out = os.path.join(station_results, f'{fid}.3.par.csv')
@@ -170,7 +178,7 @@ if __name__ == '__main__':
 
     bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
 
-    run_pest_sequence(config_file, project_ws_, workers=10, realizations=10, bad_params=bad_parameters,
-                      pdc_remove=False)
+    run_pest_sequence(config_file, project_ws_, workers=10, realizations=100, bad_params=bad_parameters,
+                      pdc_remove=True)
 
 # ========================= EOF ============================================================================
