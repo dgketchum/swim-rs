@@ -6,7 +6,7 @@ import pandas as pd
 from analysis.metrics import compare_etf_estimates
 from model.etd.tracker import TUNABLE_PARAMS, SampleTracker
 from swim.config import ProjectConfig
-from swim.input import SamplePlots
+from swim.sampleplots import SamplePlots
 
 from run.run_tutorial import run_fields
 
@@ -67,7 +67,7 @@ def compare_results(conf_path, project_ws, result_csv_dir, mode, summary_csv, ca
                         run_fields(config_file, project_ws, output_dir, forecast=True, forecast_file=fcst_file,
                                    input_data=input_file)
                     else:
-                        print(f'\nInference on updated parameters at {fid} exists, skipping')
+                        print(f'\nInference on updated parameters at {fid} exists, skipping new run')
                     updated = True
                 else:
                     fcst_file = None
@@ -292,7 +292,7 @@ if __name__ == '__main__':
     project_ws_ = os.path.join(root, 'tutorials', project)
     summary = os.path.join(project_ws_, 'results_comparison.csv')
 
-    for mode_ in ['loose', 'tight', 'uncal']:
+    for mode_ in ['tight', 'loose', 'uncal']:
 
         data_ = os.path.join(project_ws_, 'data')
 

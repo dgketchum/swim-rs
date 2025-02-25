@@ -4,7 +4,7 @@ import time
 
 import numpy as np
 
-from swim.input import SamplePlots
+from swim.sampleplots import SamplePlots
 from model.etd import obs_field_cycle
 from swim.config import ProjectConfig
 from prep.prep_plots import prep_fields_json

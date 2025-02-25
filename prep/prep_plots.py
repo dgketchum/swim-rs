@@ -14,7 +14,7 @@ import pandas as pd
 from datetime import datetime
 
 from swim.config import ProjectConfig
-from swim.input import SamplePlots
+from swim.sampleplots import SamplePlots
 
 REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',

@@ -6,7 +6,7 @@ import numpy as np
 
 from model.etd import obs_field_cycle
 from swim.config import ProjectConfig
-from swim.input import SamplePlots
+from swim.sampleplots import SamplePlots
 
 
 def optimize_fields(ini_path, project_dir, worker_dir, calibration_dir=False):

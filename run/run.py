@@ -6,7 +6,7 @@ import pandas as pd
 
 from model.etd import obs_field_cycle
 from swim.config import ProjectConfig
-from swim.input import SamplePlots
+from swim.sampleplots import SamplePlots
 
 
 def run_fields(ini_path, project='tongue', calibration_dir=None, parameter_distribution=None,

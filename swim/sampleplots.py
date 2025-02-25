@@ -1,3 +1,4 @@
+import os
 import json
 
 import numpy as np
@@ -16,6 +17,7 @@ class SamplePlots:
         super().__init__()
         self.input = None
         self.output = None
+        self.spinup = None
 
     def initialize_plot_data(self, config):
         f = config.input_data
@@ -28,6 +30,15 @@ class SamplePlots:
         except json.decoder.JSONDecodeError:
             with open(f, 'r') as fp:
                 self.input = json.load(fp)
+
+    def initialize_spinup(self, config):
+
+        if os.path.isfile(config.spinup):
+            print(f'SPINUP: {config.spinup}')
+            with open(config.spinup, 'r') as f:
+                self.spinup = json.load(f)
+        else:
+            raise FileNotFoundError(f'Spinup file {config.spinup} not found')
 
     def input_to_dataframe(self, feature_id):
 

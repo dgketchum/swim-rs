@@ -6,7 +6,7 @@ import pandas as pd
 
 from model.etd import obs_field_cycle
 from swim.config import ProjectConfig
-from swim.input import SamplePlots
+from swim.sampleplots import SamplePlots
 
 from prep.prep_plots import FLUX_SELECT
 
