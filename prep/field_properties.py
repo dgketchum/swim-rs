@@ -57,7 +57,11 @@ def write_field_properties(shp, irr, ssurgo, js, cdl=None, lulc=None, flux_meta=
         rz = lulc[['mode']].copy()
         rz = rz.T.to_dict()
         # inches to mm
-        [dct[k].update({'root_depth': RZ[str(rz['US-KLS']['mode'])]['rooting_depth'] * 1000.}) for k in dct.keys()]
+        [dct[k].update({'root_depth':
+                            RZ[str(rz[k]['mode'])]['rooting_depth'] if str(rz[k]['mode']) in RZ.keys()
+                             else np.nan}) for k in dct.keys()]
+
+        [dct[k].update({'lulc_code': rz[k]['mode']}) for k in dct.keys()]
 
     if flux_meta is not None:
         flux = pd.read_csv(flux_meta, header=1, skip_blank_lines=True, index_col='Site ID')

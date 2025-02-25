@@ -57,6 +57,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     size = len(plots.input['order'])
 
     tracker = SampleTracker(size)
+    tracker.load_root_depth(plots)
     tracker.load_soils(plots)
     tracker.apply_parameters(config, plots, params=params)
 
@@ -92,10 +93,11 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
         obs_kcb_daily.kcb_daily(tracker, day_data)
 
-        compute_field_et.compute_field_et(plots, tracker, day_data, debug_flag)
+        compute_field_et.compute_field_et(plots, tracker, day_data)
 
         if debug_flag:
             tracker.update_dataframe(targets, day_data, step_dt)
+
         else:
             if np.any(np.isnan(tracker.kc_act)):
                 raise ValueError('NaN in Kc_act')
