@@ -5,14 +5,14 @@ import pandas as pd
 
 from model.etd import obs_field_cycle
 from swim.config import ProjectConfig
-from swim.input import SamplePlots
-
+from swim.sampleplots import SamplePlots
 
 
 def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False, forecast_file=None,
                input_data=None):
     start_time = time.time()
 
+    # TODO build a spin-up routine
     config = ProjectConfig()
     config.read_config(ini_path, project_ws, forecast=forecast,
                        calibrate=calibrate, forecast_param_csv=forecast_file)
@@ -41,7 +41,7 @@ def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False
         out_csv = os.path.join(output_csv, f'{fid}.csv')
 
         df.to_csv(out_csv)
-        print(f'\nWrote {fid} output file')
+        print(f'\nWrote {fid} output file to {out_csv}')
 
 
 if __name__ == '__main__':
@@ -49,21 +49,24 @@ if __name__ == '__main__':
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
     project = '4_Flux_Network'
-    project = '4_Flux_Network'
 
     project_ws_ = os.path.join(root, 'tutorials', project)
 
     data_ = os.path.join(project_ws_, 'data')
-    out_csv_dir = os.path.join(data_, 'model_output')
+    # out_csv_dir = os.path.join(data_, 'model_output')
 
     config_file = os.path.join(project_ws_, 'config.toml')
     # prepped_input = os.path.join(data_, 'prepped_input.json')
-    prepped_input = os.path.join('/data/ssd2/swim/4_Flux_Network',
-                                 'results', 'loose',  'US-Blo', f'prepped_input_US-Blo.json')
 
-    fcst_params = '/data/ssd2/swim/4_Flux_Network/results/loose/US-Blo/US-Blo.3.par.csv'
+    site_ = 'US-FPe'
+    constraint_ = 'tight'
 
-    run_fields(config_file, project_ws_, out_csv_dir, forecast=True, calibrate=False, forecast_file=fcst_params,
+    output = os.path.join('/data', 'ssd2', 'swim', '4_Flux_Network', 'results', constraint_, site_)
+
+    prepped_input = os.path.join(output, f'prepped_input_{site_}.json')
+    fcst_params = os.path.join(output, f'{site_}.3.par.csv')
+
+    run_fields(config_file, project_ws_, output, forecast=True, calibrate=False, forecast_file=fcst_params,
                input_data=prepped_input)
 
 # ========================= EOF ====================================================================
