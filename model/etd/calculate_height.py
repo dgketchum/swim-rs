@@ -1,11 +1,3 @@
-"""calculate_height.py
-Function for calculating height of crop based on Kc and height limit
-Called by crop_cycle.py
-
-"""
-
-import logging
-
 import numpy as np
 
 
@@ -33,3 +25,5 @@ def calculate_height(foo):
     )
 
     foo.height = np.minimum(np.maximum(foo.height_initial, np.maximum(height_prev, foo.height)), foo.height_max)
+
+    foo.height = np.maximum(foo.height, 0.05)
