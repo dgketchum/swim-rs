@@ -6,7 +6,7 @@ from pyemu import Pst
 from calibrate.pest_builder import PestBuilder
 
 
-def debug_calibration(conf_path, project_ws, fid, params=None, pdc_file=None):
+def debug_calibration(conf_path, project_ws, fid, out_csv, params=None, pdc_file=None):
     """"""
 
     builder = PestBuilder(project_ws=project_ws_, config_file=conf_path,
@@ -21,7 +21,6 @@ def debug_calibration(conf_path, project_ws, fid, params=None, pdc_file=None):
         flux_data = os.path.join(data_dir, f'{fid}_daily_data.csv')
     flux_data = pd.read_csv(flux_data, index_col='date', parse_dates=True)
 
-    out_csv = os.path.join(data_dir, 'model_output', f'{fid}.csv')
     output = pd.read_csv(out_csv, index_col=0)
 
     output.index = pd.to_datetime(output.index)
@@ -73,11 +72,14 @@ if __name__ == '__main__':
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
     project_ws_ = os.path.join(root, 'tutorials', project)
     config_file = os.path.join(project_ws_, 'config.toml')
+
     pdc = os.path.join(project_ws_, 'master', f'{project}.pdc.csv')
 
     add_params = ['irr_day', 'irrigation', 'depl_root', 'ks', 'depl_ze']
 
-    pdc_ = '/data/ssd2/swim/4_Flux_Network/results/loose/US-Blo/US-Blo.pdc.csv'
-    debug_calibration(config_file, project_ws_, 'US-Blo', add_params, pdc_file=pdc_)
+    pdc_ = '/data/ssd2/swim/4_Flux_Network/results/tight/US-Blo/US-Blo.pdc.csv'
+    out_csv = '/data/ssd2/swim/4_Flux_Network/results/tight/US-Blo/US-Blo.csv'
+
+    debug_calibration(config_file, project_ws_, 'US-Blo', params=add_params, out_csv=out_csv, pdc_file=pdc_)
 
 # ========================= EOF ====================================================================
