@@ -292,15 +292,17 @@ if __name__ == '__main__':
             if not os.path.exists(dst):
                 os.makedirs(dst, exist_ok=True)
 
-            if src == 'etf':
-                print(src, mask)
-                sparse_sample_etf(shapefile_path, bucket=bucket, debug=False,
-                                  mask_type=mask, check_dir=dst, start_yr=1987, end_yr=2022, feature_id=FEATURE_ID,
-                                  state_col=state_col, select=None)
             if src == 'ndvi':
                 print(src, mask)
                 sparse_sample_ndvi(shapefile_path, bucket=bucket, debug=False,
                                    mask_type=mask, check_dir=dst, start_yr=1987, end_yr=2022, feature_id=FEATURE_ID,
                                    state_col=state_col, select=None)
+
+            if src == 'etf':
+                print(src, mask)
+                sparse_sample_etf(shapefile_path, bucket=bucket, debug=False,
+                                  mask_type=mask, check_dir=dst, start_yr=1987, end_yr=2022, feature_id=FEATURE_ID,
+                                  state_col=state_col, select=None)
+
 
 # ========================= EOF =======================================================================================

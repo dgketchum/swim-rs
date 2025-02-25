@@ -5,8 +5,7 @@ from model.etd import runoff
 from model.etd import compute_snow
 
 
-def compute_field_et(ts_data, swb, day_data, debug_flag=False):
-    swb.height = np.maximum(0.05, swb.height)
+def compute_field_et(ts_data, swb, day_data):
 
     kc_max = np.maximum(swb.kc_max, swb.kc_bas + 0.05)
 
@@ -89,6 +88,8 @@ def compute_field_et(ts_data, swb, day_data, debug_flag=False):
         kc_mult = 1
 
     swb.kc_act = kc_mult * swb.ks * swb.kc_bas * swb.fc + swb.ke
+
+    swb.kc_act = np.minimum(swb.kc_max, swb.kc_act)
 
     swb.t = kc_mult * swb.ks * swb.kc_bas * swb.fc
 
@@ -205,6 +206,6 @@ def compute_field_et(ts_data, swb, day_data, debug_flag=False):
 
     swb.delta_soil_water = swb.soil_water - swb.soil_water_prev
 
-    grow_root.grow_root(swb, day_data, debug_flag)
+    grow_root.grow_root(swb, day_data)
 
 
