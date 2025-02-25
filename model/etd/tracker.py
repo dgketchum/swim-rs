@@ -1,7 +1,5 @@
-"""initialize_crop_cycle.py
-Defines InitializeCropCycle class
-Called by crop_cycle.py
-"""
+import json
+import os.path
 
 import numpy as np
 import pandas as pd
@@ -90,10 +88,10 @@ TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad', 'swe_alp
 
 # params not included here (e.g., 'tew') are taken from soils data
 TUNABLE_DEFAULTS = {'ndvi_beta': 1.35,
-            'ndvi_alpha': -0.44,
-            'mad': 0.3,
-            'swe_alpha': 0.073,
-            'swe_beta': 1.38}
+                    'ndvi_alpha': -0.44,
+                    'mad': 0.3,
+                    'swe_alpha': 0.073,
+                    'swe_beta': 1.38}
 
 
 class SampleTracker:
@@ -243,7 +241,6 @@ class SampleTracker:
             except AttributeError as e:
                 print(p, e)
 
-
     def load_root_depth(self, plots):
 
         fields = plots.input['order']
@@ -252,13 +249,13 @@ class SampleTracker:
 
         rz_depth = [plots.input['props'][f]['root_depth'] for f in fields]
         codes = [plots.input['props'][f]['lulc_code'] for f in fields]
-        valids = list(range(1, 13))
-        perennials = list(range(1, 11)) + [12]
+        crops = [12, 14]
+        perennials = [c for c in range(1, 18) if c not in crops]
 
         # depends on both the root depth and code from modis, see prep.__init__
-        self.zr = np.array([rz if cd in valids else self.zr_min for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
-        self.zr_max = np.array([rz if cd in valids else self.zr_max for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
-        self.zr_min = np.array([rz if cd in valids else self.zr_min for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
+        self.zr = np.array([rz if cd in perennials else self.zr_min for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
+        self.zr_max = np.array([rz for rz in rz_depth]).reshape(1, -1)
+        self.zr_min = np.array([rz if cd in perennials else self.zr_min for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
 
         self.perennial = np.array([1 if cd in perennials else 0 for cd in codes]).reshape(1, -1)
 
@@ -289,20 +286,6 @@ class SampleTracker:
         self.depl_root = self.aw * self.zr * 0.2
 
     def setup_dataframe(self, targets):
-        """Initialize output dataframe
-
-        Attributes
-        ----------
-        et_cell :
-
-
-        Returns
-        -------
-
-        Notes
-        -----
-
-        """
 
         self.crop_df = {target: {} for target in targets}
 
@@ -339,7 +322,6 @@ class SampleTracker:
                 cal_arr[group][0, idx] = value
 
             for k, v in cal_arr.items():
-
                 self.__setattr__(k, v)
 
         elif conf.forecast:
@@ -383,37 +365,35 @@ class SampleTracker:
                 self.__setattr__(k, arr)
 
     def apply_initial_conditions(self, conf, sample_plots):
-        size = len(sample_plots.input['order'])
+        order = sample_plots.input['order']
+        size = len(order)
+        tracker_array = None
 
-        param_arr = {k: np.zeros((1, size)) for k in TUNABLE_PARAMS}
+        if os.path.exists(conf.spinup):
+            with open(conf.spinup, 'r') as fp:
+                sdct = json.load(fp)
 
-        for k, v in conf.forecast_parameters.items():
+            first = True
 
-            param_found = False
+            for fid, var_dct in sdct.items():
 
-            while not param_found:
-                for p in TUNABLE_PARAMS:
-                    if p in k:
-                        group = p
-                        fid = k.replace(f'{group}_', '')
-                        param_found = True
+                if first:
+                    tracker_array = {p: np.zeros((1, size)) for p in var_dct.keys()}
+                    first = False
 
-            # PEST++ has lower-cased the FIDs
-            l = [x.lower() for x in sample_plots.input['order']]
-            idx = l.index(fid)
+                idx = sample_plots.input['order'].index(fid)
 
-            if fid not in l:
-                continue
+                for k, v in var_dct.items():
 
-            if params:
-                value = params[k]
-            else:
-                value = v
+                    if k in TRACKER_PARAMS:
 
-            param_arr[group][0, idx] = value
+                        tracker_array[k][idx] = v
 
-        for k, v in param_arr.items():
-            self.__setattr__(k, v)
+            print('USING SPINUP WATER BALANCE INFORMATION')
+
+            for k, v in tracker_array.items():
+
+                self.__setattr__(k, v)
 
     def update_dataframe(self, targets, day_data, step_dt):
         for i, fid in enumerate(targets):
