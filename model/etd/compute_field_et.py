@@ -11,7 +11,8 @@ def compute_field_et(ts_data, swb, day_data):
 
     swb.kc_bas = np.maximum(swb.kc_min, swb.kc_bas)
 
-    swb.fc = ((swb.kc_bas - swb.kc_min) / (kc_max - swb.kc_min)) ** (1 + 0.5 * swb.height)
+    # consider height removal
+    swb.fc = ((swb.kc_bas - swb.kc_min) / (kc_max - swb.kc_min)) # ** (1 + 0.5 * swb.height)
 
     # limit so that few > 0
     swb.fc = np.minimum(swb.fc, 0.99)
@@ -65,11 +66,11 @@ def compute_field_et(ts_data, swb, day_data):
     swb.ks = np.where(swb.depl_root > swb.raw,
                       np.maximum((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0), 1)
 
-    if 90 > day_data.doy > 306:
+    if np.any(swb.swe > 0.0):
         # Calculate Kc during snow cover
 
-        kc_mult = np.ones_like(day_data.swe)
-        condition = day_data.swe > 0.01
+        kc_mult = np.ones_like(swb.swe)
+        condition = swb.swe > 0.01
 
         # Radiation term for reducing Kc to actCount for snow albedo
         k_rad = (
@@ -193,19 +194,12 @@ def compute_field_et(ts_data, swb, day_data):
                          (swb.melt + swb.rain) - swb.sro - swb.dperc - swb.e)
     swb.p_eft = np.maximum(swb.p_eft, 0)
 
-    # Note, at end of season (harvest or death), aw3 and zr need to be reset
-    #   according to depl_root at that time and zr for dormant season.
-    # This is done in setup_dormant().
-
-    # Get setup for next time step.
-    # if foo.in_season:
-
     swb.delta_daw3 = swb.daw3 - swb.daw3_prev
 
     swb.soil_water = (swb.aw * swb.zr) - swb.depl_root + swb.daw3
 
     swb.delta_soil_water = swb.soil_water - swb.soil_water_prev
 
-    grow_root.grow_root(swb, day_data)
+    grow_root.grow_root(swb)
 
 

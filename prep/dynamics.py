@@ -212,7 +212,7 @@ class SamplePlotDynamics:
                 irr_doys.extend(range(start_doy, end_doy))
                 periods += 1
 
-            # print('Warning: setting irrigaiton to ON all days')
+            # print('Warning: setting irrigation to ON all days')
             # irr_doys = list(range(1, df.shape[0] + 1))
             irr_doys = sorted(list(set(irr_doys)))
 

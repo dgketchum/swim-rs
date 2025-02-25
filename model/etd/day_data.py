@@ -100,9 +100,12 @@ class DayData:
         self.srad = np.array(vals['srad_wm2']).reshape(1, -1)
         self.precip = np.array(vals['prcp_mm'])
 
+        hr_ppt = np.array([vals[k] for k in hr_ppt_keys]).reshape(24, size)
         if np.any(self.precip > 0.):
-            hr_ppt = np.array([vals[k] for k in hr_ppt_keys]).reshape(24, size)
             self.hr_precip = hr_ppt
+
+        else:
+            self.hr_precip = np.zeros_like(hr_ppt)
 
         self.precip = self.precip.reshape(1, -1)
 

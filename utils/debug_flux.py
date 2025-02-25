@@ -77,9 +77,15 @@ if __name__ == '__main__':
 
     add_params = ['irr_day', 'irrigation', 'depl_root', 'ks', 'depl_ze']
 
-    pdc_ = '/data/ssd2/swim/4_Flux_Network/results/tight/US-Blo/US-Blo.pdc.csv'
-    out_csv = '/data/ssd2/swim/4_Flux_Network/results/tight/US-Blo/US-Blo.csv'
+    site_ = 'ALARC2_Smith6'
+    constraint_ = 'loose'
 
-    debug_calibration(config_file, project_ws_, 'US-Blo', params=add_params, out_csv=out_csv, pdc_file=pdc_)
+    output = os.path.join('/data', 'ssd2', 'swim', '4_Flux_Network', 'results', constraint_, site_)
+
+    out_csv = os.path.join(output, f'{site_}.csv')
+    pdc_ = os.path.join(output, f'{site_}.pdc.csv')
+    fcst_params = os.path.join(output, f'{site_}.2.par.csv')
+
+    debug_calibration(config_file, project_ws_, site_, params=add_params, out_csv=out_csv, pdc_file=pdc_)
 
 # ========================= EOF ====================================================================

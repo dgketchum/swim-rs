@@ -9,15 +9,18 @@ from swim.sampleplots import SamplePlots
 
 
 def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False, forecast_file=None,
-               input_data=None):
+               input_data=None, spinup_data=None):
     start_time = time.time()
 
-    # TODO build a spin-up routine
     config = ProjectConfig()
     config.read_config(ini_path, project_ws, forecast=forecast,
                        calibrate=calibrate, forecast_param_csv=forecast_file)
+
     if input_data:
         config.input_data = input_data
+
+    if spinup_data:
+        config.spinup = spinup_data
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)
@@ -58,15 +61,17 @@ if __name__ == '__main__':
     config_file = os.path.join(project_ws_, 'config.toml')
     # prepped_input = os.path.join(data_, 'prepped_input.json')
 
-    site_ = 'US-FPe'
-    constraint_ = 'tight'
+    site_ = 'S2'
+    constraint_ = 'loose'
 
     output = os.path.join('/data', 'ssd2', 'swim', '4_Flux_Network', 'results', constraint_, site_)
 
     prepped_input = os.path.join(output, f'prepped_input_{site_}.json')
+    spinup_ = os.path.join(output, f'spinup_{site_}.json')
+
     fcst_params = os.path.join(output, f'{site_}.3.par.csv')
 
     run_fields(config_file, project_ws_, output, forecast=True, calibrate=False, forecast_file=fcst_params,
-               input_data=prepped_input)
+               input_data=prepped_input, spinup_data=spinup_)
 
 # ========================= EOF ====================================================================

@@ -33,7 +33,7 @@ def compare_results(conf_path, project_ws, result_csv_dir, mode, summary_csv, ca
 
     for fid, row in flux_meta_df.iterrows():
 
-        if fid != 'US-Blo':
+        if fid != 'S2':
             continue
 
         out_csv, updated, fcst_file = None, False, None
@@ -292,7 +292,7 @@ if __name__ == '__main__':
     project_ws_ = os.path.join(root, 'tutorials', project)
     summary = os.path.join(project_ws_, 'results_comparison.csv')
 
-    for mode_ in ['tight', 'loose', 'uncal']:
+    for mode_ in ['loose', 'tight', 'uncal']:
 
         data_ = os.path.join(project_ws_, 'data')
 
