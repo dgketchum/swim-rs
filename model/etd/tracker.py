@@ -50,7 +50,6 @@ TRACKER_PARAMS = ['taw',
                   'kc_min',
                   'kc_bas',
                   'kc_bas_mid',
-                  'kc_bas_prev',
                   'ke',
                   'kr',
                   'ks',
@@ -85,7 +84,6 @@ TRACKER_PARAMS = ['taw',
                   'totwatin_ze',
                   'cgdd_at_planting',
                   'wt_irr',
-                  'kc_bas_prev',
                   'irr_min']
 
 TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad', 'swe_alpha', 'swe_beta']
@@ -103,6 +101,8 @@ class SampleTracker:
     def __init__(self, size):
         """Initialize for crops cycle"""
 
+        self.perennial = None
+        self.zr = None
         self.size = size
 
         self.cover_proxy = None
@@ -243,35 +243,26 @@ class SampleTracker:
             except AttributeError as e:
                 print(p, e)
 
-    def load_soils(self, plots):
-        """Assign characteristics for crop from crop Arrays
-        Parameters
-        ---------
-        plots : dict
-            configuration data from INI file
 
-        et_cell :
+    def load_root_depth(self, plots):
 
-        crop :
+        fields = plots.input['order']
 
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        Called by crop_cycle.crop_cycle() just before time loop
-
-        """
-
-        self.zr = self.zr_min  # initialize rooting depth at beginning of time
         self.height = self.height_min
 
-        # Available water in soil
-        # This will be optimized
-        # TODO: get this from props
-        # self.aw = et_cell.props['stn_whc'] / 12 * 1000.  # in/ft to mm/m
+        rz_depth = [plots.input['props'][f]['root_depth'] for f in fields]
+        codes = [plots.input['props'][f]['lulc_code'] for f in fields]
+        valids = list(range(1, 13))
+        perennials = list(range(1, 11)) + [12]
+
+        # depends on both the root depth and code from modis, see prep.__init__
+        self.zr = np.array([rz if cd in valids else self.zr_min for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
+        self.zr_max = np.array([rz if cd in valids else self.zr_max for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
+        self.zr_min = np.array([rz if cd in valids else self.zr_min for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
+
+        self.perennial = np.array([1 if cd in perennials else 0 for cd in codes]).reshape(1, -1)
+
+    def load_soils(self, plots):
 
         fields = plots.input['order']
 
@@ -279,6 +270,7 @@ class SampleTracker:
 
         self.ksat = np.array([plots.input['props'][f]['ksat'] for f in fields]).reshape(1, -1)
         # micrometer/sec to mm/day
+
         self.ksat = self.ksat * 0.001 * 86400.
         self.ksat_hourly = np.ones((24, self.ksat.shape[1])) * self.ksat / 24.
 
@@ -294,7 +286,7 @@ class SampleTracker:
         self.rew = np.where(condition, 0.8 * self.tew, self.rew)  # limit REW based on TEW
 
         self.daw3 = np.zeros_like(self.aw)
-        self.depl_root = self.aw * self.zr
+        self.depl_root = self.aw * self.zr * 0.2
 
     def setup_dataframe(self, targets):
         """Initialize output dataframe
@@ -315,7 +307,7 @@ class SampleTracker:
         self.crop_df = {target: {} for target in targets}
 
     def set_kc_max(self):
-        self.kc_max = 1.05
+        self.kc_max = 1.25
 
     def apply_parameters(self, conf, sample_plots, params=None):
         size = len(sample_plots.input['order'])
@@ -389,6 +381,39 @@ class SampleTracker:
             for k, v in TUNABLE_DEFAULTS.items():
                 arr = np.ones((1, size)) * v
                 self.__setattr__(k, arr)
+
+    def apply_initial_conditions(self, conf, sample_plots):
+        size = len(sample_plots.input['order'])
+
+        param_arr = {k: np.zeros((1, size)) for k in TUNABLE_PARAMS}
+
+        for k, v in conf.forecast_parameters.items():
+
+            param_found = False
+
+            while not param_found:
+                for p in TUNABLE_PARAMS:
+                    if p in k:
+                        group = p
+                        fid = k.replace(f'{group}_', '')
+                        param_found = True
+
+            # PEST++ has lower-cased the FIDs
+            l = [x.lower() for x in sample_plots.input['order']]
+            idx = l.index(fid)
+
+            if fid not in l:
+                continue
+
+            if params:
+                value = params[k]
+            else:
+                value = v
+
+            param_arr[group][0, idx] = value
+
+        for k, v in param_arr.items():
+            self.__setattr__(k, v)
 
     def update_dataframe(self, targets, day_data, step_dt):
         for i, fid in enumerate(targets):
