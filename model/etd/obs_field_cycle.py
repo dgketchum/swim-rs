@@ -57,9 +57,10 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     size = len(plots.input['order'])
 
     tracker = SampleTracker(size)
+    tracker.apply_initial_conditions(config, plots)
+    tracker.apply_parameters(config, plots, params=params)
     tracker.load_root_depth(plots)
     tracker.load_soils(plots)
-    tracker.apply_parameters(config, plots, params=params)
 
     targets = plots.input['order']
 
@@ -89,7 +90,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
         day_data.update_daily_inputs(vals, size)
 
-        calculate_height.calculate_height(tracker)
+        # calculate_height.calculate_height(tracker)
 
         obs_kcb_daily.kcb_daily(tracker, day_data)
 
