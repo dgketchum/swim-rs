@@ -1,4 +1,5 @@
 import os
+import json
 import shutil
 from collections import OrderedDict
 
@@ -9,7 +10,8 @@ from pyemu.utils import PstFrom
 from pyemu.utils.os_utils import run_ossystem, run_sp
 
 from swim.config import ProjectConfig
-from swim.input import SamplePlots
+from swim.sampleplots import SamplePlots
+from model.etd import obs_field_cycle
 
 from calibrate.run_pest import run_pst
 
@@ -298,6 +300,25 @@ class PestBuilder:
         except Exception:
             run_sp(cmd, wd, verbose=True)
 
+    def spinup(self, overwrite=False):
+
+        if not os.path.exists(self.config.spinup) or overwrite:
+            print('RUNNING SPINUP')
+
+            if overwrite:
+                try:
+                    os.remove(self.config.spinup)
+                except FileNotFoundError:
+                    pass
+
+            output = obs_field_cycle.field_day_loop(self.config, self.plots, debug_flag=True)
+            spn_dct = {k: v.iloc[-1].to_dict() for k, v in output.items()}
+            with open(self.config.spinup, 'w') as f:
+                json.dump(spn_dct, f)
+
+        else:
+            print('SPINUP exists, skipping')
+
     def _write_params(self):
         _file = None
 
@@ -423,7 +444,7 @@ class PestBuilder:
             end_weight = d['weight'].sum()
             removed = start_weight - end_weight
             self.pest.obs_dfs[i] = d
-            print(f'Removed {int(removed)} conflicted obs from {fid} etf, leaving {end_weight}')
+            print(f'Removed {int(removed)} conflicted obs from {fid} etf, leaving {int(end_weight)}')
 
         self.pest.build_pst(version=2)
 

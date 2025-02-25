@@ -17,6 +17,7 @@ class ProjectConfig:
     def __init__(self):
         super().__init__()
 
+        self.spinup = None
         self.forecast_parameter_groups = None
         self.forecast_parameters = None
         self.forecast = None
@@ -118,6 +119,8 @@ class ProjectConfig:
         # self.soils = config.get(crop_et_sec, 'soils')
 
         self.input_data = os.path.join(self.data_folder, config[crop_et_sec]['input_data'])
+
+        self.spinup = config[crop_et_sec]['spinup_data']
 
         print('\n')
         print('Config: {}'.format(conf))

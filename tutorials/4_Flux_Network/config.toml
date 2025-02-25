@@ -20,6 +20,8 @@ end_date = '2022-12-31'
 
 ## Static file names; prepend with data_folder
 input_data = '{project_root}/data/prepped_input.json'
+spinup_data = '{project_root}/spinup.json'
+
 plot_timeseries = '{project_root}/data/plot_timeseries'
 
 ## Misc configs
