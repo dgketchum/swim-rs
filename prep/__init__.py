@@ -21,8 +21,36 @@ MAX_EFFECTIVE_ROOTING_DEPTH = {
     "8": {"rooting_depth": 0.80, "description": "Woody Savannas: tree cover 30-60% (canopy >2m)."},
     "9": {"rooting_depth": 0.80, "description": "Savannas: tree cover 10-30% (canopy >2m)."},
     "10": {"rooting_depth": 0.51, "description": "Grasslands: dominated by herbaceous annuals (<2m)."},
-    "11": {"rooting_depth": 0.55, "description": "Cropland, same depth as shrublands"},
-    "12": {"rooting_depth": 0.41, "description": "Desert vegetation."}
+    "11": {"rooting_depth": 0.37, "description": "Wetlands"},
+    "12": {"rooting_depth": 0.55, "description": "Cropland, same depth as shrublands"},
+    "13": {"rooting_depth": 0.55, "description": "Developed"},
+    "14": {"rooting_depth": 0.55, "description": "Cropland/Natural Mosiac, same depth as shrublands"},
+    "16": {"rooting_depth": 0.41, "description": "Desert vegetation."}
+}
+
+MEAN_EFFECTIVE_ROOTING_DEPTH = {
+    "1": {"rooting_depth": 1.34,
+          "description": "Evergreen Needleleaf Forests: dominated by evergreen conifer trees (canopy >2m). Tree cover >60%."},
+    "2": {"rooting_depth": 7.99,
+          "description": "Evergreen Broadleaf Forests: dominated by evergreen broadleaf and palmate trees (canopy >2m). Tree cover >60%."},
+    "3": {"rooting_depth": 0.84,
+          "description": "Deciduous Needleleaf Forests: dominated by deciduous needleleaf (larch) trees (canopy >2m). Tree cover >60%."},
+    "4": {"rooting_depth": 2.09,
+          "description": "Deciduous Broadleaf Forests: dominated by deciduous broadleaf trees (canopy >2m). Tree cover >60%."},
+    "5": {"rooting_depth": 1.94,
+          "description": "Mixed Forests: dominated by neither deciduous nor evergreen (40-60% of each) tree type (canopy >2m). Tree cover >60%."},
+    "6": {"rooting_depth": 1.12,
+          "description": "Closed Shrublands: dominated by woody perennials (1-2m height) >60% cover."},
+    "7": {"rooting_depth": 1.12,
+          "description": "Open Shrublands: dominated by woody perennials (1-2m height) 10-60% cover."},
+    "8": {"rooting_depth": 2.28, "description": "Woody Savannas: tree cover 30-60% (canopy >2m)."},
+    "9": {"rooting_depth": 2.28, "description": "Savannas: tree cover 10-30% (canopy >2m)."},
+    "10": {"rooting_depth": 1.18, "description": "Grasslands: dominated by herbaceous annuals (<2m)."},
+    "11": {"rooting_depth": 1.12, "description": "Wetlands"},
+    "12": {"rooting_depth": 1.12, "description": "Cropland, same depth as shrublands"},
+    "13": {"rooting_depth": 1.12, "description": "Developed"},
+    "14": {"rooting_depth": 1.12, "description": "Cropland/Natural Mosiac, same depth as shrublands"},
+    "16": {"rooting_depth": 1.43, "description": "Desert vegetation."}
 }
 
 if __name__ == '__main__':
