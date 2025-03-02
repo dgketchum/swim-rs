@@ -37,7 +37,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
     for fid, row in flux_meta_df.iterrows():
 
-        if fid != 'S2':
+        if fid == 'US-Bi2':  # 'ALARC2_Smith6'
             continue
 
         os.chdir(os.path.dirname(__file__))
@@ -57,10 +57,10 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
         for prior_constraint in ['loose', 'tight']:
 
-            if prior_constraint != 'loose':
-                continue
+            # if prior_constraint != 'tight':
+            #     continue
 
-            target_dir =  os.path.join(project_ws, 'results', prior_constraint, fid)
+            target_dir = os.path.join(project_ws, 'results', prior_constraint, fid)
             if not os.path.isdir(target_dir):
                 os.mkdir(target_dir)
 
@@ -131,9 +131,13 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
             exe_ = 'pestpp-ies'
 
             _pst = f'{project}.pst'
-
-            run_pst(p_dir, exe_, _pst, num_workers=workers, worker_root=w_dir,
-                    master_dir=m_dir, verbose=False, cleanup=False)
+            
+            try:
+                run_pst(p_dir, exe_, _pst, num_workers=workers, worker_root=w_dir,
+                        master_dir=m_dir, verbose=False, cleanup=False)
+            except Exception as exc:
+                print(exc)
+                continue
 
             fcst_file = os.path.join(m_dir, f'{project}.3.par.csv')
             fcst_out = os.path.join(station_results, f'{fid}.3.par.csv')
@@ -178,7 +182,7 @@ if __name__ == '__main__':
 
     bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
 
-    run_pest_sequence(config_file, project_ws_, workers=10, realizations=100, bad_params=bad_parameters,
+    run_pest_sequence(config_file, project_ws_, workers=20, realizations=200, bad_params=None,
                       pdc_remove=True)
 
 # ========================= EOF ============================================================================
