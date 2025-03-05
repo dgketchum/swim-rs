@@ -9,34 +9,11 @@ import logging
 
 import numpy as np
 
-def kcb_daily(foo, foo_day):
-    """Compute basal ET
+def kcb_daily(tracker, day_data):
+    """"""
 
-    Parameters
-    ---------
-        config :
-
-        et_cell :
-        crop :
-        foo :
-        foo_day :
-
-        debug_flag : boolean
-            True : write debug level comments to debug.txt
-            False
-
-    Returns
-    -------
-    None
-
-    Notes
-    -----
-
-    """
-
-
-    foo.kc_bas = foo_day.ndvi * foo.ndvi_beta + foo.ndvi_alpha
-    foo.kc_bas = np.minimum(foo.kc_max, foo.kc_bas)
+    tracker.kc_bas = day_data.ndvi * tracker.ndvi_beta + tracker.ndvi_alpha
+    tracker.kc_bas = np.minimum(tracker.kc_max, tracker.kc_bas)
 
     # Water has only 'kcb'
     # TODO: calculate for water
@@ -44,7 +21,7 @@ def kcb_daily(foo, foo_day):
     # foo.kc_pot = foo.kc_bas
 
     # ETr changed to ETref 12/26/2007
-    foo.etc_act = foo.kc_act * foo_day.refet
-    foo.etc_pot = foo.kc_pot * foo_day.refet
-    foo.etc_bas = foo.kc_bas * foo_day.refet
+    tracker.etc_act = tracker.kc_act * day_data.refet
+    tracker.etc_pot = tracker.kc_pot * day_data.refet
+    tracker.etc_bas = tracker.kc_bas * day_data.refet
 
