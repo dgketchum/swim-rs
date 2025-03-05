@@ -180,6 +180,7 @@ class SamplePlotDynamics:
                 fallow.append(yr)
                 continue
 
+            # TODO: locate upticks and fill to previous capture that's below a threshold
             local_min_indices = df[(df['diff'] > 0) & (df['diff'].shift(1) < 0)].index
 
             positive_slope = (df['diff'] > 0)
@@ -233,7 +234,7 @@ if __name__ == '__main__':
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 
     irr = os.path.join(data, 'properties', 'calibration_irr.csv')
-    landsat = os.path.join(data, 'landsat')
+    landsat = os.path.join(root, 'footprints', 'landsat')
     joined_timeseries = os.path.join(data, 'plot_timeseries')
 
     FEATURE_ID = 'field_1'

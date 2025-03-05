@@ -52,7 +52,7 @@ def compute_field_et(ts_data, swb, day_data):
 
     swb.few = 1 - swb.fc
 
-    swb.kr = np.minimum((swb.tew - swb.depl_ze) / (swb.tew - swb.rew), 1.)
+    swb.kr = np.minimum((swb.tew - swb.depl_ze) / (swb.tew - swb.rew + 1e-6), 1.)
 
     swb.ke = np.minimum(swb.kr * (swb.kc_max - swb.kc_bas), swb.few * swb.kc_max)
     swb.ke = np.maximum(swb.ke, 0.0)

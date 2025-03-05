@@ -117,7 +117,7 @@ if __name__ == '__main__':
 
     data = os.path.join(root, 'tutorials', project, 'data')
 
-    landsat = os.path.join(data, 'landsat')
+    landsat = os.path.join(root, 'footprints', 'landsat')
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
     FEATURE_ID = 'field_1'
     fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')

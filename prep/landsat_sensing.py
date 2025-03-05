@@ -65,7 +65,7 @@ def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_c
 
 
 def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feature_id='FID',
-                               select=None):
+                               select=None, footprint_spec=None):
     """
     """
     gdf = gpd.read_file(in_shp)
@@ -85,12 +85,19 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
         df = pd.DataFrame(index=dt_index, columns=gdf.index)
         ct = pd.DataFrame(index=dt_index, columns=gdf.index)
 
-        file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
-                     x.endswith('.csv') and '_{}'.format(yr) in x]
+        if footprint_spec is None:
+            file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
+                     x.endswith('.csv') and f'_{yr}' in x]
+        else:
+            file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
+                     x.endswith('.csv') and f'_{yr}' in x and f'_p{footprint_spec}' in x]
 
         for f in file_list:
             field = pd.read_csv(f)
             sid = field.columns[0]
+
+            if sid not in gdf.index:
+                continue
 
             if select and sid not in select:
                 continue
@@ -118,7 +125,7 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
         if prev_df is not None and df.loc[f'{yr}-01'].isna().all().any():
             df.loc[f'{yr}-01-01'] = prev_df.loc[f'{yr-1}-12-31']
 
-        df[df[sid] == 0.0] = np.nan
+        df = df.replace(0.0, np.nan)
         df = df.astype(float).interpolate()
         df = df.bfill()
 
@@ -295,7 +302,7 @@ if __name__ == '__main__':
     irr = os.path.join(data, 'properties', 'calibration_irr.csv')
     ssurgo = os.path.join(data, 'properties', 'calibration_ssurgo.csv')
 
-    landsat = os.path.join(data, 'landsat')
+    landsat = os.path.join(root, 'footprints', 'landsat')
     extracts = os.path.join(landsat, 'extracts')
     tables = os.path.join(landsat, 'tables')
 
