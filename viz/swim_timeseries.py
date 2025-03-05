@@ -125,13 +125,16 @@ if __name__ == '__main__':
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
     project = '4_Flux_Network'
-    feature_ = 'US-Blo'
+    feature_ = 'JPL1_JV114'
+    constraint_ = 'loose'
 
     data = os.path.join(root, 'tutorials', project, 'data')
-    out_csv_dir = os.path.join(data, 'model_output')
+    # out_csv_dir = os.path.join(data, 'model_output')
+    out_csv_dir = os.path.join('/data', 'ssd2', 'swim', '4_Flux_Network', 'results', constraint_, feature_)
+
     out_csv = os.path.join(out_csv_dir, f'{feature_}.csv')
 
-    pdc_ = '/data/ssd2/swim/4_Flux_Network/results/loose/US-Blo/US-Blo.pdc.csv'
+    pdc_ = f'/data/ssd2/swim/4_Flux_Network/results/loose/{feature_}/U{feature_}.pdc.csv'
 
     out_fig_dir = os.path.join(root, 'tutorials', project, 'figures')
 
@@ -142,7 +145,7 @@ if __name__ == '__main__':
     #                      png_file=None)
 
     png = os.path.join(out_fig_dir, 'soil_water_lessIrrDOY.png')
-    plot_swim_timeseries(df, ['soil_water', 'irrigation', 'rain', 'etf_inv_irr', 'kc_act', 'ndvi_inv_irr'],
+    plot_swim_timeseries(df, ['soil_water', 'irrigation', 'rain', 'etf_irr', 'kc_act', 'ndvi_irr', 'zr'],
                          start='2021-01-01', end='2021-12-31', png_file=None)
 
     # png = os.path.join(out_fig_dir, 'irr_et_lessIrrDOY.png')
