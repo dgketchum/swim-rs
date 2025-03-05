@@ -169,7 +169,7 @@ class SampleTracker:
         self.mad = 0.
 
         # TODO: apply this according to irrigation type
-        self.max_irr_rate = 25.4
+        self.max_irr_rate = 25.4 * 6
 
         self.niwr = 0.
         self.p_rz = 0.
