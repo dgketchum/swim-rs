@@ -410,7 +410,7 @@ class PestBuilder:
             self.pest.obs_dfs[i] = d
 
             if self.conflicted_obs:
-                self._drop_conflicts(i)
+                self._drop_conflicts(i, fid)
 
         return i
 
@@ -430,17 +430,17 @@ class PestBuilder:
 
         pst.write(pst.filename, version=2)
 
-    def _drop_conflicts(self, idx):
+    def _drop_conflicts(self, i, fid):
 
         pdc = pd.read_csv(self.conflicted_obs, index_col=0)
 
-        d = self.pest.obs_dfs[idx].copy()
+        d = self.pest.obs_dfs[i].copy()
         start_weight = d['weight'].sum()
-        idx = [i for i in pdc.index if 'etf' in i]
+        idx = [i for i in pdc.index if 'etf' in i and fid.lower() in i]
         d.loc[idx, 'weight'] = 0.0
         end_weight = d['weight'].sum()
         removed = start_weight - end_weight
-        self.pest.obs_dfs[idx] = d
+        self.pest.obs_dfs[i] = d
         print(f'Removed {int(removed)} conflicted obs from etf, leaving {int(end_weight)}')
 
         self.pest.build_pst(version=2)
