@@ -171,12 +171,10 @@ class PestBuilder:
         localizer = df.copy()
 
         # TODO: fix this
-        # most brittle line of code ever written
+        # most brittle lines of code ever written
         sites = list(set(['_'.join(i.split('_')[2:-3]) for i in df.index]))
 
         track = {k: [] for k in sites}
-
-        irr_d = {k.lower(): v for k, v in self.irr.items()}
 
         dt = [pd.to_datetime(k) for k, v in self.plot_time_series.items()]
         years = list(range(self.config.start_dt.year, self.config.end_dt.year + 1))
@@ -189,27 +187,13 @@ class PestBuilder:
 
                     for yr in years:
 
-                        irr = str(yr) in irr_d[s].keys()
-                        if irr:
-                            try:
-                                f_irr = irr_d[s][str(yr)]['f_irr']
-                                irr = f_irr > self.config.irr_threshold
-                            except KeyError:
-                                irr = False
-
                         t_idx = ['_i:{}_'.format(int(i)) for i, r in enumerate(dt) if r.year == yr]
 
-                        if irr:
-                            track[s].append(yr)
-                            subset_par = ['ndvi_alpha', 'ndvi_beta', 'mad']
-                        else:
-                            subset_par = ['aw', 'rew', 'tew']
-
                         idx = [i for i in df.index if '{}_{}'.format(ob_type, s) in i]
-                        idx = [i for i in idx if '_{}_'.format(i.split('_')[4]) in t_idx]
+                        idx = [i for i in idx if '_{}_'.format(i.split('_')[-2]) in t_idx]
                         cols = list(
                             np.array([[c for c in df.columns if '{}_{}'.format(p, s) in c]
-                                      for p in subset_par]).flatten())
+                                      for p in et_params]).flatten())
                         localizer.loc[idx, cols] = 1.0
 
                 else:
@@ -223,6 +207,20 @@ class PestBuilder:
         vals[vals < 1.0] = 0.0
         localizer.loc[localizer.index, localizer.columns] = vals.copy()
         mat_file = os.path.join(os.path.dirname(self.pst_file), 'loc.mat')
+
+        col_sums = {col: int(localizer[col].sum()) for col in localizer.columns}
+        summary = {
+            "shape": localizer.shape,
+            "non_zero_count": int(np.count_nonzero(localizer.values)),
+            "sites": sites,
+            "tracked_irrigation_years": track,
+            "parameter_groups": list(pdict.keys()),
+            "column_sums": col_sums,
+        }
+        summary_file = os.path.join(os.path.dirname(self.pst_file), 'localizer_summary.json')
+        with open(summary_file, 'w') as f:
+            json.dump(summary, f, indent=4)
+
         Matrix.from_dataframe(localizer).to_ascii(mat_file)
 
         pst.write(self.pst_file, version=2)
@@ -346,7 +344,7 @@ class PestBuilder:
                                        insfile=self.pest_args['swe_obs']['insfile'][j])
 
             swe_df['obs_id'] = [obsnme_str.format(fid, j) for j in range(swe_df.shape[0])]
-            valid = [ix for ix, r in swe_df.iterrows() if ix.month in [11, 12, 1, 2, 3, 4]]
+            valid = [ix for ix, r in swe_df.iterrows() if np.isfinite(r['obs_swe']) and r['obs_swe'] > 0.0]
             valid = swe_df['obs_id'].loc[valid]
 
             d = self.pest.obs_dfs[j + count].copy()
@@ -354,10 +352,10 @@ class PestBuilder:
 
             # TODO: adjust as needed for phi visibility of etf vs. swe
             try:
-                d.loc[valid, 'weight'] = 0.03
+                d.loc[valid, 'weight'] = 0.005
             except KeyError:
                 valid = [v.lower() for v in valid.values]
-                d.loc[valid, 'weight'] = 0.03
+                d.loc[valid, 'weight'] = 0.005
 
             d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
             d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
@@ -412,7 +410,7 @@ class PestBuilder:
             self.pest.obs_dfs[i] = d
 
             if self.conflicted_obs:
-                self._drop_conflicts()
+                self._drop_conflicts(i)
 
         return i
 
@@ -422,29 +420,28 @@ class PestBuilder:
 
         obs['standard_deviation'] = 0.00
         etf_idx = [i for i in obs.index if 'etf' in i]
-        obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.3
+        obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.33
 
         swe_idx = [i for i, r in obs.iterrows() if 'swe' in i and r['obsval'] > 0.0]
-        obs.loc[swe_idx, 'standard_deviation'] = obs['obsval'] * 0.02
+        obs.loc[swe_idx, 'standard_deviation'] = obs['obsval'] * 0.33
 
         # add time information
         obs['time'] = [float(i.split(':')[3].split('_')[0]) for i in obs.index]
 
         pst.write(pst.filename, version=2)
 
-    def _drop_conflicts(self):
+    def _drop_conflicts(self, idx):
 
         pdc = pd.read_csv(self.conflicted_obs, index_col=0)
 
-        for i, fid in enumerate(self.pest_args['targets']):
-            d = self.pest.obs_dfs[i].copy()
-            start_weight = d['weight'].sum()
-            idx = [i for i in pdc.index if 'etf' in i and fid.lower() in i]
-            d.loc[idx, 'weight'] = 0.0
-            end_weight = d['weight'].sum()
-            removed = start_weight - end_weight
-            self.pest.obs_dfs[i] = d
-            print(f'Removed {int(removed)} conflicted obs from {fid} etf, leaving {int(end_weight)}')
+        d = self.pest.obs_dfs[idx].copy()
+        start_weight = d['weight'].sum()
+        idx = [i for i in pdc.index if 'etf' in i]
+        d.loc[idx, 'weight'] = 0.0
+        end_weight = d['weight'].sum()
+        removed = start_weight - end_weight
+        self.pest.obs_dfs[idx] = d
+        print(f'Removed {int(removed)} conflicted obs from etf, leaving {int(end_weight)}')
 
         self.pest.build_pst(version=2)
 
