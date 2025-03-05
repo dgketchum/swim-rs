@@ -91,7 +91,9 @@ TUNABLE_DEFAULTS = {'ndvi_beta': 1.35,
                     'ndvi_alpha': -0.44,
                     'mad': 0.3,
                     'swe_alpha': 0.073,
-                    'swe_beta': 1.38}
+                    'swe_beta': 1.38,
+                    'tew': 18.0,
+                    'rew': 3.0}
 
 
 class SampleTracker:
@@ -250,12 +252,15 @@ class SampleTracker:
         rz_depth = [plots.input['props'][f]['root_depth'] for f in fields]
         codes = [plots.input['props'][f]['lulc_code'] for f in fields]
         crops = [12, 14]
-        perennials = [c for c in range(1, 18) if c not in crops]
+        # perennials = [c for c in range(1, 18) if c not in crops]
+        perennials = []
 
         # depends on both the root depth and code from modis, see prep.__init__
-        self.zr = np.array([rz if cd in perennials else self.zr_min for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
+        self.zr = np.array([rz if cd in perennials else self.zr_min[0, 0]
+                            for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
         self.zr_max = np.array([rz for rz in rz_depth]).reshape(1, -1)
-        self.zr_min = np.array([rz if cd in perennials else self.zr_min for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
+        self.zr_min = np.array([rz if cd in perennials else self.zr_min[0, 0]
+                                for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
 
         self.perennial = np.array([1 if cd in perennials else 0 for cd in codes]).reshape(1, -1)
 
@@ -266,21 +271,8 @@ class SampleTracker:
         self.aw = np.array([plots.input['props'][f]['awc'] for f in fields]).reshape(1, -1) * 1000.
 
         self.ksat = np.array([plots.input['props'][f]['ksat'] for f in fields]).reshape(1, -1)
-        # micrometer/sec to mm/day
-
         self.ksat = self.ksat * 0.001 * 86400.
         self.ksat_hourly = np.ones((24, self.ksat.shape[1])) * self.ksat / 24.
-
-        # Estimate readily evaporable water and total evaporable water from WHC
-        # REW is from regression of REW vs. AW from FAO-56 soils table
-        # R.Allen, August 2006, R2=0.92, n = 9
-
-        self.rew = 0.8 + 54.4 * self.aw / 1000  # REW is in mm and AW is in mm/m
-
-        self.tew = -3.7 + 166 * self.aw / 1000  # TEW is in mm and AW is in mm/m
-
-        condition = self.rew > 0.8 * self.tew
-        self.rew = np.where(condition, 0.8 * self.tew, self.rew)  # limit REW based on TEW
 
         self.daw3 = np.zeros_like(self.aw)
         self.depl_root = self.aw * self.zr * 0.2
@@ -387,7 +379,7 @@ class SampleTracker:
 
                     if k in TRACKER_PARAMS:
 
-                        tracker_array[k][idx] = v
+                        tracker_array[k][0, idx] = v
 
             print('USING SPINUP WATER BALANCE INFORMATION')
 
