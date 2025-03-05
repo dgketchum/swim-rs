@@ -61,17 +61,18 @@ if __name__ == '__main__':
     config_file = os.path.join(project_ws_, 'config.toml')
     # prepped_input = os.path.join(data_, 'prepped_input.json')
 
-    site_ = 'S2'
-    constraint_ = 'loose'
+    # site_ = 'ALARC2_Smith6'
+    site_ = 'US-Blo'
+    constraint_ = 'uncal'
 
-    output = os.path.join('/data', 'ssd2', 'swim', '4_Flux_Network', 'results', constraint_, site_)
+    output = os.path.join('/data', 'ssd2', 'swim', '4_Flux_Network', 'results', '03051331')
 
-    prepped_input = os.path.join(output, f'prepped_input_{site_}.json')
-    spinup_ = os.path.join(output, f'spinup_{site_}.json')
+    prepped_input = os.path.join(output, f'prepped_input.json')
+    spinup_ = os.path.join(output, f'spinup.json')
 
-    fcst_params = os.path.join(output, f'{site_}.3.par.csv')
+    # fcst_params = os.path.join(output, f'{site_}.3.par.csv')
 
-    run_fields(config_file, project_ws_, output, forecast=True, calibrate=False, forecast_file=fcst_params,
+    run_fields(config_file, project_ws_, output, forecast=False, calibrate=False, forecast_file=None,
                input_data=prepped_input, spinup_data=spinup_)
 
 # ========================= EOF ====================================================================

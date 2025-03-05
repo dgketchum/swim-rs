@@ -37,32 +37,40 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
     for fid, row in flux_meta_df.iterrows():
 
-        if fid != 'S2':
-            continue
+        prepped_data, prepped_input = False, None
 
-        os.chdir(os.path.dirname(__file__))
-
-        prepped_input = os.path.join(data_dir, 'prepped_input.json')
-
-        prep_fields_json(properties_json, joined_timeseries, dynamics_data,
-                         prepped_input, target_plots=[fid])
-
-        obs_dir = os.path.join(project_ws, 'obs')
-        if not os.path.isdir(obs_dir):
-            os.makedirs(obs_dir, exist_ok=True)
-
-        preproc(conf_path, project_ws)
-
-        py_script = os.path.join(project_ws, 'custom_forward_run.py')
+        # if fid != 'ALARC2_Smith6':  # 'US-Blo'
+        #     continue
 
         for prior_constraint in ['loose', 'tight']:
 
-            if prior_constraint != 'loose':
-                continue
+            # if prior_constraint != 'tight':
+            #     continue
 
-            target_dir =  os.path.join(project_ws, 'results', prior_constraint, fid)
+            target_dir = os.path.join(project_ws, 'results', prior_constraint, fid)
             if not os.path.isdir(target_dir):
                 os.mkdir(target_dir)
+            else:
+                print(f'{fid} {prior_constraint} exists, skipping')
+                continue
+
+            os.chdir(os.path.dirname(__file__))
+
+            if not prepped_data:
+                prepped_input = os.path.join(data_dir, 'prepped_input.json')
+
+                prep_fields_json(properties_json, joined_timeseries, dynamics_data,
+                                 prepped_input, target_plots=[fid])
+
+                obs_dir = os.path.join(project_ws, 'obs')
+                if not os.path.isdir(obs_dir):
+                    os.makedirs(obs_dir, exist_ok=True)
+
+                preproc(conf_path, project_ws)
+
+                prepped_data = True
+
+            py_script = os.path.join(project_ws, 'custom_forward_run.py')
 
             station_prepped_input = os.path.join(target_dir, f'prepped_input_{fid}.json')
             shutil.copyfile(prepped_input, station_prepped_input)
@@ -178,7 +186,7 @@ if __name__ == '__main__':
 
     bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
 
-    run_pest_sequence(config_file, project_ws_, workers=10, realizations=100, bad_params=bad_parameters,
+    run_pest_sequence(config_file, project_ws_, workers=20, realizations=200, bad_params=None,
                       pdc_remove=True)
 
 # ========================= EOF ============================================================================
