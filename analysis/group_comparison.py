@@ -11,7 +11,7 @@ from swim.sampleplots import SamplePlots
 from run.run_tutorial import run_fields
 
 
-def compare_results_grouped(conf_path, project_ws, result_csv_dir, mode, summary_csv, cal_dir=None):
+def compare_results_grouped(conf_path, project_ws, result_csv_dir, mode, summary_csv):
     """
     Compares results for different model modes, creating a summary table.
     Now handles daily, overpass, and monthly results separately.
@@ -29,6 +29,7 @@ def compare_results_grouped(conf_path, project_ws, result_csv_dir, mode, summary
     irr = fields.input['irr_data']
 
     results_list = []
+    fcst_file = None
 
     for fid, row in flux_meta_df.iterrows():
 
@@ -43,27 +44,17 @@ def compare_results_grouped(conf_path, project_ws, result_csv_dir, mode, summary
         flux_data = os.path.join(data_dir, 'daily_flux_files', f'{fid}_daily_data.csv')
         if not os.path.exists(flux_data):
             flux_data = os.path.join(data_dir, f'{fid}_daily_data.csv')
-            if not os.path.exists(flux_data):
-                print(f'WARNING: file {fid} not found')
-                continue
 
         if not mode == 'uncal':
-            fcst_file = os.path.join(project_ws, f'{mode_}_master', f'{os.path.basename(project_ws)}.3.par.csv')
-            if not os.path.exists(fcst_file):
-                fcst_file = os.path.join(project_ws, f'{mode_}_master', f'{os.path.basename(project_ws)}.2.par.csv')
 
-            pdc_file = os.path.join(cal_dir, f'{os.path.basename(project_ws)}.pdc.csv')
-
-            if os.path.exists(pdc_file):
-                pdc = pd.read_csv(pdc_file, index_col=0)
-                pdc_ct = pdc.shape[0]
-
-        if not out_csv:
-            updated = False
             out_csv = os.path.join(result_csv_dir, f'{fid}.csv')
+
             if not os.path.exists(out_csv):
-                print(f"WARNING: Model output file not found for {fid}")
                 continue
+
+            fcst_file = os.path.join(result_csv_dir, f'{os.path.basename(project_ws)}.3.par.csv')
+            if not os.path.exists(fcst_file):
+                fcst_file = os.path.join(result_csv_dir, f'{os.path.basename(project_ws)}.2.par.csv')
 
         print(f'\nProcessing {fid} for mode: {mode}')
 
@@ -153,6 +144,7 @@ def compare_results_grouped(conf_path, project_ws, result_csv_dir, mode, summary
         param_mean.index = p_str
         param_std.index = p_str
 
+        group = None
         for p_string in param_mean.index:
             param_found = False
             while not param_found:
@@ -179,45 +171,22 @@ def compare_results_grouped(conf_path, project_ws, result_csv_dir, mode, summary
                 df_results.loc[(fid, mode), f'{p}_mean'] = tracker.__getattribute__(p)[0, 0]
                 df_results.loc[(fid, mode), f'{p}_std'] = np.nan
 
-    if os.path.exists(summary_csv):
-        df_existing = pd.read_csv(summary_csv)
-        df_existing = df_existing.set_index(['fid', 'mode'])
-        df_combined = pd.merge(df_existing, df_results, on=['fid', 'mode'], how='outer', suffixes=('_old', ''))
 
-        for col in df_combined.columns:
-            if col.endswith('_old'):
-                original_col = col.replace('_old', '')
-                df_combined[original_col] = df_combined[original_col].fillna(df_combined[col])
-                df_combined.drop(columns=[col], inplace=True)
+    df_results = df_results.sort_index(level=['fid', 'mode'],
+                                       ascending=[True, True],
+                                       sort_remaining=True)
 
-        cols = ['fid', 'mode', 'lulc', 'pdc', 'updated']
-        for prefix in ['monthly_', 'daily_', 'overpass_']:
-            cols.extend([f'{prefix}rmse_swim', f'{prefix}rmse_ssebop', f'{prefix}rmse_diff_pct',
-                         f'{prefix}r2_swim', f'{prefix}r2_ssebop', f'{prefix}n_samples'])
-        for param in TUNABLE_PARAMS:
-            cols.extend([f'{param}_mean', f'{param}_std'])
+    cols = ['fid', 'mode', 'lulc', 'pdc', 'updated']
+    for prefix in ['monthly_', 'daily_', 'overpass_']:
+        cols.extend([f'{prefix}rmse_swim', f'{prefix}rmse_ssebop', f'{prefix}rmse_diff_pct',
+                     f'{prefix}r2_swim', f'{prefix}r2_ssebop', f'{prefix}n_samples'])
+    for param in TUNABLE_PARAMS:
+        cols.extend([f'{param}_mean', f'{param}_std'])
 
-        cols = [col for col in cols if col in df_combined.columns]
-        df_combined = df_combined[cols]
-        df_combined = df_combined.reset_index()
-        df_combined.to_csv(summary_csv, index=False)
-
-    else:
-        df_results = df_results.sort_index(level=['fid', 'mode'],
-                                           ascending=[True, True],
-                                           sort_remaining=True)
-
-        cols = ['fid', 'mode', 'lulc', 'pdc', 'updated']
-        for prefix in ['monthly_', 'daily_', 'overpass_']:
-            cols.extend([f'{prefix}rmse_swim', f'{prefix}rmse_ssebop', f'{prefix}rmse_diff_pct',
-                         f'{prefix}r2_swim', f'{prefix}r2_ssebop', f'{prefix}n_samples'])
-        for param in TUNABLE_PARAMS:
-            cols.extend([f'{param}_mean', f'{param}_std'])
-
-        cols = [col for col in cols if col in df_results.columns]
-        df_results = df_results[cols]
-        df_results = df_results.reset_index()
-        df_results.to_csv(summary_csv, index=False)
+    cols = [col for col in cols if col in df_results.columns]
+    df_results = df_results[cols]
+    df_results = df_results.reset_index()
+    df_results.to_csv(summary_csv, index=False)
 
     print(f"\nResults saved to: {summary_csv}")
 
@@ -262,33 +231,19 @@ if __name__ == '__main__':
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
     project = '4_Flux_Network'
+    mode_ = 'tight'
 
     project_ws_ = os.path.join(root, 'tutorials', project)
-    summary = os.path.join(project_ws_, 'results_comparison_05MAR2025_crops_tight.csv')
     update_dir = '/data/ssd2/swim/4_Flux_Network/results'
 
-    for mode_ in [ 'uncal', 'tight', 'loose']:
+    output = os.path.join('/data', 'ssd2', 'swim', '4_Flux_Network', 'results', '03051423')
+    summary = os.path.join(output, 'results_comparison.csv')
 
-        data_ = os.path.join(project_ws_, 'data')
+    data_ = os.path.join(project_ws_, 'data')
 
-        config_file_ = os.path.join(project_ws_, 'config.toml')
-        prepped_input = os.path.join(data_, 'prepped_input.json')
+    config_file_ = os.path.join(project_ws_, 'config.toml')
 
-        if mode_ == 'uncal':
-            forecast_ = False
-            calibration_dir = None
-        else:
-            ct = 3
-            forecast_ = True
-            calibration_dir = os.path.join(project_ws_, f'{mode_}_master')
-
-        out_csv_dir = os.path.join(data_, f'model_output_{mode_}')
-        if not os.path.exists(out_csv_dir):
-            os.mkdir(out_csv_dir)
-
-        compare_results_grouped(config_file_, project_ws_, out_csv_dir, mode=mode_, summary_csv=summary,
-                                cal_dir=calibration_dir)
-
+    compare_results_grouped(config_file_, project_ws_, output, mode=mode_, summary_csv=summary)
     insert_blank_rows(summary, bad_data_csv=summary.replace('.csv', '_bad.csv'))
 
 # ========================= EOF ====================================================================

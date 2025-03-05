@@ -37,7 +37,6 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
         bad_df = bad_df[(bad_df['lulc'] == 'Croplands') & (bad_df['mode'] == 'tight')]
         bad_df = bad_df[bad_df['monthly_rmse_diff_pct'] < 0.0]
         fids = bad_df.index.unique().to_list() + ['ET_8', 'S2']
-        fids = fids[:2]
 
     else:
         fids = [f for f, r in flux_meta_df.iterrows() if r['General classification'] == 'Croplands']
