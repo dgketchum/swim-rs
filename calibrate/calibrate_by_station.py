@@ -11,7 +11,7 @@ from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 
 
-def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=None, pdc_remove=False):
+def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=None, pdc_remove=False, overwrite=False):
     """"""
     config = ProjectConfig()
     config.read_config(conf_path, project_ws)
@@ -39,17 +39,17 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
         prepped_data, prepped_input = False, None
 
-        # if fid != 'ALARC2_Smith6':  # 'US-Blo'
-        #     continue
+        if fid != 'ALARC2_Smith6':
+            continue
 
-        for prior_constraint in ['loose', 'tight']:
-
-            # if prior_constraint != 'tight':
-            #     continue
+        for prior_constraint in ['tight']:
 
             target_dir = os.path.join(project_ws, 'results', prior_constraint, fid)
+
             if not os.path.isdir(target_dir):
                 os.mkdir(target_dir)
+            elif overwrite:
+                pass
             else:
                 print(f'{fid} {prior_constraint} exists, skipping')
                 continue
@@ -187,6 +187,6 @@ if __name__ == '__main__':
     bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
 
     run_pest_sequence(config_file, project_ws_, workers=20, realizations=200, bad_params=None,
-                      pdc_remove=True)
+                      pdc_remove=False, overwrite=True)
 
 # ========================= EOF ============================================================================
