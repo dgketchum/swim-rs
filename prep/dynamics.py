@@ -21,7 +21,7 @@ class SamplePlotDynamics:
 
         self._load_data()
 
-    def analyze_irrigation(self):
+    def analyze_irrigation(self, lookback=2):
 
         for fid in tqdm(self.irr.index, desc='Analyzing Irrigation', total=len(self.irr.index)):
             if self.select and fid not in self.select:
@@ -34,7 +34,7 @@ class SamplePlotDynamics:
                 print(f'{_file} not found, skipping')
                 continue
 
-            field_data = self._analyze_field_irrigation(fid, field_time_series)
+            field_data = self._analyze_field_irrigation(fid, field_time_series, 10)
             if field_data is not None:
                 self.fields['irr'][fid] = field_data
 
@@ -135,7 +135,7 @@ class SamplePlotDynamics:
 
         return field_data
 
-    def _analyze_field_irrigation(self, field, field_time_series):
+    def _analyze_field_irrigation(self, field, field_time_series, lookback):
         if field not in self.irr.index:
             print(f'{field} not in index')
             return None
@@ -195,7 +195,7 @@ class SamplePlotDynamics:
                 end_index = group_indices[-1]
 
                 if start_index in local_min_indices:
-                    start_doy = (start_index - pd.Timedelta(days=2)).dayofyear
+                    start_doy = (start_index - pd.Timedelta(days=lookback)).dayofyear
                 else:
                     start_doy = start_index.dayofyear
 
@@ -228,20 +228,25 @@ class SamplePlotDynamics:
 if __name__ == '__main__':
     root = '/home/dgketchum/PycharmProjects/swim-rs'
 
-    project = '4_Flux_Network'
+    project = 'alarc_test'
+    feature_ = 'ALARC2_Smith6'
 
     data = os.path.join(root, 'tutorials', project, 'data')
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 
     irr = os.path.join(data, 'properties', 'calibration_irr.csv')
+
     landsat = os.path.join(root, 'footprints', 'landsat')
+    # landsat = os.path.join(data, 'landsat')
+
     joined_timeseries = os.path.join(data, 'plot_timeseries')
 
     FEATURE_ID = 'field_1'
+
     cuttings_json = os.path.join(landsat, 'calibration_dynamics.json')
 
     dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3,
-                                  out_json_file=cuttings_json, select=None)
+                                  out_json_file=cuttings_json, select=[feature_])
     dynamics.analyze_groundwater_subsidy()
     dynamics.analyze_irrigation()
     dynamics.save_json()
