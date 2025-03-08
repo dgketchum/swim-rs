@@ -52,18 +52,13 @@ if __name__ == '__main__':
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
     project = '4_Flux_Network'
+    site_ = 'ALARC2_Smith6'
+    constraint_ = 'uncal'
 
     project_ws_ = os.path.join(root, 'tutorials', project)
-
     data_ = os.path.join(project_ws_, 'data')
-    # out_csv_dir = os.path.join(data_, 'model_output')
-
     config_file = os.path.join(project_ws_, 'config.toml')
-    # prepped_input = os.path.join(data_, 'prepped_input.json')
 
-    # site_ = 'ALARC2_Smith6'
-    # site_ = 'US-Blo'
-    # constraint_ = 'uncal'
 
     output = os.path.join('/data', 'ssd2', 'swim', '4_Flux_Network', 'results', '03051423')
 

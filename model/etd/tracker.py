@@ -149,6 +149,7 @@ class SampleTracker:
         self.kc_bas_mid = 0.
         self.kc_bas_prev = 0.
         self.ke = 0.
+        self.ke_max = 0.85
         self.kr = 0.
         self.ks = 0.
         self.ksat = 0.

@@ -1,5 +1,6 @@
 import os
 import time
+from pprint import pprint
 
 import numpy as np
 import pandas as pd
@@ -7,16 +8,24 @@ import pandas as pd
 from model.etd import obs_field_cycle
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
+from analysis.metrics import compare_etf_estimates
+from viz.swim_timeseries import flux_pdc_timeseries
 
-from prep.prep_plots import FLUX_SELECT
 
+def run_flux_sites(ini_path, project_ws, flux_file, outdir, calibration_dir=None, forecast=False, calibrate=False,
+                   forecast_file=None, input_data=None, spinup_data=None):
 
-def run_flux_sites(ini_path, flux_file, project='tongue', calibration_dir=None, parameter_distribution=None,
-                   write_files=None):
     start_time = time.time()
 
     config = ProjectConfig()
-    config.read_config(ini_path, calibration_dir=calibration_dir, parameter_dist_csv=parameter_distribution)
+    config.read_config(ini_path, project_ws, calibration_dir=calibration_dir, forecast=forecast,
+                       calibrate=calibrate, forecast_param_csv=forecast_file)
+
+    if input_data:
+        config.input_data = input_data
+
+    if spinup_data:
+        config.spinup = spinup_data
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)
@@ -31,101 +40,51 @@ def run_flux_sites(ini_path, flux_file, project='tongue', calibration_dir=None, 
 
     for i, fid in enumerate(targets):
         df = df_dct[fid].copy()
-        pred_et = df['et_act'].values
+        in_df = fields.input_to_dataframe(fid)
+        df = pd.concat([df, in_df], axis=1, ignore_index=False)
+        df = df.loc[config.start_dt:config.end_dt]
+        df.to_csv(os.path.join(outdir, f'{fid}.csv'))
+        irr_ = fields.input['irr_data'][fid]
+        daily, overpass, monthly = compare_etf_estimates(df, flux_file, irr=irr_, target='et')
+        pprint(monthly)
 
-        print(fid)
-        obs_etf = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/obs/obs_etf_{}.np'.format(project, fid)
-        obs_etf = np.loadtxt(obs_etf)
-        cols = ['etf_obs'] + list(df.columns)
-        df['etf_obs'] = obs_etf
+        a = 1
 
-        obs_eta = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}/obs/obs_eta_{}.np'.format(project, fid)
-        obs_eta = np.loadtxt(obs_eta)
-        cols = ['eta_obs'] + cols
-        df['eta_obs'] = obs_eta
-
-        df = df[cols]
-        df.index = [pd.to_datetime(i) for i in df.index]
-
-        if write_files:
-            file_ = write_files.format(fid)
-            df.to_csv(file_)
-
-        if not flux_file:
-            continue
-
-        comp = pd.DataFrame(data=np.vstack([obs_eta, pred_et]).T, columns=['obs', 'pred'], index=df.index)
-        comp['eq'] = comp['obs'] == comp['pred']
-        comp['capture'] = df['capture']
-
-        flux_obs = pd.read_csv(flux_file.format(fid), index_col=0, parse_dates=True)
-        cols = ['et_flux'] + list(df.columns)
-        df['et_flux'] = flux_obs['ET']
-        df = df[cols]
-        sdf = df.loc['2014-01-01': '2014-12-31']
-
-        comp = df.loc[df[df['capture'] == 1.0].index].copy()
-        et_act, et_ssebop = comp['et_act'], comp['eta_obs']
-        rmse = np.sqrt(((et_act - et_ssebop) ** 2).mean())
-
-        print('{} Capture Dates; Mean SSEBop: {:.2f}, SWB Pred: {:.2f}, RMSE: {:.4f}'.format(comp.shape[0],
-                                                                                             et_ssebop.mean(),
-                                                                                             et_act.mean(), rmse))
-
-        comp = df[~pd.isna(df['et_flux']) == 1].copy()
-        comp = comp.loc[comp[comp['capture'] == 1.0].index]
-        et_flux, et_ssebop = comp['et_flux'], comp['eta_obs']
-        rmse = np.sqrt(((et_flux - et_ssebop) ** 2).mean())
-        print('{} Flux/Capture Dates; Mean Flux: {:.2f}, Mean SSEBop: {:.2f}, RMSE: {:.4f}'.format(comp.shape[0],
-                                                                                                   et_flux.mean(),
-                                                                                                   et_ssebop.mean(),
-                                                                                                   rmse))
-
-        comp = df[~pd.isna(df['et_flux']) == 1].copy()
-        et_flux, et_ssebop = comp['et_flux'], comp['eta_obs']
-        rmse = np.sqrt(((et_flux - et_ssebop) ** 2).mean())
-        print('{} Flux Dates; Mean Flux: {:.2f}, Mean SSEBop: {:.2f}, RMSE: {:.4f}'.format(comp.shape[0],
-                                                                                           et_flux.mean(),
-                                                                                           et_ssebop.mean(), rmse))
-        comp = df[~pd.isna(df['et_flux']) == 1].copy()
-        et_act, et_flux = comp['et_act'], comp['et_flux']
-        comp['res'] = comp['et_act'] - comp['et_flux']
-        comp = comp[['res'] + cols]
-        rmse = np.sqrt(((et_act - et_flux) ** 2).mean())
-        print('{} Flux Dates; Mean Flux: {:.2f}, Mean SWB: {:.2f}, RMSE: {:.4f}'.format(comp.shape[0],
-                                                                                        et_flux.mean(),
-                                                                                        et_act.mean(), rmse))
-        totals = df[['et_act', 'ppt', 'dperc', 'runoff']].sum(axis=0)
-        water_out = totals[['dperc', 'et_act', 'runoff']].sum()
-        storage = df.loc[df.index[0], 'depl_root'] - df.loc[df.index[-1], 'depl_root']
-        balance = totals['ppt'] - storage - water_out
-        print('Water Balance = {:.1f}; input: {:.1f}; output: {:.1f}; storage: {:.1f}\n\n\n'.format(balance,
-                                                                                                    totals['ppt'],
-                                                                                                    water_out,
-                                                                                                    storage))
-    return None
 
 
 if __name__ == '__main__':
 
-    root = '/media/research/IrrigationGIS'
-    if not os.path.exists(root):
-        root = '/home/dgketchum/data/IrrigationGIS'
+    home = os.path.expanduser('~')
+    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
-    project = 'flux'
-    d = '/home/dgketchum/PycharmProjects/swim-rs/examples/{}'.format(project)
-    conf = os.path.join(d, '{}_swim.toml'.format(project))
+    project = '4_Flux_Network'
+    site_ = 'ALARC2_Smith6'
+    constraint_ = 'tight'
 
-    flux_obs_ = os.path.join(root, 'climate/flux_ET_dataset/daily_data_files/{}_daily_data.csv')
+    project_ws_ = os.path.join(root, 'tutorials', project)
 
-    calibration_dir = None
+    data_ = os.path.join(project_ws_, 'data')
+    config_file = os.path.join(project_ws_, 'config.toml')
 
-    tuned = '/media/research/IrrigationGIS/swim/examples/flux/calibrated_models/model_6JUN2024'
-    pars = os.path.join(tuned, 'flux.4.par.csv')
+    run_data = '/data/ssd2/swim'
+    if not os.path.isdir(run_data):
+        run_data = os.path.join(root, 'tutorials')
 
-    results_files = os.path.join(tuned, 'output_{}.csv')
+    run_const = os.path.join(run_data, '4_Flux_Network', 'results', constraint_)
+    output_ = os.path.join(run_const, site_)
 
-    run_flux_sites(conf, flux_file=flux_obs_, project=project, calibration_dir=calibration_dir,
-                   parameter_distribution=pars, write_files=results_files)
+    prepped_input = os.path.join(output_, f'prepped_input.json')
+    spinup_ = os.path.join(output_, f'spinup.json')
+
+    flux_dir = os.path.join(project_ws_, 'data', 'daily_flux_files')
+    flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
+    fcst_params = os.path.join(output_, f'{site_}.3.par.csv')
+
+    # run_flux_sites(config_file, project_ws_, flux_data, output_, forecast=True, calibrate=False,
+    #                forecast_file=fcst_params, input_data=prepped_input, spinup_data=spinup_)
+
+    out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'png')
+
+    flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_)
 
 # ========================= EOF ====================================================================

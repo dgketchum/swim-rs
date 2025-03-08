@@ -178,6 +178,9 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
 if __name__ == '__main__':
     d = '/data/ssd2/swim'
+    if not os.path.isdir(d):
+        home = os.path.expanduser('~')
+        d = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials')
 
     project_ = '4_Flux_Network'
     project_ws_ = os.path.join(d, project_)
@@ -186,7 +189,7 @@ if __name__ == '__main__':
 
     bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
 
-    run_pest_sequence(config_file, project_ws_, workers=20, realizations=200, bad_params=None,
+    run_pest_sequence(config_file, project_ws_, workers=4, realizations=24, bad_params=None,
                       pdc_remove=False, overwrite=True)
 
 # ========================= EOF ============================================================================

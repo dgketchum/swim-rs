@@ -86,6 +86,7 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', p
                   xaxis_title="Date",
                   yaxis_title="mm",
                   height=800,
+                  width=1600,
                   template='plotly_dark',
                   xaxis=dict(showgrid=False),
                   yaxis=dict(showgrid=False),
@@ -157,11 +158,11 @@ def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None):
 
             if yr in flux_yr:
                 plot_swim_timeseries(df, ['irrigation', 'rain', 'etf_irr', 'kc_act', 'ndvi_irr', 'pdc', 'flux_etf'],
-                                     start=f'{yr}-01-01', end=f'{yr}-12-31', html_dir=out_fig_dir, fid=fid)
+                                     start=f'{yr}-01-01', end=f'{yr}-12-31', png_dir=out_fig_dir, fid=fid)
 
             else:
                 plot_swim_timeseries(df, ['irrigation', 'rain', 'etf_irr', 'kc_act', 'ndvi_irr', 'pdc'],
-                                     start=f'{yr}-01-01', end=f'{yr}-12-31', html_dir=out_fig_dir, fid=fid)
+                                     start=f'{yr}-01-01', end=f'{yr}-12-31', png_dir=out_fig_dir, fid=fid)
 
 
 if __name__ == '__main__':
@@ -180,8 +181,9 @@ if __name__ == '__main__':
 
     out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'html')
 
-    bad_params = ('/home/dgketchum/PycharmProjects/swim-rs/tutorials/'
-                  '4_Flux_Network/results_comparison_05MAR2025_crops_tight.csv')
+    bad_params = ('/home/dgketchum/PycharmProjects/swim-rs/tutorials/4_Flux_Network/'
+                  'results_comparison_05MAR2025_crops_tight.csv')
+
     bad_df = pd.read_csv(bad_params, index_col=0)
     bad_df = bad_df.loc[bad_df['mode'] == constraint_]
     bad_stations = bad_df.index.unique().to_list()

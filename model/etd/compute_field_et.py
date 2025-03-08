@@ -56,6 +56,7 @@ def compute_field_et(ts_data, swb, day_data):
 
     swb.ke = np.minimum(swb.kr * (swb.kc_max - swb.kc_bas), swb.few * swb.kc_max)
     swb.ke = np.maximum(swb.ke, 0.0)
+    swb.ke = np.minimum(swb.ke, swb.ke_max)
 
     # Transpiration coefficient for moisture stress
     swb.taw = swb.aw * swb.zr

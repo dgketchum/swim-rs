@@ -2,22 +2,27 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error, r2_score
 
+
 def compare_etf_estimates(combined_output_path, flux_data_path, irr=None, target='et'):
     """
     Calculates RMSE and R-squared for SWIM and SSEBop, returning daily,
     overpass-filtered daily, and monthly results.
     """
     flux_data = pd.read_csv(flux_data_path, index_col='date', parse_dates=True)
-    try:
-        output = pd.read_csv(combined_output_path, index_col=0)
-    except FileNotFoundError:
-        print('Model output file not found')
-        return None, None, None
+
+    if isinstance(combined_output_path, pd.DataFrame):
+        output = combined_output_path
+    else:
+        try:
+            output = pd.read_csv(combined_output_path, index_col=0)
+        except FileNotFoundError:
+            print('Model output file not found')
+            return None, None, None
 
     output.index = pd.to_datetime(output.index)
     irr_threshold = 0.3
     irr_years = [int(k) for k, v in irr.items() if k != 'fallow_years'
-                     and v['f_irr'] >= irr_threshold]
+                 and v['f_irr'] >= irr_threshold]
     irr_index = [i for i in output.index if i.year in irr_years]
 
     output['etf'] = output['etf_inv_irr']
@@ -44,9 +49,9 @@ def compare_etf_estimates(combined_output_path, flux_data_path, irr=None, target
     df_daily = df.dropna()
     results_daily = {}
     try:
-        results_daily['rmse_swim'] = np.sqrt(mean_squared_error(df_daily['flux'], df_daily['swim']))
+        results_daily['rmse_swim'] = float(np.sqrt(mean_squared_error(df_daily['flux'], df_daily['swim'])))
         results_daily['r2_swim'] = r2_score(df_daily['flux'], df_daily['swim'])
-        results_daily['rmse_ssebop'] = np.sqrt(mean_squared_error(df_daily['flux'], df_daily['ssebop']))
+        results_daily['rmse_ssebop'] = float(np.sqrt(mean_squared_error(df_daily['flux'], df_daily['ssebop'])))
         results_daily['r2_ssebop'] = r2_score(df_daily['flux'], df_daily['ssebop'])
         results_daily['n_samples'] = df_daily.shape[0]
     except ValueError:
@@ -57,9 +62,10 @@ def compare_etf_estimates(combined_output_path, flux_data_path, irr=None, target
     results_overpass = {}
     if df_overpass.shape[0] >= 2:
         try:
-            results_overpass['rmse_swim'] = np.sqrt(mean_squared_error(df_overpass['flux'], df_overpass['swim']))
+            results_overpass['rmse_swim'] = float(np.sqrt(mean_squared_error(df_overpass['flux'], df_overpass['swim'])))
             results_overpass['r2_swim'] = r2_score(df_overpass['flux'], df_overpass['swim'])
-            results_overpass['rmse_ssebop'] = np.sqrt(mean_squared_error(df_overpass['flux'], df_overpass['ssebop']))
+            results_overpass['rmse_ssebop'] = float(
+                np.sqrt(mean_squared_error(df_overpass['flux'], df_overpass['ssebop'])))
             results_overpass['r2_ssebop'] = r2_score(df_overpass['flux'], df_overpass['ssebop'])
             results_overpass['n_samples'] = df_overpass.shape[0]
         except ValueError:
@@ -89,9 +95,9 @@ def compare_etf_estimates(combined_output_path, flux_data_path, irr=None, target
 
     results_monthly = {}
     try:
-        results_monthly['rmse_swim'] = np.sqrt(mean_squared_error(df_monthly['flux'], df_monthly['swim']))
+        results_monthly['rmse_swim'] = float(np.sqrt(mean_squared_error(df_monthly['flux'], df_monthly['swim'])))
         results_monthly['r2_swim'] = r2_score(df_monthly['flux'], df_monthly['swim'])
-        results_monthly['rmse_ssebop'] = np.sqrt(mean_squared_error(df_monthly['flux'], df_monthly['ssebop']))
+        results_monthly['rmse_ssebop'] = float(np.sqrt(mean_squared_error(df_monthly['flux'], df_monthly['ssebop'])))
         results_monthly['r2_ssebop'] = r2_score(df_monthly['flux'], df_monthly['ssebop'])
         results_monthly['n_samples'] = df_monthly.shape[0]
     except ValueError:
