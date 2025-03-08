@@ -59,7 +59,6 @@ if __name__ == '__main__':
     data_ = os.path.join(project_ws_, 'data')
     config_file = os.path.join(project_ws_, 'config.toml')
 
-
     output = os.path.join('/data', 'ssd2', 'swim', '4_Flux_Network', 'results', '03051423')
 
     prepped_input = os.path.join(output, f'prepped_input.json')

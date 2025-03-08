@@ -11,7 +11,7 @@ from pyemu.utils.os_utils import run_ossystem, run_sp
 
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
-from model.etd import obs_field_cycle
+from model import obs_field_cycle
 
 from calibrate.run_pest import run_pst
 
