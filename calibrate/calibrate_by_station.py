@@ -189,7 +189,7 @@ if __name__ == '__main__':
 
     bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
 
-    run_pest_sequence(config_file, project_ws_, workers=4, realizations=24, bad_params=None,
+    run_pest_sequence(config_file, project_ws_, workers=10, realizations=30, bad_params=None,
                       pdc_remove=False, overwrite=True)
 
 # ========================= EOF ============================================================================

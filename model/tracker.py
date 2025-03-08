@@ -84,16 +84,14 @@ TRACKER_PARAMS = ['taw',
                   'wt_irr',
                   'irr_min']
 
-TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad', 'swe_alpha', 'swe_beta']
+TUNABLE_PARAMS = ['aw',  'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta']
 
 # params not included here (e.g., 'tew') are taken from soils data
-TUNABLE_DEFAULTS = {'ndvi_beta': 1.35,
-                    'ndvi_alpha': -0.44,
+TUNABLE_DEFAULTS = {'ndvi_k': 10.0,
+                    'ndvi_0': 0.3,
                     'mad': 0.3,
                     'swe_alpha': 0.073,
-                    'swe_beta': 1.38,
-                    'tew': 18.0,
-                    'rew': 3.0}
+                    'swe_beta': 1.38}
 
 
 class SampleTracker:
@@ -241,6 +239,7 @@ class SampleTracker:
             try:
                 v = self.__getattribute__(p)
                 self.__setattr__(p, np.ones((1, size)) * v)
+
             except AttributeError as e:
                 print(p, e)
 
@@ -274,6 +273,13 @@ class SampleTracker:
         self.ksat = np.array([plots.input['props'][f]['ksat'] for f in fields]).reshape(1, -1)
         self.ksat = self.ksat * 0.001 * 86400.
         self.ksat_hourly = np.ones((24, self.ksat.shape[1])) * self.ksat / 24.
+
+        self.rew = 0.8 + 54.4 * self.aw / 1000  # REW is in mm and AW is in mm/m
+
+        self.tew = -3.7 + 166 * self.aw / 1000  # TEW is in mm and AW is in mm/m
+
+        condition = self.rew > 0.8 * self.tew
+        self.rew = np.where(condition, 0.8 * self.tew, self.rew)  # limit REW based on TEW
 
         self.daw3 = np.zeros_like(self.aw)
         self.depl_root = self.aw * self.zr * 0.2

@@ -150,7 +150,7 @@ class PestBuilder:
 
     def build_localizer(self):
 
-        et_params = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad']
+        et_params = ['aw', 'ndvi_k',  'ndvi_0', 'mad']
         snow_params = ['swe_alpha', 'swe_beta']
 
         par_relation = {'etf': et_params, 'swe': snow_params}
@@ -244,11 +244,11 @@ class PestBuilder:
 
             'ndvi_k': {'file': self.params_file,
                        'initial_value': 10.0, 'lower_bound': 1, 'upper_bound': 20,
-                       'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+                       'pargp': 'ndvi_k', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_0': {'file': self.params_file,
                        'initial_value': 0.3, 'lower_bound': 0.1, 'upper_bound': 0.7,
-                       'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+                       'pargp': 'ndvi_0', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'mad': {'file': self.params_file,
                     'initial_value': 0.6, 'lower_bound': 0.1, 'upper_bound': 0.9,
@@ -437,40 +437,6 @@ class PestBuilder:
 
 if __name__ == '__main__':
 
-    root_ = os.path.abspath('..')
-
-    # project = 'alarc_test'
-    project = '4_Flux_Network'
-
-    # prior_constraint = 'tight'
-
-    for prior_constraint_ in ['loose', 'tight']:
-
-        project_ws_ = os.path.join(root_, 'tutorials', project)
-        if not os.path.isdir(project_ws_):
-            root_ = os.path.abspath('')
-            project_ws_ = os.path.join(root_, 'tutorials', project)
-
-        config_path_ = os.path.join(project_ws_, 'config.toml')
-        py_script = os.path.join(project_ws_, 'custom_forward_run.py')
-
-        builder = PestBuilder(project_ws=project_ws_, config_file=config_path_,
-                              use_existing=False, python_script=py_script, prior_constraint=prior_constraint_)
-        builder.build_pest()
-        builder.build_localizer()
-        builder.dry_run('pestpp-ies')
-        builder.write_control_settings(noptmax=4, reals=300)
-
-        p_dir = os.path.join(project_ws_, 'pest')
-        m_dir = os.path.join(project_ws_, f'{prior_constraint_}_master')
-        w_dir = os.path.join(project_ws_, 'workers')
-        exe_ = 'pestpp-ies'
-
-        _pst = f'{project}.pst'
-
-        _workers = 10
-
-        run_pst(p_dir, exe_, _pst, num_workers=_workers, worker_root=w_dir,
-                master_dir=m_dir, verbose=True, cleanup=True)
+    pass
 
 # ========================= EOF ====================================================================
