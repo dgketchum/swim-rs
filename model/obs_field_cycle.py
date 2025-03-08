@@ -1,11 +1,10 @@
 import numpy as np
 import pandas as pd
 
-from model.etd import calculate_height
-from model.etd import compute_field_et
-from model.etd import obs_kcb_daily
-from model.etd.tracker import SampleTracker
-from model.etd.day_data import DayData
+from model import compute_field_et
+from model import obs_kcb_daily
+from model.tracker import SampleTracker
+from model.day_data import DayData
 
 OUTPUT_FMT = ['et_act',
               'etref',

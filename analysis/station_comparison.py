@@ -5,7 +5,7 @@ import pandas as pd
 
 from analysis.metrics import compare_etf_estimates
 from analysis.group_comparison import insert_blank_rows
-from model.etd.tracker import TUNABLE_PARAMS, SampleTracker
+from model.tracker import TUNABLE_PARAMS, SampleTracker
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 from run.run_tutorial import run_fields

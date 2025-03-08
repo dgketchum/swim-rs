@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-from model.etd.tracker import TUNABLE_PARAMS
+from model.tracker import TUNABLE_PARAMS
 
 
 def plot_parameter_histograms(initial_params_file, optimized_params_files, fig_out_dir=None):

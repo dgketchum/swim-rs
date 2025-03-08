@@ -4,11 +4,9 @@ import numpy as np
 import pandas as pd
 
 from analysis.metrics import compare_etf_estimates
-from model.etd.tracker import TUNABLE_PARAMS, SampleTracker
+from model.tracker import TUNABLE_PARAMS, SampleTracker
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
-
-from run.run_tutorial import run_fields
 
 
 def compare_results_grouped(conf_path, project_ws, result_csv_dir, mode, summary_csv):

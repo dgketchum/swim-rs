@@ -1,8 +1,8 @@
 import numpy as np
 
-from model.etd import grow_root
-from model.etd import runoff
-from model.etd import compute_snow
+from model import grow_root
+from model import runoff
+from model import compute_snow
 
 
 def compute_field_et(ts_data, swb, day_data):

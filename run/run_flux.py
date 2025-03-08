@@ -2,10 +2,9 @@ import os
 import time
 from pprint import pprint
 
-import numpy as np
 import pandas as pd
 
-from model.etd import obs_field_cycle
+from model import obs_field_cycle
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 from analysis.metrics import compare_etf_estimates

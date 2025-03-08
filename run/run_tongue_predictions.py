@@ -5,7 +5,7 @@ import time
 import numpy as np
 
 from swim.sampleplots import SamplePlots
-from model.etd import obs_field_cycle
+from model import obs_field_cycle
 from swim.config import ProjectConfig
 from prep.prep_plots import prep_fields_json
 from prep.field_timeseries import join_daily_timeseries
