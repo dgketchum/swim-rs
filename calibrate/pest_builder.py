@@ -242,13 +242,21 @@ class PestBuilder:
                    'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 400.0,
                    'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'ndvi_k': {'file': self.params_file,
-                       'initial_value': 10.0, 'lower_bound': 1, 'upper_bound': 20,
-                       'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+            'rew': {'file': self.params_file,
+                    'initial_value': 3.0, 'lower_bound': 2.0, 'upper_bound': 6.0,
+                    'pargp': 'rew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'ndvi_0': {'file': self.params_file,
-                       'initial_value': 0.3, 'lower_bound': 0.1, 'upper_bound': 0.7,
-                       'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+            'tew': {'file': self.params_file,
+                    'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
+                    'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
+            'ndvi_alpha': {'file': self.params_file,
+                           'initial_value': 0.2, 'lower_bound': -0.7, 'upper_bound': 1.5,
+                           'pargp': 'ndvi_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
+            'ndvi_beta': {'file': self.params_file,
+                          'initial_value': 1.25, 'lower_bound': 0.5, 'upper_bound': 1.7,
+                          'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'mad': {'file': self.params_file,
                     'initial_value': 0.6, 'lower_bound': 0.1, 'upper_bound': 0.9,

@@ -34,8 +34,6 @@ def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False
     for fid in fields.input['order']:
         out_df = fields.output[fid].copy()
 
-        # print(f"eta mean: {out_df['et_act'].mean()}")
-
         in_df = fields.input_to_dataframe(fid)
 
         df = pd.concat([out_df, in_df], axis=1, ignore_index=False)

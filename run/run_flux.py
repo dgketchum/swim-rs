@@ -13,7 +13,6 @@ from viz.swim_timeseries import flux_pdc_timeseries
 
 def run_flux_sites(ini_path, project_ws, flux_file, outdir, calibration_dir=None, forecast=False, calibrate=False,
                    forecast_file=None, input_data=None, spinup_data=None):
-
     start_time = time.time()
 
     config = ProjectConfig()
@@ -50,7 +49,6 @@ def run_flux_sites(ini_path, project_ws, flux_file, outdir, calibration_dir=None
         a = 1
 
 
-
 if __name__ == '__main__':
 
     home = os.path.expanduser('~')
@@ -74,13 +72,16 @@ if __name__ == '__main__':
 
     prepped_input = os.path.join(output_, f'prepped_input.json')
     spinup_ = os.path.join(output_, f'spinup.json')
+    if not os.path.exists(prepped_input):
+        prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
+        spinup_ = os.path.join(output_, f'spinup_{site_}.json')
 
     flux_dir = os.path.join(project_ws_, 'data', 'daily_flux_files')
     flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
     fcst_params = os.path.join(output_, f'{site_}.3.par.csv')
 
-    # run_flux_sites(config_file, project_ws_, flux_data, output_, forecast=True, calibrate=False,
-    #                forecast_file=fcst_params, input_data=prepped_input, spinup_data=spinup_)
+    run_flux_sites(config_file, project_ws_, flux_data, output_, forecast=True, calibrate=False,
+                   forecast_file=fcst_params, input_data=prepped_input, spinup_data=spinup_)
 
     out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'png')
 
