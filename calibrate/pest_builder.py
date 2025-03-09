@@ -150,7 +150,7 @@ class PestBuilder:
 
     def build_localizer(self):
 
-        et_params = ['aw', 'ndvi_k',  'ndvi_0', 'mad']
+        et_params = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad']
         snow_params = ['swe_alpha', 'swe_beta']
 
         par_relation = {'etf': et_params, 'swe': snow_params}
@@ -242,6 +242,18 @@ class PestBuilder:
                    'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 400.0,
                    'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
+            'rew': {'file': self.params_file,
+                    'initial_value': 3.0, 'lower_bound': 2.0, 'upper_bound': 6.0,
+                    'pargp': 'rew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
+            'tew': {'file': self.params_file,
+                    'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
+                    'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
+            'kc_max': {'file': self.params_file,
+                       'initial_value': 1.1, 'lower_bound': 0.8, 'upper_bound': 1.3,
+                       'pargp': 'kc_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
             'ndvi_k': {'file': self.params_file,
                        'initial_value': 10.0, 'lower_bound': 1, 'upper_bound': 20,
                        'pargp': 'ndvi_k', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
@@ -283,9 +295,10 @@ class PestBuilder:
         cmd = ' '.join([exe, os.path.join(self.pest_dir, self.pst_file)])
         wd = self.pest_dir
         try:
-            run_ossystem(cmd, wd, verbose=True)
+            run_sp(cmd, wd, verbose=False)
         except Exception:
-            run_sp(cmd, wd, verbose=True)
+            run_ossystem(cmd, wd, verbose=False)
+
 
     def spinup(self, overwrite=False):
 
@@ -436,7 +449,6 @@ class PestBuilder:
 
 
 if __name__ == '__main__':
-
     pass
 
 # ========================= EOF ====================================================================

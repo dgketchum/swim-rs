@@ -116,7 +116,9 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
             spinup_out = os.path.join(station_results, f'spinup_{fid}.json')
             shutil.copyfile(builder.config.spinup, spinup_out)
 
-            builder.dry_run('pestpp-ies')
+            exe_ = 'pestpp-ies'
+
+            builder.dry_run(exe_)
 
             # Check for prior-data conflict, remove and rebuild if necessary
             pdc_file = os.path.join(p_dir, f'{project}.pdc.csv')
@@ -132,11 +134,9 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
                     builder.build_pest()
                     builder.build_localizer()
                     builder.write_control_settings(noptmax=0)
-                    builder.dry_run('pestpp-ies')
+                    builder.dry_run(exe_)
 
             builder.write_control_settings(noptmax=3, reals=realizations)
-
-            exe_ = 'pestpp-ies'
 
             _pst = f'{project}.pst'
 
@@ -189,7 +189,7 @@ if __name__ == '__main__':
 
     bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
 
-    run_pest_sequence(config_file, project_ws_, workers=10, realizations=30, bad_params=None,
+    run_pest_sequence(config_file, project_ws_, workers=2, realizations=10, bad_params=None,
                       pdc_remove=False, overwrite=True)
 
 # ========================= EOF ============================================================================

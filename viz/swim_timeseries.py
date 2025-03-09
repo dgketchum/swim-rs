@@ -179,7 +179,7 @@ if __name__ == '__main__':
 
     out_csv_dir = os.path.join(results, '4_Flux_Network', 'results', constraint_)
 
-    out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'html')
+    out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'png')
 
     bad_params = ('/home/dgketchum/PycharmProjects/swim-rs/tutorials/4_Flux_Network/'
                   'results_comparison_05MAR2025_crops_tight.csv')

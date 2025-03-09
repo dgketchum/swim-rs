@@ -80,11 +80,11 @@ if __name__ == '__main__':
     flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
     fcst_params = os.path.join(output_, f'{site_}.3.par.csv')
 
-    run_flux_sites(config_file, project_ws_, flux_data, output_, forecast=True, calibrate=False,
-                   forecast_file=fcst_params, input_data=prepped_input, spinup_data=spinup_)
+    run_flux_sites(config_file, project_ws_, flux_data, output_, forecast=False, calibrate=False,
+                   forecast_file=None, input_data=prepped_input, spinup_data=spinup_)
 
     out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'png')
 
-    flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_)
+    # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_)
 
 # ========================= EOF ====================================================================

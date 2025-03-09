@@ -73,7 +73,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         empty = np.zeros((len(time_range), len(targets))) * np.nan
         etf, swe = empty.copy(), empty.copy()
 
-    tracker.set_kc_max()
+    # tracker.set_kc_max()
 
     day_data = DayData()
 
