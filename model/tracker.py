@@ -84,11 +84,13 @@ TRACKER_PARAMS = ['taw',
                   'wt_irr',
                   'irr_min']
 
-TUNABLE_PARAMS = ['aw',  'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta']
+TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'kc_max', 'ke_max', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta']
 
 # params not included here (e.g., 'tew') are taken from soils data
 TUNABLE_DEFAULTS = {'ndvi_k': 10.0,
                     'ndvi_0': 0.3,
+                    'kc_max': 0.85,
+                    'ke_max': 0.5,
                     'tew': 18.0,
                     'rew': 3.0,
                     'mad': 0.3,
@@ -387,13 +389,11 @@ class SampleTracker:
                 for k, v in var_dct.items():
 
                     if k in TRACKER_PARAMS:
-
                         tracker_array[k][0, idx] = v
 
             print('USING SPINUP WATER BALANCE INFORMATION')
 
             for k, v in tracker_array.items():
-
                 self.__setattr__(k, v)
 
     def update_dataframe(self, targets, day_data, step_dt):

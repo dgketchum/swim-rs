@@ -39,8 +39,8 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
         prepped_data, prepped_input = False, None
 
-        if fid != 'ALARC2_Smith6':
-            continue
+        # if fid != 'ALARC2_Smith6':
+        #     continue
 
         for prior_constraint in ['tight']:
 
@@ -189,7 +189,7 @@ if __name__ == '__main__':
 
     bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
 
-    run_pest_sequence(config_file, project_ws_, workers=2, realizations=10, bad_params=None,
-                      pdc_remove=False, overwrite=True)
+    run_pest_sequence(config_file, project_ws_, workers=10, realizations=200, bad_params=bad_parameters,
+                      pdc_remove=True, overwrite=True)
 
 # ========================= EOF ============================================================================

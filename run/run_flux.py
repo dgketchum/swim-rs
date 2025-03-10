@@ -50,7 +50,6 @@ def run_flux_sites(ini_path, project_ws, flux_file, outdir, calibration_dir=None
 
 
 if __name__ == '__main__':
-
     home = os.path.expanduser('~')
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
@@ -67,24 +66,58 @@ if __name__ == '__main__':
     # if not os.path.isdir(run_data):
     run_data = os.path.join(root, 'tutorials')
 
-    run_const = os.path.join(run_data, '4_Flux_Network', 'results', constraint_)
-    output_ = os.path.join(run_const, site_)
+    l = [
+        'UA3_KN15',
+        'MOVAL',
+        'AFD',
+        'JPL1_JV114',
+        'US-Esm',
+        'US-SCg',
+        'US-Ro2',
+        'S2',
+        'US-LS1',
+        'MR',
+        'ET_1',
+        'UOVLO',
+        'US-Blo',
+        'US-CMW',
+        'ALARC2_Smith6',
+        'US-SCs',
+        'US-Hn2',
+        'UA3_JV108',
+        'BPHV',
+        'UA2_JV330',
+        'KV_4',
+        'US-OF2',
+    ]
 
-    prepped_input = os.path.join(output_, f'prepped_input.json')
-    spinup_ = os.path.join(output_, f'spinup.json')
-    if not os.path.exists(prepped_input):
-        prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
-        spinup_ = os.path.join(output_, f'spinup_{site_}.json')
+    for site_ in l:
 
-    flux_dir = os.path.join(project_ws_, 'data', 'daily_flux_files')
-    flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
-    fcst_params = os.path.join(output_, f'{site_}.3.par.csv')
+        if site_ != 'US-Blo':
+            continue
 
-    run_flux_sites(config_file, project_ws_, flux_data, output_, forecast=False, calibrate=False,
-                   forecast_file=None, input_data=prepped_input, spinup_data=spinup_)
+        run_const = os.path.join(run_data, '4_Flux_Network', 'results', constraint_)
+        output_ = os.path.join(run_const, site_)
 
-    out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'png')
+        prepped_input = os.path.join(output_, f'prepped_input.json')
+        spinup_ = os.path.join(output_, f'spinup.json')
+        if not os.path.exists(prepped_input):
+            prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
+            spinup_ = os.path.join(output_, f'spinup_{site_}.json')
 
-    # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_)
+        flux_dir = os.path.join(project_ws_, 'data', 'daily_flux_files')
+        flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
+        fcst_params = os.path.join(output_, f'{site_}.3.par.csv')
+
+        cal = os.path.join(project_ws_, f'{constraint_}_pest', 'mult')
+
+        run_flux_sites(config_file, project_ws_, flux_data, output_,
+                       forecast=True, forecast_file=fcst_params,
+                       input_data=prepped_input, spinup_data=spinup_,
+                       calibrate=False, calibration_dir=None)
+
+        out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'html')
+
+        flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_)
 
 # ========================= EOF ====================================================================

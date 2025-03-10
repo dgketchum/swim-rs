@@ -51,10 +51,11 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', p
                     secondary_y=secondary_y)
 
     for param in parameters:
-        if param in ['etf_irr', 'etf_inv_irr', 'ndvi_irr', 'ndvi_inv_irr']:
+        if param in ['etf', 'etf_irr', 'etf_inv_irr', 'ndvi', 'ndvi_irr', 'ndvi_inv_irr']:
             ct_param = param + '_ct'
             if ct_param in df.columns:
                 scatter_df = df[df[ct_param] == 1]
+                color = 'green' if 'ndvi' in param else 'blue'
                 if 'pdc' in df.columns and (param == 'etf_irr' or param == 'etf_inv_irr'):
                     scatter_df_pdc = scatter_df[scatter_df['pdc'] > 0]
                     scatter_df_no_pdc = scatter_df[scatter_df['pdc'] <= 0]
@@ -65,20 +66,20 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', p
                     fig.add_trace(
                         go.Scatter(x=scatter_df_pdc.index, y=scatter_df_pdc[param],
                                    mode='markers', marker_symbol='circle',
-                                   marker_size=15, name=f'{param} Retrieval (PDC Flagged)'),
+                                   marker_size=15, name=f'{param.split('_')[0]} retrieval (PDC Flagged)'),
                         secondary_y=True,
                     )
                     fig.add_trace(
                         go.Scatter(x=scatter_df_no_pdc.index, y=scatter_df_no_pdc[param],
                                    mode='markers', marker_symbol='x',
-                                   marker_size=5, name=f'{param} Retrieval'),
+                                   marker_size=5, name=f'{param.split('_')[0]} retrieval'),
                         secondary_y=True,
                     )
                 else:
                     fig.add_trace(
                         go.Scatter(x=scatter_df.index, y=scatter_df[param],
                                    mode='markers', marker_symbol='x',
-                                   marker_size=5, name=f'{param} Retrieval'),
+                                   marker_size=5, name=f'{param.split('_')[0]} retrieval'),
                         secondary_y=True,
                     )
 
@@ -130,11 +131,29 @@ def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None):
 
     for fid in fids:
 
+        if fid != 'US-Blo':
+            continue
+
         csv = os.path.join(csv_dir, fid, f'{fid}.csv')
         pdc_file = os.path.join(csv_dir, fid, f'{fid}.pdc.csv')
         flux_file = os.path.join(flux_file_dir, f'{fid}_daily_data.csv')
 
         df = pd.read_csv(csv, index_col=0, parse_dates=True)
+
+        df_irr = df[['irr_day']].groupby(df.index.year).agg('sum')
+        irr_years = [i for i, y in df_irr.iterrows() if y['irr_day'] > 0]
+        irr_index = [i for i in df.index if i.year in irr_years]
+
+        df['ndvi'] = df['ndvi_inv_irr']
+        df.loc[irr_index, 'ndvi'] = df.loc[irr_index, 'ndvi_irr']
+        df['ndvi_ct'] = df['ndvi_inv_irr_ct']
+        df.loc[irr_index, 'ndvi_ct'] = df.loc[irr_index, 'etf_irr_ct']
+
+        df['etf'] = df['etf_inv_irr']
+        df.loc[irr_index, 'etf'] = df.loc[irr_index, 'etf_irr']
+        df['etf_ct'] = df['etf_inv_irr_ct']
+        df.loc[irr_index, 'etf_ct'] = df.loc[irr_index, 'etf_irr_ct']
+
         pdc = pd.read_csv(pdc_file, index_col=0)
         idx_file = pdc_file.replace('.pdc', '.idx')
         idx = pd.read_csv(idx_file, index_col=0, parse_dates=True)
@@ -157,12 +176,13 @@ def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None):
         for yr in years:
 
             if yr in flux_yr:
-                plot_swim_timeseries(df, ['irrigation', 'rain', 'etf_irr', 'kc_act', 'ndvi_irr', 'pdc', 'flux_etf'],
-                                     start=f'{yr}-01-01', end=f'{yr}-12-31', png_dir=out_fig_dir, fid=fid)
+                plot_swim_timeseries(df,
+                                     ['irrigation', 'rain', 'etf', 'ke', 'kc_act', 'ndvi', 'pdc', 'flux_etf'],
+                                     start=f'{yr}-01-01', end=f'{yr}-12-31', html_dir=out_fig_dir, fid=fid)
 
             else:
-                plot_swim_timeseries(df, ['irrigation', 'rain', 'etf_irr', 'kc_act', 'ndvi_irr', 'pdc'],
-                                     start=f'{yr}-01-01', end=f'{yr}-12-31', png_dir=out_fig_dir, fid=fid)
+                plot_swim_timeseries(df, ['irrigation', 'rain', 'etf', 'ke', 'kc_act', 'ndvi', 'pdc'],
+                                     start=f'{yr}-01-01', end=f'{yr}-12-31', html_dir=out_fig_dir, fid=fid)
 
 
 if __name__ == '__main__':
@@ -179,7 +199,7 @@ if __name__ == '__main__':
 
     out_csv_dir = os.path.join(results, '4_Flux_Network', 'results', constraint_)
 
-    out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'png')
+    out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'html')
 
     bad_params = ('/home/dgketchum/PycharmProjects/swim-rs/tutorials/4_Flux_Network/'
                   'results_comparison_05MAR2025_crops_tight.csv')
@@ -188,8 +208,34 @@ if __name__ == '__main__':
     bad_df = bad_df.loc[bad_df['mode'] == constraint_]
     bad_stations = bad_df.index.unique().to_list()
 
+    l = [
+        'UA3_KN15',
+        'MOVAL',
+        'AFD',
+        'JPL1_JV114',
+        'US-Esm',
+        'US-SCg',
+        'US-Ro2',
+        'S2',
+        'US-LS1',
+        'MR',
+        'ET_1',
+        'UOVLO',
+        'US-Blo',
+        'US-CMW',
+        'ALARC2_Smith6',
+        'US-SCs',
+        'US-Hn2',
+        'UA3_JV108',
+        'BPHV',
+        'UA2_JV330',
+        'KV_4',
+        'US-OF2',
+    ]
+
+
     flux_data = os.path.join(data, 'daily_flux_files')
 
-    flux_pdc_timeseries(out_csv_dir, flux_data, bad_stations, out_fig_dir_)
+    flux_pdc_timeseries(out_csv_dir, flux_data, l, out_fig_dir_)
 
 # ========================= EOF ====================================================================
