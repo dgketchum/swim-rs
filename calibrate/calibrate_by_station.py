@@ -26,6 +26,10 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
     landsat = os.path.join(data_dir, 'landsat')
     dynamics_data = os.path.join(landsat, 'calibration_dynamics.json')
     joined_timeseries = os.path.join(data_dir, 'plot_timeseries')
+    print(f'\n{properties_json}')
+    print(f'{landsat}')
+    print(f'{dynamics_data}')
+    print(f'{joined_timeseries}\n')
 
     flux_meta_csv = os.path.join(data_dir, 'station_metadata.csv')
     flux_meta_df = pd.read_csv(flux_meta_csv, header=1, skip_blank_lines=True, index_col='Site ID')
@@ -39,7 +43,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
         prepped_data, prepped_input = False, None
 
-        # if fid != 'S2':
+        # if fid != 'US-Blo':
         #     continue
 
         for prior_constraint in ['tight']:

@@ -61,6 +61,10 @@ def write_field_properties(shp, irr, ssurgo, js, cdl=None, lulc=None, flux_meta=
                             RZ[str(rz[k]['mode'])]['rooting_depth'] if str(rz[k]['mode']) in RZ.keys()
                              else np.nan}) for k in dct.keys()]
 
+        [dct[k].update({'zr_mult':
+                            RZ[str(rz[k]['mode'])]['zr_multiplier'] if str(rz[k]['mode']) in RZ.keys()
+                            else np.nan}) for k in dct.keys()]
+
         [dct[k].update({'lulc_code': rz[k]['mode']}) for k in dct.keys()]
 
     if flux_meta is not None:
@@ -98,7 +102,7 @@ def write_field_properties(shp, irr, ssurgo, js, cdl=None, lulc=None, flux_meta=
 
     with open(js, 'w') as fp:
         json.dump(d, fp, indent=4)
-    print(f'wrote {len(d)} fields')
+    print(f'wrote {len(d)} fields\n {js}')
 
 
 if __name__ == '__main__':

@@ -238,6 +238,7 @@ class PestBuilder:
     def initial_parameter_dict(self):
 
         p = OrderedDict({
+            # 'aw' and zr are applied by Tracker.load_soils and load_root_depth
             'aw': {'file': self.params_file,
                    'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 400.0,
                    'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
@@ -251,7 +252,7 @@ class PestBuilder:
                     'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'zr_mult': {'file': self.params_file,
-                        'initial_value': 5.0, 'lower_bound': 0.3, 'upper_bound': 10.0,
+                        'initial_value': 3.0, 'lower_bound': 0.1, 'upper_bound': 10.0,
                         'pargp': 'zr_mult', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'kc_max': {'file': self.params_file,

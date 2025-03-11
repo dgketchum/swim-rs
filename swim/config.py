@@ -165,6 +165,7 @@ class ProjectConfig:
                 fcst = parameter_dist_csv
                 param_dist = pd.read_csv(fcst, index_col=0)
                 param_mean = param_dist.mean(axis=0)
+
                 p_str = ['_'.join(s.split(':')[1].split('_')[1:-1]) for s in list(param_mean.index)]
                 param_mean.index = p_str
                 self.forecast_parameters = param_mean.copy()

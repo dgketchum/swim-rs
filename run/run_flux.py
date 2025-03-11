@@ -32,7 +32,6 @@ def run_flux_sites(ini_path, project_ws, flux_file, outdir, calibration_dir=None
 
     targets = fields.input['order']
 
-    print('Warning: model runner is set to debug=True, it will not write results accessible to PEST++')
     end_time = time.time()
     print('\nExecution time: {:.2f} seconds\n'.format(end_time - start_time))
 
@@ -44,7 +43,10 @@ def run_flux_sites(ini_path, project_ws, flux_file, outdir, calibration_dir=None
         df.to_csv(os.path.join(outdir, f'{fid}.csv'))
         irr_ = fields.input['irr_data'][fid]
         daily, overpass, monthly = compare_etf_estimates(df, flux_file, irr=irr_, target='et')
+        print('\nMonthly\n')
         pprint(monthly)
+        print('\nDaily\n')
+        pprint(daily)
 
         a = 1
 
@@ -64,32 +66,13 @@ if __name__ == '__main__':
 
     # run_data = '/data/ssd2/swim'
     # if not os.path.isdir(run_data):
+
     run_data = os.path.join(root, 'tutorials')
 
-    l = [
-        'UA3_KN15',
-        'MOVAL',
-        'AFD',
-        'JPL1_JV114',
-        'US-Esm',
-        'US-SCg',
-        'US-Ro2',
-        'S2',
-        'US-LS1',
-        'MR',
-        'ET_1',
-        'UOVLO',
-        'US-Blo',
-        'US-CMW',
-        'ALARC2_Smith6',
-        'US-SCs',
-        'US-Hn2',
-        'UA3_JV108',
-        'BPHV',
-        'UA2_JV330',
-        'KV_4',
-        'US-OF2',
-    ]
+    l = ['AFD', 'ALARC2_Smith6', 'BPHV', 'ET_1', 'JPL1_JV114', 'KV_4',
+         'MOVAL', 'MR', 'S2', 'UA2_JV330', 'UA3_JV108', 'UA3_KN15',
+         'UOVLO', 'US-Blo', 'US-CMW', 'US-Esm', 'US-Hn2', 'US-LS1',
+         'US-OF2', 'US-Ro2', 'US-SCg']
 
     for site_ in l:
 

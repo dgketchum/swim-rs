@@ -4,86 +4,9 @@ import os.path
 import numpy as np
 import pandas as pd
 
-de_initial = 10.0
+from model import TRACKER_PARAMS
 
-TRACKER_PARAMS = ['taw',
-                  'taw3',
-                  'albedo',
-                  'min_albedo',
-                  'melt',
-                  'rain',
-                  'snow_fall',
-                  'daw3',
-                  'daw3_prev',
-                  'aw3',
-                  'cn2',
-                  'cgdd',
-                  'aw',
-                  'cgdd_penalty',
-                  'cum_evap',
-                  'ad',
-                  'cum_evap_prev',
-                  'depl_ze',
-                  'dperc',
-                  'dperc_ze',
-                  'density',
-                  'depl_root',
-                  'depl_root_prev',
-                  'soil_water',
-                  'soil_water_prev',
-                  'etc_act',
-                  'etc_pot',
-                  'etc_bas',
-                  'etref_30',
-                  'fc',
-                  'grow_root',
-                  'gw_sim',
-                  'height_min',
-                  'height_max',
-                  'height',
-                  'irr_sim',
-                  'kc_act',
-                  'kc_pot',
-                  'kc_max',
-                  'kc_min',
-                  'kc_bas',
-                  'kc_bas_mid',
-                  'ke',
-                  'kr',
-                  'ks',
-                  'mad',
-                  'max_irr_rate',
-                  'next_day_irr',
-                  'niwr',
-                  'p_rz',
-                  'p_eft',
-                  'ppt_inf',
-                  'ppt_inf_prev',
-                  'rew',
-                  'tew',
-                  's',
-                  's1',
-                  's2',
-                  's3',
-                  's4',
-                  'sro',
-                  'swe',
-                  'zr_min',
-                  'zr_max',
-                  'zr_mult',
-                  'z',
-                  'invoke_stress',
-                  'doy_start_cycle',
-                  'cutting',
-                  'cycle',
-                  'height_initial',
-                  'height_max',
-                  'height_min',
-                  'height',
-                  'totwatin_ze',
-                  'cgdd_at_planting',
-                  'wt_irr',
-                  'irr_min']
+de_initial = 10.0
 
 TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'zr_mult', 'kc_max', 'ke_max', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta']
 
@@ -92,7 +15,7 @@ TUNABLE_DEFAULTS = {'ndvi_k': 10.0,
                     'ndvi_0': 0.3,
                     'kc_max': 0.85,
                     'ke_max': 0.5,
-                    'zr_mult': 1.0,
+                    'zr_mult': 2.5,
                     'tew': 18.0,
                     'rew': 3.0,
                     'mad': 0.3,
@@ -102,8 +25,11 @@ TUNABLE_DEFAULTS = {'ndvi_k': 10.0,
 
 class SampleTracker:
 
-    def __init__(self, size):
+    def __init__(self, config, plots, size):
         """Initialize for crops cycle"""
+
+        self.plots = plots
+        self.conf = config
 
         self.perennial = None
         self.zr = None
@@ -193,7 +119,7 @@ class SampleTracker:
 
         self.isnan = []
 
-        self.z = 0.
+        self.zr = 0.
         self.zr_mult = 1.0
         self.zr_min = 0.1
         self.zr_max = 1.7
@@ -251,47 +177,41 @@ class SampleTracker:
             except AttributeError as e:
                 print(p, e)
 
-    def load_root_depth(self, plots):
+    def load_root_depth(self):
 
-        fields = plots.input['order']
+        fields = self.plots.input['order']
 
         self.height = self.height_min
 
-        rz_depth = [plots.input['props'][f]['root_depth'] for f in fields]
-        codes = [plots.input['props'][f]['lulc_code'] for f in fields]
+        codes = [self.plots.input['props'][f]['lulc_code'] for f in fields]
         crops = [12, 14]
         perennials = [c for c in range(1, 18) if c not in crops]
-        # perennials = []
 
         # depends on both the root depth and code from modis, see prep.__init__
-        zr = np.array([rz if cd in perennials else self.zr_min[0, 0]
-                            for rz, cd in zip(rz_depth, codes)])
-        self.zr = (zr * self.zr_mult).reshape(1, -1)
+        rz_depth = [self.plots.input['props'][f]['root_depth'] for f in fields]
+        rz_depth = self.zr_mult * np.array(rz_depth)
 
-        zr_max = np.array([rz for rz in rz_depth])
-        self.zr_max = (zr_max * self.zr_mult).reshape(1, -1)
+        self.zr = np.array([rz if cd in perennials else self.zr_min[0, 0]
+                            for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
 
+        self.zr_max = np.array([rz for rz in rz_depth]).reshape(1, -1)
         self.zr_min = np.array([rz if cd in perennials else self.zr_min[0, 0]
                                 for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
 
         self.perennial = np.array([1 if cd in perennials else 0 for cd in codes]).reshape(1, -1)
 
-    def load_soils(self, plots):
+    def load_soils(self):
 
-        fields = plots.input['order']
+        fields = self.plots.input['order']
 
-        self.aw = np.array([plots.input['props'][f]['awc'] for f in fields]).reshape(1, -1) * 1000.
+        if self.conf.calibrate or self.conf.forecast:
+            pass
+        else:
+            self.aw = np.array([self.plots.input['props'][f]['awc'] for f in fields]).reshape(1, -1) * 1000.
 
-        self.ksat = np.array([plots.input['props'][f]['ksat'] for f in fields]).reshape(1, -1)
+        self.ksat = np.array([self.plots.input['props'][f]['ksat'] for f in fields]).reshape(1, -1)
         self.ksat = self.ksat * 0.001 * 86400.
         self.ksat_hourly = np.ones((24, self.ksat.shape[1])) * self.ksat / 24.
-
-        # self.rew = 0.8 + 54.4 * self.aw / 1000  # REW is in mm and AW is in mm/m
-        #
-        # self.tew = -3.7 + 166 * self.aw / 1000  # TEW is in mm and AW is in mm/m
-        #
-        # condition = self.rew > 0.8 * self.tew
-        # self.rew = np.where(condition, 0.8 * self.tew, self.rew)  # limit REW based on TEW
 
         self.daw3 = np.zeros_like(self.aw)
         self.depl_root = self.aw * self.zr * 0.2
@@ -303,15 +223,15 @@ class SampleTracker:
     def set_kc_max(self):
         self.kc_max = 1.25
 
-    def apply_parameters(self, conf, sample_plots, params=None):
-        size = len(sample_plots.input['order'])
+    def apply_parameters(self, params=None):
+        size = len(self.plots.input['order'])
 
-        if conf.calibrate:
+        if self.conf.calibrate:
             print('CALIBRATION')
 
             cal_arr = {k: np.zeros((1, size)) for k in TUNABLE_PARAMS}
 
-            for k, f in conf.calibration_files.items():
+            for k, f in self.conf.calibration_files.items():
 
                 param_found = False
 
@@ -322,7 +242,7 @@ class SampleTracker:
                             fid = k.replace(f'{group}_', '')
                             param_found = True
 
-                idx = sample_plots.input['order'].index(fid)
+                idx = self.plots.input['order'].index(fid)
 
                 if params:
                     value = params[k]
@@ -335,12 +255,12 @@ class SampleTracker:
             for k, v in cal_arr.items():
                 self.__setattr__(k, v)
 
-        elif conf.forecast:
+        elif self.conf.forecast:
             print('FORECAST')
 
             param_arr = {k: np.zeros((1, size)) for k in TUNABLE_PARAMS}
 
-            for k, v in conf.forecast_parameters.items():
+            for k, v in self.conf.forecast_parameters.items():
 
                 param_found = False
 
@@ -352,7 +272,7 @@ class SampleTracker:
                             param_found = True
 
                 # PEST++ has lower-cased the FIDs
-                l = [x.lower() for x in sample_plots.input['order']]
+                l = [x.lower() for x in self.plots.input['order']]
                 idx = l.index(fid)
 
                 if fid not in l:
@@ -375,13 +295,13 @@ class SampleTracker:
                 arr = np.ones((1, size)) * v
                 self.__setattr__(k, arr)
 
-    def apply_initial_conditions(self, conf, sample_plots):
-        order = sample_plots.input['order']
+    def apply_initial_conditions(self):
+        order = self.plots.input['order']
         size = len(order)
         tracker_array = None
 
-        if os.path.exists(conf.spinup):
-            with open(conf.spinup, 'r') as fp:
+        if os.path.exists(self.conf.spinup):
+            with open(self.conf.spinup, 'r') as fp:
                 sdct = json.load(fp)
 
             first = True
@@ -392,7 +312,7 @@ class SampleTracker:
                     tracker_array = {p: np.zeros((1, size)) for p in var_dct.keys()}
                     first = False
 
-                idx = sample_plots.input['order'].index(fid)
+                idx = self.plots.input['order'].index(fid)
 
                 for k, v in var_dct.items():
 

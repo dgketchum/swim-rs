@@ -53,6 +53,8 @@ def compare_etf_estimates(combined_output_path, flux_data_path, irr=None, target
         results_daily['r2_swim'] = r2_score(df_daily['flux'], df_daily['swim'])
         results_daily['rmse_ssebop'] = float(np.sqrt(mean_squared_error(df_daily['flux'], df_daily['ssebop'])))
         results_daily['r2_ssebop'] = r2_score(df_daily['flux'], df_daily['ssebop'])
+        results_daily['ssebop_mean'] = float(df_daily['ssebop'].mean())
+        results_daily['swim_mean'] = float(df_daily['swim'].mean())
         results_daily['n_samples'] = df_daily.shape[0]
     except ValueError:
         results_daily = None

@@ -57,11 +57,11 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     etf, swe = None, None
     size = len(plots.input['order'])
 
-    tracker = SampleTracker(size)
-    tracker.apply_initial_conditions(config, plots)
-    tracker.load_root_depth(plots)
-    tracker.load_soils(plots)
-    tracker.apply_parameters(config, plots, params=params)
+    tracker = SampleTracker(config, plots, size)
+    tracker.apply_initial_conditions()
+    tracker.apply_parameters(params=params)
+    tracker.load_root_depth()
+    tracker.load_soils()
 
     if debug_flag:
         tunable_state = {k: tracker.__getattribute__(k) for k in TUNABLE_PARAMS}
