@@ -39,7 +39,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
         prepped_data, prepped_input = False, None
 
-        # if fid != 'ALARC2_Smith6':
+        # if fid != 'S2':
         #     continue
 
         for prior_constraint in ['tight']:

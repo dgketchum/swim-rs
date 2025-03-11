@@ -1,9 +1,11 @@
+from pprint import pprint
+
 import numpy as np
 import pandas as pd
 
 from model import compute_field_et
 from model import obs_kcb_daily
-from model.tracker import SampleTracker
+from model.tracker import SampleTracker, TUNABLE_PARAMS
 from model.day_data import DayData
 
 OUTPUT_FMT = ['et_act',
@@ -57,9 +59,17 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
     tracker = SampleTracker(size)
     tracker.apply_initial_conditions(config, plots)
-    tracker.apply_parameters(config, plots, params=params)
     tracker.load_root_depth(plots)
     tracker.load_soils(plots)
+    tracker.apply_parameters(config, plots, params=params)
+
+    if debug_flag:
+        tunable_state = {k: tracker.__getattribute__(k) for k in TUNABLE_PARAMS}
+        if size == 1:
+            tunable_state = {k: f'{v[0, 0]:.2f}' for k, v in tunable_state.items()}
+        else:
+            tunable_state = {k: [f'{vv:.2f}' for vv in v.flatten()] for k, v in tunable_state.items()}
+        pprint(dict(sorted(tunable_state.items())))
 
     targets = plots.input['order']
 

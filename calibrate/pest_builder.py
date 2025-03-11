@@ -250,13 +250,17 @@ class PestBuilder:
                     'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
                     'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
+            'zr_mult': {'file': self.params_file,
+                        'initial_value': 5.0, 'lower_bound': 0.3, 'upper_bound': 10.0,
+                        'pargp': 'zr_mult', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
             'kc_max': {'file': self.params_file,
-                       'initial_value': 1.1, 'lower_bound': 0.8, 'upper_bound': 1.3,
+                       'initial_value': 1.0, 'lower_bound': 0.8, 'upper_bound': 1.3,
                        'pargp': 'kc_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ke_max': {'file': self.params_file,
                        'initial_value': 0.6, 'lower_bound': 0.4, 'upper_bound': 1.0,
-                       'pargp': 'kc_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+                       'pargp': 'ke_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_k': {'file': self.params_file,
                        'initial_value': 6.0, 'lower_bound': 1, 'upper_bound': 10,
@@ -302,7 +306,6 @@ class PestBuilder:
             run_sp(cmd, wd, verbose=False)
         except Exception:
             run_ossystem(cmd, wd, verbose=False)
-
 
     def spinup(self, overwrite=False):
 

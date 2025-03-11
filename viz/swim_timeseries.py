@@ -126,13 +126,10 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', p
         fig.show()
 
 
-def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None):
+def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None, spec='flux-pdc'):
     """"""
 
     for fid in fids:
-
-        if fid != 'US-Blo':
-            continue
 
         csv = os.path.join(csv_dir, fid, f'{fid}.csv')
         pdc_file = os.path.join(csv_dir, fid, f'{fid}.pdc.csv')
@@ -171,13 +168,23 @@ def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None):
 
         df['flux_etf'] = flux_obs['EToF_filtered']
 
-        years = sorted(list(set(pdc_yr + flux_yr)))
+        if spec == 'flux':
+            years = flux_yr
+        elif spec == 'fluxpdc':
+            years = sorted(list(set(pdc_yr + flux_yr)))
+        elif spec == 'pdc':
+            years = pdc_yr
+        elif spec == 'all':
+            years = list(set(df.index.year.to_list()))
+        else:
+            raise ValueError('Must choose from flux, fluxpdc, pdc, or all to select plotting years')
 
         for yr in years:
 
             if yr in flux_yr:
                 plot_swim_timeseries(df,
-                                     ['irrigation', 'rain', 'etf', 'ke', 'kc_act', 'ndvi', 'pdc', 'flux_etf'],
+                                     ['irrigation', 'rain', 'etf', 'ke', 'kc_act', 'ndvi', 'pdc',
+                                      'flux_etf'],
                                      start=f'{yr}-01-01', end=f'{yr}-12-31', html_dir=out_fig_dir, fid=fid)
 
             else:
@@ -233,9 +240,8 @@ if __name__ == '__main__':
         'US-OF2',
     ]
 
-
     flux_data = os.path.join(data, 'daily_flux_files')
 
-    flux_pdc_timeseries(out_csv_dir, flux_data, l, out_fig_dir_)
+    flux_pdc_timeseries(out_csv_dir, flux_data, ['S2'], out_fig_dir_, spec='flux')
 
 # ========================= EOF ====================================================================

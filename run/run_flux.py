@@ -118,6 +118,6 @@ if __name__ == '__main__':
 
         out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'html')
 
-        flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_)
+        flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux')
 
 # ========================= EOF ====================================================================

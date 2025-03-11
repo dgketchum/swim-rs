@@ -70,6 +70,7 @@ TRACKER_PARAMS = ['taw',
                   'swe',
                   'zr_min',
                   'zr_max',
+                  'zr_mult',
                   'z',
                   'invoke_stress',
                   'doy_start_cycle',
@@ -84,13 +85,14 @@ TRACKER_PARAMS = ['taw',
                   'wt_irr',
                   'irr_min']
 
-TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'kc_max', 'ke_max', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta']
+TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'zr_mult', 'kc_max', 'ke_max', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta']
 
 # params not included here (e.g., 'tew') are taken from soils data
 TUNABLE_DEFAULTS = {'ndvi_k': 10.0,
                     'ndvi_0': 0.3,
                     'kc_max': 0.85,
                     'ke_max': 0.5,
+                    'zr_mult': 1.0,
                     'tew': 18.0,
                     'rew': 3.0,
                     'mad': 0.3,
@@ -188,9 +190,11 @@ class SampleTracker:
         self.s4 = 0.
         self.sro = 0.
         self.swe = 0.
-        self.z = 0.
+
         self.isnan = []
 
+        self.z = 0.
+        self.zr_mult = 1.0
         self.zr_min = 0.1
         self.zr_max = 1.7
 
@@ -256,13 +260,17 @@ class SampleTracker:
         rz_depth = [plots.input['props'][f]['root_depth'] for f in fields]
         codes = [plots.input['props'][f]['lulc_code'] for f in fields]
         crops = [12, 14]
-        # perennials = [c for c in range(1, 18) if c not in crops]
-        perennials = []
+        perennials = [c for c in range(1, 18) if c not in crops]
+        # perennials = []
 
         # depends on both the root depth and code from modis, see prep.__init__
-        self.zr = np.array([rz if cd in perennials else self.zr_min[0, 0]
-                            for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
-        self.zr_max = np.array([rz for rz in rz_depth]).reshape(1, -1)
+        zr = np.array([rz if cd in perennials else self.zr_min[0, 0]
+                            for rz, cd in zip(rz_depth, codes)])
+        self.zr = (zr * self.zr_mult).reshape(1, -1)
+
+        zr_max = np.array([rz for rz in rz_depth])
+        self.zr_max = (zr_max * self.zr_mult).reshape(1, -1)
+
         self.zr_min = np.array([rz if cd in perennials else self.zr_min[0, 0]
                                 for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
 

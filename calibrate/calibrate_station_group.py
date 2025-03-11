@@ -34,12 +34,12 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
     if bad_params:
         bad_df = pd.read_csv(bad_params, index_col=0)
         bad_df.dropna(inplace=True, how='all', axis=0)
-        bad_df = bad_df[(bad_df['lulc'] == 'Croplands') & (bad_df['mode'] == 'tight')]
+        bad_df = bad_df[(bad_df['lulc'] == 'Evergreen Forests') & (bad_df['mode'] == 'tight')]
         bad_df = bad_df[bad_df['monthly_rmse_diff_pct'] < 0.0]
         fids = bad_df.index.unique().to_list() + ['ET_8', 'S2']
 
     else:
-        fids = [f for f, r in flux_meta_df.iterrows() if r['General classification'] == 'Croplands']
+        fids = [f for f, r in flux_meta_df.iterrows() if r['General classification'] == 'Evergreen']
 
     os.chdir(os.path.dirname(__file__))
 
@@ -163,6 +163,9 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
 if __name__ == '__main__':
     d = '/data/ssd2/swim'
+    if not os.path.isdir(d):
+        home = os.path.expanduser('~')
+        d = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials')
 
     project_ = '4_Flux_Network'
     project_ws_ = os.path.join(d, project_)
@@ -170,7 +173,7 @@ if __name__ == '__main__':
     config_file = os.path.join(project_ws_, 'config.toml')
 
     bad_parameters = ('/home/dgketchum/PycharmProjects/swim-rs/tutorials/'
-                      '4_Flux_Network/results_comparison_05MAR2025_crops_tight.csv')
+                      '4_Flux_Network/results_comparison_bad.csv')
 
     run_pest_sequence(config_file, project_ws_, workers=22, realizations=200, bad_params=bad_parameters,
                       pdc_remove=True)
