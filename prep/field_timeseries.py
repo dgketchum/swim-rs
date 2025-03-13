@@ -111,13 +111,15 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
 if __name__ == '__main__':
 
-    root = '/home/dgketchum/PycharmProjects/swim-rs'
-
     project = '4_Flux_Network'
 
-    data = os.path.join(root, 'tutorials', project, 'data')
+    root = '/data/ssd2/swim'
+    data = os.path.join(root, project, 'data')
+    if not os.path.isdir(root):
+        root = '/home/dgketchum/PycharmProjects/swim-rs'
+        data = os.path.join(root, 'tutorials', project, 'data')
 
-    landsat = os.path.join(root, 'footprints', 'landsat')
+    landsat = os.path.join(data, 'landsat')
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
     FEATURE_ID = 'field_1'
     fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')

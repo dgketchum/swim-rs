@@ -238,7 +238,9 @@ class PestBuilder:
     def initial_parameter_dict(self):
 
         p = OrderedDict({
+
             # 'aw' and zr are applied by Tracker.load_soils and load_root_depth
+
             'aw': {'file': self.params_file,
                    'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 400.0,
                    'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
@@ -251,9 +253,9 @@ class PestBuilder:
                     'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
                     'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'zr_mult': {'file': self.params_file,
-                        'initial_value': 3.0, 'lower_bound': 0.1, 'upper_bound': 10.0,
-                        'pargp': 'zr_mult', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+            'zr_adj': {'file': self.params_file,
+                        'initial_value': 1.0, 'lower_bound': 0.5, 'upper_bound': 2.0,
+                        'pargp': 'zr_adj', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'kc_max': {'file': self.params_file,
                        'initial_value': 1.0, 'lower_bound': 0.8, 'upper_bound': 1.3,
@@ -262,6 +264,14 @@ class PestBuilder:
             'ke_max': {'file': self.params_file,
                        'initial_value': 0.6, 'lower_bound': 0.4, 'upper_bound': 1.0,
                        'pargp': 'ke_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
+            'ks_alpha': {'file': self.params_file,
+                         'initial_value': 0.1, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'pargp': 'ks_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
+            'kr_alpha': {'file': self.params_file,
+                         'initial_value': 0.1, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'pargp': 'kr_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_k': {'file': self.params_file,
                        'initial_value': 6.0, 'lower_bound': 1, 'upper_bound': 10,

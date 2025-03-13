@@ -11,7 +11,8 @@ from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 
 
-def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=None, pdc_remove=False, overwrite=False):
+def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=None,
+                      pdc_remove=False, overwrite=False):
     """"""
     config = ProjectConfig()
     config.read_config(conf_path, project_ws)
@@ -43,7 +44,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
         prepped_data, prepped_input = False, None
 
-        # if fid != 'US-Blo':
+        # if fid != 'US-FPe':
         #     continue
 
         for prior_constraint in ['tight']:
@@ -193,7 +194,7 @@ if __name__ == '__main__':
 
     bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
 
-    run_pest_sequence(config_file, project_ws_, workers=10, realizations=200, bad_params=bad_parameters,
+    run_pest_sequence(config_file, project_ws_, workers=20, realizations=200, bad_params=bad_parameters,
                       pdc_remove=True, overwrite=True)
 
 # ========================= EOF ============================================================================

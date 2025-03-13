@@ -87,10 +87,10 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
 
         if footprint_spec is None:
             file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
-                     x.endswith('.csv') and f'_{yr}' in x]
+                         x.endswith('.csv') and f'_{yr}' in x]
         else:
             file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
-                     x.endswith('.csv') and f'_{yr}' in x and f'_p{footprint_spec}' in x]
+                         x.endswith('.csv') and f'_{yr}' in x and f'_p{footprint_spec}' in x]
 
         for f in file_list:
             field = pd.read_csv(f)
@@ -115,15 +115,14 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
                 field = field.resample('D').mean()
             field = field.sort_index()
 
-            if 'etf' in csv_dir:
-                field[field[sid] < 0.01] = np.nan
+            field[field[sid] < 0.05] = np.nan
 
             df.loc[field.index, sid] = field[sid]
 
             ct.loc[f_idx, sid] = ~pd.isna(field[sid])
 
         if prev_df is not None and df.loc[f'{yr}-01'].isna().all().any():
-            df.loc[f'{yr}-01-01'] = prev_df.loc[f'{yr-1}-12-31']
+            df.loc[f'{yr}-01-01'] = prev_df.loc[f'{yr - 1}-12-31']
 
         df = df.replace(0.0, np.nan)
         df = df.astype(float).interpolate()
@@ -291,10 +290,13 @@ def get_tif_list(tif_dir, year):
 
 if __name__ == '__main__':
 
-    root = '/home/dgketchum/PycharmProjects/swim-rs'
+    project = '4_Flux_Network'
 
-    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
-    # data = os.path.join(root, 'tutorials', 'alarc_test', 'data')
+    root = '/data/ssd2/swim'
+    data = os.path.join(root, project, 'data')
+    if not os.path.isdir(root):
+        root = '/home/dgketchum/PycharmProjects/swim-rs'
+        data = os.path.join(root, 'tutorials', project, 'data')
 
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 
@@ -302,7 +304,7 @@ if __name__ == '__main__':
     irr = os.path.join(data, 'properties', 'calibration_irr.csv')
     ssurgo = os.path.join(data, 'properties', 'calibration_ssurgo.csv')
 
-    landsat = os.path.join(root, 'footprints', 'landsat')
+    landsat = os.path.join(data, 'landsat')
     extracts = os.path.join(landsat, 'extracts')
     tables = os.path.join(landsat, 'tables')
 

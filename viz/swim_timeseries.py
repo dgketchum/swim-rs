@@ -8,13 +8,13 @@ from plotly.subplots import make_subplots
 from viz import COLOR_MAP
 
 
-def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', png_dir=None, html_dir=None, fid=None):
+def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', fig_dir=None, fid=None):
     if not isinstance(df, pd.DataFrame):
         df = pd.read_csv(df, index_col=0, parse_dates=True)
 
     df = df.loc[start:end]
 
-    bar_vars = ['rain', 'melt', 'snow_fall', 'dperc', 'irrigation']
+    bar_vars = ['rain', 'melt', 'snow_fall', 'dperc', 'irrigation', 'gw_sim']
     pdc_present, flux_present = 'npc', 'nfx'
 
     if 'dperc' in df.columns and (df['dperc'] > 0).any():
@@ -109,14 +109,14 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', p
     fig.update_layout(**kwargs)
     # fig.update_xaxes(rangeslider_visible=False, row=main_row, col=1)
 
-    if png_dir:
-        png_file = os.path.join(png_dir, f'{fid}_{start[:4]}_{pdc_present}_{flux_present}.png')
+    if fig_dir is not None and 'png' in fig_dir:
+        png_file = os.path.join(fig_dir, f'{fid}_{start[:4]}_{pdc_present}_{flux_present}.png')
         fig.write_image(png_file)
         print(png_file)
         return
 
-    if html_dir:
-        html_file = os.path.join(html_dir, f'{fid}_{start[:4]}_{pdc_present}_{flux_present}.html')
+    if fig_dir is not None and 'html' in fig_dir:
+        html_file = os.path.join(fig_dir, f'{fid}_{start[:4]}_{pdc_present}_{flux_present}.html')
         fig.write_html(html_file)
         print(html_file)
         return
@@ -182,14 +182,16 @@ def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None, spec='fl
 
             if yr in flux_yr:
                 plot_swim_timeseries(df,
-                                     ['irrigation', 'rain', 'melt', 'dperc', 'etf', 'ks', 'ke', 'kc_act', 'ndvi', 'pdc',
+                                     ['irrigation', 'rain', 'melt', 'dperc', 'gw_sim',
+                                      'etf', 'ks', 'ke', 'kc_act', 'ndvi', 'pdc',
                                       'flux_etf'],
-                                     start=f'{yr}-01-01', end=f'{yr}-12-31', html_dir=out_fig_dir, fid=fid)
+                                     start=f'{yr}-01-01', end=f'{yr}-12-31', fig_dir=out_fig_dir, fid=fid)
 
             else:
-                plot_swim_timeseries(df, ['irrigation', 'rain', 'melt', 'dperc', 'etf', 'ks', 'ke', 'kc_act', 'ndvi',
+                plot_swim_timeseries(df, ['irrigation', 'rain', 'melt', 'dperc', 'gw_sim',
+                                          'etf', 'ks', 'ke', 'kc_act', 'ndvi',
                                           'pdc'],
-                                     start=f'{yr}-01-01', end=f'{yr}-12-31', html_dir=out_fig_dir, fid=fid)
+                                     start=f'{yr}-01-01', end=f'{yr}-12-31', fig_dir=out_fig_dir, fid=fid)
 
 
 if __name__ == '__main__':

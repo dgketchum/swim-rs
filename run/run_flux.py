@@ -11,8 +11,8 @@ from analysis.metrics import compare_etf_estimates
 from viz.swim_timeseries import flux_pdc_timeseries
 
 
-def run_flux_sites(ini_path, project_ws, flux_file, outdir, calibration_dir=None, forecast=False, calibrate=False,
-                   forecast_file=None, input_data=None, spinup_data=None):
+def run_flux_sites(ini_path, project_ws, flux_file, outdir, calibration_dir=None, forecast=False,
+                   calibrate=False, forecast_file=None, input_data=None, spinup_data=None):
     start_time = time.time()
 
     config = ProjectConfig()
@@ -39,7 +39,9 @@ def run_flux_sites(ini_path, project_ws, flux_file, outdir, calibration_dir=None
         df = df_dct[fid].copy()
         in_df = fields.input_to_dataframe(fid)
         df = pd.concat([df, in_df], axis=1, ignore_index=False)
+
         df = df.loc[config.start_dt:config.end_dt]
+
         df.to_csv(os.path.join(outdir, f'{fid}.csv'))
         irr_ = fields.input['irr_data'][fid]
         daily, overpass, monthly = compare_etf_estimates(df, flux_file, irr=irr_, target='et')
@@ -72,11 +74,11 @@ if __name__ == '__main__':
     l = ['AFD', 'ALARC2_Smith6', 'BPHV', 'ET_1', 'JPL1_JV114', 'KV_4',
          'MOVAL', 'MR', 'S2', 'UA2_JV330', 'UA3_JV108', 'UA3_KN15',
          'UOVLO', 'US-Blo', 'US-CMW', 'US-Esm', 'US-Hn2', 'US-LS1',
-         'US-OF2', 'US-Ro2', 'US-SCg']
+         'US-OF2', 'US-Ro2', 'US-SCg', 'US-FPe']
 
     for site_ in l:
 
-        if site_ != 'US-Blo':
+        if site_ != 'US-FPe':
             continue
 
         run_const = os.path.join(run_data, '4_Flux_Network', 'results', constraint_)

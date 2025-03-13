@@ -6,13 +6,8 @@ from model import compute_snow
 
 
 def compute_field_et(ts_data, swb, day_data):
-
-    kc_max = np.maximum(swb.kc_max, swb.kc_bas + 0.05)
-
     swb.kc_bas = np.maximum(swb.kc_min, swb.kc_bas)
-
-    # consider height removal
-    swb.fc = ((swb.kc_bas - swb.kc_min) / (kc_max - swb.kc_min)) # ** (1 + 0.5 * swb.height)
+    swb.fc = ((swb.kc_bas - swb.kc_min) / (swb.kc_max - swb.kc_min))
 
     # limit so that few > 0
     swb.fc = np.minimum(swb.fc, 0.99)
@@ -52,7 +47,19 @@ def compute_field_et(ts_data, swb, day_data):
 
     swb.few = 1 - swb.fc
 
-    swb.kr = np.minimum((swb.tew - swb.depl_ze) / (swb.tew - swb.rew + 1e-6), 1.)
+    # Momentum-based Kr calculation
+
+    kr_inst = np.clip((swb.tew - swb.depl_ze) / (swb.tew - swb.rew + 1e-6), 0.0, 1.0)
+
+    if swb.kr_prev is None or swb.delta_kr_prev is None:
+        swb.kr_prev = swb.kr
+        swb.delta_kr_prev = swb.kr
+
+    delta_kr = kr_inst - swb.kr_prev
+    damped_delta_kr = delta_kr * swb.kr_alpha
+    swb.kr = swb.kr_prev + damped_delta_kr
+    swb.kr = np.clip(swb.kr, 0.0, 1.0)
+    swb.kr_prev = swb.kr
 
     swb.ke = np.minimum(swb.kr * (swb.kc_max - swb.kc_bas), swb.few * swb.kc_max)
     swb.ke = np.maximum(swb.ke, 0.0)
@@ -64,8 +71,24 @@ def compute_field_et(ts_data, swb, day_data):
     swb.taw = np.maximum(swb.taw, swb.tew)
     swb.raw = swb.mad * swb.taw
 
-    swb.ks = np.where(swb.depl_root > swb.raw,
-                      np.maximum((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0), 1)
+    # Momentum-based Ks calculation
+
+    swb.ks_inst = np.where(swb.depl_root > swb.raw,
+                           np.maximum((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0), 1)
+    swb.ks_inst = np.clip(swb.ks_inst, 0.0, 1.0)
+
+    if swb.ks_prev is None or swb.delta_ks_prev is None:
+        swb.ks_prev = swb.ks_inst
+        swb.delta_ks_prev = swb.ks_inst
+
+    swb.delta_ks_inst = swb.ks_inst - swb.ks_prev
+
+    swb.ks_momentum = swb.ks_prev + swb.delta_ks_prev
+    swb.ks_momentum = np.clip(swb.ks_momentum, 0.0, 1.0)
+    swb.ks = swb.ks_alpha * swb.ks_momentum + (1 - swb.ks_alpha) * swb.ks_inst
+
+    swb.delta_ks_prev = swb.ks - swb.ks_prev
+    swb.ks_prev = swb.ks
 
     if np.any(swb.swe > 0.0):
         # Calculate Kc during snow cover
@@ -75,8 +98,8 @@ def compute_field_et(ts_data, swb, day_data):
 
         # Radiation term for reducing Kc to actCount for snow albedo
         k_rad = (
-            0.000000022 * day_data.doy ** 3 - 0.0000242 * day_data.doy ** 2 +
-            0.006 * day_data.doy + 0.011)
+                0.000000022 * day_data.doy ** 3 - 0.0000242 * day_data.doy ** 2 +
+                0.006 * day_data.doy + 0.011)
         albedo_snow = 0.8
         albedo_soil = 0.25
         kc_mult[condition] = 1 - k_rad + (1 - albedo_snow) / (1 - albedo_soil) * k_rad
@@ -149,7 +172,6 @@ def compute_field_et(ts_data, swb, day_data):
     swb.gw_sim = np.zeros_like(swb.aw)
 
     if np.any(day_data.gwsub_status) and np.any((swb.depl_root > swb.raw)):
-
         gw_subsidy = np.where(day_data.gwsub_status, swb.depl_root - swb.raw, 0.0)
         swb.gw_sim = gw_subsidy
 
@@ -202,5 +224,3 @@ def compute_field_et(ts_data, swb, day_data):
     swb.delta_soil_water = swb.soil_water - swb.soil_water_prev
 
     grow_root.grow_root(swb)
-
-

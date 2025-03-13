@@ -59,7 +59,7 @@ def write_field_properties(shp, irr, ssurgo, js, cdl=None, lulc=None, flux_meta=
         # inches to mm
         [dct[k].update({'root_depth':
                             RZ[str(rz[k]['mode'])]['rooting_depth'] if str(rz[k]['mode']) in RZ.keys()
-                             else np.nan}) for k in dct.keys()]
+                            else np.nan}) for k in dct.keys()]
 
         [dct[k].update({'zr_mult':
                             RZ[str(rz[k]['mode'])]['zr_multiplier'] if str(rz[k]['mode']) in RZ.keys()
@@ -106,10 +106,14 @@ def write_field_properties(shp, irr, ssurgo, js, cdl=None, lulc=None, flux_meta=
 
 
 if __name__ == '__main__':
-    home = os.path.expanduser('~')
-    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
+    project = '4_Flux_Network'
 
-    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
+    root = '/data/ssd2/swim'
+    data = os.path.join(root, project, 'data')
+    if not os.path.isdir(root):
+        root = '/home/dgketchum/PycharmProjects/swim-rs'
+        data = os.path.join(root, 'tutorials', project, 'data')
+
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 
     FEATURE_ID = 'field_1'

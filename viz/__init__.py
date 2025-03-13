@@ -1,6 +1,6 @@
 COLOR_MAP = {
     'et_act': 'blue', 'etref': 'green', 'kc_act': 'lightsalmon', 'kc_bas': 'purple',
-    'ks': 'yellow', 'ke': 'purple', 'melt': 'lightblue', 'rain': 'lightpink',
+    'ks': 'yellow', 'ke': 'purple', 'melt': 'mediumseagreen', 'rain': 'lightpink',
     'depl_root': 'grey', 'depl_ze': 'darkgrey', 'dperc': 'orangered', 'runoff': 'red',
     'delta_soil_water': 'teal', 'wbal': 'black', 'ppt': 'lightcyan', 'snow_fall': 'blue',
     'taw': 'darkorange', 'taw3': 'orangered', 'daw3': 'yellow', 'delta_daw3': 'gold',
@@ -23,6 +23,6 @@ COLOR_MAP = {
     'etf_irr': 'blue', 'ndvi_irr': 'green', 'etf_irr_ct': 'blue', 'ndvi_irr_ct': 'green',
     'etr_mm_uncorr': 'lightgreen', 'eto_mm_uncorr': 'darkseagreen',
     'etf_inv_irr': 'blue', 'ndvi_inv_irr': 'green', 'etf_inv_irr_ct': 'blue',
-    'ndvi_inv_irr_ct': 'green', 'ndvi': 'mediumseagreen', 'ndvi_ct': 'green', 'etf': 'turquoise',
+    'ndvi_inv_irr_ct': 'green', 'ndvi': 'mediumseagreen', 'ndvi_ct': 'green', 'etf': 'blue',
     'etf_ct': 'blue', 'pdc': 'purple', 'flux_etf': 'magenta'
 }

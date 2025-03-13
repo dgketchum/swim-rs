@@ -8,23 +8,30 @@ from model import TRACKER_PARAMS
 
 de_initial = 10.0
 
-TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'zr_mult', 'kc_max', 'ke_max', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta']
+TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ks_alpha', 'kr_alpha', 'ndvi_k',
+                  'ndvi_0', 'mad', 'swe_alpha', 'swe_beta', 'zr_adj', 'kc_max', 'ke_max',]
+
+#
 
 # params not included here (e.g., 'tew') are taken from soils data
-TUNABLE_DEFAULTS = {'ndvi_k': 10.0,
-                    'ndvi_0': 0.3,
-                    'kc_max': 0.85,
-                    'ke_max': 0.5,
-                    'zr_mult': 2.5,
-                    'tew': 18.0,
-                    'rew': 3.0,
-                    'mad': 0.3,
-                    'swe_alpha': 0.073,
-                    'swe_beta': 1.38}
+TUNABLE_DEFAULTS = {'aw': 177.56,
+                    'kc_max': 1.00,
+                    'ke_max': 0.60,
+                    'kr_alpha': 0.01,
+                    'ks_alpha': 0.05,
+                    'mad': 0.59,
+                    'ndvi_0': 0.41,
+                    'ndvi_k': 4.99,
+                    'rew': 2.93,
+                    'swe_alpha': 0.48,
+                    'swe_beta': 1.31,
+                    'tew': 15.24,
+                    'zr_adj': 1.0,
+                    }
 
 
 class SampleTracker:
-
+    #
     def __init__(self, config, plots, size):
         """Initialize for crops cycle"""
 
@@ -73,7 +80,7 @@ class SampleTracker:
         self.irr_sim = 0.
         self.kc_act = 0.
         self.kc_pot = 0
-        self.kc_max = 0.
+        self.kc_max = 1.25
         self.kc_min = 0.
         self.kc_bas = 0.
         self.kc_bas_mid = 0.
@@ -82,6 +89,8 @@ class SampleTracker:
         self.ke_max = 0.85
         self.kr = 0.
         self.ks = 0.
+        self.ks_prev = None
+        self.kr_prev = None
         self.ksat = 0.
 
         self.ksat_hourly = None
@@ -121,6 +130,7 @@ class SampleTracker:
 
         self.zr = 0.
         self.zr_mult = 1.0
+        self.zr_adj = 1.0
         self.zr_min = 0.1
         self.zr_max = 1.7
 
@@ -189,7 +199,11 @@ class SampleTracker:
 
         # depends on both the root depth and code from modis, see prep.__init__
         rz_depth = [self.plots.input['props'][f]['root_depth'] for f in fields]
-        rz_depth = self.zr_mult * np.array(rz_depth)
+
+        zr_mult = [self.plots.input['props'][f]['zr_mult'] for f in fields]
+        zr_mult = np.array(zr_mult)
+
+        rz_depth = self.zr_adj * zr_mult * np.array(rz_depth)
 
         self.zr = np.array([rz if cd in perennials else self.zr_min[0, 0]
                             for rz, cd in zip(rz_depth, codes)]).reshape(1, -1)
@@ -219,9 +233,6 @@ class SampleTracker:
     def setup_dataframe(self, targets):
 
         self.crop_df = {target: {} for target in targets}
-
-    def set_kc_max(self):
-        self.kc_max = 1.25
 
     def apply_parameters(self, params=None):
         size = len(self.plots.input['order'])
