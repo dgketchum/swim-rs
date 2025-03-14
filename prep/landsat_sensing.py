@@ -112,9 +112,21 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
 
             duplicates = field[field.index.duplicated(keep=False)]
             if not duplicates.empty:
-                field = field.resample('D').mean()
-            field = field.sort_index()
+                field = field.resample('D').max()
 
+            valid_indices = field.dropna().index
+            diffs = valid_indices.to_series().diff().dt.days
+            consecutive_days = diffs[diffs == 1].index
+
+            for day in consecutive_days:
+                prev_day = day - pd.Timedelta(days=1)
+                if prev_day in field.index:
+                    if field.loc[prev_day, sid] > field.loc[day, sid]:
+                        field.loc[day, sid] = np.nan
+                    else:
+                        field.loc[prev_day, sid] = np.nan
+
+            field = field.sort_index()
             field[field[sid] < 0.05] = np.nan
 
             df.loc[field.index, sid] = field[sid]
