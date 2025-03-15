@@ -77,7 +77,7 @@ def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_t
         print(_name)
 
 
-def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None,
+def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, grid_spec=None,
                        feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3'):
     df = gpd.read_file(shapefile)
     df.index = df[feature_id]
@@ -106,6 +106,9 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
             site = row[feature_id]
             grid_sz = row['grid_size']
+
+            if grid_spec is not None and grid_sz != grid_spec:
+                continue
 
             desc = 'ndvi_{}_p{}_{}_{}'.format(site, grid_sz, mask_type, year)
             if check_dir:
