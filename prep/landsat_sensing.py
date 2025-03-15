@@ -114,6 +114,8 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
             if not duplicates.empty:
                 field = field.resample('D').max()
 
+            field = field.sort_index()
+
             valid_indices = field.dropna().index
             diffs = valid_indices.to_series().diff().dt.days
             consecutive_days = diffs[diffs == 1].index
@@ -320,26 +322,24 @@ if __name__ == '__main__':
     extracts = os.path.join(landsat, 'extracts')
     tables = os.path.join(landsat, 'tables')
 
-    remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
-
     FEATURE_ID = 'field_1'
     selected_feature = None
 
-    types_ = ['irr', 'inv_irr']
-    sensing_params = ['etf', 'ndvi']
+    types_ = ['irr']
+    sensing_params = ['ndvi', 'etf']
 
     for mask_type in types_:
 
         for sensing_param in sensing_params:
-            yrs = [x for x in range(1987, 2023)]
+            yrs = [x for x in range(2017, 2018)]
 
             ee_data = os.path.join(landsat, 'extracts', sensing_param, mask_type)
             src = os.path.join(tables, '{}_{}_{}.csv'.format('calibration', sensing_param, mask_type))
             src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format('calibration', sensing_param, mask_type))
 
             # TODO: consider whether there is a case where ETf needs to be interpolated
-            sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                                       feature_id=FEATURE_ID, select=None)
+            sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct, footprint_spec=3,
+                                       feature_id=FEATURE_ID, select=['Almond_High'])
 
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
     join_remote_sensing(tables, remote_sensing_file)
