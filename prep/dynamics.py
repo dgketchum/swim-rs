@@ -17,7 +17,7 @@ class SamplePlotDynamics:
 
         self.irr = None
         self.years = None
-        self.fields = {'irr': {}, 'gwsub': {}}
+        self.fields = {'irr': {}, 'gwsub': {}, 'ke_max': {}, 'kc_max': {}}
 
         self._load_data()
 
@@ -54,6 +54,19 @@ class SamplePlotDynamics:
             field_data = self._analyze_field_groundwater_subsidy(fid, field_time_series)
             if field_data is not None:
                 self.fields['gwsub'][fid] = field_data
+
+    def analyze_k_parameters(self):
+        for fid in tqdm(self.irr.index, desc='Calculating K Parameters', total=len(self.irr.index)):
+            if self.select and fid not in self.select:
+                continue
+
+            _file = os.path.join(self.time_series, f'{fid}_daily.csv')
+            try:
+                field_time_series = pd.read_csv(_file, index_col=0, parse_dates=True)
+            except FileNotFoundError:
+                print(f'{_file} not found, skipping')
+                continue
+            self._find_field_k_parameters(fid, field_time_series)
 
     def save_json(self):
         with open(self.out_json_file, 'w') as fp:
@@ -103,7 +116,7 @@ class SamplePlotDynamics:
                 df['eta'] = df['eto_mm_uncorr'] * df['etf_inv_irr']
 
             eta, ppt = df['eta'].sum(), df['prcp_mm'].sum()
-            ratio = eta / ppt
+            ratio = eta / (ppt + 1.0)
 
             if irrigated:
                 field_data[yr] = {'subsidized': 0,
@@ -213,8 +226,6 @@ class SamplePlotDynamics:
                 irr_doys.extend(range(start_doy, end_doy))
                 periods += 1
 
-            # print('Warning: setting irrigation to ON all days')
-            # irr_doys = list(range(1, df.shape[0] + 1))
             irr_doys = sorted(list(set(irr_doys)))
 
             field_data[yr] = {'irr_doys': irr_doys,
@@ -224,20 +235,48 @@ class SamplePlotDynamics:
         field_data['fallow_years'] = fallow
         return field_data
 
+    def _find_field_k_parameters(self, fid, field_time_series):
+
+        etf_columns = [col for col in ['etf_inv_irr', 'etf_irr'] if col in field_time_series.columns]
+        ndvi_columns = [col for col in ['ndvi_inv_irr', 'ndvi_irr'] if col in field_time_series.columns]
+        if not etf_columns or not ndvi_columns:
+            return
+
+        all_etf = field_time_series[etf_columns].values.flatten()
+        all_ndvi = field_time_series[ndvi_columns].values.flatten()
+
+        nan_mask = np.isnan(all_etf) | np.isnan(all_ndvi)
+        all_etf = all_etf[~nan_mask]
+        all_ndvi = all_ndvi[~nan_mask]
+
+        ke_max_mask = all_ndvi < 0.3
+        if np.any(ke_max_mask):
+            ke_max = np.percentile(all_etf[ke_max_mask], 90)
+        else:
+            ke_max = 1.0
+            print(f'Warning: No NDVI values below 0.3 for {fid}. Setting ke_max=1.0')
+
+        kc_max = np.percentile(all_etf, 95)
+
+        self.fields['ke_max'][fid] = float(ke_max)
+        self.fields['kc_max'][fid] = float(kc_max)
+
 
 if __name__ == '__main__':
-    root = '/home/dgketchum/PycharmProjects/swim-rs'
+    project = '4_Flux_Network'
 
-    project = 'alarc_test'
-    feature_ = 'ALARC2_Smith6'
+    root = '/data/ssd2/swim'
+    data = os.path.join(root, project, 'data')
+    if not os.path.isdir(root):
+        root = '/home/dgketchum/PycharmProjects/swim-rs'
+        data = os.path.join(root, 'tutorials', project, 'data')
 
     data = os.path.join(root, 'tutorials', project, 'data')
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 
     irr = os.path.join(data, 'properties', 'calibration_irr.csv')
 
-    landsat = os.path.join(root, 'footprints', 'landsat')
-    # landsat = os.path.join(data, 'landsat')
+    landsat = os.path.join(data, 'landsat')
 
     joined_timeseries = os.path.join(data, 'plot_timeseries')
 
@@ -246,9 +285,10 @@ if __name__ == '__main__':
     cuttings_json = os.path.join(landsat, 'calibration_dynamics.json')
 
     dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3,
-                                  out_json_file=cuttings_json, select=[feature_])
+                                  out_json_file=cuttings_json, select=None)
     dynamics.analyze_groundwater_subsidy()
     dynamics.analyze_irrigation()
+    dynamics.analyze_k_parameters()
     dynamics.save_json()
 
 # ========================= EOF ====================================================================

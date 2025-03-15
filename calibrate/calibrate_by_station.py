@@ -39,13 +39,16 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
         bad_df = pd.read_csv(bad_params, index_col=0)
         bad_stations = bad_df.index.unique().to_list()
         flux_meta_df = flux_meta_df.loc[bad_stations]
+        # print('Warning: using good stations')
+        # good_stations = [i for i in flux_meta_df.index if i not in bad_stations]
+        # flux_meta_df = flux_meta_df.loc[good_stations[10:]]
 
     for fid, row in flux_meta_df.iterrows():
 
         prepped_data, prepped_input = False, None
 
-        # if fid != 'US-FPe':
-        #     continue
+        if fid not in ['US-Ne3', 'BPHV', 'US-Tw3', 'Almond_High']:
+            continue
 
         for prior_constraint in ['tight']:
 
@@ -194,7 +197,7 @@ if __name__ == '__main__':
 
     bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
 
-    run_pest_sequence(config_file, project_ws_, workers=20, realizations=200, bad_params=bad_parameters,
+    run_pest_sequence(config_file, project_ws_, workers=20, realizations=200, bad_params=None,
                       pdc_remove=True, overwrite=True)
 
 # ========================= EOF ============================================================================

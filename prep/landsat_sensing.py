@@ -325,21 +325,21 @@ if __name__ == '__main__':
     FEATURE_ID = 'field_1'
     selected_feature = None
 
-    types_ = ['irr']
-    sensing_params = ['ndvi', 'etf']
+    types_ = ['irr', 'inv_irr']
+    sensing_params = ['etf', 'ndvi']
 
     for mask_type in types_:
 
         for sensing_param in sensing_params:
-            yrs = [x for x in range(2017, 2018)]
+            yrs = [x for x in range(1987, 2023)]
 
             ee_data = os.path.join(landsat, 'extracts', sensing_param, mask_type)
             src = os.path.join(tables, '{}_{}_{}.csv'.format('calibration', sensing_param, mask_type))
             src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format('calibration', sensing_param, mask_type))
 
             # TODO: consider whether there is a case where ETf needs to be interpolated
-            sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct, footprint_spec=3,
-                                       feature_id=FEATURE_ID, select=['Almond_High'])
+            sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
+                                       feature_id=FEATURE_ID, select=None)
 
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
     join_remote_sensing(tables, remote_sensing_file)

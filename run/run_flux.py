@@ -71,15 +71,13 @@ if __name__ == '__main__':
 
     run_data = os.path.join(root, 'tutorials')
 
-    l = ['AFD', 'ALARC2_Smith6', 'BPHV', 'ET_1', 'JPL1_JV114', 'KV_4',
-         'MOVAL', 'MR', 'S2', 'UA2_JV330', 'UA3_JV108', 'UA3_KN15',
-         'UOVLO', 'US-Blo', 'US-CMW', 'US-Esm', 'US-Hn2', 'US-LS1',
-         'US-OF2', 'US-Ro2', 'US-SCg', 'US-FPe']
+    l = ['AFD', 'ALARC2_Smith6', 'BPHV', 'ET_1', 'JPL1_JV114', 'KV_4', 'MOVAL', 'MR', 'S2', 'UA2_JV330', 'UA3_JV108',
+         'UA3_KN15', 'UOVLO', 'US-Blo', 'US-CMW', 'US-Esm', 'US-Hn2', 'US-LS1', 'US-OF2', 'US-Ro2', 'US-SCg', 'US-SCs',
+         'US-SCw', 'US-SP4', 'US-Srr', 'US-Tw2', 'US-WBW', 'US-WCr', 'US-xSB', 'US-xUN', 'US-xYE', 'VR', 'WRV_1']
 
-    for site_ in l:
+    for site_ in ['US-Ne3', 'US-Tw3', 'Almond_High']:
 
-        if site_ != 'US-FPe':
-            continue
+        print('\n', site_)
 
         run_const = os.path.join(run_data, '4_Flux_Network', 'results', constraint_)
         output_ = os.path.join(run_const, site_)
@@ -96,13 +94,18 @@ if __name__ == '__main__':
 
         cal = os.path.join(project_ws_, f'{constraint_}_pest', 'mult')
 
-        run_flux_sites(config_file, project_ws_, flux_data, output_,
-                       forecast=True, forecast_file=fcst_params,
-                       input_data=prepped_input, spinup_data=spinup_,
-                       calibrate=False, calibration_dir=None)
+        try:
+            run_flux_sites(config_file, project_ws_, flux_data, output_,
+                           forecast=True, forecast_file=fcst_params,
+                           input_data=prepped_input, spinup_data=spinup_,
+                           calibrate=False, calibration_dir=None)
+        except KeyError:
+            print(f'KeyError on {site_}')
 
-        out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'html')
+        out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'png')
 
         flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux')
+
+        exit()
 
 # ========================= EOF ====================================================================

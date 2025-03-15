@@ -62,6 +62,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     tracker.apply_parameters(params=params)
     tracker.load_root_depth()
     tracker.load_soils()
+    tracker.set_k_max()
 
     if debug_flag:
         tunable_state = {k: tracker.__getattribute__(k) for k in TUNABLE_PARAMS}

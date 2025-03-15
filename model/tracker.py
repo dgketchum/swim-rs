@@ -9,14 +9,12 @@ from model import TRACKER_PARAMS
 de_initial = 10.0
 
 TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ks_alpha', 'kr_alpha', 'ndvi_k',
-                  'ndvi_0', 'mad', 'swe_alpha', 'swe_beta', 'zr_adj', 'kc_max', 'ke_max',]
+                  'ndvi_0', 'mad', 'swe_alpha', 'swe_beta', 'zr_adj']
 
 #
 
 # params not included here (e.g., 'tew') are taken from soils data
 TUNABLE_DEFAULTS = {'aw': 177.56,
-                    'kc_max': 1.00,
-                    'ke_max': 0.60,
                     'kr_alpha': 0.01,
                     'ks_alpha': 0.05,
                     'mad': 0.59,
@@ -91,6 +89,8 @@ class SampleTracker:
         self.ks = 0.
         self.ks_prev = None
         self.kr_prev = None
+        self.ke_max = 1.0
+        self.kc_max = 1.0
         self.ksat = 0.
 
         self.ksat_hourly = None
@@ -420,3 +420,9 @@ class SampleTracker:
             if abs(balance) > 0.1 and day_data.year > 2000:
                 pass
                 # raise WaterBalanceError('Check November water balance')
+
+    def set_k_max(self):
+        fields = self.plots.input['order']
+        self.ke_max = np.array([self.plots.input['kr_max'][f] for f in fields]).reshape(1, -1)
+        self.kc_max = np.array([self.plots.input['kc_max'][f] for f in fields]).reshape(1, -1)
+

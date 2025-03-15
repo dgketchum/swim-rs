@@ -257,14 +257,6 @@ class PestBuilder:
                         'initial_value': 1.0, 'lower_bound': 0.5, 'upper_bound': 2.0,
                         'pargp': 'zr_adj', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'kc_max': {'file': self.params_file,
-                       'initial_value': 1.0, 'lower_bound': 0.8, 'upper_bound': 1.3,
-                       'pargp': 'kc_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
-
-            'ke_max': {'file': self.params_file,
-                       'initial_value': 0.6, 'lower_bound': 0.4, 'upper_bound': 1.0,
-                       'pargp': 'ke_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
-
             'ks_alpha': {'file': self.params_file,
                          'initial_value': 0.1, 'lower_bound': 0.01, 'upper_bound': 1.0,
                          'pargp': 'ks_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
