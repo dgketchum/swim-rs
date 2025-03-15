@@ -37,7 +37,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
     if bad_params:
         bad_df = pd.read_csv(bad_params, index_col=0)
-        bad_stations = bad_df.index.unique().to_list()
+        bad_stations = list(set(bad_df.index.unique().to_list() + ['US-Ne3', 'BPHV', 'US-Tw3', 'Almond_High']))
         flux_meta_df = flux_meta_df.loc[bad_stations]
         # print('Warning: using good stations')
         # good_stations = [i for i in flux_meta_df.index if i not in bad_stations]
@@ -47,8 +47,8 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
         prepped_data, prepped_input = False, None
 
-        if fid not in ['US-Ne3', 'BPHV', 'US-Tw3', 'Almond_High']:
-            continue
+        # if fid not in []:
+        #     continue
 
         for prior_constraint in ['tight']:
 

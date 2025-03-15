@@ -242,16 +242,20 @@ class SampleTracker:
 
             cal_arr = {k: np.zeros((1, size)) for k in TUNABLE_PARAMS}
 
+            ct = 0
             for k, f in self.conf.calibration_files.items():
 
                 param_found = False
 
                 while not param_found:
+                    ct += 1
                     for p in TUNABLE_PARAMS:
                         if p in k:
                             group = p
                             fid = k.replace(f'{group}_', '')
                             param_found = True
+                    if ct > 1000:
+                        raise ValueError('Parameter Match Not Found')
 
                 idx = self.plots.input['order'].index(fid)
 
@@ -271,16 +275,20 @@ class SampleTracker:
 
             param_arr = {k: np.zeros((1, size)) for k in TUNABLE_PARAMS}
 
+            ct = 0
             for k, v in self.conf.forecast_parameters.items():
 
                 param_found = False
 
                 while not param_found:
+                    ct += 1
                     for p in TUNABLE_PARAMS:
                         if p in k:
                             group = p
                             fid = k.replace(f'{group}_', '')
                             param_found = True
+                    if ct > 1000:
+                        raise ValueError('Parameter Match Not Found')
 
                 # PEST++ has lower-cased the FIDs
                 l = [x.lower() for x in self.plots.input['order']]
@@ -423,6 +431,6 @@ class SampleTracker:
 
     def set_k_max(self):
         fields = self.plots.input['order']
-        self.ke_max = np.array([self.plots.input['kr_max'][f] for f in fields]).reshape(1, -1)
+        self.ke_max = np.array([self.plots.input['ke_max'][f] for f in fields]).reshape(1, -1)
         self.kc_max = np.array([self.plots.input['kc_max'][f] for f in fields]).reshape(1, -1)
 
