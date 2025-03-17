@@ -47,8 +47,11 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
         prepped_data, prepped_input = False, None
 
-        # if fid not in []:
-        #     continue
+        if fid not in ['US-Tw3']:
+            continue
+
+        if fid == 'US-Bi2':
+            continue
 
         for prior_constraint in ['tight']:
 

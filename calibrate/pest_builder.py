@@ -72,6 +72,8 @@ class PestBuilder:
         targets = self.plot_order
 
         aw = [self.plot_properties[t]['awc'] for t in targets]
+        ke_max = [self.plots.input['ke_max'][t] for t in targets]
+        kc_max = [self.plots.input['kc_max'][t] for t in targets]
 
         input_csv = [os.path.join(self.config.plot_timeseries, '{}_daily.csv'.format(fid)) for fid in targets]
 
@@ -80,17 +82,33 @@ class PestBuilder:
         self.params_file = os.path.join(self.project_ws, 'params.csv')
 
         pars = self.initial_parameter_dict()
+        p_list = list(pars.keys())
         pars = OrderedDict({'{}_{}'.format(k, fid): v.copy() for k, v in pars.items() for fid in targets})
 
         params = []
-        for i, (k, v) in enumerate(pars.items()):
-            if 'aw_' in k:
-                aw_ = aw[i] * 1000.
-                if np.isnan(aw_) or aw_ < pars[k]['lower_bound']:
-                    aw_ = 150.0
-                params.append((k, aw_, 'p_{}_0_constant.csv'.format(k)))
-            else:
-                params.append((k, v['initial_value'], 'p_{}_0_constant.csv'.format(k)))
+
+        for i, fid in enumerate(targets):
+
+            for p in p_list:
+
+                k = f'{p}_{fid}'
+
+                if 'aw_' in k:
+                    aw_ = aw[i] * 1000.
+                    if np.isnan(aw_) or aw_ < pars[k]['lower_bound']:
+                        aw_ = 150.0
+                    params.append((k, aw_, 'p_{}_0_constant.csv'.format(k)))
+
+                elif 'ke_max_' in k:
+                    ke_max_ = ke_max[i]
+                    params.append((k, ke_max_, 'p_{}_0_constant.csv'.format(k)))
+
+                elif 'kc_max_' in k:
+                    kc_max_ = kc_max[i]
+                    params.append((k, kc_max_, 'p_{}_0_constant.csv'.format(k)))
+
+                else:
+                    params.append((k, pars[k]['initial_value'], 'p_{}_0_constant.csv'.format(k)))
 
         idx, vals, _names = [x[0] for x in params], [x[1] for x in params], [x[2] for x in params]
         vals = np.array([vals, _names]).T
@@ -99,7 +117,7 @@ class PestBuilder:
 
         for e, (ii, r) in enumerate(df.iterrows()):
             pars[ii]['use_rows'] = e
-            if 'aw_' in ii:
+            if any(prefix in ii for prefix in ['aw_', 'ke_max_', 'kc_max_']):
                 pars[ii]['initial_value'] = float(r['value'])
 
         etf_obs_files = ['obs/obs_etf_{}.np'.format(fid) for fid in targets]
@@ -256,6 +274,14 @@ class PestBuilder:
             'zr_adj': {'file': self.params_file,
                         'initial_value': 1.0, 'lower_bound': 0.5, 'upper_bound': 2.0,
                         'pargp': 'zr_adj', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
+            'kc_max': {'file': self.params_file,
+                       'initial_value': None, 'lower_bound': 0.8, 'upper_bound': 1.3,
+                       'pargp': 'kc_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
+            'ke_max': {'file': self.params_file,
+                       'initial_value': None, 'lower_bound': 0.4, 'upper_bound': 1.0,
+                       'pargp': 'ke_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ks_alpha': {'file': self.params_file,
                          'initial_value': 0.1, 'lower_bound': 0.01, 'upper_bound': 1.0,

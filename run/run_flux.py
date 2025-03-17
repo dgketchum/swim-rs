@@ -50,8 +50,6 @@ def run_flux_sites(ini_path, project_ws, flux_file, outdir, calibration_dir=None
         print('\nDaily\n')
         pprint(daily)
 
-        a = 1
-
 
 if __name__ == '__main__':
     home = os.path.expanduser('~')
@@ -71,11 +69,13 @@ if __name__ == '__main__':
 
     run_data = os.path.join(root, 'tutorials')
 
-    l = ['AFD', 'ALARC2_Smith6', 'BPHV', 'ET_1', 'JPL1_JV114', 'KV_4', 'MOVAL', 'MR', 'S2', 'UA2_JV330', 'UA3_JV108',
-         'UA3_KN15', 'UOVLO', 'US-Blo', 'US-CMW', 'US-Esm', 'US-Hn2', 'US-LS1', 'US-OF2', 'US-Ro2', 'US-SCg', 'US-SCs',
-         'US-SCw', 'US-SP4', 'US-Srr', 'US-Tw2', 'US-WBW', 'US-WCr', 'US-xSB', 'US-xUN', 'US-xYE', 'VR', 'WRV_1']
+    bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
 
-    for site_ in ['US-Ne3', 'US-Tw3', 'Almond_High']:
+    bad_df = pd.read_csv(bad_parameters, index_col=0)
+    bad_stations = list(set(bad_df.index.unique().to_list()))
+    tests = ['US-Ne3', 'BPHV', 'US-Tw3', 'Almond_High']
+
+    for site_ in tests[2:3]:
 
         print('\n', site_)
 
@@ -105,7 +105,5 @@ if __name__ == '__main__':
         out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'png')
 
         flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux')
-
-        exit()
 
 # ========================= EOF ====================================================================

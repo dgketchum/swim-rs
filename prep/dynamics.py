@@ -228,6 +228,9 @@ class SamplePlotDynamics:
 
             irr_doys = sorted(list(set(irr_doys)))
 
+            if len(irr_doys) == 0:
+                print(f'Warning {field} is irrigated in {yr} but has no irrigated days')
+
             field_data[yr] = {'irr_doys': irr_doys,
                               'irrigated': int(irrigated),
                               'f_irr': f_irr}
