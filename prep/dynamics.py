@@ -21,7 +21,7 @@ class SamplePlotDynamics:
 
         self._load_data()
 
-    def analyze_irrigation(self, lookback=2):
+    def analyze_irrigation(self, lookback=10):
 
         for fid in tqdm(self.irr.index, desc='Analyzing Irrigation', total=len(self.irr.index)):
             if self.select and fid not in self.select:
@@ -34,7 +34,7 @@ class SamplePlotDynamics:
                 print(f'{_file} not found, skipping')
                 continue
 
-            field_data = self._analyze_field_irrigation(fid, field_time_series, 10)
+            field_data = self._analyze_field_irrigation(fid, field_time_series, lookback)
             if field_data is not None:
                 self.fields['irr'][fid] = field_data
 
@@ -183,6 +183,10 @@ class SamplePlotDynamics:
                 continue
 
             df = field_time_series.loc[f'{yr}-01-01': f'{yr}-12-31', [selector]]
+
+            if df.empty:
+                raise NotImplementedError(f'{field} in {yr} is empty')
+
             df['doy'] = [i.dayofyear for i in df.index]
             df[selector] = df[selector].rolling(window=32, center=True).mean()
 
@@ -274,7 +278,6 @@ if __name__ == '__main__':
         root = '/home/dgketchum/PycharmProjects/swim-rs'
         data = os.path.join(root, 'tutorials', project, 'data')
 
-    data = os.path.join(root, 'tutorials', project, 'data')
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 
     irr = os.path.join(data, 'properties', 'calibration_irr.csv')
@@ -289,8 +292,8 @@ if __name__ == '__main__':
 
     dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3,
                                   out_json_file=cuttings_json, select=None)
-    dynamics.analyze_groundwater_subsidy()
     dynamics.analyze_irrigation()
+    dynamics.analyze_groundwater_subsidy()
     dynamics.analyze_k_parameters()
     dynamics.save_json()
 
