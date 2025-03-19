@@ -11,10 +11,8 @@ from analysis.metrics import compare_etf_estimates
 from viz.swim_timeseries import flux_pdc_timeseries
 
 
-def run_flux_sites(ini_path, project_ws, flux_file, outdir, calibration_dir=None, forecast=False,
-                   calibrate=False, forecast_file=None, input_data=None, spinup_data=None):
-    start_time = time.time()
-
+def initialize_data(ini_path, project_ws, input_data=None, spinup_data=None, calibration_dir=None,
+                    forecast=False, calibrate=False, forecast_file=None):
     config = ProjectConfig()
     config.read_config(ini_path, project_ws, calibration_dir=calibration_dir, forecast=forecast,
                        calibrate=calibrate, forecast_param_csv=forecast_file)
@@ -25,30 +23,42 @@ def run_flux_sites(ini_path, project_ws, flux_file, outdir, calibration_dir=None
     if spinup_data:
         config.spinup = spinup_data
 
-    fields = SamplePlots()
-    fields.initialize_plot_data(config)
+    plots_ = SamplePlots()
+    plots_.initialize_plot_data(config)
 
-    df_dct = obs_field_cycle.field_day_loop(config, fields, debug_flag=True)
+    return config, plots_
 
-    targets = fields.input['order']
+
+def run_flux_sites(fid, config, plot_data, outfile):
+    start_time = time.time()
+
+    df_dct = obs_field_cycle.field_day_loop(config, plot_data, debug_flag=True)
 
     end_time = time.time()
     print('\nExecution time: {:.2f} seconds\n'.format(end_time - start_time))
 
-    for i, fid in enumerate(targets):
-        df = df_dct[fid].copy()
-        in_df = fields.input_to_dataframe(fid)
-        df = pd.concat([df, in_df], axis=1, ignore_index=False)
+    df = df_dct[fid].copy()
+    in_df = plot_data.input_to_dataframe(fid)
+    df = pd.concat([df, in_df], axis=1, ignore_index=False)
 
-        df = df.loc[config.start_dt:config.end_dt]
+    df = df.loc[config.start_dt:config.end_dt]
 
-        df.to_csv(os.path.join(outdir, f'{fid}.csv'))
-        irr_ = fields.input['irr_data'][fid]
-        daily, overpass, monthly = compare_etf_estimates(df, flux_file, irr=irr_, target='et')
-        print('\nMonthly\n')
-        pprint(monthly)
-        print('\nDaily\n')
-        pprint(daily)
+    df.to_csv(outfile)
+
+
+def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_):
+    openet_daily = os.path.join(openet_dir, 'daily_data', f'{fid}.csv')
+    openet_monthly = os.path.join(openet_dir, 'monthly_data', f'{fid}.csv')
+    irr_ = plot_data_.input['irr_data'][fid]
+    daily, overpass, monthly = compare_etf_estimates(model_output, flux_file, openet_daily_path=openet_daily,
+                                                     openet_monthly_path=openet_monthly, irr=irr_, target='et')
+    print('\nMonthly\n')
+    pprint(monthly)
+    print('\nDaily\n')
+    pprint(daily)
+    print('\nOverpass\n')
+    pprint(overpass)
+    print('\n')
 
 
 if __name__ == '__main__':
@@ -64,18 +74,19 @@ if __name__ == '__main__':
     data_ = os.path.join(project_ws_, 'data')
     config_file = os.path.join(project_ws_, 'config.toml')
 
-    # run_data = '/data/ssd2/swim'
-    # if not os.path.isdir(run_data):
-
     run_data = os.path.join(root, 'tutorials')
 
     bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
+
+    open_et_ = os.path.join(project_ws_, 'openet_flux')
 
     bad_df = pd.read_csv(bad_parameters, index_col=0)
     bad_stations = list(set(bad_df.index.unique().to_list()))
     tests = ['US-Ne3', 'BPHV', 'US-Tw3', 'Almond_High']
 
-    for site_ in tests[2:3]:
+    overwrite_ = False
+
+    for site_ in tests:
 
         print('\n', site_)
 
@@ -94,13 +105,16 @@ if __name__ == '__main__':
 
         cal = os.path.join(project_ws_, f'{constraint_}_pest', 'mult')
 
-        try:
-            run_flux_sites(config_file, project_ws_, flux_data, output_,
-                           forecast=True, forecast_file=fcst_params,
-                           input_data=prepped_input, spinup_data=spinup_,
-                           calibrate=False, calibration_dir=None)
-        except KeyError:
-            print(f'KeyError on {site_}')
+        out_csv = os.path.join(output_, f'{site_}.csv')
+
+        config_, fields_ = initialize_data(config_file, project_ws_, input_data=prepped_input, spinup_data=spinup_,
+                                           calibration_dir=None, forecast=True, calibrate=False,
+                                           forecast_file=fcst_params)
+
+        if not os.path.exists(out_csv) or overwrite_:
+            run_flux_sites(site_, config_, fields_, output_)
+
+        compare_openet(site_, flux_data, out_csv, open_et_, fields_)
 
         out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'png')
 
