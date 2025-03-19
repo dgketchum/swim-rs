@@ -118,7 +118,16 @@ class PestBuilder:
         for e, (ii, r) in enumerate(df.iterrows()):
             pars[ii]['use_rows'] = e
             if any(prefix in ii for prefix in ['aw_', 'ke_max_', 'kc_max_']):
-                pars[ii]['initial_value'] = float(r['value'])
+                val = float(r['value'])
+                pars[ii]['initial_value'] = val
+
+                if val < pars[ii]['lower_bound']:
+                    pars[ii]['lower_bound'] = val - 0.2
+                    pars[ii]['upper_bound'] = val + 0.2
+
+                if val > pars[ii]['upper_bound']:
+                    pars[ii]['lower_bound'] = val - 0.3
+                    pars[ii]['upper_bound'] = val + 0.1
 
         etf_obs_files = ['obs/obs_etf_{}.np'.format(fid) for fid in targets]
         swe_obs_files = ['obs/obs_swe_{}.np'.format(fid) for fid in targets]
@@ -272,8 +281,8 @@ class PestBuilder:
                     'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'zr_adj': {'file': self.params_file,
-                        'initial_value': 1.0, 'lower_bound': 0.5, 'upper_bound': 2.0,
-                        'pargp': 'zr_adj', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+                       'initial_value': 1.0, 'lower_bound': 0.7, 'upper_bound': 1.3,
+                       'pargp': 'zr_adj', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'kc_max': {'file': self.params_file,
                        'initial_value': None, 'lower_bound': 0.8, 'upper_bound': 1.3,
