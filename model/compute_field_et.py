@@ -3,9 +3,13 @@ import numpy as np
 from model import grow_root
 from model import runoff
 from model import compute_snow
-
+from model import k_dynamics as kd
 
 def compute_field_et(ts_data, swb, day_data):
+
+    if day_data.dt_string == '2003-02-03':
+        a = 1
+
     swb.kc_bas = np.maximum(swb.kc_min, swb.kc_bas)
     swb.fc = ((swb.kc_bas - swb.kc_min) / (swb.kc_max - swb.kc_min))
 
@@ -47,23 +51,12 @@ def compute_field_et(ts_data, swb, day_data):
 
     swb.few = 1 - swb.fc
 
-    # Momentum-based Kr calculation
-
-    kr_inst = np.clip((swb.tew - swb.depl_ze) / (swb.tew - swb.rew + 1e-6), 0.0, 1.0)
-
-    if swb.kr_prev is None or swb.delta_kr_prev is None:
-        swb.kr_prev = swb.kr
-        swb.delta_kr_prev = swb.kr
-
-    delta_kr = kr_inst - swb.kr_prev
-    damped_delta_kr = delta_kr * swb.kr_alpha
-    swb.kr = swb.kr_prev + damped_delta_kr
-    swb.kr = np.clip(swb.kr, 0.0, 1.0)
-    swb.kr_prev = swb.kr
-
-    swb.ke = np.minimum(swb.kr * (swb.kc_max - swb.kc_bas), swb.few * swb.kc_max)
-    swb.ke = np.maximum(swb.ke, 0.0)
-    swb.ke = np.minimum(swb.ke, swb.ke_max)
+    # Momentum-based Kr/Ke calculation
+    # kd.ke_momentum(swb)
+    # Damping-based Kr/Ke calculation
+    kd.ke_damper(swb)
+    # Exponential-based Kr/Ke calculation
+    # kd.ke_exponential(swb)
 
     # Transpiration coefficient for moisture stress
     swb.taw = swb.aw * swb.zr
@@ -72,23 +65,11 @@ def compute_field_et(ts_data, swb, day_data):
     swb.raw = swb.mad * swb.taw
 
     # Momentum-based Ks calculation
-
-    swb.ks_inst = np.where(swb.depl_root > swb.raw,
-                           np.maximum((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0), 1)
-    swb.ks_inst = np.clip(swb.ks_inst, 0.0, 1.0)
-
-    if swb.ks_prev is None or swb.delta_ks_prev is None:
-        swb.ks_prev = swb.ks_inst
-        swb.delta_ks_prev = swb.ks_inst
-
-    swb.delta_ks_inst = swb.ks_inst - swb.ks_prev
-
-    swb.ks_momentum = swb.ks_prev + swb.delta_ks_prev
-    swb.ks_momentum = np.clip(swb.ks_momentum, 0.0, 1.0)
-    swb.ks = swb.ks_alpha * swb.ks_momentum + (1 - swb.ks_alpha) * swb.ks_inst
-
-    swb.delta_ks_prev = swb.ks - swb.ks_prev
-    swb.ks_prev = swb.ks
+    # kd.ks_momentum(swb)
+    # Damping-based Ks calculation
+    kd.ks_damper(swb)
+    # Exponential-based Ks calculation
+    # kd.ks_exponential(swb)
 
     if np.any(swb.swe > 0.0):
         # Calculate Kc during snow cover

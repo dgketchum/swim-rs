@@ -147,7 +147,6 @@ class ProjectConfig:
             _files = [os.path.join(self.calibration_dir, f) for f in _files]
             self.calibration_files = {k: v for k, v in zip(self.calibrated_parameters, _files)}
 
-
         elif self.forecast:
 
             self.calibrate = 0

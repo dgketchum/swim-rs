@@ -19,7 +19,7 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', f
 
     if 'dperc' in df.columns and (df['dperc'] > 0).any():
         fig = make_subplots(rows=2, cols=1, specs=[[{"secondary_y": True}], [{"secondary_y": False}]],
-                            row_heights=[0.75, 0.15], vertical_spacing=0.1)
+                            row_heights=[0.75, 0.25], vertical_spacing=0.2)
         bar_secondary_y = False
         bar_row = 2
         main_row = 1
@@ -38,7 +38,8 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', f
             if param == 'dperc':
                 vals *= -1
             trace = go.Bar(x=df.index, y=vals, name=param,
-                           marker=dict(color=COLOR_MAP.get(param, 'black')))
+                           marker=dict(color=COLOR_MAP.get(param, 'black')),
+                           width=1000 * 60 * 60 * 24 * 0.8)
             _add_trace(param, trace, bar_row, bar_secondary_y)
 
         elif param != 'pdc':
@@ -87,8 +88,8 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', f
     kwargs = dict(title_text="SWIM Model Time Series",
                   xaxis_title="Date",
                   yaxis_title="mm",
-                  height=800,
-                  width=1600,
+                  height=800 if 'png' in fig_dir else 1300,
+                  width=1600 if 'png' in fig_dir else 2300,
                   template='plotly_dark',
                   xaxis=dict(showgrid=False),
                   yaxis=dict(showgrid=False),
@@ -182,13 +183,13 @@ def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None, spec='fl
 
             if yr in flux_yr:
                 plot_swim_timeseries(df,
-                                     ['irrigation', 'rain', 'melt', 'dperc', 'gw_sim',
+                                     ['irrigation', 'rain', 'melt', 'dperc', 'gw_sim', 'snow_fall',
                                       'etf', 'ks', 'ke', 'kc_act', 'ndvi', 'pdc',
                                       'flux_etf'],
                                      start=f'{yr}-01-01', end=f'{yr}-12-31', fig_dir=out_fig_dir, fid=fid)
 
             else:
-                plot_swim_timeseries(df, ['irrigation', 'rain', 'melt', 'dperc', 'gw_sim',
+                plot_swim_timeseries(df, ['irrigation', 'rain', 'melt', 'dperc', 'gw_sim', 'snow_fall',
                                           'etf', 'ks', 'ke', 'kc_act', 'ndvi',
                                           'pdc'],
                                      start=f'{yr}-01-01', end=f'{yr}-12-31', fig_dir=out_fig_dir, fid=fid)

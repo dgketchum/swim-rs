@@ -54,10 +54,10 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_):
                                                      openet_monthly_path=openet_monthly, irr=irr_, target='et')
     print('\nMonthly\n')
     pprint(monthly)
-    print('\nDaily\n')
-    pprint(daily)
-    print('\nOverpass\n')
-    pprint(overpass)
+    # print('\nDaily\n')
+    # pprint(daily)
+    # print('\nOverpass\n')
+    # pprint(overpass)
     print('\n')
 
 
@@ -82,11 +82,11 @@ if __name__ == '__main__':
 
     bad_df = pd.read_csv(bad_parameters, index_col=0)
     bad_stations = list(set(bad_df.index.unique().to_list()))
-    tests = ['US-Ne3', 'BPHV', 'US-Tw3', 'Almond_High']
+    sites = ['US-Ne3', 'BPHV', 'US-Tw3', 'Almond_High']
 
-    overwrite_ = False
+    overwrite_ = True
 
-    for site_ in tests:
+    for site_ in sites[:1]:
 
         print('\n', site_)
 
@@ -101,22 +101,21 @@ if __name__ == '__main__':
 
         flux_dir = os.path.join(project_ws_, 'data', 'daily_flux_files')
         flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
-        fcst_params = os.path.join(output_, f'{site_}.3.par.csv')
 
+        fcst_params = os.path.join(output_, f'{site_}.3.par.csv')
         cal = os.path.join(project_ws_, f'{constraint_}_pest', 'mult')
 
         out_csv = os.path.join(output_, f'{site_}.csv')
 
         config_, fields_ = initialize_data(config_file, project_ws_, input_data=prepped_input, spinup_data=spinup_,
-                                           calibration_dir=None, forecast=True, calibrate=False,
-                                           forecast_file=fcst_params)
+                                           forecast=True, forecast_file=fcst_params)
 
         if not os.path.exists(out_csv) or overwrite_:
-            run_flux_sites(site_, config_, fields_, output_)
+            run_flux_sites(site_, config_, fields_, out_csv)
 
         compare_openet(site_, flux_data, out_csv, open_et_, fields_)
 
-        out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'png')
+        out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'html')
 
         flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux')
 

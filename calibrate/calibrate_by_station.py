@@ -47,7 +47,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
         prepped_data, prepped_input = False, None
 
-        if fid not in ['US-Tw3']:
+        if fid not in ['US-A32']:
             continue
 
         if fid == 'US-Bi2':
@@ -188,13 +188,16 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
 
 if __name__ == '__main__':
-    d = '/data/ssd2/swim'
-    if not os.path.isdir(d):
-        home = os.path.expanduser('~')
-        d = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials')
 
     project_ = '4_Flux_Network'
-    project_ws_ = os.path.join(d, project_)
+
+    root = '/data/ssd2/swim'
+    data = os.path.join(root, project_, 'data')
+    if not os.path.isdir(root):
+        root = '/home/dgketchum/PycharmProjects/swim-rs'
+        data = os.path.join(root, 'tutorials', project_, 'data')
+
+    project_ws_ = os.path.join(root, project_)
 
     config_file = os.path.join(project_ws_, 'config.toml')
 

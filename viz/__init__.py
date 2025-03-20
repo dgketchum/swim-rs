@@ -1,7 +1,7 @@
 COLOR_MAP = {
     'et_act': 'blue', 'etref': 'green', 'kc_act': 'lightsalmon', 'kc_bas': 'purple',
-    'ks': 'yellow', 'ke': 'purple', 'melt': 'mediumseagreen', 'rain': 'lightpink',
-    'depl_root': 'grey', 'depl_ze': 'darkgrey', 'dperc': 'orangered', 'runoff': 'red',
+    'ks': 'yellow', 'ke': 'purple', 'melt': 'lightblue', 'rain': 'lightpink',
+    'depl_root': 'grey', 'depl_ze': 'darkgrey', 'dperc': 'sandybrown', 'runoff': 'red',
     'delta_soil_water': 'teal', 'wbal': 'black', 'ppt': 'lightcyan', 'snow_fall': 'blue',
     'taw': 'darkorange', 'taw3': 'orangered', 'daw3': 'yellow', 'delta_daw3': 'gold',
     'swe': 'skyblue', 'tavg': 'darkblue', 'tmax': 'red', 'irrigation': 'red',

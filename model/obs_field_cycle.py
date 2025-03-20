@@ -63,6 +63,11 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     tracker.load_root_depth()
     tracker.load_soils()
 
+    # print('WARNING hard-coded ke_max')
+    # tracker.__setattr__('ke_max', np.array([[1.25]]))
+    # tracker.__setattr__('kr_up', np.array([[0.25]]))
+    # tracker.__setattr__('kr_down', np.array([[0.2]]))
+
     if debug_flag:
         tunable_state = {k: tracker.__getattribute__(k) for k in TUNABLE_PARAMS}
         if size == 1:
@@ -95,9 +100,6 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         if day_data.doy == 1 or day_data.irr_status is None:
             day_data.update_annual_irrigation(plots)
             day_data.update_annual_groundwater_subsidy(plots)
-
-        if day_data.dt_string == '1999-04-22':
-            a = 1
 
         day_data.update_daily_irrigation(plots, vals, config)
 

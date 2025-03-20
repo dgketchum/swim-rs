@@ -68,7 +68,6 @@ class SampleTracker:
         self.density = 0.
         self.depl_surface = 0.
         self.etc_act = 0.
-        self.etc_pot = 0.
         self.etc_bas = 0.
         self.etref_30 = 0.  # thirty day mean ETref  ' added 12/2007
         self.fc = 0.
@@ -89,8 +88,8 @@ class SampleTracker:
         self.ke_max = 0.85
         self.kr = 0.
         self.ks = 0.
-        self.ks_prev = None
-        self.kr_prev = None
+        self.ks_prev = 0.0
+        self.kr_prev = 1.0
         self.ke_max = 1.0
         self.kc_max = 1.0
         self.ksat = 0.
