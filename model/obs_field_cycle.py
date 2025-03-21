@@ -43,7 +43,6 @@ OUTPUT_FMT = ['et_act',
               'soil_water',
               'niwr',
               'irr_day',
-              'season',
               'capture',
               ]
 
@@ -62,9 +61,10 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     tracker.apply_parameters(params=params)
     tracker.load_root_depth()
     tracker.load_soils()
+    # tracker.set_k_max()
 
     # print('WARNING hard-coded ke_max')
-    # tracker.__setattr__('ke_max', np.array([[1.25]]))
+    # tracker.__setattr__('ke_max', np.array([[0.48]]))
     # tracker.__setattr__('kr_up', np.array([[0.25]]))
     # tracker.__setattr__('kr_down', np.array([[0.2]]))
 
@@ -107,7 +107,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
         obs_kcb_daily.kcb_daily(tracker, day_data)
 
-        compute_field_et.compute_field_et(plots, tracker, day_data)
+        compute_field_et.compute_field_et(tracker, day_data)
 
         if debug_flag:
             tracker.update_dataframe(targets, day_data, step_dt)

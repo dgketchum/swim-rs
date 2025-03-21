@@ -8,17 +8,16 @@ from model import TRACKER_PARAMS
 
 de_initial = 10.0
 
-TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ks_alpha', 'kr_alpha', 'ndvi_k',
-                  'ndvi_0', 'mad', 'swe_alpha', 'swe_beta', 'zr_adj', 'kc_max', 'ke_max',]
+TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta', 'zr_adj',
+                  'kc_max', 'ks_alpha', 'kr_alpha']
 
 #
 
 # params not included here (e.g., 'tew') are taken from soils data
 TUNABLE_DEFAULTS = {'aw': 177.56,
                     'kc_max': 1.00,
-                    'ke_max': 0.60,
-                    'kr_alpha': 0.01,
-                    'ks_alpha': 0.05,
+                    'kr_alpha': 0.25,
+                    'ks_alpha': 0.15,
                     'mad': 0.59,
                     'ndvi_0': 0.41,
                     'ndvi_k': 4.99,
@@ -33,7 +32,6 @@ TUNABLE_DEFAULTS = {'aw': 177.56,
 class SampleTracker:
     #
     def __init__(self, config, plots, size):
-        """Initialize for crops cycle"""
 
         self.plots = plots
         self.conf = config
@@ -49,12 +47,8 @@ class SampleTracker:
         self.taw = 0.
         self.taw3 = 0.
         self.aw3 = 0.
-        self.cn2 = 0.
-        self.cgdd = 0.
         self.aw = 0
-        self.cgdd_penalty = 0.
         self.cum_evap = 0.
-        self.ad = 0.
         self.cum_evap_prev = 0.
         self.depl_ze = 0.
         self.daw3 = 0.0
@@ -64,28 +58,17 @@ class SampleTracker:
         self.soil_water = 0.
         self.soil_water_prev = 0.
         self.dperc = 0.
-        self.dperc_ze = 0.
-        self.density = 0.
         self.depl_surface = 0.
         self.etc_act = 0.
-        self.etc_bas = 0.
-        self.etref_30 = 0.  # thirty day mean ETref  ' added 12/2007
         self.fc = 0.
-        self.grow_root = 0.
         self.gw_sub = 0
-        self.height = 0
-        self.height_min = 0.1
-        self.height_max = 2.0
         self.irr_sim = 0.
         self.kc_act = 0.
-        self.kc_pot = 0
         self.kc_max = 1.25
         self.kc_min = 0.
         self.kc_bas = 0.
         self.kc_bas_mid = 0.
-        self.kc_bas_prev = 0.
         self.ke = 0.
-        self.ke_max = 0.85
         self.kr = 0.
         self.ks = 0.
         self.ks_prev = 0.0
@@ -109,21 +92,12 @@ class SampleTracker:
 
         self.mad = 0.
 
-        # TODO: apply this according to irrigation type
-        self.max_irr_rate = 25.4 * 6
-
-        self.niwr = 0.
         self.p_rz = 0.
         self.p_eft = 0.
         self.ppt_inf = 0.
         self.ppt_inf_prev = 0.
         self.rew = 0.
         self.tew = 0.
-        self.s = 0.
-        self.s1 = 0.
-        self.s2 = 0.
-        self.s3 = 0.
-        self.s4 = 0.
         self.sro = 0.
         self.swe = 0.
 
@@ -135,48 +109,14 @@ class SampleTracker:
         self.zr_min = 0.1
         self.zr_max = 1.7
 
-        # TODO add invoke stess as a tunable parameter
-        self.invoke_stress = 0.9
-
-        # CGM - I don't remember why these are grouped separately
-        # Maybe because they are "flags"
-
-        self.doy_start_cycle = 0
-        self.cutting = 0
-        self.cycle = 1
-        self.real_start = False
-        self.obs_flag = True
         self.irr_flag = False
-        self.in_season = False  # false if outside season, true if inside
-        self.dormant_setup_flag = False
-        self.crop_setup_flag = True  # flag to setup crop parameter information
-
-        # dgketchum hacks to remove crop-type dependence
-        self.height_initial = 0.1
-        self.height_max = 2.0
-        self.height_min = 0.1
-        self.height = self.height_initial
-
-        # TP - Looks like its value comes from compute_crop_et(),
-        # but needed for setup_dormant() below...
-
         self.totwatin_ze = 0.
 
-        # CGM - These are not pre-initialized in the 32-bit VB code
-
-        self.cgdd_at_planting = 0.
         self.wt_irr = 0.
-
-        # CGM - Initialized to 0 in latest VB code
-
-        self.kc_bas_prev = 0.
-
-        # TP - Added
-
-        self.max_lines_in_crop_curve_table = 34
-
-        # TP - Minimum net depth of application for germination irrigation, etc.
-
+        self.niwr = 0.
+        # TODO: apply this according to irrigation type
+        self.max_irr_rate = 25.4 * 6
+        # TODO use irr_min in application routine
         self.irr_min = 10.
 
         # convert all numerical attributes to numpy arrays, shape (1, -1)
@@ -192,7 +132,6 @@ class SampleTracker:
 
         fields = self.plots.input['order']
 
-        self.height = self.height_min
 
         codes = [self.plots.input['props'][f]['lulc_code'] for f in fields]
         crops = [12, 14]
@@ -416,8 +355,6 @@ class SampleTracker:
             self.crop_df[fid][step_dt]['zr'] = self.zr[sample_idx]
             self.crop_df[fid][step_dt]['kc_bas'] = self.kc_bas[sample_idx]
             self.crop_df[fid][step_dt]['niwr'] = self.niwr[sample_idx]
-            self.crop_df[fid][step_dt]['et_bas'] = self.etc_bas
-            self.crop_df[fid][step_dt]['season'] = self.in_season
 
             water_out = eta_act + dperc + runoff
             water_stored = soil_water - soil_water_prev
@@ -430,4 +367,7 @@ class SampleTracker:
                 pass
                 # raise WaterBalanceError('Check November water balance')
 
-
+    def set_k_max(self):
+        fields = self.plots.input['order']
+        self.ke_max = np.array([self.plots.input['ke_max'][f] for f in fields]).reshape(1, -1)
+        # self.kc_max = np.array([self.plots.input['kc_max'][f] for f in fields]).reshape(1, -1)

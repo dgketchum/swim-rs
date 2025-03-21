@@ -5,7 +5,7 @@ from model import runoff
 from model import compute_snow
 from model import k_dynamics as kd
 
-def compute_field_et(ts_data, swb, day_data):
+def compute_field_et(swb, day_data):
 
     if day_data.dt_string == '2003-02-03':
         a = 1
@@ -16,12 +16,7 @@ def compute_field_et(ts_data, swb, day_data):
     # limit so that few > 0
     swb.fc = np.minimum(swb.fc, 0.99)
     if np.any(np.isnan(swb.fc)):
-        mask = np.isnan(swb.fc).flatten()
-        nan_ids = np.array(ts_data.input['order'])[mask]
-        for nan_id in nan_ids:
-            if not nan_id in swb.isnan:
-                swb.isnan.append(nan_id)
-                print('Found nan in foo.fc: {}'.format(nan_ids))
+        raise ValueError
 
     # Estimate infiltrating precipitation
     # Yesterday's infiltration
@@ -98,8 +93,6 @@ def compute_field_et(ts_data, swb, day_data):
     swb.kc_act = np.minimum(swb.kc_max, swb.kc_act)
 
     swb.t = kc_mult * swb.ks * swb.kc_bas * swb.fc
-
-    swb.kc_pot = swb.kc_bas + swb.ke
 
     swb.etc_act = swb.kc_act * day_data.refet
 
