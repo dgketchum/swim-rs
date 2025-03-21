@@ -27,6 +27,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
     landsat = os.path.join(data_dir, 'landsat')
     dynamics_data = os.path.join(landsat, 'calibration_dynamics.json')
     joined_timeseries = os.path.join(data_dir, 'plot_timeseries')
+
     print(f'\n{properties_json}')
     print(f'{landsat}')
     print(f'{dynamics_data}')
@@ -47,10 +48,13 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
         prepped_data, prepped_input = False, None
 
-        if fid not in ['US-A32']:
+        if fid in ['US-Ced', 'US-Br3', 'US-CMW', 'US-ADR', 'US-Bo1', 'US-ARb', 'US-Bkg',
+                   'US-Blk', 'US-CZ3', 'US-AR1', 'US-Ctn', 'US-Bi1', 'US-ARM', 'US-Aud',
+                   'US-ARc', 'US-A32', 'US-Blo', 'US-A74', 'US-Br1', 'US-CRT', 'US-Dk1',
+                   'US-Dix']:
             continue
 
-        if fid == 'US-Bi2':
+        if fid in ['US-Bi2', 'US-Dk1']:
             continue
 
         for prior_constraint in ['tight']:

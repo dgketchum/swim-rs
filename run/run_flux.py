@@ -52,6 +52,7 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_):
     irr_ = plot_data_.input['irr_data'][fid]
     daily, overpass, monthly = compare_etf_estimates(model_output, flux_file, openet_daily_path=openet_daily,
                                                      openet_monthly_path=openet_monthly, irr=irr_, target='et')
+
     print('\nMonthly\n')
     pprint(monthly)
     # print('\nDaily\n')
@@ -76,19 +77,30 @@ if __name__ == '__main__':
 
     run_data = os.path.join(root, 'tutorials')
 
-    bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
-
     open_et_ = os.path.join(project_ws_, 'openet_flux')
 
-    bad_df = pd.read_csv(bad_parameters, index_col=0)
-    bad_stations = list(set(bad_df.index.unique().to_list()))
-    sites = ['US-Ne3', 'BPHV', 'US-Tw3', 'Almond_High']
+    # station_file = os.path.join(project_ws_, 'results_comparison_bad.csv')
+    station_file = os.path.join(data_, 'station_metadata.csv')
+
+    sdf = pd.read_csv(station_file, index_col=0, header=1)
+    # stations = list(set(sdf.index.unique().to_list()))
+    # sites = ['US-Ne3', 'BPHV', 'US-Tw3', 'Almond_High']
+
+    sites = ['US-GLE', 'US-Dk2', 'US-FR2', 'US-A32', 'US-Fuf', 'US-Esm', 'US-GMF', 'US-FPe', 'US-Goo', 'US-Fwf',
+             'US-Fmf', 'US-Ced', 'US-Br3', 'US-CMW', 'US-ADR', 'US-Bo1', 'US-ARb', 'US-Bkg', 'US-Blk', 'US-CZ3',
+             'US-Ctn', 'US-Bi1', 'US-ARM', 'US-Aud', 'US-ARc', 'US-A32', 'US-Blo', 'US-A74', 'US-Br1', 'US-CRT',
+             'US-Dk1', 'US-AR1', 'US-Dix', 'US-Goo', 'US-IB1', 'US-Hn2', 'US-Hn3']
 
     overwrite_ = True
 
-    for site_ in sites[:1]:
+    for site_ in sites:
 
-        print('\n', site_)
+        lulc = sdf.at[site_, 'General classification']
+
+        if lulc != 'Croplands':
+            continue
+
+        print(f'\n{site_}: {lulc}')
 
         run_const = os.path.join(run_data, '4_Flux_Network', 'results', constraint_)
         output_ = os.path.join(run_const, site_)
@@ -110,13 +122,17 @@ if __name__ == '__main__':
         config_, fields_ = initialize_data(config_file, project_ws_, input_data=prepped_input, spinup_data=spinup_,
                                            forecast=True, forecast_file=fcst_params)
 
-        if not os.path.exists(out_csv) or overwrite_:
-            run_flux_sites(site_, config_, fields_, out_csv)
+        try:
+            if not os.path.exists(out_csv) or overwrite_:
+                run_flux_sites(site_, config_, fields_, out_csv)
+        except ValueError as exc:
+            print(f'{site_} error: {exc}')
+            continue
 
         compare_openet(site_, flux_data, out_csv, open_et_, fields_)
 
         out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'html')
 
-        flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux')
+        # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux')
 
 # ========================= EOF ====================================================================
