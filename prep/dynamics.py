@@ -258,7 +258,7 @@ class SamplePlotDynamics:
 
         ke_max_mask = all_ndvi < 0.3
         if np.any(ke_max_mask):
-            ke_max = np.percentile(all_etf[ke_max_mask], 90)
+            ke_max = np.percentile(all_etf[ke_max_mask], 95)
         else:
             ke_max = 1.0
             print(f'Warning: No NDVI values below 0.3 for {fid}. Setting ke_max=1.0')
