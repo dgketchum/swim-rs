@@ -46,7 +46,7 @@ def run_flux_sites(fid, config, plot_data, outfile):
     df.to_csv(outfile)
 
 
-def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_):
+def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, return_comparison=False):
     openet_daily = os.path.join(openet_dir, 'daily_data', f'{fid}.csv')
     openet_monthly = os.path.join(openet_dir, 'monthly_data', f'{fid}.csv')
     irr_ = plot_data_.input['irr_data'][fid]
@@ -61,13 +61,23 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_):
     # pprint(overpass)
     print('\n')
 
+    if return_comparison:
+
+        try:
+            if monthly['rmse_ensemble_mean_3x3'] > monthly['rmse_swim']:
+                return 'swim'
+            else:
+                return 'openet'
+        except KeyError:
+            return None
+
 
 if __name__ == '__main__':
     home = os.path.expanduser('~')
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
     project = '4_Flux_Network'
-    site_ = 'ALARC2_Smith6'
+    # site_ = 'ALARC2_Smith6'
     constraint_ = 'tight'
 
     project_ws_ = os.path.join(root, 'tutorials', project)
@@ -79,25 +89,27 @@ if __name__ == '__main__':
 
     open_et_ = os.path.join(project_ws_, 'openet_flux')
 
-    # station_file = os.path.join(project_ws_, 'results_comparison_bad.csv')
     station_file = os.path.join(data_, 'station_metadata.csv')
 
     sdf = pd.read_csv(station_file, index_col=0, header=1)
-    # stations = list(set(sdf.index.unique().to_list()))
-    # sites = ['US-Ne3', 'BPHV', 'US-Tw3', 'Almond_High']
+    sites = list(set(sdf.index.unique().to_list()))
 
-    sites = ['US-GLE', 'US-Dk2', 'US-FR2', 'US-A32', 'US-Fuf', 'US-Esm', 'US-GMF', 'US-FPe', 'US-Goo', 'US-Fwf',
-             'US-Fmf', 'US-Ced', 'US-Br3', 'US-CMW', 'US-ADR', 'US-Bo1', 'US-ARb', 'US-Bkg', 'US-Blk', 'US-CZ3',
-             'US-Ctn', 'US-Bi1', 'US-ARM', 'US-Aud', 'US-ARc', 'US-A32', 'US-Blo', 'US-A74', 'US-Br1', 'US-CRT',
-             'US-Dk1', 'US-AR1', 'US-Dix', 'US-Goo', 'US-IB1', 'US-Hn2', 'US-Hn3']
+    sites.sort()
 
-    overwrite_ = True
+    overwrite_, incomplete, complete, results = True, [], [], []
 
     for site_ in sites:
 
         lulc = sdf.at[site_, 'General classification']
 
-        if lulc != 'Croplands':
+        # if lulc != 'Croplands':
+        #     continue
+
+        if site_ not in ['US-xST', 'US-xYE', 'US-xUN', 'US-xDL', 'US-xAE', 'US-WBW', 'US-xJR', 'US-xNG', 'US-xDS',
+                         'US-xSB', 'US-xSL', 'MB_Pch', 'Ellendale', 'US-Wkg', 'US-WCr', 'US-xNW', 'US-xDC', 'US-xRM']:
+            continue
+
+        if site_ in ['US-Bi2', 'US-Dk1']:
             continue
 
         print(f'\n{site_}: {lulc}')
@@ -115,12 +127,23 @@ if __name__ == '__main__':
         flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
 
         fcst_params = os.path.join(output_, f'{site_}.3.par.csv')
+        if not os.path.exists(fcst_params):
+            continue
+
         cal = os.path.join(project_ws_, f'{constraint_}_pest', 'mult')
 
         out_csv = os.path.join(output_, f'{site_}.csv')
 
         config_, fields_ = initialize_data(config_file, project_ws_, input_data=prepped_input, spinup_data=spinup_,
                                            forecast=True, forecast_file=fcst_params)
+
+        params = config_.forecast_parameter_groups
+        if 'kc_max' not in params:
+            incomplete.append(site_)
+            continue
+        if 'ke_max' in params:
+            incomplete.append(site_)
+            continue
 
         try:
             if not os.path.exists(out_csv) or overwrite_:
@@ -129,10 +152,19 @@ if __name__ == '__main__':
             print(f'{site_} error: {exc}')
             continue
 
-        compare_openet(site_, flux_data, out_csv, open_et_, fields_)
+        result = compare_openet(site_, flux_data, out_csv, open_et_, fields_, return_comparison=True)
+
+        if result:
+            results.append(result)
+
+        complete.append(site_)
 
         out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'html')
 
         # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux')
 
+        print(f'swim improvements: {results.count('swim')} to {results.count('openet')}')
+
+    print(f'complete: {complete}')
+    print(f'incomplete: {incomplete}')
 # ========================= EOF ====================================================================

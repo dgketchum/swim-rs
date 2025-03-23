@@ -35,6 +35,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
     flux_meta_csv = os.path.join(data_dir, 'station_metadata.csv')
     flux_meta_df = pd.read_csv(flux_meta_csv, header=1, skip_blank_lines=True, index_col='Site ID')
+    sites = sorted(flux_meta_df.index.to_list())
 
     if bad_params:
         bad_df = pd.read_csv(bad_params, index_col=0)
@@ -44,17 +45,25 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
         # good_stations = [i for i in flux_meta_df.index if i not in bad_stations]
         # flux_meta_df = flux_meta_df.loc[good_stations[10:]]
 
-    for fid, row in flux_meta_df.iterrows():
+    incomplete = ['ET_8', 'AFS', 'US-SO3', 'B_01', 'BAR012', 'US-xJR', 'US-SCw', 'US-xAE', 'manilacotton', 'US-Srr',
+                  'TAM', 'US-SCs', 'Almond_Low', 'US-xDS', 'US-xNW', 'JPL1_Smith5', 'BPLV', 'US-xYE', 'KV_4', 'US-xNG',
+                  'ET_1', 'US-SRM', 'US-xSB', 'US-OF1', 'LYS_SW', 'UA2_JV330', 'LYS_SE', 'BPHV', 'UOVMD', 'S2', 'UOVLO',
+                  'US-SCg', 'UMVW', 'US-Twt', 'LYS_NW', 'US-xDC', 'UA1_KN18', 'stonevillesoy', 'MB_Pch', 'US-Sne',
+                  'US-Wkg', 'US-SO2', 'MOVAL', 'US-SO4', 'US-OF6', 'US-Var', 'AFD', 'DVDV', 'WRV_1', 'UA2_KN20',
+                  'RIP760', 'ALARC2_Smith6', 'JPL1_JV114', 'US-Tw3', 'SV_6', 'US-xDL', 'UA1_HartFarm', 'Almond_High',
+                  'Ellendale', 'US-Tw2', 'SV_5', 'US-SP4', 'WRV_2', 'UA1_JV187', 'Almond_Med', 'US-WCr', 'UA3_JV108',
+                  'SLM001', 'US-xRM', 'US-OF4', 'US-SdH', 'US-xUN', 'US-xSL', 'US-SP2', 'US-SRS', 'KV_2', 'UOVUP',
+                  'US-Skr', 'SPV_1', 'B_11', 'US-xST', 'US-Slt', 'US-SP3', 'UA3_KN15', 'KV_1', 'US-SRG', 'US-WBW',
+                  'US-SRC', 'SPV_3', 'US-OF2', 'MR', 'LYS_NE', 'VR']
+
+    for fid in sites:
 
         prepped_data, prepped_input = False, None
 
-        if fid in ['US-Ced', 'US-Br3', 'US-CMW', 'US-ADR', 'US-Bo1', 'US-ARb', 'US-Bkg',
-                   'US-Blk', 'US-CZ3', 'US-AR1', 'US-Ctn', 'US-Bi1', 'US-ARM', 'US-Aud',
-                   'US-ARc', 'US-A32', 'US-Blo', 'US-A74', 'US-Br1', 'US-CRT', 'US-Dk1',
-                   'US-Dix']:
+        if fid in ['US-Bi2', 'US-Dk1']:
             continue
 
-        if fid in ['US-Bi2', 'US-Dk1']:
+        if fid not in incomplete:
             continue
 
         for prior_constraint in ['tight']:
