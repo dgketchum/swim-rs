@@ -1,15 +1,15 @@
 import os
 import sys
 import time
-from tqdm import tqdm
-from subprocess import check_call
+import subprocess
 
 import ee
-import pandas as pd
 import geopandas as gpd
+import pandas as pd
+from tqdm import tqdm
 
-from data_extraction.ee.ee_utils import is_authorized
 from data_extraction.ee.ee_utils import get_lanid
+from data_extraction.ee.ee_utils import is_authorized
 
 EE = '/home/dgketchum/miniconda3/envs/swim/bin/earthengine'
 GSUTIL = '/home/dgketchum/google-cloud-sdk/bin/gsutil'
@@ -276,7 +276,15 @@ def export_to_cloud(images_txt, bucket, pathrows=None):
     if pathrows:
         df = pd.read_csv(pathrows)
         prs = [str(pr).rjust(6, '0') for pr in df['PR']]
-        prs.reverse()
+
+    try:
+        existing_geotiffs = subprocess.check_output(['gsutil', 'ls', f'gs://{bucket}/geotiff/']).decode('utf-8').split('\n')
+        existing_geotiffs = [os.path.basename(f) for f in existing_geotiffs if f]
+        existing_metadata = subprocess.check_output(['gsutil', 'ls', f'gs://{bucket}/metadata/']).decode('utf-8').split('\n')
+        existing_metadata = [os.path.basename(f) for f in existing_metadata if f]
+    except subprocess.CalledProcessError:
+        existing_geotiffs = []
+        existing_metadata = []
 
     for i in images:
         bname = os.path.basename(i)
@@ -285,50 +293,62 @@ def export_to_cloud(images_txt, bucket, pathrows=None):
         if prs and img_pr not in prs:
             continue
 
+        geotiff_filename = os.path.join('geotiff', f'{bname}')
+        metadata_filename = os.path.join('metadata', f'{bname}')
+
+        if f'{bname}.tif' in existing_geotiffs and f'{bname}.geojson' in existing_metadata:
+            print(f"Skipping {bname} as it already exists in the bucket.")
+            continue
+
         try:
             image = ee.Image(i)
             metadata = image.getInfo()
         except Exception as exc:
             print(bname, exc)
+            continue
 
-        geotiff_filename = os.path.join('geotiff', f'{bname}')
-        task = ee.batch.Export.image.toCloudStorage(
-            image=image,
-            description=bname,
-            bucket=bucket,
-            fileNamePrefix=geotiff_filename,
-            scale=30,
-            maxPixels=1e13,
-            crs='EPSG:5070',
-            fileFormat='GeoTIFF',
-            formatOptions={
-                'noData': 0.0,
-                'cloudOptimized': True,
-            }
-        )
-        try:
-            task.start()
-            print(f"Exporting GeoTIFF: {geotiff_filename}")
-        except ee.ee_exception.EEException as e:
-            print('{}, waiting on '.format(e), bname, '......')
-            time.sleep(600)
-            task.start()
+        if bname not in [f.split('.')[0] + '.tif' for f in existing_geotiffs]:
+            task = ee.batch.Export.image.toCloudStorage(
+                image=image,
+                description=bname,
+                bucket=bucket,
+                fileNamePrefix=geotiff_filename,
+                scale=30,
+                maxPixels=1e13,
+                crs='EPSG:5070',
+                fileFormat='GeoTIFF',
+                formatOptions={
+                    'noData': 0.0,
+                    'cloudOptimized': True,
+                }
+            )
+            try:
+                task.start()
+                print(f"Exporting GeoTIFF: {geotiff_filename}")
+            except ee.ee_exception.EEException as e:
+                print('{}, waiting on '.format(e), bname, '......')
+                time.sleep(600)
+                task.start()
+        else:
+            print(f"Skipping GeoTIFF export for {bname} as it already exists.")
 
-        metadata_filename = os.path.join('metadata', f'{bname}')
-        metadata_task = ee.batch.Export.table.toCloudStorage(
-            collection=ee.FeatureCollection([ee.Feature(None, metadata)]),
-            description=os.path.basename(metadata_filename).split('.')[0],
-            bucket=bucket,
-            fileNamePrefix=metadata_filename,
-            fileFormat='GeoJSON'
-        )
-        try:
-            metadata_task.start()
-            print(f"Exporting Metadata: {metadata_filename}")
-        except ee.ee_exception.EEException as e:
-            print('{}, waiting on '.format(e), bname, '......')
-            time.sleep(600)
-            metadata_task.start()
+        if bname not in [f.split('.')[0] + '.geojson' for f in existing_metadata]:
+            metadata_task = ee.batch.Export.table.toCloudStorage(
+                collection=ee.FeatureCollection([ee.Feature(None, metadata)]),
+                description=os.path.basename(metadata_filename).split('.')[0],
+                bucket=bucket,
+                fileNamePrefix=metadata_filename,
+                fileFormat='GeoJSON'
+            )
+            try:
+                metadata_task.start()
+                print(f"Exporting Metadata: {metadata_filename}")
+            except ee.ee_exception.EEException as e:
+                print('{}, waiting on '.format(e), bname, '......')
+                time.sleep(600)
+                metadata_task.start()
+        else:
+            print(f"Skipping Metadata export for {bname} as it already exists.")
 
 
 if __name__ == '__main__':
@@ -341,7 +361,8 @@ if __name__ == '__main__':
 
     bucket_ = 'ssebop026'
     txt = '/home/dgketchum/Downloads/ssebop_list.txt'
-    prs_ = '/media/research/IrrigationGIS/swim/ssebop/wrs2_western17_states.csv'
+
+    prs_ = '/media/research/IrrigationGIS/swim/ssebop/wrs2_flux_volk.csv'
 
     export_to_cloud(txt, bucket_, prs_)
 # ========================= EOF ====================================================================
