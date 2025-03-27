@@ -48,12 +48,15 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
     # set aside a monthly dataframe
     df_monthly = df.copy()
 
-    openet_models = ['GEESEBAL_3x3', 'PTJPL_3x3', 'SSEBOP_3x3', 'SIMS_3x3',
-                     'EEMETRIC_3x3', 'DISALEXI_3x3', 'ensemble_mean_3x3']
+    openet_rename = {'GEESEBAL_3x3': 'GEESEBAL', 'PTJPL_3x3': 'PTJPL', 'SSEBOP_3x3': 'SSEBOP', 'SIMS_3x3': 'SIMS',
+                     'EEMETRIC_3x3': 'EEMETRIC', 'DISALEXI_3x3': 'DISALEXI', 'ensemble_mean_3x3': 'openet_ensemble'}
+
+    openet_models = [v for k, v in openet_rename.items()]
 
     if openet_daily_path:
         try:
             openet_daily = pd.read_csv(openet_daily_path, index_col='DATE', parse_dates=True)
+            openet_daily = openet_daily.rename(columns=openet_rename)
             for model in openet_models:
                 if model in openet_daily.columns:
                     df[model] = openet_daily[model]
@@ -70,6 +73,7 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
     if openet_monthly_path:
         try:
             openet_monthly = pd.read_csv(openet_monthly_path, index_col='DATE', parse_dates=True)
+            openet_monthly = openet_monthly.rename(columns=openet_rename)
             idx = pd.to_datetime([d.replace(day=pd.Timestamp(d).days_in_month) for d in openet_monthly.index])
             openet_monthly.index = idx
         except FileNotFoundError:
@@ -81,8 +85,7 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
     df_daily = df.dropna(subset=['flux'])
     results_daily = {}
     all_models = ['swim', 'ssebop']
-    if openet_daily_path:
-        all_models += openet_models
+    all_models += openet_models
 
     for model in all_models:
         if model not in df_daily.columns:
@@ -117,16 +120,23 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
         else:
             continue
 
-    df_monthly['day_count'] = 1
-    ct = df_monthly[['day_count']].resample('ME').sum()
-    first_month = ct.index.min() - pd.tseries.offsets.Day(31)
-    last_month = ct.index.max() + pd.tseries.offsets.Day(31)
-    full_date_range = pd.date_range(start=first_month, end=last_month, freq='ME')
+    df_monthly['days_in_month'] = 1
+    ct = df_monthly[['days_in_month']].resample('ME').sum()
+    df_monthly = df_monthly.rename(columns={'days_in_month': 'daily_obs'})
+
+    start_date = ct.index.min() - pd.tseries.offsets.Day(31)
+    end_date = ct.index.max() + pd.tseries.offsets.Day(31)
+    full_date_range = pd.date_range(start=start_date, end=end_date, freq='ME')
     ct = ct.reindex(full_date_range).fillna(0.0)
     ct = ct.resample('d').bfill()
-    ct = ct.rename(columns={'day_count': 'month_count'})
     df_monthly = pd.concat([df_monthly, ct], axis=1).dropna()
-    df_monthly = df_monthly[df_monthly['month_count'] >= 20].drop(columns=['day_count', 'month_count'])
+
+    month_check = df_monthly[['days_in_month', 'daily_obs']].resample('ME').agg({'daily_obs': 'sum',
+                                                                                 'days_in_month': 'mean'})
+    full_months = month_check[month_check['days_in_month'] == month_check['daily_obs']].index
+    full_months = [(i.year, i.month) for i in full_months]
+    idx = [i for i in df_monthly.index if (i.year, i.month) in full_months]
+    df_monthly = df_monthly.loc[idx].drop(columns=['daily_obs', 'days_in_month'])
 
     if target == 'et':
         df_monthly = df_monthly.resample('ME').sum()
@@ -142,22 +152,22 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
                 if model in openet_monthly.columns:
                     df_monthly[model] = openet_monthly[model]
 
-    df_monthly = df_monthly.replace([float('inf'), float('-inf')], pd.NA).dropna(how='any', axis=0)
+    # insertion of OpenET data builds zeros under flux/swim
+    df_monthly = df_monthly.replace(0.0, np.nan)
+    df_monthly = df_monthly.replace([float('inf'), float('-inf')], np.nan).dropna(how='any', axis=0)
 
     results_monthly = {}
-    for model in all_models:
-        if model not in df_monthly.columns:
-            continue
-        df_temp = df_monthly.dropna(subset=[model])
-        if df_temp.empty:
-            continue
-
-        try:
-            results_monthly[f'rmse_{model}'] = float(np.sqrt(mean_squared_error(df_temp['flux'], df_temp[model])))
-            results_monthly[f'r2_{model}'] = r2_score(df_temp['flux'], df_temp[model])
-            results_monthly['n_samples'] = df_temp.shape[0]
-        except ValueError:
-            continue
+    if df_monthly.shape[0] >= 2:
+        results_monthly[f'mean_flux'] = df_monthly['flux'].mean()
+        for model in all_models:
+            try:
+                results_monthly[f'rmse_{model}'] = float(np.sqrt(mean_squared_error(df_monthly['flux'], df_monthly[model])))
+                results_monthly[f'r2_{model}'] = r2_score(df_monthly['flux'], df_monthly[model])
+                results_monthly[f'mean_{model}'] = df_monthly[model].mean()
+                results_monthly['n_samples'] = df_monthly.shape[0]
+            except (ValueError, KeyError) as exc:
+                print(model, exc)
+                continue
 
     return results_daily, results_overpass, results_monthly
 
