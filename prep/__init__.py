@@ -61,7 +61,7 @@ MAX_EFFECTIVE_ROOTING_DEPTH = {
     "10": {"rooting_depth": 1.18, "zr_multiplier": 3,
            "description": "Grasslands: dominated by herbaceous annuals (<2m)."},
     "11": {"rooting_depth": 1.12, "zr_multiplier": 3, "description": "Wetlands"},
-    "12": {"rooting_depth": 1.12, "zr_multiplier": 1, "description": "Cropland, same depth as shrublands"},
+    "12": {"rooting_depth": 1.12, "zr_multiplier": 2, "description": "Cropland, same depth as shrublands"},
     "13": {"rooting_depth": 1.12, "zr_multiplier": 1, "description": "Developed"},
     "14": {"rooting_depth": 1.12, "zr_multiplier": 1,
            "description": "Cropland/Natural Mosiac, same depth as shrublands"},

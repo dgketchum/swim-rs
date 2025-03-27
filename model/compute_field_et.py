@@ -66,33 +66,11 @@ def compute_field_et(swb, day_data):
     # Exponential-based Ks calculation
     # kd.ks_exponential(swb)
 
-    if np.any(swb.swe > 0.0):
-        # Calculate Kc during snow cover
-
-        kc_mult = np.ones_like(swb.swe)
-        condition = swb.swe > 0.01
-
-        # Radiation term for reducing Kc to actCount for snow albedo
-        k_rad = (
-                0.000000022 * day_data.doy ** 3 - 0.0000242 * day_data.doy ** 2 +
-                0.006 * day_data.doy + 0.011)
-        albedo_snow = 0.8
-        albedo_soil = 0.25
-        kc_mult[condition] = 1 - k_rad + (1 - albedo_snow) / (1 - albedo_soil) * k_rad
-
-        # Was 0.9, reduced another 30% to account for latent heat of fusion of melting snow
-        kc_mult = kc_mult * 0.7
-
-        swb.ke *= kc_mult
-
-    else:
-        kc_mult = 1
-
-    swb.kc_act = kc_mult * swb.ks * swb.kc_bas * swb.fc + swb.ke
+    swb.kc_act = swb.ks * swb.kc_bas * swb.fc + swb.ke
 
     swb.kc_act = np.minimum(swb.kc_max, swb.kc_act)
 
-    swb.t = kc_mult * swb.ks * swb.kc_bas * swb.fc
+    swb.t = swb.ks * swb.kc_bas * swb.fc
 
     swb.etc_act = swb.kc_act * day_data.refet
 
@@ -117,6 +95,9 @@ def compute_field_et(swb, day_data):
     swb.depl_root += swb.etc_act - swb.ppt_inf
 
     swb.irr_sim = np.zeros_like(swb.aw)
+
+    if day_data.dt_string == '2013-07-28':
+        a = 1
 
     if np.any(day_data.irr_day) or np.any(swb.irr_continue):
         # account for the case where depletion exceeded the maximum daily irr rate yesterday
@@ -197,4 +178,4 @@ def compute_field_et(swb, day_data):
 
     swb.delta_soil_water = swb.soil_water - swb.soil_water_prev
 
-    grow_root.grow_root(swb)
+    grow_root.grow_root(swb, day_data)

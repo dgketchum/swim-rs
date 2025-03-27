@@ -11,8 +11,8 @@ from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 
 
-def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=None,
-                      pdc_remove=False, overwrite=False):
+def run_pest_sequence(conf_path, project_ws, workers, realizations, select_stations=None, pdc_remove=False,
+                      overwrite=False):
     """"""
     config = ProjectConfig()
     config.read_config(conf_path, project_ws)
@@ -37,25 +37,6 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
     flux_meta_df = pd.read_csv(flux_meta_csv, header=1, skip_blank_lines=True, index_col='Site ID')
     sites = sorted(flux_meta_df.index.to_list())
 
-    if bad_params:
-        bad_df = pd.read_csv(bad_params, index_col=0)
-        bad_stations = list(set(bad_df.index.unique().to_list() + ['US-Ne3', 'BPHV', 'US-Tw3', 'Almond_High']))
-        flux_meta_df = flux_meta_df.loc[bad_stations]
-        # print('Warning: using good stations')
-        # good_stations = [i for i in flux_meta_df.index if i not in bad_stations]
-        # flux_meta_df = flux_meta_df.loc[good_stations[10:]]
-
-    incomplete = ['ET_8', 'AFS', 'US-SO3', 'B_01', 'BAR012', 'US-xJR', 'US-SCw', 'US-xAE', 'manilacotton', 'US-Srr',
-                  'TAM', 'US-SCs', 'Almond_Low', 'US-xDS', 'US-xNW', 'JPL1_Smith5', 'BPLV', 'US-xYE', 'KV_4', 'US-xNG',
-                  'ET_1', 'US-SRM', 'US-xSB', 'US-OF1', 'LYS_SW', 'UA2_JV330', 'LYS_SE', 'BPHV', 'UOVMD', 'S2', 'UOVLO',
-                  'US-SCg', 'UMVW', 'US-Twt', 'LYS_NW', 'US-xDC', 'UA1_KN18', 'stonevillesoy', 'MB_Pch', 'US-Sne',
-                  'US-Wkg', 'US-SO2', 'MOVAL', 'US-SO4', 'US-OF6', 'US-Var', 'AFD', 'DVDV', 'WRV_1', 'UA2_KN20',
-                  'RIP760', 'ALARC2_Smith6', 'JPL1_JV114', 'US-Tw3', 'SV_6', 'US-xDL', 'UA1_HartFarm', 'Almond_High',
-                  'Ellendale', 'US-Tw2', 'SV_5', 'US-SP4', 'WRV_2', 'UA1_JV187', 'Almond_Med', 'US-WCr', 'UA3_JV108',
-                  'SLM001', 'US-xRM', 'US-OF4', 'US-SdH', 'US-xUN', 'US-xSL', 'US-SP2', 'US-SRS', 'KV_2', 'UOVUP',
-                  'US-Skr', 'SPV_1', 'B_11', 'US-xST', 'US-Slt', 'US-SP3', 'UA3_KN15', 'KV_1', 'US-SRG', 'US-WBW',
-                  'US-SRC', 'SPV_3', 'US-OF2', 'MR', 'LYS_NE', 'VR']
-
     for fid in sites:
 
         prepped_data, prepped_input = False, None
@@ -63,7 +44,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
         if fid in ['US-Bi2', 'US-Dk1']:
             continue
 
-        if fid not in incomplete:
+        if select_stations and fid not in select_stations:
             continue
 
         for prior_constraint in ['tight']:
@@ -206,17 +187,24 @@ if __name__ == '__main__':
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project_, 'data')
+    workers, realizations = 20, 200
+    project_ws_ = os.path.join(root, project_)
+    config_file = os.path.join(project_ws_, 'config.toml')
+
     if not os.path.isdir(root):
         root = '/home/dgketchum/PycharmProjects/swim-rs'
         data = os.path.join(root, 'tutorials', project_, 'data')
+        workers, realizations = 2, 10
+        project_ws_ = os.path.join(root, 'tutorials', project_)
+        config_file = os.path.join(project_ws_, 'config.toml')
 
-    project_ws_ = os.path.join(root, project_)
+    station_file = os.path.join(data, 'station_metadata.csv')
+    sdf = pd.read_csv(station_file, index_col=0, header=1)
+    sdf = sdf[sdf['General classification'] == 'Croplands']
+    sites_ = list(set(sdf.index.unique().to_list()))
+    sites_.sort()
 
-    config_file = os.path.join(project_ws_, 'config.toml')
-
-    bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
-
-    run_pest_sequence(config_file, project_ws_, workers=20, realizations=200, bad_params=None,
+    run_pest_sequence(config_file, project_ws_, workers=workers, realizations=realizations, select_stations=sites_,
                       pdc_remove=True, overwrite=True)
 
 # ========================= EOF ============================================================================

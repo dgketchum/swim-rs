@@ -8,8 +8,7 @@ import geopandas as gpd
 from prep import MAX_EFFECTIVE_ROOTING_DEPTH as RZ
 
 
-def write_field_properties(shp, irr, ssurgo, js, cdl=None, lulc=None, flux_meta=None, index_col='FID',
-                           shp_add=False, targets=None):
+def write_field_properties(shp, irr, ssurgo, js, cdl=None, lulc=None, flux_meta=None, index_col='FID'):
     """"""
     irr = pd.read_csv(irr, index_col=index_col)
     irr.drop(columns=['LAT', 'LON'], inplace=True)
@@ -83,23 +82,6 @@ def write_field_properties(shp, irr, ssurgo, js, cdl=None, lulc=None, flux_meta=
             _ = d.pop(k)
             print('skipping {}: has small area'.format(k))
 
-    if shp_add:
-        gdf = gpd.read_file(shp_add)
-        gdf.index = gdf[index_col]
-        irr['irr_mean'] = irr.mean(axis=1)
-        irr['irr_std'] = irr.std(axis=1)
-
-        idx = [i for i in irr.index if i in gdf.index]
-        gdf.loc[idx, 'irr_mean'] = irr.loc[idx, 'irr_mean']
-        gdf.loc[idx, 'irr_std'] = irr.loc[idx, 'irr_std']
-        areas = pd.Series(data=[dct[k]['area_sq_m'] for k in idx], index=idx)
-        gdf.loc[idx, 'area'] = areas.loc[idx]
-
-        gdf.drop(columns=[index_col], inplace=True)
-        if targets:
-            gdf = gdf.iloc[targets]
-        gdf.to_file(shp_add.replace('.shp', '_sample_19JUNE2024.shp'))
-
     with open(js, 'w') as fp:
         json.dump(d, fp, indent=4)
     print(f'wrote {len(d)} fields\n {js}')
@@ -126,6 +108,6 @@ if __name__ == '__main__':
     flux_metadata = os.path.join(data, 'station_metadata.csv')
 
     write_field_properties(shapefile_path, irr, ssurgo, properties_json, lulc=modis_lulc, index_col=FEATURE_ID,
-                           flux_meta=flux_metadata, shp_add=None, targets=None)
+                           flux_meta=flux_metadata)
 
 # ========================= EOF ====================================================================
