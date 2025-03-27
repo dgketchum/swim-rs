@@ -6,18 +6,17 @@ import pandas as pd
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from run.initialize import initialize_data
 
 
-def irrigation_timeseries(dynamics_json, remote_sensing_file, feature, out_dir=None):
-    with open(dynamics_json, 'r') as f:
-        input_dct = json.load(f)
+def irrigation_timeseries(field_data, feature, out_dir=None):
 
-    for year in range(2018, 2019):
-        field = input_dct['irr'][f'{feature}'][str(year)]
+    for year in range(2005, 2023):
+        field = field_data.input['irr_data'][f'{feature}'][str(year)]
 
         column, desc, color = f'ndvi_irr', f'Irrigated NDVI (Smoothed) - {feature}', 'green'
 
-        df = pd.read_csv(remote_sensing_file, index_col=0)
+        df = field_data.input_to_dataframe(feature)
 
         df_year = df.loc[f'{year}-01-01': f'{year}-12-31'].copy()
         df_year.index = pd.to_datetime(df_year.index)
@@ -48,32 +47,61 @@ def irrigation_timeseries(dynamics_json, remote_sensing_file, feature, out_dir=N
         fig.update_layout(
             xaxis_title='Date',
             yaxis_title='Value',
-            title=f'NDVI Time Series for {year}',
-        )
+            title=f'NDVI Time Series for {year}')
 
         if out_dir:
             if not os.path.isdir(out_dir):
                 os.mkdir(out_dir)
 
-            fig_file = os.path.join(out_dir, f'irrigation_timeseries_{year}.html')
-            fig.write_html(fig_file)
+            if 'html' in out_dir:
+                fig_file = os.path.join(out_dir, f'{feature}_{year}.html')
+                fig.write_html(fig_file)
+            else:
+                fig_file = os.path.join(out_dir, f'{feature}_{year}.png')
+                fig.write_image(fig_file)
+
             print(fig_file)
         else:
             fig.show()
 
 
 if __name__ == '__main__':
-    root = '/home/dgketchum/PycharmProjects/swim-rs'
+    home = os.path.expanduser('~')
+    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
-    project = 'alarc_test'
-    feature_ = 'ALARC2_Smith6'
+    project = '4_Flux_Network'
+    constraint_ = 'tight'
 
-    data = os.path.join(root, 'tutorials', project, 'data')
-    landsat = os.path.join(root, 'footprints', 'landsat')
-    joined_timeseries = os.path.join(data, 'plot_timeseries', f'{feature_}_daily.csv')
-    cuttings_json = os.path.join(landsat, 'calibration_dynamics.json')
-    out_fig_dir = os.path.join(root, 'tutorials', project, 'figures', 'irrigation_dynamics')
+    project_ws_ = os.path.join(root, 'tutorials', project)
+    run_data = os.path.join(root, 'tutorials')
 
-    irrigation_timeseries(cuttings_json, remote_sensing_file=joined_timeseries, feature=feature_,
-                          out_dir=None)
+    data_ = os.path.join(project_ws_, 'data')
+    config_file = os.path.join(project_ws_, 'config.toml')
+
+    station_file = os.path.join(data_, 'station_metadata.csv')
+
+    sdf = pd.read_csv(station_file, index_col=0, header=1)
+    sites = list(set(sdf.index.unique().to_list()))
+
+    sites.sort()
+
+    for site_ in sites:
+
+        if site_ not in ['Almond_High']:
+            continue
+
+        run_const = os.path.join(run_data, '4_Flux_Network', 'results', constraint_)
+        output_ = os.path.join(run_const, site_)
+
+        prepped_input = os.path.join(output_, f'prepped_input.json')
+        ndvi_forecast_ = os.path.join(output_, f'ndvi_forecast.json')
+        if not os.path.exists(prepped_input):
+            prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
+            ndvi_forecast_ = os.path.join(output_, f'ndvi_forecast_{site_}.json')
+
+        config_, fields_ = initialize_data(config_file, project_ws_, input_data=prepped_input)
+
+        out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'irrigation', 'png')
+
+        irrigation_timeseries(fields_, site_, out_dir=out_fig_dir_)
 # ========================= EOF ====================================================================
