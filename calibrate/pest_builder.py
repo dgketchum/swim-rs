@@ -121,13 +121,16 @@ class PestBuilder:
                 val = float(r['value'])
                 pars[ii]['initial_value'] = val
 
-                if val < pars[ii]['lower_bound']:
-                    pars[ii]['lower_bound'] = val - 0.2
-                    pars[ii]['upper_bound'] = val + 0.2
+                if any(prefix in ii for prefix in ['ke_max_', 'kc_max_']):
+                    if val < pars[ii]['lower_bound']:
+                        pars[ii]['lower_bound'] = val - 0.2
+                        pars[ii]['initial_value'] = val - 0.1
+                        pars[ii]['upper_bound'] = val
 
-                if val > pars[ii]['upper_bound']:
-                    pars[ii]['lower_bound'] = val - 0.3
-                    pars[ii]['upper_bound'] = val + 0.1
+                    if val > pars[ii]['upper_bound']:
+                        pars[ii]['lower_bound'] = val - 0.3
+                        pars[ii]['initial_value'] = val - 0.1
+                        pars[ii]['upper_bound'] = val
 
         etf_obs_files = ['obs/obs_etf_{}.np'.format(fid) for fid in targets]
         swe_obs_files = ['obs/obs_swe_{}.np'.format(fid) for fid in targets]
@@ -280,20 +283,16 @@ class PestBuilder:
                     'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
                     'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'zr_adj': {'file': self.params_file,
-                       'initial_value': 1.0, 'lower_bound': 0.7, 'upper_bound': 1.3,
-                       'pargp': 'zr_adj', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
-
             'kc_max': {'file': self.params_file,
                        'initial_value': None, 'lower_bound': 0.8, 'upper_bound': 1.3,
                        'pargp': 'kc_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ks_alpha': {'file': self.params_file,
-                         'initial_value': 0.15, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'initial_value': 0.1, 'lower_bound': 0.01, 'upper_bound': 1.0,
                          'pargp': 'ks_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'kr_alpha': {'file': self.params_file,
-                         'initial_value': 0.25, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'initial_value': 0.15, 'lower_bound': 0.01, 'upper_bound': 1.0,
                          'pargp': 'kr_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_k': {'file': self.params_file,
@@ -314,7 +313,7 @@ class PestBuilder:
 
             'swe_beta': {'file': self.params_file,
                          'initial_value': 1.5, 'lower_bound': 0.5, 'upper_bound': 2.5,
-                         'pargp': 'snow_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+                         'pargp': 'swe_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         })
 

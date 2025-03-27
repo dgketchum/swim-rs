@@ -61,12 +61,9 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     tracker.apply_parameters(params=params)
     tracker.load_root_depth()
     tracker.load_soils()
-    # tracker.set_k_max()
 
-    # print('WARNING hard-coded ke_max')
-    # tracker.__setattr__('ke_max', np.array([[0.48]]))
-    # tracker.__setattr__('kr_up', np.array([[0.25]]))
-    # tracker.__setattr__('kr_down', np.array([[0.2]]))
+    # only set kc/ke max if they were not calibrated
+    tracker.set_ke_max()
 
     if debug_flag:
         tunable_state = {k: tracker.__getattribute__(k) for k in TUNABLE_PARAMS}

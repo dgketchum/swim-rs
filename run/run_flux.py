@@ -1,32 +1,12 @@
 import os
 import time
 from pprint import pprint
-
 import pandas as pd
 
-from model import obs_field_cycle
-from swim.config import ProjectConfig
-from swim.sampleplots import SamplePlots
 from analysis.metrics import compare_etf_estimates
+from initialize import initialize_data
+from model import obs_field_cycle
 from viz.swim_timeseries import flux_pdc_timeseries
-
-
-def initialize_data(ini_path, project_ws, input_data=None, spinup_data=None, calibration_dir=None,
-                    forecast=False, calibrate=False, forecast_file=None):
-    config = ProjectConfig()
-    config.read_config(ini_path, project_ws, calibration_dir=calibration_dir, forecast=forecast,
-                       calibrate=calibrate, forecast_param_csv=forecast_file)
-
-    if input_data:
-        config.input_data = input_data
-
-    if spinup_data:
-        config.spinup = spinup_data
-
-    plots_ = SamplePlots()
-    plots_.initialize_plot_data(config)
-
-    return config, plots_
 
 
 def run_flux_sites(fid, config, plot_data, outfile):
@@ -53,23 +33,46 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, return_
     daily, overpass, monthly = compare_etf_estimates(model_output, flux_file, openet_daily_path=openet_daily,
                                                      openet_monthly_path=openet_monthly, irr=irr_, target='et')
 
-    print('\nMonthly\n')
-    pprint(monthly)
-    # print('\nDaily\n')
-    # pprint(daily)
     # print('\nOverpass\n')
     # pprint(overpass)
-    print('\n')
+    print('Monthly')
+    # pprint(monthly)
 
     if return_comparison:
 
-        try:
-            if monthly['rmse_ensemble_mean_3x3'] > monthly['rmse_swim']:
-                return 'swim'
-            else:
-                return 'openet'
-        except KeyError:
+        if len(monthly) == 0:
+            print(fid, 'empty')
             return None
+
+        try:
+            if monthly['rmse_openet_ensemble'] > monthly['rmse_swim']:
+                print(f"Flux Mean: {monthly['mean_flux']}")
+                print(f"SWIM Mean: {monthly['mean_swim']}")
+                print(f"SSEBop Mean: {monthly['mean_ssebop']}")
+                print(f"OpenET Mean: {monthly['mean_openet_ensemble']}")
+                print(f"SWIM RMSE: {monthly['rmse_swim']}")
+                print(f"SSEBop RMSE: {monthly['rmse_ssebop']}")
+                print(f"OpenET RMSE: {monthly['rmse_openet_ensemble']}")
+                return 'swim'
+
+            elif monthly['rmse_openet_ensemble'] < monthly['rmse_swim']:
+                print(f"Flux Mean: {monthly['mean_flux']}")
+                print(f"SWIM Mean: {monthly['mean_swim']}")
+                print(f"SSEBop Mean: {monthly['mean_ssebop']}")
+                print(f"OpenET Mean: {monthly['mean_openet_ensemble']}")
+                print(f"SWIM RMSE: {monthly['rmse_swim']}")
+                print(f"SSEBop RMSE: {monthly['rmse_ssebop']}")
+                print(f"OpenET RMSE: {monthly['rmse_openet_ensemble']}")
+                return 'openet'
+
+            else:
+                return None
+
+        except KeyError as exc:
+            print(fid, exc)
+            return None
+
+    # print('\n')
 
 
 if __name__ == '__main__':
@@ -77,8 +80,6 @@ if __name__ == '__main__':
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
     project = '4_Flux_Network'
-    # site_ = 'ALARC2_Smith6'
-    constraint_ = 'tight'
 
     project_ws_ = os.path.join(root, 'tutorials', project)
 
@@ -93,32 +94,34 @@ if __name__ == '__main__':
 
     sdf = pd.read_csv(station_file, index_col=0, header=1)
     sites = list(set(sdf.index.unique().to_list()))
-
     sites.sort()
 
-    overwrite_, incomplete, complete, results = True, [], [], []
+    incomplete, complete, results = [], [], []
 
-    for site_ in sites:
+    overwrite_ = True
+
+    for ee, site_ in enumerate(sites):
 
         lulc = sdf.at[site_, 'General classification']
 
-        # if lulc != 'Croplands':
-        #     continue
-
-        if site_ not in ['US-xST', 'US-xYE', 'US-xUN', 'US-xDL', 'US-xAE', 'US-WBW', 'US-xJR', 'US-xNG', 'US-xDS',
-                         'US-xSB', 'US-xSL', 'MB_Pch', 'Ellendale', 'US-Wkg', 'US-WCr', 'US-xNW', 'US-xDC', 'US-xRM']:
+        if lulc != 'Croplands':
             continue
 
         if site_ in ['US-Bi2', 'US-Dk1']:
             continue
 
-        print(f'\n{site_}: {lulc}')
+        if site_ not in ['US-Ne3', 'ALARC2_Smith6', 'S2', 'US-Tw3']:
+            continue
 
-        run_const = os.path.join(run_data, '4_Flux_Network', 'results', constraint_)
+        print(f'\n{ee} {site_}: {lulc}')
+
+        # run_const = os.path.join(run_data, '4_Flux_Network', 'results', '19MAR_no_ke_max')
+        run_const = os.path.join(run_data, '4_Flux_Network', 'results', 'tight')
         output_ = os.path.join(run_const, site_)
 
         prepped_input = os.path.join(output_, f'prepped_input.json')
         spinup_ = os.path.join(output_, f'spinup.json')
+
         if not os.path.exists(prepped_input):
             prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
             spinup_ = os.path.join(output_, f'spinup_{site_}.json')
@@ -130,20 +133,12 @@ if __name__ == '__main__':
         if not os.path.exists(fcst_params):
             continue
 
-        cal = os.path.join(project_ws_, f'{constraint_}_pest', 'mult')
+        cal = os.path.join(project_ws_, f'tight_pest', 'mult')
 
         out_csv = os.path.join(output_, f'{site_}.csv')
 
         config_, fields_ = initialize_data(config_file, project_ws_, input_data=prepped_input, spinup_data=spinup_,
                                            forecast=True, forecast_file=fcst_params)
-
-        params = config_.forecast_parameter_groups
-        if 'kc_max' not in params:
-            incomplete.append(site_)
-            continue
-        if 'ke_max' in params:
-            incomplete.append(site_)
-            continue
 
         try:
             if not os.path.exists(out_csv) or overwrite_:
@@ -159,11 +154,11 @@ if __name__ == '__main__':
 
         complete.append(site_)
 
-        out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'html')
+        out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'model_output', 'png')
 
         # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux')
 
-        print(f'swim improvements: {results.count('swim')} to {results.count('openet')}')
+        print(f"swim improvements: {results.count('swim')} to {results.count('openet')}")
 
     print(f'complete: {complete}')
     print(f'incomplete: {incomplete}')

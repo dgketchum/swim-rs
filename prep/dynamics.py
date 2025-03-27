@@ -70,8 +70,8 @@ class SamplePlotDynamics:
 
     def save_json(self):
         with open(self.out_json_file, 'w') as fp:
-            print(f'wrote {self.out_json_file}')
             json.dump(self.fields, fp, indent=4)
+            print(f'wrote {self.out_json_file}')
 
     def _load_data(self):
         self.irr = pd.read_csv(self.irr_csv_file, index_col=0)
@@ -96,6 +96,13 @@ class SamplePlotDynamics:
         field_data = {}
         selectors = ['etf_inv_irr', 'etf_irr', 'prcp_mm', 'eto_mm_uncorr', 'eto_mm']
 
+        irr_overall = np.mean([self.irr.at[field, f'irr_{yr}'] > self.irr_threshold for yr in range(1987, 2023)]).item()
+
+        if irr_overall > 0.6:
+            generally_irrigated = True
+        else:
+            generally_irrigated = False
+
         for yr in self.years:
             if yr > 2022:
                 continue
@@ -118,7 +125,7 @@ class SamplePlotDynamics:
             eta, ppt = df['eta'].sum(), df['prcp_mm'].sum()
             ratio = eta / (ppt + 1.0)
 
-            if irrigated:
+            if irrigated or generally_irrigated:
                 field_data[yr] = {'subsidized': 0,
                                   'f_sub': 0,
                                   'f_irr': f_irr,
@@ -148,7 +155,7 @@ class SamplePlotDynamics:
 
         return field_data
 
-    def _analyze_field_irrigation(self, field, field_time_series, lookback):
+    def _analyze_field_irrigation(self, field, field_time_series, lookback, backfill_irr=True):
         if field not in self.irr.index:
             print(f'{field} not in index')
             return None
@@ -159,6 +166,10 @@ class SamplePlotDynamics:
 
         field_data = {}
         fallow = []
+        if backfill_irr:
+            irr_fill = []
+        else:
+            irr_fill = None
 
         selector = 'ndvi_irr'
 
@@ -197,7 +208,6 @@ class SamplePlotDynamics:
                 fallow.append(yr)
                 continue
 
-            # TODO: locate upticks and fill to previous capture that's below a threshold
             local_min_indices = df[(df['diff'] > 0) & (df['diff'].shift(1) < 0)].index
 
             positive_slope = (df['diff'] > 0)
@@ -233,11 +243,23 @@ class SamplePlotDynamics:
             irr_doys = sorted(list(set(irr_doys)))
 
             if len(irr_doys) == 0:
+                if backfill_irr:
+                    irr_fill.append(yr)
                 print(f'Warning {field} is irrigated in {yr} but has no irrigated days')
 
             field_data[yr] = {'irr_doys': irr_doys,
                               'irrigated': int(irrigated),
                               'f_irr': f_irr}
+
+        for yr in irr_fill:
+            candidates = [y for y in field_data if 'f_irr' in field_data[y] and field_data[y]['f_irr'] > 0]
+            if not candidates:
+                continue
+
+            diffs = [abs(yr - y) for y in candidates]
+            min_idx = diffs.index(min(diffs))
+            best_match = candidates[min_idx]
+            field_data[yr]['irr_doys'] = field_data[best_match]['irr_doys']
 
         field_data['fallow_years'] = fallow
         return field_data
@@ -258,12 +280,12 @@ class SamplePlotDynamics:
 
         ke_max_mask = all_ndvi < 0.3
         if np.any(ke_max_mask):
-            ke_max = np.percentile(all_etf[ke_max_mask], 95)
+            ke_max = np.percentile(all_etf[ke_max_mask], 90)
         else:
             ke_max = 1.0
             print(f'Warning: No NDVI values below 0.3 for {fid}. Setting ke_max=1.0')
 
-        kc_max = np.percentile(all_etf, 95)
+        kc_max = np.percentile(all_etf, 90)
 
         self.fields['ke_max'][fid] = float(ke_max)
         self.fields['kc_max'][fid] = float(kc_max)
@@ -292,7 +314,7 @@ if __name__ == '__main__':
 
     dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3,
                                   out_json_file=cuttings_json, select=None)
-    dynamics.analyze_irrigation()
+    dynamics.analyze_irrigation(lookback=5)
     dynamics.analyze_groundwater_subsidy()
     dynamics.analyze_k_parameters()
     dynamics.save_json()

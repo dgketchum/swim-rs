@@ -8,10 +8,8 @@ from model import TRACKER_PARAMS
 
 de_initial = 10.0
 
-TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta', 'zr_adj',
+TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta',
                   'kc_max', 'ks_alpha', 'kr_alpha']
-
-#
 
 # params not included here (e.g., 'tew') are taken from soils data
 TUNABLE_DEFAULTS = {'aw': 177.56,
@@ -25,12 +23,12 @@ TUNABLE_DEFAULTS = {'aw': 177.56,
                     'swe_alpha': 0.48,
                     'swe_beta': 1.31,
                     'tew': 15.24,
-                    'zr_adj': 1.0,
+                    # 'zr_adj': 1.0,
                     }
 
 
 class SampleTracker:
-    #
+
     def __init__(self, config, plots, size):
 
         self.plots = plots
@@ -103,7 +101,7 @@ class SampleTracker:
 
         self.isnan = []
 
-        self.zr = 0.
+        self.zr = 0.1
         self.zr_mult = 1.0
         self.zr_adj = 1.0
         self.zr_min = 0.1
@@ -115,7 +113,7 @@ class SampleTracker:
         self.wt_irr = 0.
         self.niwr = 0.
         # TODO: apply this according to irrigation type
-        self.max_irr_rate = 25.4 * 6
+        self.max_irr_rate = 25.4
         # TODO use irr_min in application routine
         self.irr_min = 10.
 
@@ -131,7 +129,6 @@ class SampleTracker:
     def load_root_depth(self):
 
         fields = self.plots.input['order']
-
 
         codes = [self.plots.input['props'][f]['lulc_code'] for f in fields]
         crops = [12, 14]
@@ -367,7 +364,10 @@ class SampleTracker:
                 pass
                 # raise WaterBalanceError('Check November water balance')
 
-    def set_k_max(self):
+    def set_kc_max(self):
+        fields = self.plots.input['order']
+        self.kc_max = np.array([self.plots.input['kc_max'][f] for f in fields]).reshape(1, -1)
+
+    def set_ke_max(self):
         fields = self.plots.input['order']
         self.ke_max = np.array([self.plots.input['ke_max'][f] for f in fields]).reshape(1, -1)
-        # self.kc_max = np.array([self.plots.input['kc_max'][f] for f in fields]).reshape(1, -1)

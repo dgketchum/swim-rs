@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def grow_root(tracker):
+def grow_root(tracker, day_data):
     """"""
 
     zr_prev = tracker.zr.copy()
@@ -29,7 +29,8 @@ def grow_root(tracker):
                             tracker.daw3 + prev_rt_water - rt_water)
 
     if np.any(tracker.daw3 - tracker.taw3 > 0.0001):
-        raise NotImplementedError
+        print(day_data.dt_string)
+        raise NotImplementedError(f'daw3/taw3 mass failure: zr_prev: {zr_prev[0, 0]:.2f}, zr_new {zr_new[0, 0]:.2f}')
 
     delta_daw3 = tracker.daw3 - prev_daw3
     delta_rt_water = rt_water - prev_rt_water

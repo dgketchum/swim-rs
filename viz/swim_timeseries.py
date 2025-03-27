@@ -144,7 +144,7 @@ def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None, spec='fl
         df['ndvi'] = df['ndvi_inv_irr']
         df.loc[irr_index, 'ndvi'] = df.loc[irr_index, 'ndvi_irr']
         df['ndvi_ct'] = df['ndvi_inv_irr_ct']
-        df.loc[irr_index, 'ndvi_ct'] = df.loc[irr_index, 'etf_irr_ct']
+        df.loc[irr_index, 'ndvi_ct'] = df.loc[irr_index, 'ndvi_irr_ct']
 
         df['etf'] = df['etf_inv_irr']
         df.loc[irr_index, 'etf'] = df.loc[irr_index, 'etf_irr']
