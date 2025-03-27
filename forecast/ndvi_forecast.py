@@ -7,38 +7,15 @@ import plotly.graph_objects as go
 import plotly.io as pio
 from scipy.stats import gaussian_kde
 
-from swim.config import ProjectConfig
-from swim.sampleplots import SamplePlots
+from run.initialize import initialize_data
 
 pio.templates.default = "plotly_dark"
 
 
-def initialize_data(ini_path, project_ws, input_data=None, spinup_data=None, calibration_dir=None,
-                    forecast=False, calibrate=False, forecast_file=None):
-    config = ProjectConfig()
-    config.read_config(ini_path, project_ws, calibration_dir=calibration_dir, forecast=forecast,
-                       calibrate=calibrate, forecast_param_csv=forecast_file)
-
-    if input_data:
-        config.input_data = input_data
-
-    if spinup_data:
-        config.spinup = spinup_data
-
-    plots_ = SamplePlots()
-    plots_.initialize_plot_data(config)
-
-    return config, plots_
-
-
 def forecast_ndvi(plots, field_id, forecast_days=28, similarity_window=7, max_years_to_consider=40, lookback=150,
                   output_json=None):
-    """"""
     df = plots.input_to_dataframe(field_id)
     df = df[['ndvi_irr', 'ndvi_inv_irr', 'ndvi_irr_ct', 'ndvi_inv_irr_ct']]
-
-    # TODO: remove this test case
-    df.loc['2022-07-15':, ['ndvi_irr_ct', 'ndvi_inv_irr_ct']] = 0.0
 
     last_obs_date = None
     for col in ['ndvi_irr_ct', 'ndvi_inv_irr_ct']:
@@ -55,8 +32,9 @@ def forecast_ndvi(plots, field_id, forecast_days=28, similarity_window=7, max_ye
 
     forecasts = {day: [] for day in range(1, forecast_days + 1)}
     forecast_years = {day: [] for day in range(1, forecast_days + 1)}
+    exceeds_max = {day: [] for day in range(1, forecast_days + 1)}
 
-    current_ndvi_col = None
+    current_ndvi_col, last_obs_value = None, None
 
     for year in target_years:
         similar_years_data = {}
@@ -92,6 +70,8 @@ def forecast_ndvi(plots, field_id, forecast_days=28, similarity_window=7, max_ye
                               last_obs_date + pd.Timedelta(days=similarity_window // 2), [current_ndvi_col, ct_col]]
         current_data = current_data[current_data[ct_col] == 1][current_ndvi_col]
 
+        last_obs_value = df.loc[last_obs_date, current_ndvi_col]
+
         similarity_scores = {yr: np.sum((current_data.values - hist_data.values) ** 2)
                              for yr, hist_data in similar_years_data.items()}
 
@@ -109,15 +89,27 @@ def forecast_ndvi(plots, field_id, forecast_days=28, similarity_window=7, max_ye
                         forecast_years[day].append(compare_year)
                 except KeyError:
                     continue
+    max_ndvi_observed = df[['ndvi_irr', 'ndvi_inv_irr']].max().max()
+    for day in forecasts:
+        if forecasts[day]:
+            first_forecast_val = forecasts[day][0]
+            shift = last_obs_value - first_forecast_val
+            for i, val in enumerate(forecasts[day]):
+                forecasts[day][i] = val + shift
+                if forecasts[day][i] > max_ndvi_observed:
+                    exceeds_max[day].append(True)
+                else:
+                    exceeds_max[day].append(False)
 
     results = {}
     results['forecasts'] = forecasts
     results['forecast_years'] = forecast_years
+    results['exceeds_max'] = exceeds_max
     results['last_obs_date'] = last_obs_date.strftime('%Y-%m-%d')
     year_start = pd.to_datetime(f'{last_obs_date.year}-01-01')
     lookback_date = last_obs_date - pd.Timedelta(days=lookback)
     start_date = max(year_start, lookback_date)
-    results['historical_data'] = df.loc[start_date:last_obs_date, current_ndvi_col].to_dict()
+    results['historical_data'] = df.loc[start_date:last_obs_date, current_ndvi_col].to_dict(orient='index')
     results['historical_data'] = {k.strftime('%Y-%m-%d'): v for k, v in results['historical_data'].items()}
     results['probabilities'] = {}
     results['bin_edges'] = {}
