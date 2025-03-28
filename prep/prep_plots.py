@@ -40,7 +40,7 @@ REQ_IRR = ['etr_mm',
 ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['obs_swe']
 
 
-def prep_fields_json(properties, time_series, dynamics, out_js, target_plots=None, force_unirrigated=False):
+def prep_fields_json(properties, time_series, dynamics, out_js, target_plots=None):
     with open(properties, 'r') as fp:
         properties = json.load(fp)
 
@@ -63,27 +63,11 @@ def prep_fields_json(properties, time_series, dynamics, out_js, target_plots=Non
     with open(dynamics, 'r') as fp:
         dynamics = json.load(fp)
 
-    if force_unirrigated:
-
-        with open(force_unirrigated, 'r') as fp:
-            ndvi = json.load(fp)
-
-        unirr_ndvi = ndvi['ndvi_inv_irr'] + [ndvi['ndvi_inv_irr'][-1]]
-        dt = ['{}-{}'.format(d.month, d.day) for d in pd.date_range('2000-01-01', '2000-12-31')]
-        unirr_ndvi = {d: unirr_ndvi[j] for j, d in enumerate(dt)}
-
-        if 'ndvi_inv_irr' in ACCEPT_NAN:
-            ACCEPT_NAN.remove('ndvi_inv_irr')
-
-        required_params = REQUIRED + REQ_UNIRR
-        dct['irr_data'] = {fid: {'fallow_years': []} for fid, v in dynamics['irr'].items() if fid in target_plots}
-        # TODO: are we going to use this?
-        dct['gwsub_data'] = {fid: {'fallow_years': []} for fid, v in dynamics['gwsub_'].items() if fid in target_plots}
-
-    else:
-        required_params = REQUIRED + REQ_IRR + REQ_UNIRR
-        dct['irr_data'] = {fid: v for fid, v in dynamics['irr'].items() if fid in target_plots}
-        dct['gwsub_data'] = {fid: v for fid, v in dynamics['gwsub'].items() if fid in target_plots}
+    required_params = REQUIRED + REQ_IRR + REQ_UNIRR
+    dct['irr_data'] = {fid: v for fid, v in dynamics['irr'].items() if fid in target_plots}
+    dct['gwsub_data'] = {fid: v for fid, v in dynamics['gwsub'].items() if fid in target_plots}
+    dct['ke_max'] = {fid: v for fid, v in dynamics['ke_max'].items() if fid in target_plots}
+    dct['kc_max'] = {fid: v for fid, v in dynamics['kc_max'].items() if fid in target_plots}
 
     dts, order = None, []
     first, arrays, shape = True, {r: [] for r in required_params}, None

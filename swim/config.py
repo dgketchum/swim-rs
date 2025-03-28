@@ -17,6 +17,7 @@ class ProjectConfig:
     def __init__(self):
         super().__init__()
 
+        self.parameter_list = None
         self.spinup = None
         self.forecast_parameter_groups = None
         self.forecast_parameters = None
@@ -122,9 +123,6 @@ class ProjectConfig:
 
         self.spinup = config[crop_et_sec]['spinup_data']
 
-        print('\n')
-        print('Config: {}'.format(conf))
-
         if self.calibrate is True or self.calibration_dir is not None:
 
             if not self.calibrate:
@@ -147,7 +145,6 @@ class ProjectConfig:
             _files = [os.path.join(self.calibration_dir, f) for f in _files]
             self.calibration_files = {k: v for k, v in zip(self.calibrated_parameters, _files)}
 
-
         elif self.forecast:
 
             self.calibrate = 0
@@ -165,10 +162,11 @@ class ProjectConfig:
                 fcst = parameter_dist_csv
                 param_dist = pd.read_csv(fcst, index_col=0)
                 param_mean = param_dist.mean(axis=0)
+
                 p_str = ['_'.join(s.split(':')[1].split('_')[1:-1]) for s in list(param_mean.index)]
                 param_mean.index = p_str
                 self.forecast_parameters = param_mean.copy()
-                self.forecast_parameter_groups = list(set(['_'.join(p.split('_')[:-1]) for p in param_mean.index]))
+                self.parameter_list = param_mean.index.to_list()
 
             elif parameter_set_json:
                 with open(parameter_set_json, 'r') as f:
@@ -180,6 +178,7 @@ class ProjectConfig:
                 tup_ = [('_'.join(i.split('_')[:-1]), i.split('_')[-1]) for i in k]
                 v = [d[t[1]][t[0]] for t in tup_]
                 self.forecast_parameters = pd.Series(index=k, data=v)
+                self.parameter_list = self.forecast_parameters.index.to_list()
 
 
 if __name__ == '__main__':

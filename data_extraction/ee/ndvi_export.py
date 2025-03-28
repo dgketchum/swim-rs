@@ -77,7 +77,7 @@ def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_t
         print(_name)
 
 
-def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None,
+def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, grid_spec=None,
                        feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3'):
     df = gpd.read_file(shapefile)
     df.index = df[feature_id]
@@ -86,7 +86,7 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
     df = df.to_crs(epsg=4326)
 
-    s, e = '1987-01-01', '2021-12-31'
+    s, e = '1987-01-01', '2024-12-31'
     irr_coll = ee.ImageCollection(IRR)
     coll = irr_coll.filterDate(s, e).select('classification')
     remap = coll.map(lambda img: img.lt(1))
@@ -97,7 +97,7 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
     skipped, exported = 0, 0
 
-    for fid, row in tqdm(df.iterrows(), desc='Processing Fields', total=df.shape[0]):
+    for fid, row in tqdm(df.iterrows(), desc='Extracting NDVI', total=df.shape[0]):
 
         for year in range(start_yr, end_yr + 1):
 
@@ -106,6 +106,9 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
             site = row[feature_id]
             grid_sz = row['grid_size']
+
+            if grid_spec is not None and grid_sz != grid_spec:
+                continue
 
             desc = 'ndvi_{}_p{}_{}_{}'.format(site, grid_sz, mask_type, year)
             if check_dir:
@@ -294,15 +297,15 @@ if __name__ == '__main__':
 
             if src == 'ndvi':
                 print(src, mask)
-                sparse_sample_ndvi(shapefile_path, bucket=bucket, debug=False,
-                                   mask_type=mask, check_dir=dst, start_yr=1987, end_yr=2022, feature_id=FEATURE_ID,
+                sparse_sample_ndvi(shapefile_path, bucket=bucket, debug=False, grid_spec=3,
+                                   mask_type=mask, check_dir=dst, start_yr=2022, end_yr=2024, feature_id=FEATURE_ID,
                                    state_col=state_col, select=None)
 
-            if src == 'etf':
-                print(src, mask)
-                sparse_sample_etf(shapefile_path, bucket=bucket, debug=False,
-                                  mask_type=mask, check_dir=dst, start_yr=1987, end_yr=2022, feature_id=FEATURE_ID,
-                                  state_col=state_col, select=None)
+            # if src == 'etf':
+            #     print(src, mask)
+            #     sparse_sample_etf(shapefile_path, bucket=bucket, debug=False,
+            #                       mask_type=mask, check_dir=dst, start_yr=1987, end_yr=2022, feature_id=FEATURE_ID,
+            #                       state_col=state_col, select=None)
 
 
 # ========================= EOF =======================================================================================

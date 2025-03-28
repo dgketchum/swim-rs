@@ -11,7 +11,8 @@ from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 
 
-def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=None, pdc_remove=False, overwrite=False):
+def run_pest_sequence(conf_path, project_ws, workers, realizations, select_stations=None, pdc_remove=False,
+                      overwrite=False):
     """"""
     config = ProjectConfig()
     config.read_config(conf_path, project_ws)
@@ -27,19 +28,23 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
     dynamics_data = os.path.join(landsat, 'calibration_dynamics.json')
     joined_timeseries = os.path.join(data_dir, 'plot_timeseries')
 
+    print(f'\n{properties_json}')
+    print(f'{landsat}')
+    print(f'{dynamics_data}')
+    print(f'{joined_timeseries}\n')
+
     flux_meta_csv = os.path.join(data_dir, 'station_metadata.csv')
     flux_meta_df = pd.read_csv(flux_meta_csv, header=1, skip_blank_lines=True, index_col='Site ID')
+    sites = sorted(flux_meta_df.index.to_list())
 
-    if bad_params:
-        bad_df = pd.read_csv(bad_params, index_col=0)
-        bad_stations = bad_df.index.unique().to_list()
-        flux_meta_df = flux_meta_df.loc[bad_stations]
-
-    for fid, row in flux_meta_df.iterrows():
+    for fid in sites:
 
         prepped_data, prepped_input = False, None
 
-        if fid != 'ALARC2_Smith6':
+        if fid in ['US-Bi2', 'US-Dk1']:
+            continue
+
+        if select_stations and fid not in select_stations:
             continue
 
         for prior_constraint in ['tight']:
@@ -116,7 +121,9 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
             spinup_out = os.path.join(station_results, f'spinup_{fid}.json')
             shutil.copyfile(builder.config.spinup, spinup_out)
 
-            builder.dry_run('pestpp-ies')
+            exe_ = 'pestpp-ies'
+
+            builder.dry_run(exe_)
 
             # Check for prior-data conflict, remove and rebuild if necessary
             pdc_file = os.path.join(p_dir, f'{project}.pdc.csv')
@@ -132,11 +139,9 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
                     builder.build_pest()
                     builder.build_localizer()
                     builder.write_control_settings(noptmax=0)
-                    builder.dry_run('pestpp-ies')
+                    builder.dry_run(exe_)
 
             builder.write_control_settings(noptmax=3, reals=realizations)
-
-            exe_ = 'pestpp-ies'
 
             _pst = f'{project}.pst'
 
@@ -177,19 +182,29 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, bad_params=N
 
 
 if __name__ == '__main__':
-    d = '/data/ssd2/swim'
-    if not os.path.isdir(d):
-        home = os.path.expanduser('~')
-        d = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials')
 
     project_ = '4_Flux_Network'
-    project_ws_ = os.path.join(d, project_)
 
+    root = '/data/ssd2/swim'
+    data = os.path.join(root, project_, 'data')
+    workers, realizations = 20, 200
+    project_ws_ = os.path.join(root, project_)
     config_file = os.path.join(project_ws_, 'config.toml')
 
-    bad_parameters = os.path.join(project_ws_, 'results_comparison_bad.csv')
+    if not os.path.isdir(root):
+        root = '/home/dgketchum/PycharmProjects/swim-rs'
+        data = os.path.join(root, 'tutorials', project_, 'data')
+        workers, realizations = 2, 10
+        project_ws_ = os.path.join(root, 'tutorials', project_)
+        config_file = os.path.join(project_ws_, 'config.toml')
 
-    run_pest_sequence(config_file, project_ws_, workers=4, realizations=24, bad_params=None,
-                      pdc_remove=False, overwrite=True)
+    station_file = os.path.join(data, 'station_metadata.csv')
+    sdf = pd.read_csv(station_file, index_col=0, header=1)
+    sdf = sdf[sdf['General classification'] == 'Croplands']
+    sites_ = list(set(sdf.index.unique().to_list()))
+    sites_.sort()
+
+    run_pest_sequence(config_file, project_ws_, workers=workers, realizations=realizations, select_stations=sites_,
+                      pdc_remove=True, overwrite=True)
 
 # ========================= EOF ============================================================================

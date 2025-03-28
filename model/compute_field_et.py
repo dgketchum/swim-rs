@@ -3,26 +3,20 @@ import numpy as np
 from model import grow_root
 from model import runoff
 from model import compute_snow
+from model import k_dynamics as kd
 
+def compute_field_et(swb, day_data):
 
-def compute_field_et(ts_data, swb, day_data):
-
-    kc_max = np.maximum(swb.kc_max, swb.kc_bas + 0.05)
+    if day_data.dt_string == '2003-02-03':
+        a = 1
 
     swb.kc_bas = np.maximum(swb.kc_min, swb.kc_bas)
-
-    # consider height removal
-    swb.fc = ((swb.kc_bas - swb.kc_min) / (kc_max - swb.kc_min)) # ** (1 + 0.5 * swb.height)
+    swb.fc = ((swb.kc_bas - swb.kc_min) / (swb.kc_max - swb.kc_min))
 
     # limit so that few > 0
     swb.fc = np.minimum(swb.fc, 0.99)
     if np.any(np.isnan(swb.fc)):
-        mask = np.isnan(swb.fc).flatten()
-        nan_ids = np.array(ts_data.input['order'])[mask]
-        for nan_id in nan_ids:
-            if not nan_id in swb.isnan:
-                swb.isnan.append(nan_id)
-                print('Found nan in foo.fc: {}'.format(nan_ids))
+        raise ValueError
 
     # Estimate infiltrating precipitation
     # Yesterday's infiltration
@@ -52,11 +46,12 @@ def compute_field_et(ts_data, swb, day_data):
 
     swb.few = 1 - swb.fc
 
-    swb.kr = np.minimum((swb.tew - swb.depl_ze) / (swb.tew - swb.rew + 1e-6), 1.)
-
-    swb.ke = np.minimum(swb.kr * (swb.kc_max - swb.kc_bas), swb.few * swb.kc_max)
-    swb.ke = np.maximum(swb.ke, 0.0)
-    swb.ke = np.minimum(swb.ke, swb.ke_max)
+    # Momentum-based Kr/Ke calculation
+    # kd.ke_momentum(swb)
+    # Damping-based Kr/Ke calculation
+    kd.ke_damper(swb)
+    # Exponential-based Kr/Ke calculation
+    # kd.ke_exponential(swb)
 
     # Transpiration coefficient for moisture stress
     swb.taw = swb.aw * swb.zr
@@ -64,38 +59,18 @@ def compute_field_et(ts_data, swb, day_data):
     swb.taw = np.maximum(swb.taw, swb.tew)
     swb.raw = swb.mad * swb.taw
 
-    swb.ks = np.where(swb.depl_root > swb.raw,
-                      np.maximum((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0), 1)
+    # Momentum-based Ks calculation
+    # kd.ks_momentum(swb)
+    # Damping-based Ks calculation
+    kd.ks_damper(swb)
+    # Exponential-based Ks calculation
+    # kd.ks_exponential(swb)
 
-    if np.any(swb.swe > 0.0):
-        # Calculate Kc during snow cover
-
-        kc_mult = np.ones_like(swb.swe)
-        condition = swb.swe > 0.01
-
-        # Radiation term for reducing Kc to actCount for snow albedo
-        k_rad = (
-            0.000000022 * day_data.doy ** 3 - 0.0000242 * day_data.doy ** 2 +
-            0.006 * day_data.doy + 0.011)
-        albedo_snow = 0.8
-        albedo_soil = 0.25
-        kc_mult[condition] = 1 - k_rad + (1 - albedo_snow) / (1 - albedo_soil) * k_rad
-
-        # Was 0.9, reduced another 30% to account for latent heat of fusion of melting snow
-        kc_mult = kc_mult * 0.7
-
-        swb.ke *= kc_mult
-
-    else:
-        kc_mult = 1
-
-    swb.kc_act = kc_mult * swb.ks * swb.kc_bas * swb.fc + swb.ke
+    swb.kc_act = swb.ks * swb.kc_bas * swb.fc + swb.ke
 
     swb.kc_act = np.minimum(swb.kc_max, swb.kc_act)
 
-    swb.t = kc_mult * swb.ks * swb.kc_bas * swb.fc
-
-    swb.kc_pot = swb.kc_bas + swb.ke
+    swb.t = swb.ks * swb.kc_bas * swb.fc
 
     swb.etc_act = swb.kc_act * day_data.refet
 
@@ -120,6 +95,9 @@ def compute_field_et(ts_data, swb, day_data):
     swb.depl_root += swb.etc_act - swb.ppt_inf
 
     swb.irr_sim = np.zeros_like(swb.aw)
+
+    if day_data.dt_string == '2013-07-28':
+        a = 1
 
     if np.any(day_data.irr_day) or np.any(swb.irr_continue):
         # account for the case where depletion exceeded the maximum daily irr rate yesterday
@@ -149,7 +127,6 @@ def compute_field_et(ts_data, swb, day_data):
     swb.gw_sim = np.zeros_like(swb.aw)
 
     if np.any(day_data.gwsub_status) and np.any((swb.depl_root > swb.raw)):
-
         gw_subsidy = np.where(day_data.gwsub_status, swb.depl_root - swb.raw, 0.0)
         swb.gw_sim = gw_subsidy
 
@@ -201,6 +178,4 @@ def compute_field_et(ts_data, swb, day_data):
 
     swb.delta_soil_water = swb.soil_water - swb.soil_water_prev
 
-    grow_root.grow_root(swb)
-
-
+    grow_root.grow_root(swb, day_data)

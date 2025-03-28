@@ -1,9 +1,11 @@
+from pprint import pprint
+
 import numpy as np
 import pandas as pd
 
 from model import compute_field_et
 from model import obs_kcb_daily
-from model.tracker import SampleTracker
+from model.tracker import SampleTracker, TUNABLE_PARAMS
 from model.day_data import DayData
 
 OUTPUT_FMT = ['et_act',
@@ -41,7 +43,6 @@ OUTPUT_FMT = ['et_act',
               'soil_water',
               'niwr',
               'irr_day',
-              'season',
               'capture',
               ]
 
@@ -55,16 +56,30 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
     etf, swe = None, None
     size = len(plots.input['order'])
 
-    tracker = SampleTracker(size)
-    tracker.apply_initial_conditions(config, plots)
-    tracker.apply_parameters(config, plots, params=params)
-    tracker.load_root_depth(plots)
-    tracker.load_soils(plots)
+    tracker = SampleTracker(config, plots, size)
+    tracker.apply_initial_conditions()
+    tracker.apply_parameters(params=params)
+    tracker.load_root_depth()
+    tracker.load_soils()
+
+    # only set kc/ke max if they were not calibrated
+    tracker.set_ke_max()
+
+    if debug_flag:
+        tunable_state = {k: tracker.__getattribute__(k) for k in TUNABLE_PARAMS}
+        if size == 1:
+            tunable_state = {k: f'{v[0, 0]:.2f}' for k, v in tunable_state.items()}
+        else:
+            tunable_state = {k: [f'{vv:.2f}' for vv in v.flatten()] for k, v in tunable_state.items()}
+        pprint(dict(sorted(tunable_state.items())))
 
     targets = plots.input['order']
 
-    valid_data = {dt: val for dt, val in plots.input['time_series'].items() if
-                  (config.start_dt <= pd.to_datetime(dt) <= config.end_dt)}
+    if len(pd.date_range(config.start_dt, config.end_dt, freq='D')) == len(plots.input['time_series']):
+        valid_data = plots.input['time_series'].copy()
+    else:
+        valid_data = {dt: val for dt, val in plots.input['time_series'].items() if
+                      (config.start_dt <= pd.to_datetime(dt) <= config.end_dt)}
 
     if debug_flag:
         tracker.setup_dataframe(targets)
@@ -72,8 +87,6 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         time_range = pd.date_range(config.start_dt, config.end_dt, freq='D')
         empty = np.zeros((len(time_range), len(targets))) * np.nan
         etf, swe = empty.copy(), empty.copy()
-
-    tracker.set_kc_max()
 
     day_data = DayData()
 
@@ -89,11 +102,9 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
         day_data.update_daily_inputs(vals, size)
 
-        # calculate_height.calculate_height(tracker)
-
         obs_kcb_daily.kcb_daily(tracker, day_data)
 
-        compute_field_et.compute_field_et(plots, tracker, day_data)
+        compute_field_et.compute_field_et(tracker, day_data)
 
         if debug_flag:
             tracker.update_dataframe(targets, day_data, step_dt)

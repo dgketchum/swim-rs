@@ -34,6 +34,8 @@ def run_fields(ini_path, project_ws, output_csv, forecast=False, calibrate=False
     for fid in fields.input['order']:
         out_df = fields.output[fid].copy()
 
+        # print(f"eta mean: {out_df['et_act'].mean()}")
+
         in_df = fields.input_to_dataframe(fid)
 
         df = pd.concat([out_df, in_df], axis=1, ignore_index=False)
@@ -57,12 +59,17 @@ if __name__ == '__main__':
     data_ = os.path.join(project_ws_, 'data')
     config_file = os.path.join(project_ws_, 'config.toml')
 
-    output = os.path.join('/data', 'ssd2', 'swim', '4_Flux_Network', 'results', '03051423')
+    project_ws_ = os.path.join(root, 'tutorials', project)
+    update_dir = '/data/ssd2/swim/4_Flux_Network/results'
+    if not os.path.isdir(update_dir):
+        update_dir = os.path.join(project_ws_, 'results')
 
+    output = os.path.join(update_dir, '03101708')
     prepped_input = os.path.join(output, f'prepped_input.json')
     spinup_ = os.path.join(output, f'spinup.json')
+    fcst_params = os.path.join(output, '4_Flux_Network.3.par.csv')
 
-    fcst_params = '/data/ssd2/swim/4_Flux_Network/results/03051423/4_Flux_Network.3.par.csv'
+    summary = os.path.join(output, 'results_comparison_03101708.csv')
 
     run_fields(config_file, project_ws_, output, forecast=True, calibrate=False, forecast_file=fcst_params,
                input_data=prepped_input, spinup_data=spinup_)

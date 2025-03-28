@@ -9,13 +9,20 @@ from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 
 
-def compare_results_grouped(conf_path, project_ws, result_csv_dir, mode, summary_csv):
+def compare_results_grouped(conf_path, project_ws, result_csv_dir, mode, summary_csv, input_data=None,
+                            spinup_data=None):
     """
     Compares results for different model modes, creating a summary table.
     Now handles daily, overpass, and monthly results separately.
     """
     config = ProjectConfig()
     config.read_config(conf_path, project_ws)
+
+    if input_data:
+        config.input_data = input_data
+
+    if spinup_data:
+        config.spinup = spinup_data
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)
@@ -31,14 +38,19 @@ def compare_results_grouped(conf_path, project_ws, result_csv_dir, mode, summary
 
     for fid, row in flux_meta_df.iterrows():
 
-        if row['General classification'] != 'Croplands':
-            continue
+        # if row['General classification'] != 'Croplands':
+        #     continue
 
         out_csv, updated, fcst_file = None, False, None
 
         pdc_ct = 0
 
-        irr_dct = irr[fid]
+        try:
+            irr_dct = irr[fid]
+        except KeyError:
+            print(f'{fid} not in dct')
+            continue
+
         flux_data = os.path.join(data_dir, 'daily_flux_files', f'{fid}_daily_data.csv')
         if not os.path.exists(flux_data):
             flux_data = os.path.join(data_dir, f'{fid}_daily_data.csv')
@@ -169,7 +181,6 @@ def compare_results_grouped(conf_path, project_ws, result_csv_dir, mode, summary
                 df_results.loc[(fid, mode), f'{p}_mean'] = tracker.__getattribute__(p)[0, 0]
                 df_results.loc[(fid, mode), f'{p}_std'] = np.nan
 
-
     df_results = df_results.sort_index(level=['fid', 'mode'],
                                        ascending=[True, True],
                                        sort_remaining=True)
@@ -233,15 +244,21 @@ if __name__ == '__main__':
 
     project_ws_ = os.path.join(root, 'tutorials', project)
     update_dir = '/data/ssd2/swim/4_Flux_Network/results'
+    if not os.path.isdir(update_dir):
+        update_dir = os.path.join(project_ws_, 'results')
 
-    output = os.path.join('/data', 'ssd2', 'swim', '4_Flux_Network', 'results', '03051423')
-    summary = os.path.join(output, 'results_comparison.csv')
+    output = os.path.join(update_dir, '03101708')
+    prepped_input = os.path.join(output, f'prepped_input.json')
+    spinup_ = os.path.join(output, f'spinup.json')
+
+    summary = os.path.join(output, 'results_comparison_03101708.csv')
 
     data_ = os.path.join(project_ws_, 'data')
 
     config_file_ = os.path.join(project_ws_, 'config.toml')
 
-    compare_results_grouped(config_file_, project_ws_, output, mode=mode_, summary_csv=summary)
+    compare_results_grouped(config_file_, project_ws_, output, mode=mode_, summary_csv=summary,
+                            input_data=prepped_input, spinup_data=spinup_)
     insert_blank_rows(summary, bad_data_csv=summary.replace('.csv', '_bad.csv'))
 
 # ========================= EOF ====================================================================

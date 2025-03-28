@@ -72,6 +72,8 @@ class PestBuilder:
         targets = self.plot_order
 
         aw = [self.plot_properties[t]['awc'] for t in targets]
+        ke_max = [self.plots.input['ke_max'][t] for t in targets]
+        kc_max = [self.plots.input['kc_max'][t] for t in targets]
 
         input_csv = [os.path.join(self.config.plot_timeseries, '{}_daily.csv'.format(fid)) for fid in targets]
 
@@ -80,17 +82,33 @@ class PestBuilder:
         self.params_file = os.path.join(self.project_ws, 'params.csv')
 
         pars = self.initial_parameter_dict()
+        p_list = list(pars.keys())
         pars = OrderedDict({'{}_{}'.format(k, fid): v.copy() for k, v in pars.items() for fid in targets})
 
         params = []
-        for i, (k, v) in enumerate(pars.items()):
-            if 'aw_' in k:
-                aw_ = aw[i] * 1000.
-                if np.isnan(aw_) or aw_ < pars[k]['lower_bound']:
-                    aw_ = 150.0
-                params.append((k, aw_, 'p_{}_0_constant.csv'.format(k)))
-            else:
-                params.append((k, v['initial_value'], 'p_{}_0_constant.csv'.format(k)))
+
+        for i, fid in enumerate(targets):
+
+            for p in p_list:
+
+                k = f'{p}_{fid}'
+
+                if 'aw_' in k:
+                    aw_ = aw[i] * 1000.
+                    if np.isnan(aw_) or aw_ < pars[k]['lower_bound']:
+                        aw_ = 150.0
+                    params.append((k, aw_, 'p_{}_0_constant.csv'.format(k)))
+
+                elif 'ke_max_' in k:
+                    ke_max_ = ke_max[i]
+                    params.append((k, ke_max_, 'p_{}_0_constant.csv'.format(k)))
+
+                elif 'kc_max_' in k:
+                    kc_max_ = kc_max[i]
+                    params.append((k, kc_max_, 'p_{}_0_constant.csv'.format(k)))
+
+                else:
+                    params.append((k, pars[k]['initial_value'], 'p_{}_0_constant.csv'.format(k)))
 
         idx, vals, _names = [x[0] for x in params], [x[1] for x in params], [x[2] for x in params]
         vals = np.array([vals, _names]).T
@@ -99,8 +117,20 @@ class PestBuilder:
 
         for e, (ii, r) in enumerate(df.iterrows()):
             pars[ii]['use_rows'] = e
-            if 'aw_' in ii:
-                pars[ii]['initial_value'] = float(r['value'])
+            if any(prefix in ii for prefix in ['aw_', 'ke_max_', 'kc_max_']):
+                val = float(r['value'])
+                pars[ii]['initial_value'] = val
+
+                if any(prefix in ii for prefix in ['ke_max_', 'kc_max_']):
+                    if val < pars[ii]['lower_bound']:
+                        pars[ii]['lower_bound'] = val - 0.2
+                        pars[ii]['initial_value'] = val - 0.1
+                        pars[ii]['upper_bound'] = val
+
+                    if val > pars[ii]['upper_bound']:
+                        pars[ii]['lower_bound'] = val - 0.3
+                        pars[ii]['initial_value'] = val - 0.1
+                        pars[ii]['upper_bound'] = val
 
         etf_obs_files = ['obs/obs_etf_{}.np'.format(fid) for fid in targets]
         swe_obs_files = ['obs/obs_swe_{}.np'.format(fid) for fid in targets]
@@ -150,7 +180,7 @@ class PestBuilder:
 
     def build_localizer(self):
 
-        et_params = ['aw', 'rew', 'tew', 'ndvi_alpha', 'ndvi_beta', 'mad']
+        et_params = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad']
         snow_params = ['swe_alpha', 'swe_beta']
 
         par_relation = {'etf': et_params, 'swe': snow_params}
@@ -238,6 +268,9 @@ class PestBuilder:
     def initial_parameter_dict(self):
 
         p = OrderedDict({
+
+            # 'aw' and zr are applied by Tracker.load_soils and load_root_depth
+
             'aw': {'file': self.params_file,
                    'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 400.0,
                    'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
@@ -250,13 +283,25 @@ class PestBuilder:
                     'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
                     'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'ndvi_alpha': {'file': self.params_file,
-                           'initial_value': 0.2, 'lower_bound': -0.7, 'upper_bound': 1.5,
-                           'pargp': 'ndvi_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+            'kc_max': {'file': self.params_file,
+                       'initial_value': None, 'lower_bound': 0.8, 'upper_bound': 1.3,
+                       'pargp': 'kc_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'ndvi_beta': {'file': self.params_file,
-                          'initial_value': 1.25, 'lower_bound': 0.5, 'upper_bound': 1.7,
-                          'pargp': 'ndvi_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+            'ks_alpha': {'file': self.params_file,
+                         'initial_value': 0.1, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'pargp': 'ks_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
+            'kr_alpha': {'file': self.params_file,
+                         'initial_value': 0.15, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'pargp': 'kr_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
+            'ndvi_k': {'file': self.params_file,
+                       'initial_value': 6.0, 'lower_bound': 1, 'upper_bound': 10,
+                       'pargp': 'ndvi_k', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+
+            'ndvi_0': {'file': self.params_file,
+                       'initial_value': 0.25, 'lower_bound': 0.1, 'upper_bound': 0.7,
+                       'pargp': 'ndvi_0', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'mad': {'file': self.params_file,
                     'initial_value': 0.6, 'lower_bound': 0.1, 'upper_bound': 0.9,
@@ -268,7 +313,7 @@ class PestBuilder:
 
             'swe_beta': {'file': self.params_file,
                          'initial_value': 1.5, 'lower_bound': 0.5, 'upper_bound': 2.5,
-                         'pargp': 'snow_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
+                         'pargp': 'swe_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         })
 
@@ -291,9 +336,9 @@ class PestBuilder:
         cmd = ' '.join([exe, os.path.join(self.pest_dir, self.pst_file)])
         wd = self.pest_dir
         try:
-            run_ossystem(cmd, wd, verbose=True)
+            run_sp(cmd, wd, verbose=False)
         except Exception:
-            run_sp(cmd, wd, verbose=True)
+            run_ossystem(cmd, wd, verbose=False)
 
     def spinup(self, overwrite=False):
 
@@ -444,41 +489,6 @@ class PestBuilder:
 
 
 if __name__ == '__main__':
-
-    root_ = os.path.abspath('..')
-
-    # project = 'alarc_test'
-    project = '4_Flux_Network'
-
-    # prior_constraint = 'tight'
-
-    for prior_constraint_ in ['loose', 'tight']:
-
-        project_ws_ = os.path.join(root_, 'tutorials', project)
-        if not os.path.isdir(project_ws_):
-            root_ = os.path.abspath('')
-            project_ws_ = os.path.join(root_, 'tutorials', project)
-
-        config_path_ = os.path.join(project_ws_, 'config.toml')
-        py_script = os.path.join(project_ws_, 'custom_forward_run.py')
-
-        builder = PestBuilder(project_ws=project_ws_, config_file=config_path_,
-                              use_existing=False, python_script=py_script, prior_constraint=prior_constraint_)
-        builder.build_pest()
-        builder.build_localizer()
-        builder.dry_run('pestpp-ies')
-        builder.write_control_settings(noptmax=4, reals=300)
-
-        p_dir = os.path.join(project_ws_, 'pest')
-        m_dir = os.path.join(project_ws_, f'{prior_constraint_}_master')
-        w_dir = os.path.join(project_ws_, 'workers')
-        exe_ = 'pestpp-ies'
-
-        _pst = f'{project}.pst'
-
-        _workers = 10
-
-        run_pst(p_dir, exe_, _pst, num_workers=_workers, worker_root=w_dir,
-                master_dir=m_dir, verbose=True, cleanup=True)
+    pass
 
 # ========================= EOF ====================================================================
