@@ -158,12 +158,12 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
 
     results_monthly = {}
     if df_monthly.shape[0] >= 2:
-        results_monthly[f'mean_flux'] = df_monthly['flux'].mean()
+        results_monthly[f'mean_flux'] = df_monthly['flux'].mean().item()
         for model in all_models:
             try:
                 results_monthly[f'rmse_{model}'] = float(np.sqrt(mean_squared_error(df_monthly['flux'], df_monthly[model])))
                 results_monthly[f'r2_{model}'] = r2_score(df_monthly['flux'], df_monthly[model])
-                results_monthly[f'mean_{model}'] = df_monthly[model].mean()
+                results_monthly[f'mean_{model}'] = df_monthly[model].mean().item()
                 results_monthly['n_samples'] = df_monthly.shape[0]
             except (ValueError, KeyError) as exc:
                 print(model, exc)

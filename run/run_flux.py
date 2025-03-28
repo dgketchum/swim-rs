@@ -1,5 +1,6 @@
 import os
 import time
+import collections
 from pprint import pprint
 import pandas as pd
 
@@ -35,34 +36,48 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, return_
 
     # print('\nOverpass\n')
     # pprint(overpass)
-    print('Monthly')
+    # print('Monthly')
     # pprint(monthly)
+
+    agg_comp = monthly.copy()
+    if len(agg_comp) < 3:
+        return None
+
+    rmse_values = {k.split('_')[1]: v for k, v in agg_comp.items() if k.startswith('rmse_') and
+                   ('swim' in k or 'ssebop' in k)}
+    if len(rmse_values) == 0:
+        return None
+
+    lowest_rmse_model = min(rmse_values, key=rmse_values.get)
+    print('Lowest RMSE:', lowest_rmse_model)
+    if not return_comparison:
+        return lowest_rmse_model
 
     if return_comparison:
 
-        if len(monthly) == 0:
+        if len(agg_comp) == 0:
             print(fid, 'empty')
             return None
 
         try:
-            if monthly['rmse_openet_ensemble'] > monthly['rmse_swim']:
-                print(f"Flux Mean: {monthly['mean_flux']}")
-                print(f"SWIM Mean: {monthly['mean_swim']}")
-                print(f"SSEBop Mean: {monthly['mean_ssebop']}")
-                print(f"OpenET Mean: {monthly['mean_openet_ensemble']}")
-                print(f"SWIM RMSE: {monthly['rmse_swim']}")
-                print(f"SSEBop RMSE: {monthly['rmse_ssebop']}")
-                print(f"OpenET RMSE: {monthly['rmse_openet_ensemble']}")
+            if agg_comp['rmse_openet_ensemble'] > agg_comp['rmse_swim']:
+                print(f"Flux Mean: {agg_comp['mean_flux']}")
+                print(f"SWIM Mean: {agg_comp['mean_swim']}")
+                print(f"SSEBop Mean: {agg_comp['mean_ssebop']}")
+                print(f"OpenET Mean: {agg_comp['mean_openet_ensemble']}")
+                print(f"SWIM RMSE: {agg_comp['rmse_swim']}")
+                print(f"SSEBop RMSE: {agg_comp['rmse_ssebop']}")
+                print(f"OpenET RMSE: {agg_comp['rmse_openet_ensemble']}")
                 return 'swim'
 
-            elif monthly['rmse_openet_ensemble'] < monthly['rmse_swim']:
-                print(f"Flux Mean: {monthly['mean_flux']}")
-                print(f"SWIM Mean: {monthly['mean_swim']}")
-                print(f"SSEBop Mean: {monthly['mean_ssebop']}")
-                print(f"OpenET Mean: {monthly['mean_openet_ensemble']}")
-                print(f"SWIM RMSE: {monthly['rmse_swim']}")
-                print(f"SSEBop RMSE: {monthly['rmse_ssebop']}")
-                print(f"OpenET RMSE: {monthly['rmse_openet_ensemble']}")
+            elif agg_comp['rmse_openet_ensemble'] < agg_comp['rmse_swim']:
+                print(f"Flux Mean: {agg_comp['mean_flux']}")
+                print(f"SWIM Mean: {agg_comp['mean_swim']}")
+                print(f"SSEBop Mean: {agg_comp['mean_ssebop']}")
+                print(f"OpenET Mean: {agg_comp['mean_openet_ensemble']}")
+                print(f"SWIM RMSE: {agg_comp['rmse_swim']}")
+                print(f"SSEBop RMSE: {agg_comp['rmse_ssebop']}")
+                print(f"OpenET RMSE: {agg_comp['rmse_openet_ensemble']}")
                 return 'openet'
 
             else:
@@ -98,7 +113,7 @@ if __name__ == '__main__':
 
     incomplete, complete, results = [], [], []
 
-    overwrite_ = True
+    overwrite_ = False
 
     for ee, site_ in enumerate(sites):
 
@@ -107,10 +122,7 @@ if __name__ == '__main__':
         if lulc != 'Croplands':
             continue
 
-        if site_ in ['US-Bi2', 'US-Dk1']:
-            continue
-
-        if site_ not in ['US-Ne3', 'ALARC2_Smith6', 'S2', 'US-Tw3']:
+        if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
@@ -147,10 +159,10 @@ if __name__ == '__main__':
             print(f'{site_} error: {exc}')
             continue
 
-        result = compare_openet(site_, flux_data, out_csv, open_et_, fields_, return_comparison=True)
+        result = compare_openet(site_, flux_data, out_csv, open_et_, fields_, return_comparison=False)
 
         if result:
-            results.append(result)
+            results.append((result, lulc))
 
         complete.append(site_)
 
@@ -158,8 +170,13 @@ if __name__ == '__main__':
 
         # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux')
 
-        print(f"swim improvements: {results.count('swim')} to {results.count('openet')}")
+        # print(f"swim improvements: {results.count('swim')} to {results.count('openet')}")
 
+    pprint({s: [t[0] for t in results].count(s) for s in set(t[0] for t in results)})
+    pprint(
+        {category: [item[0] for item in collections.Counter(t[0] for t in results
+                                                            if t[1] == category).most_common(3)] for
+         category in set(t[1] for t in results)})
     print(f'complete: {complete}')
     print(f'incomplete: {incomplete}')
 # ========================= EOF ====================================================================
