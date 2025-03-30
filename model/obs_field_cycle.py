@@ -64,6 +64,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
     # only set kc/ke max if they were not calibrated
     tracker.set_ke_max()
+    # tracker.__setattr__('mad', np.array([[0.2]]))
 
     if debug_flag:
         tunable_state = {k: tracker.__getattribute__(k) for k in TUNABLE_PARAMS}

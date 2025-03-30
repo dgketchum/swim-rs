@@ -204,7 +204,9 @@ if __name__ == '__main__':
     sites_ = list(set(sdf.index.unique().to_list()))
     sites_.sort()
 
-    run_pest_sequence(config_file, project_ws_, workers=workers, realizations=realizations, select_stations=sites_,
+    selected_ = ['US-Ne1']
+
+    run_pest_sequence(config_file, project_ws_, workers=workers, realizations=realizations, select_stations=selected_,
                       pdc_remove=True, overwrite=True)
 
 # ========================= EOF ============================================================================

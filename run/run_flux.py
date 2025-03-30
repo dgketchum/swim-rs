@@ -44,7 +44,7 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, return_
         return None
 
     rmse_values = {k.split('_')[1]: v for k, v in agg_comp.items() if k.startswith('rmse_') and
-                   ('swim' in k or 'ssebop' in k)}
+                   ('swim' in k or 'openet' in k)}
     if len(rmse_values) == 0:
         return None
 
@@ -125,9 +125,11 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
+        if site_ not in ['US-Ne1']:
+            continue
+
         print(f'\n{ee} {site_}: {lulc}')
 
-        # run_const = os.path.join(run_data, '4_Flux_Network', 'results', '19MAR_no_ke_max')
         run_const = os.path.join(run_data, '4_Flux_Network', 'results', 'tight')
         output_ = os.path.join(run_const, site_)
 
@@ -159,7 +161,7 @@ if __name__ == '__main__':
             print(f'{site_} error: {exc}')
             continue
 
-        result = compare_openet(site_, flux_data, out_csv, open_et_, fields_, return_comparison=False)
+        result = compare_openet(site_, flux_data, out_csv, open_et_, fields_, return_comparison=True)
 
         if result:
             results.append((result, lulc))

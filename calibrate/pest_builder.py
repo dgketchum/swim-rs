@@ -87,6 +87,7 @@ class PestBuilder:
 
         params = []
 
+        # Prior information from pre-processing
         for i, fid in enumerate(targets):
 
             for p in p_list:
@@ -107,6 +108,13 @@ class PestBuilder:
                     kc_max_ = kc_max[i]
                     params.append((k, kc_max_, 'p_{}_0_constant.csv'.format(k)))
 
+                elif 'mad_' in k:
+                    irr = np.nanmean([self.plot_properties[fid]['irr'][str(yr)] for yr in range(1987, 2023)])
+                    if irr > 0.2:
+                        params.append((k, 0.2, 'p_{}_0_constant.csv'.format(k)))
+                    else:
+                        params.append((k, 0.6, 'p_{}_0_constant.csv'.format(k)))
+
                 else:
                     params.append((k, pars[k]['initial_value'], 'p_{}_0_constant.csv'.format(k)))
 
@@ -115,6 +123,7 @@ class PestBuilder:
         df = pd.DataFrame(index=idx, data=vals, columns=['value', 'mult_name'])
         df.to_csv(self.params_file)
 
+        # Bounds checking
         for e, (ii, r) in enumerate(df.iterrows()):
             pars[ii]['use_rows'] = e
             if any(prefix in ii for prefix in ['aw_', 'ke_max_', 'kc_max_']):
