@@ -123,10 +123,9 @@ class PestBuilder:
         df = pd.DataFrame(index=idx, data=vals, columns=['value', 'mult_name'])
         df.to_csv(self.params_file)
 
-        # Bounds checking
         for e, (ii, r) in enumerate(df.iterrows()):
             pars[ii]['use_rows'] = e
-            if any(prefix in ii for prefix in ['aw_', 'ke_max_', 'kc_max_']):
+            if any(prefix in ii for prefix in ['aw_', 'ke_max_', 'kc_max_', 'mad_']):
                 val = float(r['value'])
                 pars[ii]['initial_value'] = val
 
@@ -313,7 +312,7 @@ class PestBuilder:
                        'pargp': 'ndvi_0', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'mad': {'file': self.params_file,
-                    'initial_value': 0.6, 'lower_bound': 0.1, 'upper_bound': 0.9,
+                    'initial_value': None, 'lower_bound': 0.1, 'upper_bound': 0.9,
                     'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'swe_alpha': {'file': self.params_file,

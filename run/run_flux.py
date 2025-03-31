@@ -113,7 +113,7 @@ if __name__ == '__main__':
 
     incomplete, complete, results = [], [], []
 
-    overwrite_ = False
+    overwrite_ = True
 
     for ee, site_ in enumerate(sites):
 
