@@ -17,6 +17,8 @@ def forecast_ndvi(plots, field_id, forecast_days=28, similarity_window=7, max_ye
     df = plots.input_to_dataframe(field_id)
     df = df[['ndvi_irr', 'ndvi_inv_irr', 'ndvi_irr_ct', 'ndvi_inv_irr_ct']]
 
+    df.loc['2022-07-01':, ['ndvi_irr_ct', 'ndvi_inv_irr_ct']] = np.nan
+
     last_obs_date = None
     for col in ['ndvi_irr_ct', 'ndvi_inv_irr_ct']:
         if col in df.columns:
@@ -89,6 +91,7 @@ def forecast_ndvi(plots, field_id, forecast_days=28, similarity_window=7, max_ye
                         forecast_years[day].append(compare_year)
                 except KeyError:
                     continue
+
     max_ndvi_observed = df[['ndvi_irr', 'ndvi_inv_irr']].max().max()
     for day in forecasts:
         if forecasts[day]:
@@ -108,8 +111,8 @@ def forecast_ndvi(plots, field_id, forecast_days=28, similarity_window=7, max_ye
     results['last_obs_date'] = last_obs_date.strftime('%Y-%m-%d')
     year_start = pd.to_datetime(f'{last_obs_date.year}-01-01')
     lookback_date = last_obs_date - pd.Timedelta(days=lookback)
-    start_date = max(year_start, lookback_date)
-    results['historical_data'] = df.loc[start_date:last_obs_date, current_ndvi_col].to_dict(orient='index')
+    start_date = min(year_start, lookback_date)
+    results['historical_data'] = df.loc[start_date:last_obs_date, current_ndvi_col].to_dict()
     results['historical_data'] = {k.strftime('%Y-%m-%d'): v for k, v in results['historical_data'].items()}
     results['probabilities'] = {}
     results['bin_edges'] = {}
@@ -228,7 +231,7 @@ if __name__ == '__main__':
 
         config_, fields_ = initialize_data(config_file, project_ws_, input_data=prepped_input)
 
-        forecast_ndvi(fields_, site_, forecast_days=14, output_json=ndvi_forecast_,
+        forecast_ndvi(fields_, site_, forecast_days=150, output_json=ndvi_forecast_,
                       similarity_window=7, max_years_to_consider=10)
 
         out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'ndvi_forecast', 'html')

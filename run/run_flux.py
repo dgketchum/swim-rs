@@ -49,6 +49,7 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, return_
         return None
 
     lowest_rmse_model = min(rmse_values, key=rmse_values.get)
+    print(f"n Samples: {agg_comp['n_samples']}")
     print('Lowest RMSE:', lowest_rmse_model)
     if not return_comparison:
         return lowest_rmse_model
@@ -125,12 +126,20 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['US-Ne1']:
+        # if site_ not in ['RIP760', 'B_01', 'UA3_JV108', 'US-AR1', 'SLM001', 'LYS_NW', 'B_11', 'JPL1_JV114',
+        #                  'ET_8', 'JPL1_Smith5', 'Almond_High', 'Ellendale', 'S2', 'Almond_Low', 'US-A74', 'MB_Pch',
+        #                  'UA2_JV330', 'LYS_SW', 'UA2_KN20', 'Almond_Med', 'ALARC2_Smith6', 'UA1_KN18', 'BAR012',
+        #                  'UA1_HartFarm', 'US-Ne1', 'US-Br3', 'LYS_SE', 'LYS_NE', 'UA3_KN15', 'UA1_JV187',
+        #                  'US-Bo1', 'US-AR1', 'US-Bkg', 'US-ARM', 'US-Bi1']:
+        #     continue
+
+        if site_ not in ['US-Bo1', 'US-AR1', 'US-Bkg', 'US-ARM', 'US-Bi1']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
-        run_const = os.path.join(run_data, '4_Flux_Network', 'results', 'tight')
+        run_const = os.path.join(run_data, '4_Flux_Network', 'results', '26MAR_manual_ke_max')
+        # run_const = os.path.join(run_data, '4_Flux_Network', 'results', 'tight')
         output_ = os.path.join(run_const, site_)
 
         prepped_input = os.path.join(output_, f'prepped_input.json')
