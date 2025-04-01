@@ -82,8 +82,9 @@ def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_ty
         print(_name)
 
 
-def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None,
-                      feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3'):
+def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, grid_spec=None,
+                      feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3',
+                      model='ssebop'):
     df = gpd.read_file(shapefile)
     df.index = df[feature_id]
 
@@ -91,7 +92,7 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
     df = df.to_crs(epsg=4326)
 
-    s, e = '1987-01-01', '2021-12-31'
+    s, e = '1987-01-01', '2024-12-31'
     irr_coll = ee.ImageCollection(IRR)
     coll = irr_coll.filterDate(s, e).select('classification')
     remap = coll.map(lambda img: img.lt(1))
@@ -101,6 +102,23 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
     east = ee.FeatureCollection(EAST_STATES)
 
     skipped, exported = 0, 0
+
+    members = ['eemetric',
+               'geesebal',
+               'ptjpl',
+               'sims',
+               'ssebop']
+
+    if model == 'ssebop':
+        source = 'projects/usgs-gee-nhm-ssebop/assets/ssebop/landsat/c02'
+    elif model == 'disalexi':
+        source = ' projects/openet/assets/disalexi/landsat/c02'
+    elif model == 'openet':
+        source = 'projects/openet/assets/ensemble/conus/gridmet/landsat/c02'
+    elif model in members:
+        source = f'projects/openet/assets/{model}/conus/gridmet/landsat/c02'
+    else:
+        raise ValueError('Must choose from "ssebop" or "openet" models')
 
     for fid, row in tqdm(df.iterrows(), desc='Processing Fields', total=df.shape[0]):
 
@@ -112,7 +130,10 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
             site = row[feature_id]
             grid_sz = row['grid_size']
 
-            desc = 'etf_{}_p{}_{}_{}'.format(site, grid_sz, mask_type, year)
+            if grid_spec is not None and grid_sz != grid_spec:
+                continue
+
+            desc = '{}_etf_{}_p{}_{}_{}'.format(model, site, grid_sz, mask_type, year)
             if check_dir:
                 f = os.path.join(check_dir, '{}.csv'.format(desc))
                 if os.path.exists(f):
@@ -128,13 +149,17 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
                 irr_mask = lanid.select(f'irr_{year}').clip(east)
                 irr = ee.Image(1).subtract(irr_mask)
 
-            polygon = ee.Geometry.Polygon([[c[0], c[1]] for c in row['geometry'].exterior.coords])
-            fc = ee.FeatureCollection(ee.Feature(polygon, {feature_id: site}))
+            try:
+                polygon = ee.Geometry.Polygon([[c[0], c[1]] for c in row['geometry'].exterior.coords])
+                fc = ee.FeatureCollection(ee.Feature(polygon, {feature_id: site}))
 
-            etf_coll = ee.ImageCollection(ETF).filterDate('{}-01-01'.format(year),
-                                                          '{}-12-31'.format(year))
-            etf_coll = etf_coll.filterBounds(polygon)
-            etf_scenes = etf_coll.aggregate_histogram('system:index').getInfo()
+                etf_coll = ee.ImageCollection(source).filterDate('{}-01-01'.format(year),
+                                                                 '{}-12-31'.format(year))
+                etf_coll = etf_coll.filterBounds(polygon)
+                etf_scenes = etf_coll.aggregate_histogram('system:index').getInfo()
+
+            except Exception as exc:
+                continue
 
             first, bands = True, None
             selectors = [site]
@@ -146,7 +171,9 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
                 selectors.append(_name)
 
-                etf_img = ee.Image(os.path.join(ETF, img_id)).rename(_name)
+                etf_img = ee.Image(os.path.join(source, img_id))
+                if model == 'openet':
+                    etf_img = etf_img.select('et_ensemble_mad').rename(_name)
                 etf_img = etf_img.divide(10000)
 
                 if mask_type == 'no_mask':
@@ -166,9 +193,12 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
                     data = etf_img.sample(fc, 30).getInfo()
                     print(data['features'])
 
-            data = bands.reduceRegions(collection=fc,
-                                       reducer=ee.Reducer.mean(),
-                                       scale=30)
+            try:
+                data = bands.reduceRegions(collection=fc,
+                                           reducer=ee.Reducer.mean(),
+                                           scale=30)
+            except AttributeError as exc:
+                continue
 
             task = ee.batch.Export.table.toCloudStorage(
                 data,
@@ -278,9 +308,11 @@ def export_to_cloud(images_txt, bucket, pathrows=None):
         prs = [str(pr).rjust(6, '0') for pr in df['PR']]
 
     try:
-        existing_geotiffs = subprocess.check_output(['gsutil', 'ls', f'gs://{bucket}/geotiff/']).decode('utf-8').split('\n')
+        existing_geotiffs = subprocess.check_output(['gsutil', 'ls', f'gs://{bucket}/geotiff/']).decode('utf-8').split(
+            '\n')
         existing_geotiffs = [os.path.basename(f) for f in existing_geotiffs if f]
-        existing_metadata = subprocess.check_output(['gsutil', 'ls', f'gs://{bucket}/metadata/']).decode('utf-8').split('\n')
+        existing_metadata = subprocess.check_output(['gsutil', 'ls', f'gs://{bucket}/metadata/']).decode('utf-8').split(
+            '\n')
         existing_metadata = [os.path.basename(f) for f in existing_metadata if f]
     except subprocess.CalledProcessError:
         existing_geotiffs = []
@@ -364,5 +396,5 @@ if __name__ == '__main__':
 
     prs_ = '/media/research/IrrigationGIS/swim/ssebop/wrs2_flux_volk.csv'
 
-    export_to_cloud(txt, bucket_, prs_)
+    # export_to_cloud(txt, bucket_, prs_)
 # ========================= EOF ====================================================================
