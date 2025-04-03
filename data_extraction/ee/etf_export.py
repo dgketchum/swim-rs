@@ -109,14 +109,15 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
                'sims',
                'ssebop']
 
-    if model == 'ssebop':
+    if model in members:
+        source = f'projects/openet/assets/{model}/conus/gridmet/landsat/c02'
+    elif model == 'ssebop':
         source = 'projects/usgs-gee-nhm-ssebop/assets/ssebop/landsat/c02'
     elif model == 'disalexi':
-        source = ' projects/openet/assets/disalexi/landsat/c02'
+        source = 'projects/openet/assets/disalexi/landsat/c02'
     elif model == 'openet':
         source = 'projects/openet/assets/ensemble/conus/gridmet/landsat/c02'
-    elif model in members:
-        source = f'projects/openet/assets/{model}/conus/gridmet/landsat/c02'
+
     else:
         raise ValueError('Must choose from "ssebop" or "openet" models')
 

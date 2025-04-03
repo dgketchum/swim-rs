@@ -277,17 +277,13 @@ if __name__ == '__main__':
     gdf = gpd.read_file(shapefile_path)
     gdf.shape
 
-    # homemade flux buffers
-    # FEATURE_ID = 'field_1'
-    # FEATURE_ID = 'field_1'
-
     # Volk static footprints
     FEATURE_ID = 'site_id'
     state_col = 'state'
 
     from etf_export import sparse_sample_etf
 
-    for src in ['etf']:
+    for src in ['etf', 'ndvi']:
         for mask in ['irr', 'inv_irr']:
 
             if src == 'ndvi':
