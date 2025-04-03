@@ -325,17 +325,24 @@ if __name__ == '__main__':
     FEATURE_ID = 'field_1'
     selected_feature = None
 
+    model = 'openet'
+
     types_ = ['irr', 'inv_irr']
     sensing_params = ['etf', 'ndvi']
 
     for mask_type in types_:
 
         for sensing_param in sensing_params:
-            yrs = [x for x in range(1987, 2023)]
+            yrs = [x for x in range(2016, 2025)]
 
-            ee_data = os.path.join(landsat, 'extracts', sensing_param, mask_type)
-            src = os.path.join(tables, '{}_{}_{}.csv'.format('calibration', sensing_param, mask_type))
-            src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format('calibration', sensing_param, mask_type))
+            if sensing_param == 'etf':
+                ee_data = os.path.join(landsat, 'extracts', f'{model}_{sensing_param}', mask_type)
+                src = os.path.join(tables, '{}_{}_{}.csv'.format(model, sensing_param, mask_type))
+                src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(model, sensing_param, mask_type))
+            else:
+                ee_data = os.path.join(landsat, 'extracts', sensing_param, mask_type)
+                src = os.path.join(tables, '{}_{}_{}.csv'.format('calibration', sensing_param, mask_type))
+                src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format('calibration', sensing_param, mask_type))
 
             # TODO: consider whether there is a case where ETf needs to be interpolated
             sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,

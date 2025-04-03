@@ -139,8 +139,8 @@ if __name__ == '__main__':
                           snow=snow,
                           dst_dir=joined_timeseries,
                           overwrite=True,
-                          start_date='1987-01-01',
-                          end_date='2022-12-31',
+                          start_date='2016-01-01',
+                          end_date='2024-12-31',
                           feature_id=FEATURE_ID,
                           **{'params': params})
 
