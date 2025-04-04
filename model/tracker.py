@@ -9,11 +9,12 @@ from model import TRACKER_PARAMS
 de_initial = 10.0
 
 TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta',
-                  'kc_max', 'ks_alpha', 'kr_alpha']
+                  # 'kc_max',
+                  'ks_alpha', 'kr_alpha']
 
 # params not included here (e.g., 'tew') are taken from soils data
 TUNABLE_DEFAULTS = {'aw': 177.56,
-                    'kc_max': 1.00,
+                    # 'kc_max': 1.00,
                     'kr_alpha': 0.25,
                     'ks_alpha': 0.15,
                     'mad': 0.59,

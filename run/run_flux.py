@@ -114,21 +114,24 @@ if __name__ == '__main__':
 
     incomplete, complete, results = [], [], []
 
-    overwrite_ = True
+    overwrite_ = False
 
     for ee, site_ in enumerate(sites):
 
         lulc = sdf.at[site_, 'General classification']
 
-        if lulc != 'Croplands':
-            continue
+        # if lulc != 'Croplands':
+        #     continue
 
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
+        if site_ not in ['Almond_High', 'Almond_Low', 'Almond_Med', 'ALARC2_Smith6']:
+            continue
+
         print(f'\n{ee} {site_}: {lulc}')
 
-        run_const = os.path.join(run_data, '4_Flux_Network', 'results', '26MAR_manual_ke_max')
+        run_const = os.path.join(run_data, '4_Flux_Network', 'results', '31MAR_irr_spec')
         # run_const = os.path.join(run_data, '4_Flux_Network', 'results', 'tight')
         output_ = os.path.join(run_const, site_)
 
@@ -171,7 +174,7 @@ if __name__ == '__main__':
 
         # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux')
 
-        # print(f"swim improvements: {results.count('swim')} to {results.count('openet')}")
+        print(f"swim improvements: {results.count('swim')} to {results.count('openet')}")
 
     pprint({s: [t[0] for t in results].count(s) for s in set(t[0] for t in results)})
     pprint(
