@@ -257,8 +257,8 @@ def clustered_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, f
     ctdf.to_csv(out_csv_ct)
 
 
-def join_remote_sensing(_dir, dst):
-    l = [os.path.join(_dir, f) for f in os.listdir(_dir) if f.endswith('.csv')]
+def join_remote_sensing(_dir, dst, glob_='calibration'):
+    l = [os.path.join(_dir, f) for f in os.listdir(_dir) if f.endswith('.csv') and glob_ in f]
     first = True
 
     params = ['etf_irr',
@@ -328,7 +328,14 @@ if __name__ == '__main__':
     model = 'openet'
 
     types_ = ['irr', 'inv_irr']
-    sensing_params = ['etf', 'ndvi']
+    sensing_params = ['ndvi', 'etf']
+
+    fdf = gpd.read_file(shapefile_path)
+    target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
+    state_idx = [i for i, r in fdf.iterrows() if r['field_3'] in target_states]
+    fdf = fdf.loc[state_idx]
+    sites_ = list(set(fdf['field_1'].to_list()))
+    sites_.sort()
 
     for mask_type in types_:
 
@@ -341,14 +348,14 @@ if __name__ == '__main__':
                 src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(model, sensing_param, mask_type))
             else:
                 ee_data = os.path.join(landsat, 'extracts', sensing_param, mask_type)
-                src = os.path.join(tables, '{}_{}_{}.csv'.format('calibration', sensing_param, mask_type))
-                src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format('calibration', sensing_param, mask_type))
+                src = os.path.join(tables, '{}_{}_{}.csv'.format(model, sensing_param, mask_type))
+                src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(model, sensing_param, mask_type))
 
             # TODO: consider whether there is a case where ETf needs to be interpolated
             sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                                       feature_id=FEATURE_ID, select=None)
+                                       feature_id=FEATURE_ID, select=sites_)
 
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
-    join_remote_sensing(tables, remote_sensing_file)
+    join_remote_sensing(tables, remote_sensing_file, glob_='openet')
 
 # ========================= EOF ================================================================================
