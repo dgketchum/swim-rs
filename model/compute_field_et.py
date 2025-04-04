@@ -16,7 +16,7 @@ def compute_field_et(swb, day_data):
     # limit so that few > 0
     swb.fc = np.minimum(swb.fc, 0.99)
     if np.any(np.isnan(swb.fc)):
-        raise ValueError
+        raise ValueError(f'{day_data.dt_string} has nan fc')
 
     # Estimate infiltrating precipitation
     # Yesterday's infiltration
