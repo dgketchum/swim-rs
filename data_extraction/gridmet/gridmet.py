@@ -206,7 +206,7 @@ def get_gridmet_corrections(fields, gridmet_ras, fields_join,
 
 
 def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None, overwrite=False,
-                     target_fields=None, feature_id='FID'):
+                     append=False, target_fields=None, feature_id='FID', return_df=False):
     if not start:
         start = '1987-01-01'
     if not end:
@@ -224,7 +224,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
     for k, v in tqdm(fields.iterrows(), desc='Downloading GridMET', total=len(fields)):
 
-        elev = None
+        elev, existing = None, None
         out_cols = COLUMN_ORDER.copy() + ['nld_ppt_d'] + hr_cols
         df, first = pd.DataFrame(), True
 
@@ -237,8 +237,20 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
             downloaded[g_fid].append(k)
 
         _file = os.path.join(gridmet_csv_dir, 'gridmet_{}.csv'.format(g_fid))
-        if os.path.exists(_file) and not overwrite:
+        if os.path.exists(_file) and not overwrite and not append:
             continue
+
+        if os.path.exists(_file) and append:
+            existing = pd.read_csv(_file, index_col='date', parse_dates=True)
+            existing['date'] = existing.index
+            target_dates = pd.date_range(start, end, freq='D')
+            missing_dates = [i for i in target_dates if i not in existing.index]
+
+            if len(missing_dates) == 0:
+                return df
+
+            else:
+                start, end = missing_dates[0].strftime('%Y-%m-%d'), missing_dates[-1].strftime('%Y-%m-%d')
 
         r = gridmet_factors[g_fid]
         lat, lon = r['lat'], r['lon']
@@ -309,8 +321,15 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
         df['tmin_c'] = df.tmin_k - 273.15
 
         df = df[out_cols]
+        if existing is not None and not overwrite and append:
+            df = pd.concat([df, existing], axis=0, ignore_index=False)
+            df = df.sort_index()
+
         df.to_csv(_file, index=False)
         downloaded[g_fid] = [k]
+
+        if return_df:
+            return df
 
 
 # from CGMorton's RefET (github.com/WSWUP/RefET)
@@ -409,7 +428,6 @@ def wind_height_adjust(uz, zw):
 
 
 def gridmet_elevation(shp_in, shp_out):
-
     df = gpd.read_file(shp_in)
     l = []
     for i, r in df.iterrows():
@@ -420,6 +438,7 @@ def gridmet_elevation(shp_in, shp_out):
 
     df['ELEV_M'] = [i[1] for i in l]
     df.to_file(shp_out)
+
 
 if __name__ == '__main__':
     home = os.path.expanduser('~')

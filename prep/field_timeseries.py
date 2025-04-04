@@ -20,7 +20,14 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
     lst = pd.read_csv(landsat_table, parse_dates=True, index_col=0)
     lst = lst.sort_index(axis=1)
-    start, end = lst.index[0], lst.index[-1]
+    lst_start, lst_end = lst.index[0], lst.index[-1]
+
+    remote_sensing_coverage = ((pd.to_datetime(start_date) >= lst_start) &
+                               (pd.to_datetime(end_date) <= lst_end))
+    if not remote_sensing_coverage:
+        raise ValueError('Remote sensing data does not cover requested time period')
+
+    lst = lst.loc[start_date: end_date]
 
     if 'params' not in kwargs.keys():
         params = set(['_'.join(x.split('_')[1:]) for x in lst.columns])
@@ -30,7 +37,7 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
     field_df = gpd.read_file(fields)
     field_df.index = field_df[feature_id]
 
-    out_plots, bad = [], None
+    out_plots, bad, time_covered = [], None, False
 
     for f, row in tqdm(field_df.iterrows(), total=field_df.shape[0]):
 
@@ -46,38 +53,34 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
         gridmet_file = os.path.join(gridmet_dir, 'gridmet_{}.csv'.format(int(row['GFID'])))
 
-        try:
-            gridmet = pd.read_csv(gridmet_file, index_col='date', parse_dates=True).loc[start: end]
-
+        if os.path.exists(gridmet_file):
+            gridmet = pd.read_csv(gridmet_file, index_col='date', parse_dates=True).loc[start_date: end_date]
+            gridmet.index = pd.DatetimeIndex(gridmet.index)
+            missing_gridmet = False
             time_covered = ((pd.to_datetime(start_date) >= gridmet.index[0]) &
                             (pd.to_datetime(end_date) <= gridmet.index[-1]))
+        else:
+            missing_gridmet = True
 
-            if os.path.exists(_file) and not overwrite and time_covered:
-                continue
-
-            if not time_covered:
-                bias_factors = fields.replace('.shp', '.json')
-                download_gridmet(fields, bias_factors, gridmet_dir, start_date, end_date,
-                                 overwrite=True, target_fields=[f], feature_id=feature_id)
-
-            drop_cols = [c for c in gridmet.columns if '.' in c]
-            if drop_cols:
-                gridmet.drop(columns=drop_cols, inplace=True)
-
-            swe_data = [(pd.to_datetime(d['date']), d['value']) for d in snow[f]]
-            swe = pd.Series(index=[x[0] for x in swe_data], data=[x[1] for x in swe_data])
-            swe = swe.sort_index()
-
-            match_idx = [i for i in gridmet.index if i in swe.index]
-            gridmet.loc[match_idx, 'obs_swe'] = swe
-
-        except FileNotFoundError:
-            print(gridmet_file, 'not found\n')
+        if os.path.exists(_file) and not overwrite and time_covered:
             continue
 
-        except pd.errors.EmptyDataError:
-            print(gridmet_file, 'empty\n')
-            continue
+        if not time_covered or missing_gridmet:
+            bias_factors = fields.replace('.shp', '.json')
+            gridmet = download_gridmet(fields, bias_factors, gridmet_dir, start_date, end_date, return_df=True,
+                                       overwrite=False, append=True, target_fields=[f], feature_id=feature_id)
+            gridmet = gridmet.loc[start_date: end_date]
+
+        drop_cols = [c for c in gridmet.columns if '.' in c]
+        if drop_cols:
+            gridmet.drop(columns=drop_cols, inplace=True)
+
+        swe_data = [(pd.to_datetime(d['date']), d['value']) for d in snow[f]]
+        swe = pd.Series(index=[x[0] for x in swe_data], data=[x[1] for x in swe_data])
+        swe = swe.sort_index()
+
+        match_idx = [i for i in gridmet.index if i in swe.index]
+        gridmet.loc[match_idx, 'obs_swe'] = swe
 
         for p in params:
             gridmet.loc[lst.index, p] = lst['{}_{}'.format(f, p)]
@@ -104,6 +107,7 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
         if accept:
             gridmet.to_csv(_file)
             out_plots.append(f)
+            print(f'wrote {_file}')
 
     print(f'{len(out_plots)} fields were successfully processed')
     print(f'{bad} fields were dropped due to missing data')
@@ -121,9 +125,12 @@ if __name__ == '__main__':
 
     landsat = os.path.join(data, 'landsat')
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
+
     FEATURE_ID = 'field_1'
+
     fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
     met = os.path.join(data, 'met_timeseries')
+
     joined_timeseries = os.path.join(data, 'plot_timeseries')
     snow = os.path.join(data, 'snodas', 'snodas.json')
 
@@ -132,6 +139,13 @@ if __name__ == '__main__':
               'etf_irr',
               'ndvi_irr']
     params += ['{}_ct'.format(p) for p in params]
+
+    fdf = gpd.read_file(fields_gridmet)
+    target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
+    state_idx = [i for i, r in fdf.iterrows() if r['field_3'] in target_states]
+    fdf = fdf.loc[state_idx]
+    sites_ = list(set(fdf['field_1'].to_list()))
+    sites_.sort()
 
     join_daily_timeseries(fields=fields_gridmet,
                           gridmet_dir=met,
@@ -142,6 +156,7 @@ if __name__ == '__main__':
                           start_date='2016-01-01',
                           end_date='2024-12-31',
                           feature_id=FEATURE_ID,
-                          **{'params': params})
+                          **{'params': params,
+                             'target_fields': sites_})
 
 # ========================= EOF ====================================================================
