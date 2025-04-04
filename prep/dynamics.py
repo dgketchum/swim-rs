@@ -1,6 +1,7 @@
 import os
 
 import pandas as pd
+import geopandas as gpd
 import numpy as np
 import json
 from tqdm import tqdm
@@ -8,15 +9,16 @@ from tqdm import tqdm
 
 class SamplePlotDynamics:
     def __init__(self, plot_timeseries, irr_csv_file, out_json_file, irr_threshold=0.1, select=None):
+
         self.time_series = plot_timeseries
 
         self.irr_csv_file = irr_csv_file
         self.out_json_file = out_json_file
         self.irr_threshold = irr_threshold
         self.select = select
+        self.years = None
 
         self.irr = None
-        self.years = None
         self.fields = {'irr': {}, 'gwsub': {}, 'ke_max': {}, 'kc_max': {}}
 
         self._load_data()
@@ -34,6 +36,7 @@ class SamplePlotDynamics:
                 print(f'{_file} not found, skipping')
                 continue
 
+            self.years = [int(y) for y in field_time_series['year'].unique()]
             field_data = self._analyze_field_irrigation(fid, field_time_series, lookback)
             if field_data is not None:
                 self.fields['irr'][fid] = field_data
@@ -51,6 +54,7 @@ class SamplePlotDynamics:
                 print(f'{_file} not found, skipping')
                 continue
 
+            self.years = [int(y) for y in field_time_series['year'].unique()]
             field_data = self._analyze_field_groundwater_subsidy(fid, field_time_series)
             if field_data is not None:
                 self.fields['gwsub'][fid] = field_data
@@ -76,7 +80,6 @@ class SamplePlotDynamics:
     def _load_data(self):
         self.irr = pd.read_csv(self.irr_csv_file, index_col=0)
         self.irr.drop(columns=['LAT', 'LON'], inplace=True)
-        self.years = list(sorted([int(c.split('_')[-1]) for c in self.irr.columns]))
 
         try:
             _ = float(self.irr.index[0])
@@ -96,7 +99,7 @@ class SamplePlotDynamics:
         field_data = {}
         selectors = ['etf_inv_irr', 'etf_irr', 'prcp_mm', 'eto_mm_uncorr', 'eto_mm']
 
-        irr_overall = np.mean([self.irr.at[field, f'irr_{yr}'] > self.irr_threshold for yr in range(1987, 2023)]).item()
+        irr_overall = np.mean([self.irr.at[field, f'irr_{yr}'] > self.irr_threshold for yr in range(2016, 2025)]).item()
 
         if irr_overall > 0.6:
             generally_irrigated = True
@@ -104,7 +107,7 @@ class SamplePlotDynamics:
             generally_irrigated = False
 
         for yr in self.years:
-            if yr > 2022:
+            if yr > 2024:
                 continue
 
             try:
@@ -174,7 +177,7 @@ class SamplePlotDynamics:
         selector = 'ndvi_irr'
 
         for yr in self.years:
-            if yr > 2022:
+            if yr > 2024:
                 continue
 
             irr_doys, periods = [], 0
@@ -196,7 +199,8 @@ class SamplePlotDynamics:
             df = field_time_series.loc[f'{yr}-01-01': f'{yr}-12-31', [selector]]
 
             if df.empty:
-                raise NotImplementedError(f'{field} in {yr} is empty')
+                print(f'{field} in {yr} is empty')
+                return None
 
             df['doy'] = [i.dayofyear for i in df.index]
             df[selector] = df[selector].rolling(window=32, center=True).mean()
@@ -312,8 +316,15 @@ if __name__ == '__main__':
 
     cuttings_json = os.path.join(landsat, 'calibration_dynamics.json')
 
+    fdf = gpd.read_file(shapefile_path)
+    target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
+    state_idx = [i for i, r in fdf.iterrows() if r['field_3'] in target_states]
+    fdf = fdf.loc[state_idx]
+    sites_ = list(set(fdf['field_1'].to_list()))
+    sites_.sort()
+
     dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3,
-                                  out_json_file=cuttings_json, select=None)
+                                  out_json_file=cuttings_json, select=['Almond_High'])
     dynamics.analyze_irrigation(lookback=5)
     dynamics.analyze_groundwater_subsidy()
     dynamics.analyze_k_parameters()

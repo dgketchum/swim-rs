@@ -272,10 +272,17 @@ if __name__ == '__main__':
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
     shapefile_path = os.path.join(root, 'footprints', 'flux_static_footprints.shp')
 
-    landsat_dst = os.path.join(root, 'data', 'landsat')
+    data = os.path.join(root,  'tutorials', '4_Flux_Network', 'data')
+    landsat_dst = os.path.join(data, 'landsat')
 
-    gdf = gpd.read_file(shapefile_path)
-    gdf.shape
+    fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
+
+    fdf = gpd.read_file(fields_gridmet)
+    target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
+    state_idx = [i for i, r in fdf.iterrows() if r['field_3'] in target_states]
+    fdf = fdf.loc[state_idx]
+    sites_ = list(set(fdf['field_1'].to_list()))
+    sites_.sort()
 
     # Volk static footprints
     FEATURE_ID = 'site_id'
@@ -283,7 +290,7 @@ if __name__ == '__main__':
 
     from etf_export import sparse_sample_etf
 
-    for src in ['etf', 'ndvi']:
+    for src in ['ndvi', 'etf']:
         for mask in ['irr', 'inv_irr']:
 
             if src == 'ndvi':
@@ -291,11 +298,11 @@ if __name__ == '__main__':
                 dst = os.path.join(landsat_dst, 'extracts', src, mask)
 
                 sparse_sample_ndvi(shapefile_path, bucket=bucket, debug=False, grid_spec=3,
-                                   mask_type=mask, check_dir=dst, start_yr=2022, end_yr=2024, feature_id=FEATURE_ID,
+                                   mask_type=mask, check_dir=dst, start_yr=2016, end_yr=2024, feature_id=FEATURE_ID,
                                    state_col=state_col, select=None)
 
             if src == 'etf':
-                for model in ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']:
+                for model in ['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']:
                     dst = os.path.join(landsat_dst, 'extracts', f'{model}_{src}', mask)
 
                     print(src, mask, model)
