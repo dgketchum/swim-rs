@@ -78,7 +78,7 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
 
     adf, ctdf, first, prev_df = None, None, True, None
 
-    for yr in tqdm(years, total=len(years), desc=f'Processing Time Series by Year'):
+    for yr in tqdm(years, total=len(years), desc=f'Processing data from {csv_dir}'):
 
         dt_index = pd.date_range('{}-01-01'.format(yr), '{}-12-31'.format(yr), freq='D')
 
@@ -257,23 +257,13 @@ def clustered_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, f
     ctdf.to_csv(out_csv_ct)
 
 
-def join_remote_sensing(_dir, dst, glob_='calibration'):
-    l = [os.path.join(_dir, f) for f in os.listdir(_dir) if f.endswith('.csv') and glob_ in f]
+def join_remote_sensing(files, dst):
+
     first = True
 
-    params = ['etf_irr',
-              'etf_inv_irr',
-              'ndvi_inv_irr',
-              'ndvi_irr']
+    for f in files:
 
-    params += ['{}_ct'.format(p) for p in params]
-
-    for f in l:
-        param = [p for p in params if p in os.path.basename(f)]
-        if len(param) > 1:
-            param = param[1]
-        else:
-            param = param[0]
+        param = os.path.basename(f).split('.')[0]
 
         if first:
             df = pd.read_csv(f, index_col=0, parse_dates=True)
@@ -304,7 +294,7 @@ def get_tif_list(tif_dir, year):
 
 if __name__ == '__main__':
 
-    project = '4_Flux_Network'
+    project = '5_Flux_Ensemble'
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project, 'data')
@@ -325,8 +315,6 @@ if __name__ == '__main__':
     FEATURE_ID = 'field_1'
     selected_feature = None
 
-    model = 'openet'
-
     types_ = ['irr', 'inv_irr']
     sensing_params = ['ndvi', 'etf']
 
@@ -337,25 +325,33 @@ if __name__ == '__main__':
     sites_ = list(set(fdf['field_1'].to_list()))
     sites_.sort()
 
+    rs_files = []
+
     for mask_type in types_:
 
         for sensing_param in sensing_params:
             yrs = [x for x in range(2016, 2025)]
 
             if sensing_param == 'etf':
-                ee_data = os.path.join(landsat, 'extracts', f'{model}_{sensing_param}', mask_type)
-                src = os.path.join(tables, '{}_{}_{}.csv'.format(model, sensing_param, mask_type))
-                src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(model, sensing_param, mask_type))
+
+                for model in ['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']:
+                    ee_data = os.path.join(landsat, 'extracts', f'{model}_{sensing_param}', mask_type)
+                    src = os.path.join(tables, '{}_{}_{}.csv'.format(model, sensing_param, mask_type))
+                    src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(model, sensing_param, mask_type))
+                    rs_files.extend([src, src_ct])
+                    sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
+                                               feature_id=FEATURE_ID, select=sites_)
             else:
                 ee_data = os.path.join(landsat, 'extracts', sensing_param, mask_type)
-                src = os.path.join(tables, '{}_{}_{}.csv'.format(model, sensing_param, mask_type))
-                src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(model, sensing_param, mask_type))
+                src = os.path.join(tables, '{}_{}.csv'.format(sensing_param, mask_type))
+                src_ct = os.path.join(tables, '{}_{}_ct.csv'.format(sensing_param, mask_type))
+                rs_files.extend([src, src_ct])
+                # TODO: consider whether there is a case where ETf needs to be interpolated
+                sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
+                                           feature_id=FEATURE_ID, select=sites_)
 
-            # TODO: consider whether there is a case where ETf needs to be interpolated
-            sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                                       feature_id=FEATURE_ID, select=sites_)
 
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
-    join_remote_sensing(tables, remote_sensing_file, glob_='openet')
+    join_remote_sensing(rs_files, remote_sensing_file)
 
 # ========================= EOF ================================================================================
