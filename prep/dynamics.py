@@ -324,7 +324,7 @@ if __name__ == '__main__':
     sites_.sort()
 
     dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3,
-                                  out_json_file=cuttings_json, select=['Almond_High'])
+                                  out_json_file=cuttings_json, select=sites_)
     dynamics.analyze_irrigation(lookback=5)
     dynamics.analyze_groundwater_subsidy()
     dynamics.analyze_k_parameters()
