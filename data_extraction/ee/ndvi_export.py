@@ -290,7 +290,7 @@ if __name__ == '__main__':
 
     from etf_export import sparse_sample_etf
 
-    for src in ['ndvi', 'etf']:
+    for src in ['etf']:
         for mask in ['irr', 'inv_irr']:
 
             if src == 'ndvi':
@@ -302,13 +302,13 @@ if __name__ == '__main__':
                                    state_col=state_col, select=None)
 
             if src == 'etf':
-                for model in ['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']:
+                for model in ['eemetric', 'geesebal', 'ptjpl', 'sims', 'disalexi']:
                     dst = os.path.join(landsat_dst, 'extracts', f'{model}_{src}', mask)
 
                     print(src, mask, model)
 
                     sparse_sample_etf(shapefile_path, bucket=bucket, debug=False, grid_spec=3,
-                                      mask_type=mask, check_dir=dst, start_yr=2016, end_yr=2024, feature_id=FEATURE_ID,
+                                      mask_type=mask, check_dir=None, start_yr=2016, end_yr=2024, feature_id=FEATURE_ID,
                                       state_col=state_col, select=None, model=model)
 
 # ========================= EOF =======================================================================================

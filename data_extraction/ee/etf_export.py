@@ -123,6 +123,9 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
     for fid, row in tqdm(df.iterrows(), desc='Processing Fields', total=df.shape[0]):
 
+        if fid != 'ALARC2_Smith6':
+            continue
+
         for year in range(start_yr, end_yr + 1):
 
             if select is not None and fid not in select:
@@ -173,8 +176,13 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
                 selectors.append(_name)
 
                 etf_img = ee.Image(os.path.join(source, img_id))
+
                 if model == 'openet':
-                    etf_img = etf_img.select('et_ensemble_mad').rename(_name)
+                    etf_img = etf_img.select('et_ensemble_mad')
+                else:
+                    etf_img = etf_img.select('et_fraction')
+
+                etf_img = etf_img.rename(_name)
                 etf_img = etf_img.divide(10000)
 
                 if mask_type == 'no_mask':
