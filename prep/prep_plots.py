@@ -94,14 +94,6 @@ def prep_fields_json(properties, time_series, dynamics, out_js, target_plots=Non
 
         for p in required_params:
             a = df[p].values
-            if np.any(np.isnan(a)) and p not in ACCEPT_NAN:
-                if p == 'ndvi_inv_irr':
-                    for i, r in df[p].copy().items():
-                        if np.isnan(r):
-                            df.loc[i, p] = unirr_ndvi['{}-{}'.format(i.month, i.day)]
-                    a = df[p].values
-                else:
-                    raise ValueError
             arrays[p].append(a)
 
     for p in required_params:

@@ -291,6 +291,7 @@ class PestBuilder:
                     'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
                     'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
+            # kc_max should only be applied for long period targets
             # 'kc_max': {'file': self.params_file,
             #            'initial_value': None, 'lower_bound': 0.8, 'upper_bound': 1.3,
             #            'pargp': 'kc_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},

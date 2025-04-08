@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
+from prep import get_ensemble_parameters, get_openet_sites
 from data_extraction.gridmet.gridmet import find_gridmet_points, download_gridmet
 
 import warnings
@@ -31,8 +32,10 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
     if 'params' not in kwargs.keys():
         params = set(['_'.join(x.split('_')[1:]) for x in lst.columns])
+        models = set(['_'.join(x.split('_')[0]) for x in lst.columns])
     else:
         params = kwargs['params']
+        models = list(set([m.split('_')[0] for m in kwargs['params']]))
 
     field_df = gpd.read_file(fields)
     field_df.index = field_df[feature_id]
@@ -92,14 +95,10 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
         accept, bad = True, 0
 
-        for i, r in gridmet.iterrows():
-            if np.isnan(r['ndvi_irr']) and np.isnan(r['ndvi_inv_irr']):
+        chkdf = gridmet.resample('A').sum()
+        for m in models:
+            if np.isnan(chkdf[f'{m}_irr']) and np.isnan(chkdf[f'{m}_inv_irr']):
                 print('{} in {} has only nan in ndvi_irr and ndvi_inv_irr'.format(f, i.year))
-                accept = False
-                bad += 1
-                break
-            if np.isnan(r['etf_irr']) and np.isnan(r['etf_inv_irr']):
-                print('{} in {} has only nan in etf_irr and etf_inv_irr'.format(f, i.year))
                 accept = False
                 bad += 1
                 break
@@ -115,7 +114,7 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
 if __name__ == '__main__':
 
-    project = '4_Flux_Network'
+    project = '5_Flux_Ensemble'
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project, 'data')
@@ -134,18 +133,8 @@ if __name__ == '__main__':
     joined_timeseries = os.path.join(data, 'plot_timeseries')
     snow = os.path.join(data, 'snodas', 'snodas.json')
 
-    params = ['etf_inv_irr',
-              'ndvi_inv_irr',
-              'etf_irr',
-              'ndvi_irr']
-    params += ['{}_ct'.format(p) for p in params]
-
-    fdf = gpd.read_file(fields_gridmet)
-    target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
-    state_idx = [i for i, r in fdf.iterrows() if r['field_3'] in target_states]
-    fdf = fdf.loc[state_idx]
-    sites_ = list(set(fdf['field_1'].to_list()))
-    sites_.sort()
+    sites_ = get_openet_sites(fields_gridmet)
+    remote_sensing_parameters = get_ensemble_parameters()
 
     join_daily_timeseries(fields=fields_gridmet,
                           gridmet_dir=met,
@@ -156,7 +145,7 @@ if __name__ == '__main__':
                           start_date='2016-01-01',
                           end_date='2024-12-31',
                           feature_id=FEATURE_ID,
-                          **{'params': params,
+                          **{'params': remote_sensing_parameters,
                              'target_fields': sites_})
 
 # ========================= EOF ====================================================================

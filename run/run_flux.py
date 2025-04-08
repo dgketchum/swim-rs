@@ -1,6 +1,7 @@
 import os
 import time
 import collections
+from datetime import datetime
 from pprint import pprint
 import pandas as pd
 
@@ -95,7 +96,7 @@ if __name__ == '__main__':
     home = os.path.expanduser('~')
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
-    project = '4_Flux_Network'
+    project = '5_Flux_Ensemble'
 
     project_ws_ = os.path.join(root, 'tutorials', project)
 
@@ -114,25 +115,25 @@ if __name__ == '__main__':
 
     incomplete, complete, results = [], [], []
 
-    overwrite_ = False
+    overwrite_ = True
 
     for ee, site_ in enumerate(sites):
 
         lulc = sdf.at[site_, 'General classification']
 
-        # if lulc != 'Croplands':
-        #     continue
+        if lulc != 'Croplands':
+            continue
 
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['Almond_High', 'Almond_Low', 'Almond_Med', 'ALARC2_Smith6']:
-            continue
+        # if site_ not in ['Almond_High', 'Almond_Low', 'Almond_Med', 'ALARC2_Smith6']:
+        #     continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
-        run_const = os.path.join(run_data, '4_Flux_Network', 'results', '31MAR_irr_spec')
-        # run_const = os.path.join(run_data, '4_Flux_Network', 'results', 'tight')
+        # run_const = os.path.join(run_data, '4_Flux_Network', 'results', '31MAR_irr_spec')
+        run_const = os.path.join(run_data, project, 'results', 'tight')
         output_ = os.path.join(run_const, site_)
 
         prepped_input = os.path.join(output_, f'prepped_input.json')
@@ -148,6 +149,9 @@ if __name__ == '__main__':
         fcst_params = os.path.join(output_, f'{site_}.3.par.csv')
         if not os.path.exists(fcst_params):
             continue
+
+        modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
+        print(f'Calibration made {modified_date}')
 
         cal = os.path.join(project_ws_, f'tight_pest', 'mult')
 

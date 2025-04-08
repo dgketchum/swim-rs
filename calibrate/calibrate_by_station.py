@@ -9,6 +9,7 @@ from calibrate.run_pest import run_pst
 from prep.prep_plots import prep_fields_json, preproc
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
+from prep import get_openet_sites
 
 
 def run_pest_sequence(conf_path, project_ws, workers, realizations, select_stations=None, pdc_remove=False,
@@ -183,7 +184,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, select_stati
 
 if __name__ == '__main__':
 
-    project_ = '4_Flux_Network'
+    project_ = '5_Flux_Ensemble'
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project_, 'data')
@@ -199,15 +200,10 @@ if __name__ == '__main__':
         config_file = os.path.join(project_ws_, 'config.toml')
 
     station_file = os.path.join(data, 'station_metadata.csv')
-    sdf = pd.read_csv(station_file, index_col=0, header=1)
-    sdf = sdf[sdf['General classification'] == 'Croplands']
-    target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
-    state_idx = [i for i, r in sdf.iterrows() if r['State'] in target_states]
-    sdf = sdf.loc[state_idx]
-    sites_ = list(set(sdf.index.unique().to_list()))
-    sites_.sort()
 
-    sites_ = ['Almond_High']
+    sites_ = get_openet_sites(station_file)
+
+    # sites_ = ['Almond_High']
 
     run_pest_sequence(config_file, project_ws_, workers=workers, realizations=realizations, select_stations=sites_,
                       pdc_remove=True, overwrite=True)
