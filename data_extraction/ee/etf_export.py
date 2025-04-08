@@ -123,9 +123,6 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
     for fid, row in tqdm(df.iterrows(), desc='Processing Fields', total=df.shape[0]):
 
-        if fid != 'ALARC2_Smith6':
-            continue
-
         for year in range(start_yr, end_yr + 1):
 
             if select is not None and fid not in select:
@@ -172,6 +169,7 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
                 splt = img_id.split('_')
                 _name = '_'.join(splt[-3:])
+                _dt = splt[-1]
 
                 selectors.append(_name)
 
@@ -179,8 +177,12 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
                 if model == 'openet':
                     etf_img = etf_img.select('et_ensemble_mad')
-                else:
+                elif model in ['sims', 'eemetric']:
                     etf_img = etf_img.select('et_fraction')
+                elif model in ['geesebal', 'ptjpl', 'disalexi']:
+                    et_img = etf_img.select('et')
+                    refet = ee.Image(f'projects/openet/assets/reference_et/conus/gridmet/daily/v1/{_dt}').select('eto')
+                    etf_img = et_img.divide(refet)
 
                 etf_img = etf_img.rename(_name)
                 etf_img = etf_img.divide(10000)

@@ -272,7 +272,7 @@ if __name__ == '__main__':
     root = os.path.join(home, 'PycharmProjects', 'swim-rs')
     shapefile_path = os.path.join(root, 'footprints', 'flux_static_footprints.shp')
 
-    data = os.path.join(root,  'tutorials', '4_Flux_Network', 'data')
+    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
     landsat_dst = os.path.join(data, 'landsat')
 
     fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
@@ -302,7 +302,7 @@ if __name__ == '__main__':
                                    state_col=state_col, select=None)
 
             if src == 'etf':
-                for model in ['eemetric', 'geesebal', 'ptjpl', 'sims', 'disalexi']:
+                for model in ['ptjpl', 'disalexi', 'geesebal']:
                     dst = os.path.join(landsat_dst, 'extracts', f'{model}_{src}', mask)
 
                     print(src, mask, model)

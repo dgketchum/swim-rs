@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import geopandas as gpd
-
 from rasterstats import zonal_stats
 
+from prep import get_openet_sites
 
 def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_ct=100, feature_id='FID'):
     """
@@ -275,6 +275,8 @@ def join_remote_sensing(files, dst):
             csv = pd.read_csv(f, index_col=0, parse_dates=True)
             cols = ['{}_{}'.format(c, param) for c in csv.columns]
             csv.columns = cols
+            if np.all(np.isnan(csv.values)):
+                raise ValueError
             df = pd.concat([csv, df], axis=1)
             print(param)
 
@@ -316,25 +318,20 @@ if __name__ == '__main__':
     selected_feature = None
 
     types_ = ['irr', 'inv_irr']
-    sensing_params = ['ndvi', 'etf']
+    sensing_params = ['etf', 'ndvi']
 
-    fdf = gpd.read_file(shapefile_path)
-    target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
-    state_idx = [i for i, r in fdf.iterrows() if r['field_3'] in target_states]
-    fdf = fdf.loc[state_idx]
-    sites_ = list(set(fdf['field_1'].to_list()))
-    sites_.sort()
-
+    sites_ = get_openet_sites(shapefile_path)
     rs_files = []
 
     for mask_type in types_:
 
         for sensing_param in sensing_params:
+
             yrs = [x for x in range(2016, 2025)]
 
             if sensing_param == 'etf':
 
-                for model in ['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']:
+                for model in ['ptjpl', 'eemetric', 'openet', 'geesebal', 'sims', 'ssebop', 'disalexi']:
                     ee_data = os.path.join(landsat, 'extracts', f'{model}_{sensing_param}', mask_type)
                     src = os.path.join(tables, '{}_{}_{}.csv'.format(model, sensing_param, mask_type))
                     src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(model, sensing_param, mask_type))
