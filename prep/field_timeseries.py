@@ -32,10 +32,10 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
     if 'params' not in kwargs.keys():
         params = set(['_'.join(x.split('_')[1:]) for x in lst.columns])
-        models = set(['_'.join(x.split('_')[0]) for x in lst.columns])
+        models = set(['_'.join(x.split('_')[0]) for x in lst.columns if 'ndvi' not in x])
     else:
         params = kwargs['params']
-        models = list(set([m.split('_')[0] for m in kwargs['params']]))
+        models = list(set([m.split('_')[0] for m in kwargs['params'] if 'ndvi' not in m]))
 
     field_df = gpd.read_file(fields)
     field_df.index = field_df[feature_id]
@@ -86,7 +86,11 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
         gridmet.loc[match_idx, 'obs_swe'] = swe
 
         for p in params:
-            gridmet.loc[lst.index, p] = lst['{}_{}'.format(f, p)]
+            try:
+                gridmet.loc[lst.index, p] = lst['{}_{}'.format(f, p)]
+            except KeyError as exc:
+                print(f'{exc}: {f} is missing {p}')
+                exit()
 
         if start_date:
             gridmet = gridmet.loc[start_date:]
@@ -96,8 +100,17 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
         accept, bad = True, 0
 
         chkdf = gridmet.resample('A').sum()
-        for m in models:
-            if np.isnan(chkdf[f'{m}_irr']) and np.isnan(chkdf[f'{m}_inv_irr']):
+        for i in chkdf.index:
+            for m in models:
+                chck_irr, chck_inv_irr = chkdf.loc[i, f'{m}_etf_irr'], chkdf.loc[i, f'{m}_etf_inv_irr']
+                if np.isnan(chck_irr) and np.isnan(chck_inv_irr):
+                    print('{} in {} has only nan in etf_irr and etf_inv_irr'.format(f, i.year))
+                    accept = False
+                    bad += 1
+                    break
+
+            chck_irr, chck_inv_irr = chkdf.loc[i, 'ndvi_irr'], chkdf.loc[i, 'ndvi_inv_irr']
+            if np.isnan(chck_irr) and np.isnan(chck_inv_irr):
                 print('{} in {} has only nan in ndvi_irr and ndvi_inv_irr'.format(f, i.year))
                 accept = False
                 bad += 1
@@ -106,7 +119,6 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
         if accept:
             gridmet.to_csv(_file)
             out_plots.append(f)
-            print(f'wrote {_file}')
 
     print(f'{len(out_plots)} fields were successfully processed')
     print(f'{bad} fields were dropped due to missing data')
@@ -134,7 +146,7 @@ if __name__ == '__main__':
     snow = os.path.join(data, 'snodas', 'snodas.json')
 
     sites_ = get_openet_sites(fields_gridmet)
-    remote_sensing_parameters = get_ensemble_parameters()
+    remote_sensing_parameters = get_ensemble_parameters(skip='ssebop')
 
     join_daily_timeseries(fields=fields_gridmet,
                           gridmet_dir=met,

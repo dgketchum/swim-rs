@@ -157,6 +157,7 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
         prev_df = df.copy()
 
     adf.to_csv(out_csv)
+    print(f'count {df.count().sum()} of {df.size}, mean ({df.values[~np.isnan(df.values)].mean():.2f})')
     ctdf.to_csv(out_csv_ct)
 
 
@@ -331,21 +332,21 @@ if __name__ == '__main__':
 
             if sensing_param == 'etf':
 
-                for model in ['ptjpl', 'eemetric', 'openet', 'geesebal', 'sims', 'ssebop', 'disalexi']:
+                for model in ['ptjpl', 'eemetric', 'openet', 'geesebal', 'sims', 'disalexi']:
                     ee_data = os.path.join(landsat, 'extracts', f'{model}_{sensing_param}', mask_type)
                     src = os.path.join(tables, '{}_{}_{}.csv'.format(model, sensing_param, mask_type))
                     src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(model, sensing_param, mask_type))
                     rs_files.extend([src, src_ct])
-                    sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                                               feature_id=FEATURE_ID, select=sites_)
+                    # sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
+                    #                            feature_id=FEATURE_ID, select=sites_)
             else:
                 ee_data = os.path.join(landsat, 'extracts', sensing_param, mask_type)
                 src = os.path.join(tables, '{}_{}.csv'.format(sensing_param, mask_type))
                 src_ct = os.path.join(tables, '{}_{}_ct.csv'.format(sensing_param, mask_type))
                 rs_files.extend([src, src_ct])
                 # TODO: consider whether there is a case where ETf needs to be interpolated
-                sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                                           feature_id=FEATURE_ID, select=sites_)
+                # sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
+                #                            feature_id=FEATURE_ID, select=sites_)
 
 
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')

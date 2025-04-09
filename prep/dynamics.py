@@ -6,6 +6,8 @@ import numpy as np
 import json
 from tqdm import tqdm
 
+from prep import get_openet_sites
+
 
 class SamplePlotDynamics:
     def __init__(self, plot_timeseries, irr_csv_file, out_json_file, irr_threshold=0.1, select=None):
@@ -316,12 +318,7 @@ if __name__ == '__main__':
 
     cuttings_json = os.path.join(landsat, 'calibration_dynamics.json')
 
-    fdf = gpd.read_file(shapefile_path)
-    target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
-    state_idx = [i for i, r in fdf.iterrows() if r['field_3'] in target_states]
-    fdf = fdf.loc[state_idx]
-    sites_ = list(set(fdf['field_1'].to_list()))
-    sites_.sort()
+    sites_ = get_openet_sites(shapefile_path)
 
     dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3,
                                   out_json_file=cuttings_json, select=sites_)

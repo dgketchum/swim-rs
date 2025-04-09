@@ -177,7 +177,7 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
                 if model == 'openet':
                     etf_img = etf_img.select('et_ensemble_mad')
-                elif model in ['sims', 'eemetric']:
+                elif model in ['sims', 'eemetric', 'ssebop']:
                     etf_img = etf_img.select('et_fraction')
                 elif model in ['geesebal', 'ptjpl', 'disalexi']:
                     et_img = etf_img.select('et')
