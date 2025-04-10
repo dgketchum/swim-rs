@@ -107,7 +107,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, select_stati
             builder = PestBuilder(project_ws=project_ws, config_file=conf_path,
                                   use_existing=False, python_script=py_script,
                                   prior_constraint=prior_constraint, conflicted_obs=None)
-            builder.build_pest()
+            builder.build_pest(target_etf='openet')
             builder.build_localizer()
 
             # short run sets up base realization and checks for prior-data conflict
@@ -137,7 +137,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, select_stati
                     builder = PestBuilder(project_ws=project_ws, config_file=conf_path,
                                           use_existing=False, python_script=py_script,
                                           prior_constraint=prior_constraint, conflicted_obs=temp_pdc)
-                    builder.build_pest()
+                    builder.build_pest(target_etf='openet')
                     builder.build_localizer()
                     builder.write_control_settings(noptmax=0)
                     builder.dry_run(exe_)
@@ -202,8 +202,6 @@ if __name__ == '__main__':
     station_file = os.path.join(data, 'station_metadata.csv')
 
     sites_ = get_openet_sites(station_file)
-
-    # sites_ = ['Almond_High']
 
     run_pest_sequence(config_file, project_ws_, workers=workers, realizations=realizations, select_stations=sites_,
                       pdc_remove=True, overwrite=True)

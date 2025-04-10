@@ -79,13 +79,11 @@ class DayData:
             irrigated = self.irr_status[0, i]
             if irrigated:
                 self.ndvi[0, i] = vals['ndvi_irr'][i]
-                self.capture[0, i] = vals['etf_irr_ct'][i]
                 self.refet[0, i] = vals['{}_mm'.format(config.refet_type)][i]
                 self.irr_day[0, i] = int(self.doy in self.irr_doys[i])
 
             else:
                 self.ndvi[0, i] = vals['ndvi_inv_irr'][i]
-                self.capture[0, i] = vals['etf_inv_irr_ct'][i]
                 self.refet[0, i] = vals['{}_mm_uncorr'.format(config.refet_type)][i]
                 self.irr_day[0, i] = 0
 

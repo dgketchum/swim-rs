@@ -4,7 +4,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 
 
 def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_path=None, openet_monthly_path=None,
-                          irr=None, target='et'):
+                          irr=None, target='et', model='ssebop'):
     flux_data = pd.read_csv(flux_data_path, index_col='date', parse_dates=True)
 
     if isinstance(combined_output_path, pd.DataFrame):
@@ -22,10 +22,16 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
                  and v['f_irr'] >= irr_threshold]
     irr_index = [i for i in output.index if i.year in irr_years]
 
-    output['etf'] = output['etf_inv_irr']
-    output.loc[irr_index, 'etf'] = output.loc[irr_index, 'etf_irr']
-    output['capture'] = output['etf_inv_irr_ct']
-    output.loc[irr_index, 'capture'] = output.loc[irr_index, 'etf_irr_ct']
+    try:
+        output['etf'] = output['etf_inv_irr']
+        output.loc[irr_index, 'etf'] = output.loc[irr_index, 'etf_irr']
+        output['capture'] = output['etf_inv_irr_ct']
+        output.loc[irr_index, 'capture'] = output.loc[irr_index, 'etf_irr_ct']
+    except KeyError:
+        output['etf'] = output[f'{model}_etf_inv_irr']
+        output.loc[irr_index, 'etf'] = output.loc[irr_index, f'{model}_etf_irr']
+        output['capture'] = output[f'{model}_etf_inv_irr_ct']
+        output.loc[irr_index, 'capture'] = output.loc[irr_index, f'{model}_etf_irr_ct']
 
     df = pd.DataFrame({'kc_act': output['kc_act'], 'etf': output['etf'],
                        'EToF': flux_data['EToF'], 'ET_corr': flux_data['ET_corr'],

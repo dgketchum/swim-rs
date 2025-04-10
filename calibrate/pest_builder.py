@@ -154,7 +154,7 @@ class PestBuilder:
 
         return dct
 
-    def build_pest(self):
+    def build_pest(self, target_etf='openet'):
 
         if self.overwrite_build is False:
             raise NotImplementedError('Use of exising Pest++ project was specified, '
@@ -164,7 +164,7 @@ class PestBuilder:
 
         self._write_params()
 
-        i = self._write_etf_obs()
+        i = self._write_etf_obs(target_etf)
         count = i + 1
         self._write_swe_obs(count, i)
 
@@ -305,7 +305,7 @@ class PestBuilder:
                          'pargp': 'kr_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_k': {'file': self.params_file,
-                       'initial_value': 6.0, 'lower_bound': 1, 'upper_bound': 10,
+                       'initial_value': 6.0, 'lower_bound': 4, 'upper_bound': 10,
                        'pargp': 'ndvi_k', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_0': {'file': self.params_file,
@@ -325,19 +325,6 @@ class PestBuilder:
                          'pargp': 'swe_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
         })
-
-        if self.prior_contstraint == 'loose':
-            loose_params = {
-                'aw': {'lower_bound': 0.0, 'upper_bound': 1000.0},
-                'ndvi_alpha': {'lower_bound': -1.5, 'upper_bound': 1.5},
-                'ndvi_beta': {'lower_bound': 0.1, 'upper_bound': 4.0},
-                'mad': {'lower_bound': 0.01, 'upper_bound': 0.99},
-                'swe_alpha': {'lower_bound': -0.1, 'upper_bound': 1.},
-                'swe_beta': {'lower_bound': 0.1, 'upper_bound': 3.0},
-            }
-            for key, updates in loose_params.items():
-                if key in p:
-                    p[key].update(updates)
 
         return p
 
@@ -417,7 +404,7 @@ class PestBuilder:
 
             self.pest.obs_dfs[j + count] = d
 
-    def _write_etf_obs(self):
+    def _write_etf_obs(self, target):
         obsnme_str = 'oname:obs_etf_{}_otype:arr_i:{}_j:0'
 
         for i, fid in enumerate(self.pest_args['targets']):
@@ -436,8 +423,8 @@ class PestBuilder:
             idx.to_csv(self.obs_idx_file)
 
             captures = [ix for ix, r in et_df.iterrows()
-                        if r['etf_irr_ct']
-                        or r['etf_inv_irr_ct']
+                        if r[f'{target}_etf_irr_ct']
+                        or r[f'{target}_etf_inv_irr_ct']
                         and ix.month in list(range(1, 13))]
 
             captures = et_df['obs_id'].loc[captures]

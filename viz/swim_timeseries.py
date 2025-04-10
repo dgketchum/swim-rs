@@ -126,7 +126,7 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', f
         fig.show()
 
 
-def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None, spec='flux-pdc'):
+def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None, spec='flux-pdc', model='ssebop'):
     """"""
 
     for fid in fids:
@@ -146,10 +146,16 @@ def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None, spec='fl
         df['ndvi_ct'] = df['ndvi_inv_irr_ct']
         df.loc[irr_index, 'ndvi_ct'] = df.loc[irr_index, 'ndvi_irr_ct']
 
-        df['etf'] = df['etf_inv_irr']
-        df.loc[irr_index, 'etf'] = df.loc[irr_index, 'etf_irr']
-        df['etf_ct'] = df['etf_inv_irr_ct']
-        df.loc[irr_index, 'etf_ct'] = df.loc[irr_index, 'etf_irr_ct']
+        try:
+            df['etf'] = df['etf_inv_irr']
+            df.loc[irr_index, 'etf'] = df.loc[irr_index, 'etf_irr']
+            df['etf_ct'] = df['etf_inv_irr_ct']
+            df.loc[irr_index, 'etf_ct'] = df.loc[irr_index, 'etf_irr_ct']
+        except KeyError:
+            df['etf'] = df[f'{model}_etf_inv_irr']
+            df.loc[irr_index, 'etf'] = df.loc[irr_index, f'{model}_etf_irr']
+            df['capture'] = df[f'{model}_etf_inv_irr_ct']
+            df.loc[irr_index, 'capture'] = df.loc[irr_index, f'{model}_etf_irr_ct']
 
         pdc = pd.read_csv(pdc_file, index_col=0)
         idx_file = pdc_file.replace('.pdc', '.idx')

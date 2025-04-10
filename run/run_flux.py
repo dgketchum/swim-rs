@@ -28,12 +28,13 @@ def run_flux_sites(fid, config, plot_data, outfile):
     df.to_csv(outfile)
 
 
-def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, return_comparison=False):
+def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='ssebop', return_comparison=False):
     openet_daily = os.path.join(openet_dir, 'daily_data', f'{fid}.csv')
     openet_monthly = os.path.join(openet_dir, 'monthly_data', f'{fid}.csv')
     irr_ = plot_data_.input['irr_data'][fid]
     daily, overpass, monthly = compare_etf_estimates(model_output, flux_file, openet_daily_path=openet_daily,
-                                                     openet_monthly_path=openet_monthly, irr=irr_, target='et')
+                                                     openet_monthly_path=openet_monthly, irr=irr_, target='et',
+                                                     model=model)
 
     # print('\nOverpass\n')
     # pprint(overpass)
@@ -93,21 +94,23 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, return_
 
 
 if __name__ == '__main__':
-    home = os.path.expanduser('~')
-    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
     project = '5_Flux_Ensemble'
+    # project = '4_Flux_Network'
 
-    project_ws_ = os.path.join(root, 'tutorials', project)
+    root = '/data/ssd2/swim'
+    data = os.path.join(root, project, 'data')
+    project_ws_ = os.path.join(root, project)
+    if not os.path.isdir(root):
+        root = '/home/dgketchum/PycharmProjects/swim-rs'
+        project_ws_ = os.path.join(root, 'tutorials', project)
+        data = os.path.join(project_ws_, 'data')
 
-    data_ = os.path.join(project_ws_, 'data')
     config_file = os.path.join(project_ws_, 'config.toml')
-
-    run_data = os.path.join(root, 'tutorials')
 
     open_et_ = os.path.join(project_ws_, 'openet_flux')
 
-    station_file = os.path.join(data_, 'station_metadata.csv')
+    station_file = os.path.join(data, 'station_metadata.csv')
 
     sdf = pd.read_csv(station_file, index_col=0, header=1)
     sites = list(set(sdf.index.unique().to_list()))
@@ -127,13 +130,13 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        # if site_ not in ['Almond_High', 'Almond_Low', 'Almond_Med', 'ALARC2_Smith6']:
-        #     continue
+        if site_ not in ['ALARC2_Smith6']:
+            continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
-        # run_const = os.path.join(run_data, '4_Flux_Network', 'results', '31MAR_irr_spec')
-        run_const = os.path.join(run_data, project, 'results', 'tight')
+        # run_const = os.path.join(project_ws_, 'results', '31MAR_irr_spec')
+        run_const = os.path.join(project_ws_, 'results', 'tight')
         output_ = os.path.join(run_const, site_)
 
         prepped_input = os.path.join(output_, f'prepped_input.json')
@@ -167,7 +170,7 @@ if __name__ == '__main__':
             print(f'{site_} error: {exc}')
             continue
 
-        result = compare_openet(site_, flux_data, out_csv, open_et_, fields_, return_comparison=True)
+        result = compare_openet(site_, flux_data, out_csv, open_et_, fields_, model='openet', return_comparison=True)
 
         if result:
             results.append((result, lulc))
@@ -176,7 +179,7 @@ if __name__ == '__main__':
 
         out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'model_output', 'png')
 
-        # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux')
+        flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model='openet')
 
         print(f"swim improvements: {results.count('swim')} to {results.count('openet')}")
 

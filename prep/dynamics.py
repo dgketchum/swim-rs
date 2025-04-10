@@ -10,10 +10,12 @@ from prep import get_openet_sites
 
 
 class SamplePlotDynamics:
-    def __init__(self, plot_timeseries, irr_csv_file, out_json_file, irr_threshold=0.1, select=None):
+    def __init__(self, plot_timeseries, irr_csv_file, out_json_file, etf_target='ssebop',
+                 irr_threshold=0.1, select=None):
 
         self.time_series = plot_timeseries
 
+        self.model = etf_target
         self.irr_csv_file = irr_csv_file
         self.out_json_file = out_json_file
         self.irr_threshold = irr_threshold
@@ -99,7 +101,11 @@ class SamplePlotDynamics:
             return None
 
         field_data = {}
-        selectors = ['etf_inv_irr', 'etf_irr', 'prcp_mm', 'eto_mm_uncorr', 'eto_mm']
+        selectors = [f'{self.model}_etf_inv_irr', f'{self.model}_etf_irr', 'prcp_mm', 'eto_mm_uncorr', 'eto_mm']
+
+        check = field_time_series[[f'{self.model}_etf_inv_irr', f'{self.model}_etf_irr']]
+        check = check.fillna(0).sum(axis=1)
+        years = check[check > 0.0].index.year.unique().to_list()
 
         irr_overall = np.mean([self.irr.at[field, f'irr_{yr}'] > self.irr_threshold for yr in range(2016, 2025)]).item()
 
@@ -108,7 +114,10 @@ class SamplePlotDynamics:
         else:
             generally_irrigated = False
 
-        for yr in self.years:
+        gw_ct = 0
+        missing_years = [y for y in self.years if y not in years]
+
+        for yr in years:
             if yr > 2024:
                 continue
 
@@ -123,9 +132,9 @@ class SamplePlotDynamics:
             df['doy'] = [i.dayofyear for i in df.index]
 
             if irrigated:
-                df['eta'] = df['eto_mm'] * df['etf_irr']
+                df['eta'] = df['eto_mm_uncorr'] * df[f'{self.model}_etf_irr']
             else:
-                df['eta'] = df['eto_mm_uncorr'] * df['etf_inv_irr']
+                df['eta'] = df['eto_mm'] * df[f'{self.model}_etf_inv_irr']
 
             eta, ppt = df['eta'].sum(), df['prcp_mm'].sum()
             ratio = eta / (ppt + 1.0)
@@ -157,6 +166,22 @@ class SamplePlotDynamics:
                               'months': months,
                               'ppt': ppt,
                               'eta': eta}
+            gw_ct += 1
+
+        if len(years) > 0 and gw_ct / len(years) > 0.5 and len(missing_years) > 0:
+            mean_sub = np.array([field_data[yr]['f_sub'] for yr in years]).mean()
+            months = []
+            months = list(set([months.extend(field_data[yr]['months']) for yr in years]))
+            mean_ppt = np.array([field_data[yr]['ppt'] for yr in years]).mean()
+            mean_eta = np.array([field_data[yr]['eta'] for yr in years]).mean()
+            for y in missing_years:
+                field_data[y] = {'subsidized': 1,
+                                 'f_sub': mean_sub,
+                                 'f_irr': 0.0,
+                                 'ratio': mean_ppt / mean_eta,
+                                 'months': months,
+                                 'ppt': mean_ppt,
+                                 'eta': mean_eta}
 
         return field_data
 
@@ -272,33 +297,37 @@ class SamplePlotDynamics:
 
     def _find_field_k_parameters(self, fid, field_time_series):
 
-        etf_columns = [col for col in ['etf_inv_irr', 'etf_irr'] if col in field_time_series.columns]
+        etf_columns = [col for col in [f'{self.model}_etf_inv_irr', f'{self.model}_etf_irr']
+                       if col in field_time_series.columns]
         ndvi_columns = [col for col in ['ndvi_inv_irr', 'ndvi_irr'] if col in field_time_series.columns]
         if not etf_columns or not ndvi_columns:
-            return
+            raise ValueError('Remote sensing parameters not found')
 
         all_etf = field_time_series[etf_columns].values.flatten()
         all_ndvi = field_time_series[ndvi_columns].values.flatten()
 
-        nan_mask = np.isnan(all_etf) | np.isnan(all_ndvi)
+        nan_mask = np.isnan(all_etf)
         all_etf = all_etf[~nan_mask]
-        all_ndvi = all_ndvi[~nan_mask]
+        sub_ndvi = all_ndvi[~nan_mask]
 
-        ke_max_mask = all_ndvi < 0.3
+        ke_max_mask = sub_ndvi < 0.3
         if np.any(ke_max_mask):
-            ke_max = np.percentile(all_etf[ke_max_mask], 90)
+            ke_max = np.nanpercentile(all_etf[ke_max_mask], 90)
         else:
             ke_max = 1.0
             print(f'Warning: No NDVI values below 0.3 for {fid}. Setting ke_max=1.0')
 
-        kc_max = np.percentile(all_etf, 90)
+        try:
+            kc_max = np.percentile(all_etf, 90)
+        except IndexError:
+            kc_max = 1.25
 
         self.fields['ke_max'][fid] = float(ke_max)
         self.fields['kc_max'][fid] = float(kc_max)
 
 
 if __name__ == '__main__':
-    project = '4_Flux_Network'
+    project = '5_Flux_Ensemble'
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project, 'data')
@@ -320,7 +349,7 @@ if __name__ == '__main__':
 
     sites_ = get_openet_sites(shapefile_path)
 
-    dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3,
+    dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3, etf_target='openet',
                                   out_json_file=cuttings_json, select=sites_)
     dynamics.analyze_irrigation(lookback=5)
     dynamics.analyze_groundwater_subsidy()

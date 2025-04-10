@@ -25,6 +25,7 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
     remote_sensing_coverage = ((pd.to_datetime(start_date) >= lst_start) &
                                (pd.to_datetime(end_date) <= lst_end))
+
     if not remote_sensing_coverage:
         raise ValueError('Remote sensing data does not cover requested time period')
 
@@ -154,7 +155,7 @@ if __name__ == '__main__':
                           snow=snow,
                           dst_dir=joined_timeseries,
                           overwrite=True,
-                          start_date='2016-01-01',
+                          start_date='1987-01-01',
                           end_date='2024-12-31',
                           feature_id=FEATURE_ID,
                           **{'params': remote_sensing_parameters,

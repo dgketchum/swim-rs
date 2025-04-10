@@ -15,6 +15,7 @@ from datetime import datetime
 
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
+from prep import get_ensemble_parameters
 
 REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
@@ -24,18 +25,12 @@ REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_23']
 
 REQ_UNIRR = ['etr_mm_uncorr',
-             'eto_mm_uncorr',
-             'etf_inv_irr',
-             'ndvi_inv_irr',
-             'etf_inv_irr_ct',
-             'ndvi_inv_irr_ct']
+             'eto_mm_uncorr']
 
 REQ_IRR = ['etr_mm',
-           'eto_mm',
-           'etf_irr',
-           'ndvi_irr',
-           'etf_irr_ct',
-           'ndvi_irr_ct']
+           'eto_mm']
+
+REMOTE_SENSING = get_ensemble_parameters(skip=['ssebop'])
 
 ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['obs_swe']
 
@@ -63,7 +58,7 @@ def prep_fields_json(properties, time_series, dynamics, out_js, target_plots=Non
     with open(dynamics, 'r') as fp:
         dynamics = json.load(fp)
 
-    required_params = REQUIRED + REQ_IRR + REQ_UNIRR
+    required_params = REQUIRED + REQ_IRR + REQ_UNIRR + REMOTE_SENSING
     dct['irr_data'] = {fid: v for fid, v in dynamics['irr'].items() if fid in target_plots}
     dct['gwsub_data'] = {fid: v for fid, v in dynamics['gwsub'].items() if fid in target_plots}
     dct['ke_max'] = {fid: v for fid, v in dynamics['ke_max'].items() if fid in target_plots}
@@ -118,7 +113,7 @@ def prep_fields_json(properties, time_series, dynamics, out_js, target_plots=Non
     return target_plots, missing
 
 
-def preproc(config_file, project_ws):
+def preproc(config_file, project_ws, etf_target_model='openet'):
     ct = 0
 
     print('Writing observations to file...')
@@ -149,8 +144,8 @@ def preproc(config_file, project_ws):
 
         data = data.loc[start: end]
 
-        data['etf'] = data['etf_inv_irr']
-        data.loc[irr_index, 'etf'] = data.loc[irr_index, 'etf_irr']
+        data['etf'] = data[f'{etf_target_model}_etf_inv_irr']
+        data.loc[irr_index, 'etf'] = data.loc[irr_index, f'{etf_target_model}_etf_irr']
 
         print('\n{}\npreproc ETf mean: {:.2f}'.format(fid, np.nanmean(data['etf'].values)))
         _file = os.path.join(config.obs_folder, 'obs_etf_{}.np'.format(fid))

@@ -62,6 +62,7 @@ class ProjectConfig:
     def read_config(self, conf, project_root, calibrate=False, forecast=False, calibration_dir=None,
                     parameter_set_json=None, forecast_param_csv=None):
 
+        print(f'Config File: {conf}')
         with open(conf, 'r') as f:
             config = toml.load(f)
 
@@ -140,7 +141,15 @@ class ProjectConfig:
             self.calibrated_parameters = param_init.index
             _files = list(param_init['mult_name'])
             cal_files, mult_files = set(os.listdir(self.calibration_dir)), set(_files)
-            assert cal_files == mult_files
+            if cal_files != mult_files:
+                print(f"File mismatch between directory '{self.calibration_dir}' and CSV '{initial_values_csv}':")
+                only_in_dir = sorted(list(cal_files - mult_files))
+                if only_in_dir:
+                    print("\nOnly in directory:\n- " + '\n- '.join(only_in_dir))
+                only_in_csv = sorted(list(mult_files - cal_files))
+                if only_in_csv:
+                    print("\nOnly in CSV:\n- " + '\n- '.join(only_in_csv))
+                raise KeyError("Directory file list does not match CSV file list.")
 
             _files = [os.path.join(self.calibration_dir, f) for f in _files]
             self.calibration_files = {k: v for k, v in zip(self.calibrated_parameters, _files)}

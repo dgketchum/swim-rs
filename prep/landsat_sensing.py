@@ -1,13 +1,13 @@
 import os
-import glob
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
-import geopandas as gpd
 from rasterstats import zonal_stats
+from tqdm import tqdm
 
 from prep import get_openet_sites
+
 
 def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_ct=100, feature_id='FID'):
     """
@@ -78,7 +78,30 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
 
     adf, ctdf, first, prev_df = None, None, True, None
 
-    for yr in tqdm(years, total=len(years), desc=f'Processing data from {csv_dir}'):
+    if footprint_spec is None:
+        file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
+                     x.endswith('.csv')]
+    else:
+        file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
+                     x.endswith('.csv') and f'_p{footprint_spec}' in x]
+
+    rs_years = set([os.path.basename(f).split('.')[0].split('_')[-1] for f in file_list])
+    rs_years = sorted([int(y) for y in rs_years])
+
+    print(f'{len(rs_years)} years with remote sensing data, {rs_years[0]} to {rs_years[-1]}')
+
+    empty_yrs = [y for y in years if y not in rs_years]
+
+    if len(empty_yrs) > 0:
+        print(f'{len(empty_yrs)} years without remote sensing data, {empty_yrs[0]} to {empty_yrs[-1]}')
+        dt_index = pd.date_range('{}-01-01'.format(empty_yrs[0]), '{}-12-31'.format(empty_yrs[-1]), freq='D')
+        adf = pd.DataFrame(data=np.zeros((len(dt_index), len(gdf.index))) * np.nan, index=dt_index, columns=gdf.index)
+        ctdf = pd.DataFrame(data=np.zeros(adf.shape).astype(int), index=dt_index, columns=gdf.index)
+        first = False
+
+    source = os.path.normpath(csv_dir).split(os.sep)
+
+    for yr in tqdm(rs_years, total=len(rs_years), desc=f'Processing data from {source[-2]}'):
 
         dt_index = pd.date_range('{}-01-01'.format(yr), '{}-12-31'.format(yr), freq='D')
 
@@ -86,65 +109,64 @@ def sparse_landsat_time_series(in_shp, csv_dir, years, out_csv, out_csv_ct, feat
         ct = pd.DataFrame(index=dt_index, columns=gdf.index)
 
         if footprint_spec is None:
-            file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
-                         x.endswith('.csv') and f'_{yr}' in x]
+            yr_files = [f for f in file_list if f'_{yr}' in f]
         else:
-            file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
-                         x.endswith('.csv') and f'_{yr}' in x and f'_p{footprint_spec}' in x]
+            yr_files = [f for f in file_list if  f'_{yr}' in f and f'_p{footprint_spec}' in f]
 
-        for f in file_list:
-            field = pd.read_csv(f)
-            sid = field.columns[0]
+        if len(yr_files) > 0:
+            for f in yr_files:
+                field = pd.read_csv(f)
+                sid = field.columns[0]
 
-            if sid not in gdf.index:
-                continue
+                if sid not in gdf.index:
+                    continue
 
-            if select and sid not in select:
-                continue
+                if select and sid not in select:
+                    continue
 
-            cols = [c for c in field.columns if len(c.split('_')) == 3]
-            f_idx = [c.split('_')[-1] for c in cols]
-            f_idx = [pd.to_datetime(i) for i in f_idx]
-            field = pd.DataFrame(columns=[sid], data=field[cols].values.T, index=f_idx)
+                cols = [c for c in field.columns if len(c.split('_')) == 3]
+                f_idx = [c.split('_')[-1] for c in cols]
+                f_idx = [pd.to_datetime(i) for i in f_idx]
+                field = pd.DataFrame(columns=[sid], data=field[cols].values.T, index=f_idx)
 
-            field = field.replace([0.0], np.nan)
-            field = field.dropna()
+                field = field.replace([0.0], np.nan)
+                field = field.dropna()
 
-            duplicates = field[field.index.duplicated(keep=False)]
-            if not duplicates.empty:
-                field = field.resample('D').max()
+                duplicates = field[field.index.duplicated(keep=False)]
+                if not duplicates.empty:
+                    field = field.resample('D').max()
 
-            field = field.sort_index()
+                field = field.sort_index()
 
-            valid_indices = field.dropna().index
-            diffs = valid_indices.to_series().diff().dt.days
-            consecutive_days = diffs[diffs == 1].index
+                valid_indices = field.dropna().index
+                diffs = valid_indices.to_series().diff().dt.days
+                consecutive_days = diffs[diffs == 1].index
 
-            for day in consecutive_days:
-                prev_day = day - pd.Timedelta(days=1)
-                if prev_day in field.index:
-                    if field.loc[prev_day, sid] > field.loc[day, sid]:
-                        field.loc[day, sid] = np.nan
-                    else:
-                        field.loc[prev_day, sid] = np.nan
+                for day in consecutive_days:
+                    prev_day = day - pd.Timedelta(days=1)
+                    if prev_day in field.index:
+                        if field.loc[prev_day, sid] > field.loc[day, sid]:
+                            field.loc[day, sid] = np.nan
+                        else:
+                            field.loc[prev_day, sid] = np.nan
 
-            field = field.sort_index()
-            field[field[sid] < 0.05] = np.nan
+                field = field.sort_index()
+                field[field[sid] < 0.05] = np.nan
 
-            df.loc[field.index, sid] = field[sid]
+                df.loc[field.index, sid] = field[sid]
 
-            ct.loc[f_idx, sid] = ~pd.isna(field[sid])
+                ct.loc[f_idx, sid] = ~pd.isna(field[sid])
 
-        if prev_df is not None and df.loc[f'{yr}-01'].isna().all().any():
-            df.loc[f'{yr}-01-01'] = prev_df.loc[f'{yr - 1}-12-31']
+            if prev_df is not None and df.loc[f'{yr}-01'].isna().all().any():
+                df.loc[f'{yr}-01-01'] = prev_df.loc[f'{yr - 1}-12-31']
 
-        df = df.replace(0.0, np.nan)
-        df = df.astype(float).interpolate()
-        df = df.bfill()
+            df = df.replace(0.0, np.nan)
+            df = df.astype(float).interpolate()
+            df = df.bfill()
 
-        ct = ct.astype(float)
-        ct = ct.fillna(0.0)
-        ct = ct.astype(int)
+            ct = ct.astype(float)
+            ct = ct.fillna(0.0)
+            ct = ct.astype(int)
 
         if first:
             adf = df.copy()
@@ -328,25 +350,25 @@ if __name__ == '__main__':
 
         for sensing_param in sensing_params:
 
-            yrs = [x for x in range(2016, 2025)]
+            yrs = [x for x in range(1987, 2025)]
 
             if sensing_param == 'etf':
 
-                for model in ['ptjpl', 'eemetric', 'openet', 'geesebal', 'sims', 'disalexi']:
+                for model in ['ptjpl', 'eemetric', 'openet', 'geesebal', 'sims', 'disalexi', 'ssebop']:
                     ee_data = os.path.join(landsat, 'extracts', f'{model}_{sensing_param}', mask_type)
                     src = os.path.join(tables, '{}_{}_{}.csv'.format(model, sensing_param, mask_type))
                     src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(model, sensing_param, mask_type))
                     rs_files.extend([src, src_ct])
-                    # sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                    #                            feature_id=FEATURE_ID, select=sites_)
+                    sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
+                                               feature_id=FEATURE_ID, select=sites_)
             else:
                 ee_data = os.path.join(landsat, 'extracts', sensing_param, mask_type)
                 src = os.path.join(tables, '{}_{}.csv'.format(sensing_param, mask_type))
                 src_ct = os.path.join(tables, '{}_{}_ct.csv'.format(sensing_param, mask_type))
                 rs_files.extend([src, src_ct])
                 # TODO: consider whether there is a case where ETf needs to be interpolated
-                # sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                #                            feature_id=FEATURE_ID, select=sites_)
+                sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
+                                           feature_id=FEATURE_ID, select=sites_)
 
 
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
