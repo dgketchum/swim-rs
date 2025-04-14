@@ -130,8 +130,8 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['ALARC2_Smith6']:
-            continue
+        # if site_ not in ['ALARC2_Smith6']:
+        #     continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
@@ -179,7 +179,7 @@ if __name__ == '__main__':
 
         out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'model_output', 'png')
 
-        flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model='openet')
+        # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model='openet')
 
         print(f"swim improvements: {results.count('swim')} to {results.count('openet')}")
 

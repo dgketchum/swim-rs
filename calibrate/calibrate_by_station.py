@@ -42,7 +42,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, select_stati
 
         prepped_data, prepped_input = False, None
 
-        if fid in ['US-Bi2', 'US-Dk1']:
+        if fid in ['US-Bi2', 'US-Dk1', 'MB_Pch']:
             continue
 
         if select_stations and fid not in select_stations:
@@ -201,7 +201,7 @@ if __name__ == '__main__':
 
     station_file = os.path.join(data, 'station_metadata.csv')
 
-    sites_ = get_openet_sites(station_file)
+    sites_ = get_openet_sites(station_file)[20:]
 
     run_pest_sequence(config_file, project_ws_, workers=workers, realizations=realizations, select_stations=sites_,
                       pdc_remove=True, overwrite=True)
