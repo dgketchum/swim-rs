@@ -1,7 +1,6 @@
 import pandas as pd
 import geopandas as gpd
 
-
 # Global estimation of effective plant rooting depth: Implications for hydrological modeling
 # https://doi.org/10.1002/2016WR019392
 # mapped to Land Cover Type 1: Annual International Geosphere-Biosphere Programme (IGBP) classification
@@ -72,25 +71,23 @@ MAX_EFFECTIVE_ROOTING_DEPTH = {
     "16": {"rooting_depth": 1.43, "zr_multiplier": 5, "description": "Desert vegetation."}
 }
 
-def get_openet_sites(sites):
+
+def get_openet_sites(sites, crop_only=False):
+    """"""
     target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
 
-    try:
-        fdf = gpd.read_file(sites)
-        state_idx = [i for i, r in fdf.iterrows() if r['field_3'] in target_states]
-        fdf = fdf.loc[state_idx]
-        sites_ = list(set(fdf['field_1'].to_list()))
+    sdf = pd.read_csv(sites, index_col=0, header=1)
 
-    except KeyError:
-        sdf = pd.read_csv(sites, index_col=0, header=1)
+    if crop_only:
         sdf = sdf[sdf['General classification'] == 'Croplands']
-        target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
-        state_idx = [i for i, r in sdf.iterrows() if r['State'] in target_states]
-        sdf = sdf.loc[state_idx]
-        sites_ = list(set(sdf.index.unique().to_list()))
+
+    state_idx = [i for i, r in sdf.iterrows() if r['State'] in target_states]
+    sdf = sdf.loc[state_idx]
+    sites_ = list(set(sdf.index.unique().to_list()))
 
     sites_.sort()
     return sites_
+
 
 def get_ensemble_parameters(skip=None):
     ensemble_params = []
