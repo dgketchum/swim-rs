@@ -24,5 +24,11 @@ COLOR_MAP = {
     'etr_mm_uncorr': 'lightgreen', 'eto_mm_uncorr': 'darkseagreen',
     'etf_inv_irr': 'blue', 'ndvi_inv_irr': 'green', 'etf_inv_irr_ct': 'blue',
     'ndvi_inv_irr_ct': 'green', 'ndvi': 'mediumseagreen', 'ndvi_ct': 'green', 'etf': 'blue',
-    'etf_ct': 'blue', 'pdc': 'purple', 'flux_etf': 'magenta'
+    'etf_ct': 'blue', 'pdc': 'purple', 'flux_etf': 'magenta',
+    'ssebop': 'grey',
+    'disalexi': 'pink',
+    'geesebal': 'magenta',
+    'eemetric': 'red',
+    'ptjpl': 'yellow',
+    'sims': 'green'
 }
