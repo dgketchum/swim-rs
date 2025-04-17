@@ -177,15 +177,17 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
                 if model == 'openet':
                     etf_img = etf_img.select('et_ensemble_mad')
+                    etf_img = etf_img.divide(10000)
                 elif model in ['sims', 'eemetric', 'ssebop']:
                     etf_img = etf_img.select('et_fraction')
+                    etf_img = etf_img.divide(10000)
                 elif model in ['geesebal', 'ptjpl', 'disalexi']:
                     et_img = etf_img.select('et')
+                    et_img = et_img.divide(1000)
                     refet = ee.Image(f'projects/openet/assets/reference_et/conus/gridmet/daily/v1/{_dt}').select('eto')
                     etf_img = et_img.divide(refet)
 
                 etf_img = etf_img.rename(_name)
-                etf_img = etf_img.divide(10000)
 
                 if mask_type == 'no_mask':
                     etf_img = etf_img.clip(fc.geometry())

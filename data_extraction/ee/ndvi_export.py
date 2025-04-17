@@ -302,7 +302,7 @@ if __name__ == '__main__':
                                    state_col=state_col, select=None)
 
             if src == 'etf':
-                for model in ['ssebop']:
+                for model in ['disalexi', 'geesebal', 'ptjpl']:
                     dst = os.path.join(landsat_dst, 'extracts', f'{model}_{src}', mask)
 
                     print(src, mask, model)
