@@ -4,11 +4,13 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import matplotlib.colors
 
 from viz import COLOR_MAP
 
 
-def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', fig_dir=None, fid=None):
+def plot_swim_timeseries(df, parameters, model, irr_index=None, members=None, start='2018-01-01', end='2018-12-31',
+                         fig_dir=None, fid=None):
     if not isinstance(df, pd.DataFrame):
         df = pd.read_csv(df, index_col=0, parse_dates=True)
 
@@ -51,8 +53,10 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', f
             else:
                 secondary_y = False if (param in ['et_act', 'etref'] and 'et_act' in parameters and 'etref'
                                         in parameters) else True if i > 0 else False
-                trace = go.Scatter(x=df.index, y=df[param], name=param,
+                trace_name = f'etf ({model})' if param == 'etf' else param
+                trace = go.Scatter(x=df.index, y=df[param], name=trace_name,
                                    marker=dict(color=COLOR_MAP.get(param, 'black')))
+
                 _add_trace(param, trace, main_row, secondary_y)
 
     for param in parameters:
@@ -60,7 +64,7 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', f
             ct_param = param + '_ct'
             if ct_param in df.columns:
                 scatter_df = df[df[ct_param] == 1]
-                if 'pdc' in df.columns and (param == 'etf_irr' or param == 'etf_inv_irr'):
+                if 'pdc' in df.columns and (param == 'etf_irr' or param == 'etf_inv_irr' or param == 'etf'):
                     scatter_df_pdc = scatter_df[scatter_df['pdc'] > 0]
                     scatter_df_no_pdc = scatter_df[scatter_df['pdc'] <= 0]
 
@@ -71,25 +75,46 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', f
                                        mode='markers', marker_symbol='circle',
                                        marker_size=15, name=f'{param.split("_")[0]} retrieval (PDC Flagged)',
                                        marker=dict(color=COLOR_MAP.get(param, 'black')))
-                    _add_trace(param, trace, main_row, True)
+                    _add_trace(param + '_pdc_markers', trace, main_row, True)
 
                     trace = go.Scatter(x=scatter_df_no_pdc.index, y=scatter_df_no_pdc[param],
                                        mode='markers', marker_symbol='x',
                                        marker_size=5, name=f'{param.split("_")[0]} retrieval',
                                        marker=dict(color=COLOR_MAP.get(param, 'black')))
-                    _add_trace(param, trace, main_row, True)
+                    _add_trace(param + '_markers', trace, main_row, True)
                 else:
                     trace = go.Scatter(x=scatter_df.index, y=scatter_df[param],
                                        mode='markers', marker_symbol='x',
                                        marker_size=5, name=f'{param.split("_")[0]} retrieval',
                                        marker=dict(color=COLOR_MAP.get(param, 'black')))
-                    _add_trace(param, trace, main_row, True)
+                    _add_trace(param + '_markers', trace, main_row, True)
+
+    if members and irr_index is not None:
+        for member in members:
+            member_etf_irr_col = f'{member}_etf_irr'
+            member_etf_inv_irr_col = f'{member}_etf_inv_irr'
+
+            if member_etf_irr_col in df.columns and member_etf_inv_irr_col in df.columns:
+                member_etf_series = df[member_etf_inv_irr_col].copy()
+                valid_irr_index = irr_index.intersection(df.index)
+                member_etf_series.loc[valid_irr_index] = df.loc[valid_irr_index, member_etf_irr_col]
+
+                rgba_tuple = matplotlib.colors.to_rgba(COLOR_MAP.get(member, 'black'), alpha=0.5)
+                plotly_rgba_color = (f'rgba({int(rgba_tuple[0] * 255)}, {int(rgba_tuple[1] * 255)}, '
+                                     f'{int(rgba_tuple[2] * 255)}, {rgba_tuple[3]})')
+
+                trace = go.Scatter(x=df.index, y=member_etf_series, name=f'{member} (member)',
+                                   mode='lines',
+                                   line=dict(color=plotly_rgba_color, width=1),
+                                   showlegend=True)
+
+                _add_trace(f'{member}_etf', trace, main_row, True)
 
     kwargs = dict(title_text="SWIM Model Time Series",
                   xaxis_title="Date",
                   yaxis_title="mm",
-                  height=800 if 'png' in fig_dir else 1300,
-                  width=1600 if 'png' in fig_dir else 2300,
+                  height=800 if fig_dir and 'png' in fig_dir else 1300,
+                  width=1600 if fig_dir and 'png' in fig_dir else 2300,
                   template='plotly_dark',
                   xaxis=dict(showgrid=False),
                   yaxis=dict(showgrid=False),
@@ -99,16 +124,18 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', f
         kwargs['yaxis2'] = dict(showgrid=False)
 
     max_bar_val = 0
+    possible_bar_vars = [v for v in bar_vars if v in df.columns]
+    if possible_bar_vars:
+        max_bar_val = df[possible_bar_vars].max().max()
 
-    if 'dperc' in parameters and (df['dperc'] != 0.0).any():
-        kwargs.update(dict(yaxis2=dict(showgrid=False, range=[-0.2, None])))
+    if 'dperc' in parameters and 'dperc' in df.columns and (df['dperc'] != 0.0).any():
+        kwargs.update(dict(yaxis2=dict(showgrid=False, range=[-1, None], tick0=1, dtick=1)))
         kwargs.update(dict(yaxis=dict(showgrid=False, range=[-0.2, 1.4])))
 
     elif max_bar_val > 0:
         kwargs.update(dict(yaxis=dict(showgrid=False, range=[0, max_bar_val * 3])))
 
     fig.update_layout(**kwargs)
-    # fig.update_xaxes(rangeslider_visible=False, row=main_row, col=1)
 
     if fig_dir is not None and 'png' in fig_dir:
         png_file = os.path.join(fig_dir, f'{fid}_{start[:4]}_{pdc_present}_{flux_present}.png')
@@ -126,53 +153,80 @@ def plot_swim_timeseries(df, parameters, start='2018-01-01', end='2018-12-31', f
         fig.show()
 
 
-def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None, spec='flux-pdc', model='ssebop'):
-    """"""
-
+def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None, spec='flux-pdc',
+                        model='ssebop', members=None):
     for fid in fids:
 
         csv = os.path.join(csv_dir, fid, f'{fid}.csv')
         pdc_file = os.path.join(csv_dir, fid, f'{fid}.pdc.csv')
         flux_file = os.path.join(flux_file_dir, f'{fid}_daily_data.csv')
 
+        if not os.path.exists(csv):
+            print(f"Skipping {fid}: CSV file not found at {csv}")
+            continue
+
         df = pd.read_csv(csv, index_col=0, parse_dates=True)
 
         df_irr = df[['irr_day']].groupby(df.index.year).agg('sum')
         irr_years = [i for i, y in df_irr.iterrows() if y['irr_day'] > 0]
-        irr_index = [i for i in df.index if i.year in irr_years]
+        irr_index = df.index[df.index.year.isin(irr_years)]
 
-        df['ndvi'] = df['ndvi_inv_irr']
-        df.loc[irr_index, 'ndvi'] = df.loc[irr_index, 'ndvi_irr']
-        df['ndvi_ct'] = df['ndvi_inv_irr_ct']
-        df.loc[irr_index, 'ndvi_ct'] = df.loc[irr_index, 'ndvi_irr_ct']
+        if 'ndvi_inv_irr' in df.columns and 'ndvi_irr' in df.columns:
+            df['ndvi'] = df['ndvi_inv_irr']
+            df.loc[irr_index, 'ndvi'] = df.loc[irr_index, 'ndvi_irr']
+        if 'ndvi_inv_irr_ct' in df.columns and 'ndvi_irr_ct' in df.columns:
+            df['ndvi_ct'] = df['ndvi_inv_irr_ct']
+            df.loc[irr_index, 'ndvi_ct'] = df.loc[irr_index, 'ndvi_irr_ct']
 
-        try:
+        etf_col = f'{model}_etf_inv_irr'
+        etf_irr_col = f'{model}_etf_irr'
+        etf_ct_col = f'{model}_etf_inv_irr_ct'
+        etf_irr_ct_col = f'{model}_etf_irr_ct'
+
+        if etf_col in df.columns and etf_irr_col in df.columns:
+            df['etf'] = df[etf_col]
+            df.loc[irr_index, 'etf'] = df.loc[irr_index, etf_irr_col]
+            if etf_ct_col in df.columns and etf_irr_ct_col in df.columns:
+                df['etf_ct'] = df[etf_ct_col]
+                df.loc[irr_index, 'etf_ct'] = df.loc[irr_index, etf_irr_ct_col]
+        elif 'etf_inv_irr' in df.columns and 'etf_irr' in df.columns:
             df['etf'] = df['etf_inv_irr']
             df.loc[irr_index, 'etf'] = df.loc[irr_index, 'etf_irr']
-            df['etf_ct'] = df['etf_inv_irr_ct']
-            df.loc[irr_index, 'etf_ct'] = df.loc[irr_index, 'etf_irr_ct']
-        except KeyError:
-            df['etf'] = df[f'{model}_etf_inv_irr']
-            df.loc[irr_index, 'etf'] = df.loc[irr_index, f'{model}_etf_irr']
-            df['capture'] = df[f'{model}_etf_inv_irr_ct']
-            df.loc[irr_index, 'capture'] = df.loc[irr_index, f'{model}_etf_irr_ct']
+            if 'etf_inv_irr_ct' in df.columns and 'etf_irr_ct' in df.columns:
+                df['etf_ct'] = df['etf_inv_irr_ct']
+                df.loc[irr_index, 'etf_ct'] = df.loc[irr_index, 'etf_irr_ct']
+        else:
+            print(
+                f"Warning: Could not find primary ETF columns for model '{model}' or default 'etf_inv_irr'/'etf_irr' in {csv}")
 
-        pdc = pd.read_csv(pdc_file, index_col=0)
-        idx_file = pdc_file.replace('.pdc', '.idx')
-        idx = pd.read_csv(idx_file, index_col=0, parse_dates=True)
-        idx['pdc'] = [1 if obs_id in pdc.index else 0 for obs_id in idx['obs_id']]
-        df['pdc'] = idx['pdc']
+        if os.path.exists(pdc_file):
+            pdc = pd.read_csv(pdc_file, index_col=0)
+            idx_file = pdc_file.replace('.pdc', '.idx')
+            if os.path.exists(idx_file):
+                idx = pd.read_csv(idx_file, index_col=0, parse_dates=True)
+                idx['pdc'] = [1 if obs_id in pdc.index else 0 for obs_id in idx['obs_id']]
+                # Align index before assignment
+                idx = idx.reindex(df.index, fill_value=0)
+                df['pdc'] = idx['pdc']
+            else:
+                df['pdc'] = 0
+                print(f"Warning: Index file not found: {idx_file}")
+        else:
+            df['pdc'] = 0
+            print(f"Warning: PDC file not found: {pdc_file}")
+
         pdc_yr = df[['pdc']].resample('YE').sum()
-
         pdc_yr = pdc_yr[pdc_yr['pdc'] > 0].index.year.to_list()
 
-        flux_obs = pd.read_csv(flux_file, index_col=0, parse_dates=True)
-
-        flux_yr = list(set([i.year for i, obs in flux_obs.iterrows() if np.isfinite(obs['EToF_filtered'])]))
-
-        flux_obs = flux_obs.reindex(df.index)
-
-        df['flux_etf'] = flux_obs['EToF_filtered']
+        flux_yr = []
+        if os.path.exists(flux_file):
+            flux_obs = pd.read_csv(flux_file, index_col=0, parse_dates=True)
+            flux_yr = list(set([i.year for i, obs in flux_obs.iterrows() if pd.notna(obs.get('EToF_filtered'))]))
+            flux_obs = flux_obs.reindex(df.index)
+            df['flux_etf'] = flux_obs.get('EToF_filtered')
+        else:
+            print(f"Warning: Flux file not found: {flux_file}")
+            df['flux_etf'] = np.nan
 
         if spec == 'flux':
             years = flux_yr
@@ -181,56 +235,28 @@ def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None, spec='fl
         elif spec == 'pdc':
             years = pdc_yr
         elif spec == 'all':
-            years = list(set(df.index.year.to_list()))
+            years = sorted(list(set(df.index.year.to_list())))
         else:
             raise ValueError('Must choose from flux, fluxpdc, pdc, or all to select plotting years')
 
+        base_params = ['irrigation', 'rain', 'melt', 'dperc', 'gw_sim', 'snow_fall',
+                       'etf', 'ks', 'ke', 'kc_act', 'ndvi']
+        if 'pdc' in df.columns:
+            base_params.append('pdc')
+
         for yr in years:
+            plot_params = base_params[:]
+            if yr in flux_yr and 'flux_etf' in df.columns:
+                plot_params.append('flux_etf')
 
-            if yr in flux_yr:
-                plot_swim_timeseries(df,
-                                     ['irrigation', 'rain', 'melt', 'dperc', 'gw_sim', 'snow_fall',
-                                      'etf', 'ks', 'ke', 'kc_act', 'ndvi', 'pdc',
-                                      'flux_etf'],
-                                     start=f'{yr}-01-01', end=f'{yr}-12-31', fig_dir=out_fig_dir, fid=fid)
+            df_yr = df.loc[str(yr)]
+            irr_index_yr = irr_index.intersection(df_yr.index)
 
-            else:
-                plot_swim_timeseries(df, ['irrigation', 'rain', 'melt', 'dperc', 'gw_sim', 'snow_fall',
-                                          'etf', 'ks', 'ke', 'kc_act', 'ndvi',
-                                          'pdc'],
-                                     start=f'{yr}-01-01', end=f'{yr}-12-31', fig_dir=out_fig_dir, fid=fid)
+            plot_swim_timeseries(df_yr, plot_params,  model, irr_index=irr_index_yr, members=members,
+                                 start=f'{yr}-01-01', end=f'{yr}-12-31', fig_dir=out_fig_dir, fid=fid)
 
 
 if __name__ == '__main__':
-    root = '/home/dgketchum/PycharmProjects/swim-rs'
-
-    project = '4_Flux_Network'
-    constraint_ = 'tight'
-
-    data = os.path.join(root, 'tutorials', project, 'data')
-
-    results = '/data/ssd2/swim'
-    if not os.path.isdir(results):
-        results = os.path.join(root, 'tutorials')
-
-    out_csv_dir = os.path.join(results, '4_Flux_Network', 'results', constraint_)
-
-    out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'html')
-
-    bad_params = ('/home/dgketchum/PycharmProjects/swim-rs/tutorials/4_Flux_Network/'
-                  'results_comparison_05MAR2025_crops_tight.csv')
-
-    bad_df = pd.read_csv(bad_params, index_col=0)
-    bad_df = bad_df.loc[bad_df['mode'] == constraint_]
-    bad_stations = bad_df.index.unique().to_list()
-
-    l = ['AFD', 'ALARC2_Smith6', 'BPHV', 'ET_1', 'JPL1_JV114', 'KV_4',
-         'MOVAL', 'MR', 'S2', 'UA2_JV330', 'UA3_JV108', 'UA3_KN15',
-         'UOVLO', 'US-Blo', 'US-CMW', 'US-Esm', 'US-Hn2', 'US-LS1',
-         'US-OF2', 'US-Ro2', 'US-SCg']
-
-    flux_data = os.path.join(data, 'daily_flux_files')
-
-    flux_pdc_timeseries(out_csv_dir, flux_data, ['S2'], out_fig_dir_, spec='flux')
+    pass
 
 # ========================= EOF ====================================================================

@@ -91,8 +91,7 @@ def compare_results_by_station(conf_path, project_ws, mode, summary_csv, select=
 
         print(f'\nProcessing {fid} for mode: {mode}')
 
-        daily_results, overpass_results, monthly_results = compare_etf_estimates(
-            out_csv, flux_data, irr=irr_dct, target='et')
+        daily_results, overpass_results, monthly_results = compare_etf_estimates(out_csv, flux_data, irr=irr_dct)
 
         site_results = {'fid': fid, 'mode': mode, 'lulc': row['General classification'],
                         'pdc': pdc_ct, 'updated': updated}

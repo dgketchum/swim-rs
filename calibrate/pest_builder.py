@@ -35,6 +35,7 @@ class PestBuilder:
 
         self.params_file = None
         self.pest = None
+        self.etf_std = None
 
         self.prior_contstraint = prior_constraint
 
@@ -111,7 +112,7 @@ class PestBuilder:
                 elif 'mad_' in k:
                     irr = np.nanmean([self.plot_properties[fid]['irr'][str(yr)] for yr in range(1987, 2023)])
                     if irr > 0.2:
-                        params.append((k, 0.2, 'p_{}_0_constant.csv'.format(k)))
+                        params.append((k, 0.01, 'p_{}_0_constant.csv'.format(k)))
                     else:
                         params.append((k, 0.6, 'p_{}_0_constant.csv'.format(k)))
 
@@ -154,7 +155,7 @@ class PestBuilder:
 
         return dct
 
-    def build_pest(self, target_etf='openet'):
+    def build_pest(self, target_etf='openet', members=None):
 
         if self.overwrite_build is False:
             raise NotImplementedError('Use of exising Pest++ project was specified, '
@@ -164,7 +165,7 @@ class PestBuilder:
 
         self._write_params()
 
-        i = self._write_etf_obs(target_etf)
+        i = self._write_etf_obs(target_etf, members)
         count = i + 1
         self._write_swe_obs(count, i)
 
@@ -313,7 +314,7 @@ class PestBuilder:
                        'pargp': 'ndvi_0', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'mad': {'file': self.params_file,
-                    'initial_value': None, 'lower_bound': 0.1, 'upper_bound': 0.9,
+                    'initial_value': None, 'lower_bound': 0.01, 'upper_bound': 0.9,
                     'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'swe_alpha': {'file': self.params_file,
@@ -404,39 +405,83 @@ class PestBuilder:
 
             self.pest.obs_dfs[j + count] = d
 
-    def _write_etf_obs(self, target):
+    def _write_etf_obs(self, target, members):
         obsnme_str = 'oname:obs_etf_{}_otype:arr_i:{}_j:0'
+
+        self.etf_std = {fid: None for fid in self.pest_args['targets']}
 
         for i, fid in enumerate(self.pest_args['targets']):
 
             # only weight etf on capture dates
-            et_df = pd.read_csv(self.pest_args['inputs'][i], index_col=0, parse_dates=True)
+            etf = pd.read_csv(self.pest_args['inputs'][i], index_col=0, parse_dates=True)
+            etf = etf[[c for c in etf.columns if 'etf' in c]]
+
             if 'start' in self.pest_args.keys():
-                et_df = et_df.loc[self.config.start_dt: self.config.end_dt]
-                et_df.to_csv(self.pest_args['inputs'][i])
+                etf = etf.loc[self.config.start_dt: self.config.end_dt]
+                etf.to_csv(self.pest_args['inputs'][i])
 
             self.pest.add_observations(self.pest_args['etf_obs']['file'][i],
                                        insfile=self.pest_args['etf_obs']['insfile'][i])
 
-            et_df['obs_id'] = [obsnme_str.format(fid, j).lower() for j in range(et_df.shape[0])]
-            idx = et_df['obs_id']
+            etf['obs_id'] = [obsnme_str.format(fid, j).lower() for j in range(etf.shape[0])]
+            idx = etf['obs_id']
             idx.to_csv(self.obs_idx_file)
 
-            captures = [ix for ix, r in et_df.iterrows()
+            captures = [ix for ix, r in etf.iterrows()
                         if r[f'{target}_etf_irr_ct']
-                        or r[f'{target}_etf_inv_irr_ct']
-                        and ix.month in list(range(1, 13))]
+                        or r[f'{target}_etf_inv_irr_ct']]
 
-            captures = et_df['obs_id'].loc[captures]
+            captures = etf['obs_id'].loc[captures]
+
+            if members is not None:
+                etf_std = pd.DataFrame()
+                irr = self.plots.input['irr_data'][fid]
+                irr_threshold = 0.3
+                irr_years = [int(k) for k, v in irr.items() if k != 'fallow_years'
+                             and v['f_irr'] >= irr_threshold]
+                irr_index = [i for i in etf.index if hasattr(i, 'year') and i.year in irr_years]
+                members_and_target = members + [target]
+
+                for member in members_and_target:
+                    inv_irr_col, inv_irr_ct_col = f'{member}_etf_inv_irr', f'{member}_etf_inv_irr_ct'
+                    irr_col, irr_ct_col = f'{member}_etf_irr', f'{member}_etf_irr_ct'
+
+                    if inv_irr_col in etf.columns and inv_irr_ct_col in etf.columns:
+                        etf_std[member] = etf[inv_irr_col]
+                        etf_std[f'{member}_ct'] = etf[inv_irr_ct_col]
+                        if irr_col in etf.columns and irr_ct_col in etf.columns and irr_index:
+                            etf_std.loc[irr_index, member] = etf.loc[irr_index, irr_col]
+                            etf_std.loc[irr_index, f'{member}_ct'] = etf.loc[irr_index, irr_ct_col]
+
+                valid_members = [m for m in members_and_target if m in etf_std.columns and f'{m}_ct' in etf_std.columns]
+
+                multimodel_dt_mean = pd.Series(index=etf_std.index, dtype=float)
+                multimodel_dt_std = pd.Series(index=etf_std.index, dtype=float)
+                multimodel_dt_count = pd.Series(index=etf_std.index, dtype=int)
+
+                if valid_members:
+                    data_subset = etf_std[valid_members]
+                    ct_subset = etf_std[[f'{m}_ct' for m in valid_members]]
+                    capture_mask = ct_subset.fillna(0).astype(bool)
+                    capture_mask.columns = valid_members
+                    multimodel_dt_count = capture_mask.sum(axis=1)
+                    masked_data = data_subset.where(capture_mask)
+                    multimodel_dt_mean = masked_data.mean(axis=1)
+                    multimodel_dt_std = masked_data.std(axis=1)
+
+                etf_std['std'] = multimodel_dt_std
+                etf_std['ct'] = multimodel_dt_count
+                etf_std['mean'] = multimodel_dt_mean
+                self.etf_std = etf_std.copy()
 
             d = self.pest.obs_dfs[i].copy()
             d['weight'] = 0.0
 
             try:
-                d.loc[captures, 'weight'] = 1.0
+                d.loc[captures, 'weight'] = 2.0 * d.loc[captures, 'obsval']
             except KeyError:
                 captures = [v.lower() for v in captures.values]
-                d.loc[captures, 'weight'] = 1.0
+                d.loc[captures, 'weight'] = 2.0 * d.loc[captures, 'obsval']
 
             d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
             d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
@@ -458,7 +503,15 @@ class PestBuilder:
 
         obs['standard_deviation'] = 0.00
         etf_idx = [i for i in obs.index if 'etf' in i]
-        obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.33
+
+        if self.etf_std is not None:
+
+            assert len(obs.loc[etf_idx, 'standard_deviation']) == len(self.etf_std)
+
+            obs.loc[etf_idx, 'standard_deviation'] = self.etf_std['std'].values
+
+        else:
+            obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.33
 
         swe_idx = [i for i, r in obs.iterrows() if 'swe' in i and r['obsval'] > 0.0]
         obs.loc[swe_idx, 'standard_deviation'] = obs['obsval'] * 0.33

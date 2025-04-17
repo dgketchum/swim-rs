@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+from datetime import datetime
 
 import pandas as pd
 
@@ -12,8 +13,8 @@ from swim.sampleplots import SamplePlots
 from prep import get_openet_sites
 
 
-def run_pest_sequence(conf_path, project_ws, workers, realizations, select_stations=None, pdc_remove=False,
-                      overwrite=False):
+def run_pest_sequence(conf_path, project_ws, workers, realizations, target, members,
+                      select_stations=None, pdc_remove=False, overwrite=False):
     """"""
     config = ProjectConfig()
     config.read_config(conf_path, project_ws)
@@ -107,7 +108,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, select_stati
             builder = PestBuilder(project_ws=project_ws, config_file=conf_path,
                                   use_existing=False, python_script=py_script,
                                   prior_constraint=prior_constraint, conflicted_obs=None)
-            builder.build_pest(target_etf='openet')
+            builder.build_pest(target_etf=target, members=members)
             builder.build_localizer()
 
             # short run sets up base realization and checks for prior-data conflict
@@ -137,7 +138,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, select_stati
                     builder = PestBuilder(project_ws=project_ws, config_file=conf_path,
                                           use_existing=False, python_script=py_script,
                                           prior_constraint=prior_constraint, conflicted_obs=temp_pdc)
-                    builder.build_pest(target_etf='openet')
+                    builder.build_pest(target_etf=target, members=members)
                     builder.build_localizer()
                     builder.write_control_settings(noptmax=0)
                     builder.dry_run(exe_)
@@ -201,9 +202,24 @@ if __name__ == '__main__':
 
     station_file = os.path.join(data, 'station_metadata.csv')
 
-    sites_ = get_openet_sites(station_file)[20:]
+    sites_ = get_openet_sites(station_file, crop_only=True)
 
-    run_pest_sequence(config_file, project_ws_, workers=workers, realizations=realizations, select_stations=sites_,
-                      pdc_remove=True, overwrite=True)
+    results = os.path.join(project_ws_, 'results', 'tight')
+    for site in sites_:
+        fcst_params = os.path.join(results, site, f'{site}.3.par.csv')
+        if not os.path.exists(fcst_params):
+            continue
+        modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
+
+        if modified_date < pd.to_datetime('2025-04-16'):
+            sites_.remove(site)
+
+    target_ = 'openet'
+    members_ = ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
+
+    # sites_ = ['US-Hn3', 'ALARC2_Smith6', 'S2']
+
+    run_pest_sequence(config_file, project_ws_, workers=workers, target=target_, members=members_,
+                      realizations=realizations, select_stations=sites_, pdc_remove=True, overwrite=True)
 
 # ========================= EOF ============================================================================

@@ -147,7 +147,7 @@ if __name__ == '__main__':
     snow = os.path.join(data, 'snodas', 'snodas.json')
 
     sites_ = get_openet_sites(fields_gridmet)
-    remote_sensing_parameters = get_ensemble_parameters(skip='ssebop')
+    remote_sensing_parameters = get_ensemble_parameters(skip=None)
 
     join_daily_timeseries(fields=fields_gridmet,
                           gridmet_dir=met,

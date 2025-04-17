@@ -1,10 +1,12 @@
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error, r2_score
 
 
 def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_path=None, openet_monthly_path=None,
-                          irr=None, target='et', model='ssebop'):
+                          irr=None, model='ssebop', gap_tolerance=5):
     flux_data = pd.read_csv(flux_data_path, index_col='date', parse_dates=True)
 
     if isinstance(combined_output_path, pd.DataFrame):
@@ -27,35 +29,28 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
         output.loc[irr_index, 'etf'] = output.loc[irr_index, 'etf_irr']
         output['capture'] = output['etf_inv_irr_ct']
         output.loc[irr_index, 'capture'] = output.loc[irr_index, 'etf_irr_ct']
+
     except KeyError:
         output['etf'] = output[f'{model}_etf_inv_irr']
         output.loc[irr_index, 'etf'] = output.loc[irr_index, f'{model}_etf_irr']
         output['capture'] = output[f'{model}_etf_inv_irr_ct']
         output.loc[irr_index, 'capture'] = output.loc[irr_index, f'{model}_etf_irr_ct']
 
-    df = pd.DataFrame({'kc_act': output['kc_act'], 'etf': output['etf'],
-                       'EToF': flux_data['EToF'], 'ET_corr': flux_data['ET_corr'],
-                       'capture': output['capture'], 'eto': output['eto_mm']})
+    df = pd.DataFrame({'kc_act': output['kc_act'], 'ET_corr': flux_data['ET_corr'],
+                       'etf': output['etf'], 'capture': output['capture'], 'eto': output['eto_mm']})
 
-    if target == 'et':
-        df['flux'] = flux_data['ET']
-    elif target == 'etf':
-        df['flux'] = flux_data['EToF']
-    else:
-        raise NotImplementedError
+    df['flux'] = flux_data['ET']
+    df['flux_fill'] = flux_data['ET_fill']
+    df.loc[np.isnan(df['flux']), 'flux'] = df.loc[np.isnan(df['flux']), 'flux_fill']
+    df['flux_gapfill'] = flux_data['ET_gap'].astype(int)
 
-    if target == 'et':
-        df['ssebop'] = df['eto'] * df['etf']
-        df['swim'] = df['eto'] * df['kc_act']
-    elif target == 'etf':
-        df['ssebop'] = df['etf']
-        df['swim'] = df['kc_act']
+    df['swim'] = df['eto'] * df['kc_act']
 
     # set aside a monthly dataframe
     df_monthly = df.copy()
 
-    openet_rename = {'GEESEBAL_3x3': 'GEESEBAL', 'PTJPL_3x3': 'PTJPL', 'SSEBOP_3x3': 'SSEBOP', 'SIMS_3x3': 'SIMS',
-                     'EEMETRIC_3x3': 'EEMETRIC', 'DISALEXI_3x3': 'DISALEXI', 'ensemble_mean_3x3': 'openet_ensemble'}
+    openet_rename = {'GEESEBAL_3x3': 'geesebal', 'PTJPL_3x3': 'ptjpl', 'SSEBOP_3x3': 'ssebop', 'SIMS_3x3': 'sims',
+                     'EEMETRIC_3x3': 'eemetric', 'DISALEXI_3x3': 'disalexi', 'ensemble_mean_3x3': 'openet'}
 
     openet_models = [v for k, v in openet_rename.items()]
 
@@ -90,7 +85,7 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
 
     df_daily = df.dropna(subset=['flux'])
     results_daily = {}
-    all_models = ['swim', 'ssebop']
+    all_models = ['swim']
     all_models += openet_models
 
     for model in all_models:
@@ -103,7 +98,7 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
         try:
             results_daily[f'rmse_{model}'] = float(np.sqrt(mean_squared_error(df_temp['flux'], df_temp[model])))
             results_daily[f'r2_{model}'] = r2_score(df_temp['flux'], df_temp[model])
-            if model not in ['swim', 'ssebop']:
+            if model not in ['swim']:
                 results_daily[f'{model}_mean'] = float(df_temp[model].mean())
             results_daily['n_samples'] = df_temp.shape[0]
         except ValueError:
@@ -135,45 +130,47 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
     full_date_range = pd.date_range(start=start_date, end=end_date, freq='ME')
     ct = ct.reindex(full_date_range).fillna(0.0)
     ct = ct.resample('d').bfill()
-    df_monthly = pd.concat([df_monthly, ct], axis=1).dropna()
 
-    month_check = df_monthly[['days_in_month', 'daily_obs']].resample('ME').agg({'daily_obs': 'sum',
-                                                                                 'days_in_month': 'mean'})
-    full_months = month_check[month_check['days_in_month'] == month_check['daily_obs']].index
+    df_monthly.drop(columns=['etf'], inplace=True)
+    df_monthly = pd.concat([df_monthly, ct], axis=1)
+    df_monthly = df_monthly.dropna()
+
+    month_check = df_monthly['flux_gapfill'].resample('ME').agg('sum')
+
+    full_months = (month_check <= gap_tolerance).index
     full_months = [(i.year, i.month) for i in full_months]
+
     idx = [i for i in df_monthly.index if (i.year, i.month) in full_months]
     df_monthly = df_monthly.loc[idx].drop(columns=['daily_obs', 'days_in_month'])
 
-    if target == 'et':
-        df_monthly = df_monthly.resample('ME').sum()
-        if openet_monthly is not None:
-            for model in openet_models:
-                if model in openet_monthly.columns:
-                    df_monthly[model] = openet_monthly[model]
-
-    else:
-        df_monthly = df_monthly.resample('ME').mean()
-        if openet_monthly is not None:
-            for model in openet_models:
-                if model in openet_monthly.columns:
-                    df_monthly[model] = openet_monthly[model]
+    df_monthly = df_monthly.resample('ME').sum()
+    if openet_monthly is not None:
+        for model in openet_models:
+            if model in openet_monthly.columns:
+                df_monthly[model] = openet_monthly[model]
 
     # insertion of OpenET data builds zeros under flux/swim
+    df_monthly.drop(columns=['capture'], inplace=True)
+    df_monthly = df_monthly.dropna(axis=0, how='any')
     df_monthly = df_monthly.replace(0.0, np.nan)
-    df_monthly = df_monthly.replace([float('inf'), float('-inf')], np.nan).dropna(how='any', axis=0)
+    df_monthly = df_monthly.replace([float('inf'), float('-inf')], np.nan)
+    df_monthly = df_monthly.dropna(axis=1, how='any')
 
     results_monthly = {}
     if df_monthly.shape[0] >= 2:
+        missing = []
         results_monthly[f'mean_flux'] = df_monthly['flux'].mean().item()
         for model in all_models:
             try:
-                results_monthly[f'rmse_{model}'] = float(np.sqrt(mean_squared_error(df_monthly['flux'], df_monthly[model])))
+                results_monthly[f'rmse_{model}'] = float(
+                    np.sqrt(mean_squared_error(df_monthly['flux'], df_monthly[model])))
                 results_monthly[f'r2_{model}'] = r2_score(df_monthly['flux'], df_monthly[model])
                 results_monthly[f'mean_{model}'] = df_monthly[model].mean().item()
                 results_monthly['n_samples'] = df_monthly.shape[0]
             except (ValueError, KeyError) as exc:
-                print(model, exc)
-                continue
+                missing.append(model)
+
+        print(f'missing results: {missing}')
 
     return results_daily, results_overpass, results_monthly
 
