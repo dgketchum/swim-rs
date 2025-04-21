@@ -139,12 +139,21 @@ def get_ssurgo(fields, desc, debug=False, selector='FID'):
     print(desc)
 
 
-def get_landfire(fields, desc, debug=False, selector='FID'):
+def get_landcover(fields, desc, debug=False, selector='FID', out_fmt='CSV'):
     plots = ee.FeatureCollection(fields)
 
-    vtype = ee.ImageCollection('MODIS/061/MCD12Q1').select('LC_Type1').first().rename('veg_type')
+    vtype = ee.ImageCollection('MODIS/061/MCD12Q1').select('LC_Type1').first().rename('modis_lc')
+    vtype = vtype.addBands([ee.ImageCollection('projects/sat-io/open-datasets/FROM-GLC10')
+                           .mosaic().rename('glc10_lc')])
 
-    _selectors = [selector, 'LAT', 'LON'] + ['veg_type']
+    export_kwargs = dict(description=desc,
+                         bucket='wudr',
+                         fileNamePrefix=desc,
+                         fileFormat=out_fmt)
+
+    if out_fmt == 'CSV':
+        _selectors = [selector, 'LAT', 'LON'] + ['veg_type', 'glc10_lc']
+        export_kwargs.update({'selectors': _selectors})
 
     means = vtype.reduceRegions(collection=plots,
                                 reducer=ee.Reducer.mode(),
@@ -154,12 +163,7 @@ def get_landfire(fields, desc, debug=False, selector='FID'):
         debug = means.filterMetadata('FID', 'equals', 'US-CRT').getInfo()
 
     task = ee.batch.Export.table.toCloudStorage(
-        means,
-        description=desc,
-        bucket='wudr',
-        fileNamePrefix=desc,
-        fileFormat='CSV',
-        selectors=_selectors)
+        means, **export_kwargs)
 
     task.start()
     print(desc)
@@ -172,9 +176,10 @@ if __name__ == '__main__':
     # index_col = 'FID'
     # fields_ = 'users/dgketchum/fields/tongue_annex_20OCT2023'
 
-    project = 'tutorial'
-    index_col = 'field_1'
-    fields_ = 'users/dgketchum/fields/flux'
+    project = '6_Flux_International'
+    index_col = 'sid'
+    # fields_ = 'users/dgketchum/fields/flux'
+    fields_ = 'projects/ee-dgketchum/assets/swim/flux_compiled_16APR2025'
 
     description = '{}_cdl'.format(project)
     # get_cdl(fields_, description, selector=index_col)
@@ -185,7 +190,7 @@ if __name__ == '__main__':
     description = '{}_ssurgo'.format(project)
     # get_ssurgo(fields_, description, debug=False, selector=index_col)
 
-    description = '{}_landfire'.format(project)
-    get_landfire(fields_, description, debug=True, selector=index_col)
+    description = '{}_landcover'.format(project)
+    get_landcover(fields_, description, debug=True, selector=index_col, out_fmt='SHP')
 
 # ========================= EOF ====================================================================
