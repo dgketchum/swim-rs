@@ -9,6 +9,7 @@ from analysis.metrics import compare_etf_estimates
 from initialize import initialize_data
 from model import obs_field_cycle
 from viz.swim_timeseries import flux_pdc_timeseries
+from prep import get_openet_sites
 
 
 def run_flux_sites(fid, config, plot_data, outfile):
@@ -30,7 +31,6 @@ def run_flux_sites(fid, config, plot_data, outfile):
 
 def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='ssebop',
                    return_comparison=False, gap_tolerance=5):
-
     openet_daily = os.path.join(openet_dir, 'daily_data', f'{fid}.csv')
     openet_monthly = os.path.join(openet_dir, 'monthly_data', f'{fid}.csv')
     irr_ = plot_data_.input['irr_data'][fid]
@@ -49,6 +49,7 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 
     rmse_values = {k.split('_')[1]: v for k, v in agg_comp.items() if k.startswith('rmse_')
                    if 'swim' in k or 'openet' in k}
+
     if len(rmse_values) == 0:
         return None
 
@@ -100,10 +101,7 @@ if __name__ == '__main__':
     open_et_ = os.path.join(project_ws_, 'openet_flux')
 
     station_file = os.path.join(data, 'station_metadata.csv')
-
-    sdf = pd.read_csv(station_file, index_col=0, header=1)
-    sites = list(set(sdf.index.unique().to_list()))
-    sites.sort()
+    sites, sdf = get_openet_sites(station_file, crop_only=False, return_df=True)
 
     incomplete, complete, results = [], [], []
 
@@ -113,32 +111,11 @@ if __name__ == '__main__':
 
         lulc = sdf.at[site_, 'General classification']
 
-        # if lulc == 'Croplands':
-        #     continue
-
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        # if site_ not in ['US-A74', 'US-Bkg', 'UA1_HartFarm', 'US-FR2', 'US-Rwf', 'JPL1_Smith5', 'US-xDL', 'KV_4',
-        #                  'US-Ced', 'US-Me5', 'US-NR1', 'US-WCr', 'US-Rwe', 'UOVUP', 'US-xDS', 'UA2_KN20', 'US-IB2',
-        #                  'US-SO3', 'US-Ne2', 'US-GMF', 'US-GLE', 'US-Me6', 'US-CMW', 'SLM001', 'US-xAE', 'US-Dk2',
-        #                  'US-Ro5', 'UA3_KN15', 'US-Blo', 'UA1_JV187', 'US-OF4', 'US-FPe', 'US-SCs', 'BPLV', 'MB_Pch',
-        #                  'US-SP3', 'US-A32', 'US-MOz', 'LYS_SE', 'US-Me1', 'US-Twt', 'Almond_Low', 'US-SO4',
-        #                  'UA3_JV108', 'UOVMD', 'US-Oho', 'US-LS1', 'US-SRC', 'US-WBW', 'B_11', 'US-Me2', 'US-SP2',
-        #                  'US-SRG', 'US-Br3', 'DVDV', 'US-MC1', 'US-MMS', 'BAR012', 'US-Fwf', 'US-Ro3', 'US-xST',
-        #                  'US-Hn2', 'US-Var', 'ET_8', 'KV_2', 'US-Fuf', 'US-Ro2', 'US-xUN', 'MR', 'US-Bi2', 'US-Mj2',
-        #                  'manilacotton', 'US-xSB', 'LYS_NW', 'US-Bi1', 'UMVW', 'US-SRS', 'US-CRT', 'US-Rws', 'US-SRM',
-        #                  'US-Ro1', 'RIP760', 'S2', 'US-xJR', 'US-Aud', 'KV_1', 'US-xYE', 'ALARC2_Smith6', 'US-SP4',
-        #                  'stonevillesoy', 'US-AR1', 'Almond_Med', 'UA2_JV330', 'US-KLS', 'US-Tw3', 'VR', 'US-NC4',
-        #                  'US-KM4', 'US-Dk1', 'US-Dix', 'JPL1_JV114', 'US-Jo2', 'SV_5', 'US-OF2', 'US-Tw2', 'US-Goo',
-        #                  'US-SdH', 'US-NC3', 'AFD', 'WRV_2', 'US-ARb', 'US-xNG', 'SPV_3', 'AFS', 'SV_6', 'US-Ro4',
-        #                  'LYS_SW', 'SPV_1', 'US-Ro6', 'LYS_NE', 'US-xNW', 'US-xDC', 'US-Ctn', 'US-xSL', 'US-Skr',
-        #                  'US-xRM', 'UOVLO', 'US-SCg', 'US-ARM', 'US-Srr', 'US-ARc', 'US-Sne', 'US-Esm', 'Almond_High',
-        #                  'US-Br1', 'US-IB1', 'US-Fmf', 'ET_1', 'MOVAL', 'US-OF1', 'US-Slt', 'US-Ne3', 'UA1_KN18',
-        #                  'B_01', 'US-Hn3', 'BPHV', 'US-NC2', 'US-ADR', 'US-CZ3', 'US-Bo1', 'WRV_1', 'US-Mj1',
-        #                  'Ellendale', 'US-SO2', 'TAM', 'US-SCw', 'US-Ne1', 'US-Blk', 'US-OF6', 'US-Wkg', 'US-KS2',
-        #                  'KV_2', 'ET_1', 'B_01', 'DVDV', 'JPL1_Smith5', 'BPLV', 'B_11', 'ET_8', 'JPL1_JV114', 'KV_1']:
-        #     continue
+        if site_ not in ['US-xJR']:
+            continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
