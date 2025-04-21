@@ -202,7 +202,7 @@ if __name__ == '__main__':
 
     station_file = os.path.join(data, 'station_metadata.csv')
 
-    sites_ = get_openet_sites(station_file, crop_only=True)
+    sites_ = get_openet_sites(station_file, crop_only=False)
 
     results = os.path.join(project_ws_, 'results', 'tight')
     for site in sites_:
@@ -211,7 +211,7 @@ if __name__ == '__main__':
             continue
         modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
 
-        if modified_date < pd.to_datetime('2025-04-16'):
+        if modified_date > pd.to_datetime('2025-04-16'):
             sites_.remove(site)
 
     target_ = 'openet'
