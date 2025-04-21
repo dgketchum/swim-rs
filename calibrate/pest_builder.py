@@ -408,7 +408,8 @@ class PestBuilder:
     def _write_etf_obs(self, target, members):
         obsnme_str = 'oname:obs_etf_{}_otype:arr_i:{}_j:0'
 
-        self.etf_std = {fid: None for fid in self.pest_args['targets']}
+        if members is not None:
+            self.etf_std = {fid: None for fid in self.pest_args['targets']}
 
         for i, fid in enumerate(self.pest_args['targets']):
 

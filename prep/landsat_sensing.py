@@ -6,7 +6,7 @@ import pandas as pd
 from rasterstats import zonal_stats
 from tqdm import tqdm
 
-from prep import get_openet_sites
+from prep import get_flux_sites
 
 
 def landsat_time_series_image(in_shp, tif_dir, years, out_csv, out_csv_ct, min_ct=100, feature_id='FID'):
@@ -319,7 +319,8 @@ def get_tif_list(tif_dir, year):
 
 if __name__ == '__main__':
 
-    project = '5_Flux_Ensemble'
+    project = '4_Flux_Network'
+    # project = '5_Flux_Ensemble'
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project, 'data')
@@ -340,10 +341,16 @@ if __name__ == '__main__':
     FEATURE_ID = 'field_1'
     selected_feature = None
 
+    # models = ['ptjpl', 'eemetric', 'openet', 'geesebal', 'sims', 'disalexi', 'ssebop']
+    models = ['ssebop']
+
     types_ = ['irr', 'inv_irr']
     sensing_params = ['etf', 'ndvi']
 
-    sites_ = get_openet_sites(shapefile_path)
+    station_file = os.path.join(data, 'station_metadata.csv')
+
+    # use 'western_only' for sites with OpenET coverage
+    sites_ = get_flux_sites(station_file, crop_only=False, western_only=False, return_df=False)
     rs_files = []
 
     for mask_type in types_:
@@ -354,7 +361,7 @@ if __name__ == '__main__':
 
             if sensing_param == 'etf':
 
-                for model in ['ptjpl', 'eemetric', 'openet', 'geesebal', 'sims', 'disalexi', 'ssebop']:
+                for model in models:
                     ee_data = os.path.join(landsat, 'extracts', f'{model}_{sensing_param}', mask_type)
                     src = os.path.join(tables, '{}_{}_{}.csv'.format(model, sensing_param, mask_type))
                     src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(model, sensing_param, mask_type))

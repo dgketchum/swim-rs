@@ -9,7 +9,7 @@ from analysis.metrics import compare_etf_estimates
 from initialize import initialize_data
 from model import obs_field_cycle
 from viz.swim_timeseries import flux_pdc_timeseries
-from prep import get_openet_sites
+from prep import get_flux_sites
 
 
 def run_flux_sites(fid, config, plot_data, outfile):
@@ -85,8 +85,8 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 
 if __name__ == '__main__':
 
-    project = '5_Flux_Ensemble'
-    # project = '4_Flux_Network'
+    # project = '5_Flux_Ensemble'
+    project = '4_Flux_Network'
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project, 'data')
@@ -101,7 +101,7 @@ if __name__ == '__main__':
     open_et_ = os.path.join(project_ws_, 'openet_flux')
 
     station_file = os.path.join(data, 'station_metadata.csv')
-    sites, sdf = get_openet_sites(station_file, crop_only=False, return_df=True)
+    sites, sdf = get_flux_sites(station_file, crop_only=False, return_df=True)
 
     incomplete, complete, results = [], [], []
 
@@ -114,13 +114,11 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['US-xJR']:
+        if site_ not in ['S2']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
-        # run_const = os.path.join(project_ws_, 'results', '31MAR_irr_spec')
-        # run_const = os.path.join(project_ws_, 'results', 'openet_9APR2025')
         run_const = os.path.join(project_ws_, 'results', 'tight')
         output_ = os.path.join(run_const, site_)
 

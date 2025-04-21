@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
-from prep import get_ensemble_parameters, get_openet_sites
+from prep import get_ensemble_parameters, get_flux_sites
 from data_extraction.gridmet.gridmet import find_gridmet_points, download_gridmet
 
 import warnings
@@ -127,7 +127,8 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
 if __name__ == '__main__':
 
-    project = '5_Flux_Ensemble'
+    project = '4_Flux_Network'
+    # project = '5_Flux_Ensemble'
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project, 'data')
@@ -146,8 +147,11 @@ if __name__ == '__main__':
     joined_timeseries = os.path.join(data, 'plot_timeseries')
     snow = os.path.join(data, 'snodas', 'snodas.json')
 
-    sites_ = get_openet_sites(fields_gridmet)
-    remote_sensing_parameters = get_ensemble_parameters(skip=None)
+    station_file = os.path.join(data, 'station_metadata.csv')
+    sites_ = get_flux_sites(station_file)
+
+    remote_sensing_parameters = get_ensemble_parameters(
+        skip=['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'disalexi'])
 
     join_daily_timeseries(fields=fields_gridmet,
                           gridmet_dir=met,

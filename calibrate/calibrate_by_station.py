@@ -10,7 +10,7 @@ from calibrate.run_pest import run_pst
 from prep.prep_plots import prep_fields_json, preproc
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
-from prep import get_openet_sites
+from prep import get_flux_sites, get_ensemble_parameters
 
 
 def run_pest_sequence(conf_path, project_ws, workers, realizations, target, members,
@@ -66,14 +66,15 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
             if not prepped_data:
                 prepped_input = os.path.join(data_dir, 'prepped_input.json')
 
+                rs_params_ = get_ensemble_parameters(include=['ssebop'])
                 prep_fields_json(properties_json, joined_timeseries, dynamics_data,
-                                 prepped_input, target_plots=[fid])
+                                 prepped_input, target_plots=[fid], rs_params=rs_params_)
 
                 obs_dir = os.path.join(project_ws, 'obs')
                 if not os.path.isdir(obs_dir):
                     os.makedirs(obs_dir, exist_ok=True)
 
-                preproc(conf_path, project_ws)
+                preproc(conf_path, project_ws, etf_target_model=target_)
 
                 prepped_data = True
 
@@ -185,7 +186,8 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
 
 if __name__ == '__main__':
 
-    project_ = '5_Flux_Ensemble'
+    # project_ = '5_Flux_Ensemble'
+    project_ = '4_Flux_Network'
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project_, 'data')
@@ -202,7 +204,7 @@ if __name__ == '__main__':
 
     station_file = os.path.join(data, 'station_metadata.csv')
 
-    sites_ = get_openet_sites(station_file, crop_only=False)
+    sites_ = get_flux_sites(station_file, crop_only=False, western_only=False)
 
     results = os.path.join(project_ws_, 'results', 'tight')
     for site in sites_:
@@ -214,12 +216,10 @@ if __name__ == '__main__':
         if modified_date > pd.to_datetime('2025-04-16'):
             sites_.remove(site)
 
-    target_ = 'openet'
-    members_ = ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
+    target_ = 'ssebop'
+    # members_ = ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
 
-    # sites_ = ['US-Hn3', 'ALARC2_Smith6', 'S2']
-
-    run_pest_sequence(config_file, project_ws_, workers=workers, target=target_, members=members_,
+    run_pest_sequence(config_file, project_ws_, workers=workers, target=target_, members=None,
                       realizations=realizations, select_stations=sites_, pdc_remove=True, overwrite=True)
 
 # ========================= EOF ============================================================================
