@@ -72,7 +72,7 @@ MAX_EFFECTIVE_ROOTING_DEPTH = {
 }
 
 
-def get_openet_sites(sites, crop_only=False):
+def get_openet_sites(sites, crop_only=False, return_df=False):
     """"""
     target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
 
@@ -86,7 +86,10 @@ def get_openet_sites(sites, crop_only=False):
     sites_ = list(set(sdf.index.unique().to_list()))
 
     sites_.sort()
-    return sites_
+    if return_df:
+        return sites_, sdf
+    else:
+        return sites_
 
 
 def get_ensemble_parameters(skip=None):
