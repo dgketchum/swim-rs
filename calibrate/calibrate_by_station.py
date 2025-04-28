@@ -205,17 +205,27 @@ if __name__ == '__main__':
     station_file = os.path.join(data, 'station_metadata.csv')
 
     sites_ = get_flux_sites(station_file, crop_only=False, western_only=False)
+    print(f'{len(sites_)} sites total')
 
     results = os.path.join(project_ws_, 'results', 'tight')
+
+    incomplete = []
     for site in sites_:
+
         fcst_params = os.path.join(results, site, f'{site}.3.par.csv')
         if not os.path.exists(fcst_params):
+            print(f'{site} has no parameters')
             continue
+
         modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
 
-        if modified_date > pd.to_datetime('2025-04-16'):
-            sites_.remove(site)
+        if modified_date > pd.to_datetime('2025-04-20'):
+            print(f'remove {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
+        else:
+            print(f'keep {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
+            incomplete.append(site)
 
+    print(f'{len(sites_)} sites not yet calibrated')
     target_ = 'ssebop'
     # members_ = ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
 

@@ -7,7 +7,7 @@ import ee
 import geopandas as gpd
 
 from data_extraction.ee.ee_utils import get_lanid
-from data_extraction.ee.ee_utils import landsat_masked, is_authorized
+from data_extraction.ee.ee_utils import landsat_masked, sentinel2_masked, is_authorized
 
 sys.path.insert(0, os.path.abspath('../..'))
 sys.setrecursionlimit(5000)
@@ -78,7 +78,9 @@ def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_t
 
 
 def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, grid_spec=None,
-                       feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3'):
+                       feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3',
+                       satellite='landsat'):
+    """"""
     df = gpd.read_file(shapefile)
     df.index = df[feature_id]
 
@@ -129,7 +131,11 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
             polygon = ee.Geometry.Polygon([[c[0], c[1]] for c in row['geometry'].exterior.coords])
             fc = ee.FeatureCollection(ee.Feature(polygon, {feature_id: site}))
 
-            coll = landsat_masked(year, fc).map(lambda x: x.normalizedDifference(['B5', 'B4']))
+            if satellite == 'landsat':
+                coll = landsat_masked(year, fc).map(lambda x: x.normalizedDifference(['B5', 'B4']))
+            elif satellite == 'semtinel':
+                coll = sentinel2_masked(year, fc).map(lambda x: x.normalizedDifference(['B5', 'B4']))
+
             ndvi_scenes = coll.aggregate_histogram('system:index').getInfo()
 
             first, bands = True, None
@@ -290,7 +296,7 @@ if __name__ == '__main__':
 
     from etf_export import sparse_sample_etf
 
-    for src in ['etf']:
+    for src in ['ndvi']:
         for mask in ['irr', 'inv_irr']:
 
             if src == 'ndvi':

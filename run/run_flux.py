@@ -85,8 +85,11 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 
 if __name__ == '__main__':
 
-    # project = '5_Flux_Ensemble'
     project = '4_Flux_Network'
+    model = 'ssebop'
+
+    # project = '5_Flux_Ensemble'
+    # model = 'openet'
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project, 'data')
@@ -111,10 +114,10 @@ if __name__ == '__main__':
 
         lulc = sdf.at[site_, 'General classification']
 
-        if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
-            continue
+        # if lulc != 'Croplands':
+        #     continue
 
-        if site_ not in ['S2']:
+        if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
@@ -138,7 +141,7 @@ if __name__ == '__main__':
 
         modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
         print(f'Calibration made {modified_date}')
-        if modified_date < pd.to_datetime('2025-04-16'):
+        if modified_date < pd.to_datetime('2025-04-20'):
             continue
 
         cal = os.path.join(project_ws_, f'tight_pest', 'mult')
@@ -156,7 +159,7 @@ if __name__ == '__main__':
             continue
 
         result = compare_openet(site_, flux_data, out_csv, open_et_, fields_,
-                                model='openet', return_comparison=True, gap_tolerance=5)
+                                model=model, return_comparison=True, gap_tolerance=5)
 
         if result:
             results.append((result, lulc))
@@ -165,7 +168,7 @@ if __name__ == '__main__':
 
         out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'model_output', 'png')
 
-        # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model='openet',
+        # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model=model,
         #                     members=['ssebop', 'disalexi', 'geesebal', 'eemetric', 'ptjpl', 'sims'])
 
     pprint({s: [t[0] for t in results].count(s) for s in set(t[0] for t in results)})
