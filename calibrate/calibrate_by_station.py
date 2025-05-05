@@ -39,11 +39,13 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
     flux_meta_df = pd.read_csv(flux_meta_csv, header=1, skip_blank_lines=True, index_col='Site ID')
     sites = sorted(flux_meta_df.index.to_list())
 
-    for fid in sites:
+    for i, fid in enumerate(sites, start=1):
+
+        print(f'{fid}: {i} of {len(sites)} stations')
 
         prepped_data, prepped_input = False, None
 
-        if fid in ['US-Bi2', 'US-Dk1', 'MB_Pch']:
+        if fid in ['US-Bi1', 'US-Bi2', 'US-Dk1', 'MB_Pch', 'US-SP4']:
             continue
 
         if select_stations and fid not in select_stations:
@@ -230,6 +232,6 @@ if __name__ == '__main__':
     # members_ = ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
 
     run_pest_sequence(config_file, project_ws_, workers=workers, target=target_, members=None,
-                      realizations=realizations, select_stations=sites_, pdc_remove=True, overwrite=True)
+                      realizations=realizations, select_stations=incomplete, pdc_remove=True, overwrite=True)
 
 # ========================= EOF ============================================================================

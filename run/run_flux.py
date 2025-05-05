@@ -47,8 +47,8 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
     if len(agg_comp) < 3:
         return None
 
-    rmse_values = {k.split('_')[1]: v for k, v in agg_comp.items() if k.startswith('rmse_')
-                   if 'swim' in k or 'openet' in k}
+    rmse_values = {k.split('_')[1]: v for k, v in agg_comp.items() if k.startswith('rmse_')}
+                   # if 'swim' in k or 'openet' in k}
 
     if len(rmse_values) == 0:
         return None
@@ -113,7 +113,11 @@ if __name__ == '__main__':
     for ee, site_ in enumerate(sites):
 
         lulc = sdf.at[site_, 'General classification']
+        state = sdf.at[site_, 'State']
 
+        # if state != 'NV':
+        #     continue
+        #
         # if lulc != 'Croplands':
         #     continue
 
@@ -141,7 +145,7 @@ if __name__ == '__main__':
 
         modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
         print(f'Calibration made {modified_date}')
-        if modified_date < pd.to_datetime('2025-04-20'):
+        if modified_date < pd.to_datetime('2025-04-16'):
             continue
 
         cal = os.path.join(project_ws_, f'tight_pest', 'mult')
