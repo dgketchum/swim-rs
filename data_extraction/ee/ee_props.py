@@ -172,23 +172,18 @@ def get_landcover(fields, desc, debug=False, selector='FID', out_fmt='CSV'):
 if __name__ == '__main__':
     ee.Initialize(project='ee-dgketchum')
 
-    # project = 'tongue'
-    # index_col = 'FID'
-    # fields_ = 'users/dgketchum/fields/tongue_annex_20OCT2023'
-
-    project = '6_Flux_International'
-    index_col = 'sid'
-    # fields_ = 'users/dgketchum/fields/flux'
-    fields_ = 'projects/ee-dgketchum/assets/swim/flux_compiled_16APR2025'
+    project = 'tutorial'
+    index_col = 'field_1'
+    fields_ = 'users/dgketchum/fields/flux'
 
     description = '{}_cdl'.format(project)
-    # get_cdl(fields_, description, selector=index_col)
+    get_cdl(fields_, description, selector=index_col)
 
     description = '{}_irr'.format(project)
-    # get_irrigation(fields_, description, debug=True, selector=index_col, lanid=True)
+    get_irrigation(fields_, description, debug=True, selector=index_col, lanid=True)
 
     description = '{}_ssurgo'.format(project)
-    # get_ssurgo(fields_, description, debug=False, selector=index_col)
+    get_ssurgo(fields_, description, debug=False, selector=index_col)
 
     description = '{}_landcover'.format(project)
     get_landcover(fields_, description, debug=True, selector=index_col, out_fmt='SHP')

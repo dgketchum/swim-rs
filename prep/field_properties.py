@@ -88,26 +88,6 @@ def write_field_properties(shp, irr, ssurgo, js, cdl=None, lulc=None, flux_meta=
 
 
 if __name__ == '__main__':
-    project = '4_Flux_Network'
 
-    root = '/data/ssd2/swim'
-    data = os.path.join(root, project, 'data')
-    if not os.path.isdir(root):
-        root = '/home/dgketchum/PycharmProjects/swim-rs'
-        data = os.path.join(root, 'tutorials', project, 'data')
-
-    shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
-
-    FEATURE_ID = 'field_1'
-
-    irr = os.path.join(data, 'properties', 'calibration_irr.csv')
-    ssurgo = os.path.join(data, 'properties', 'calibration_ssurgo.csv')
-    modis_lulc = os.path.join(data, 'properties', 'calibration_lulc.csv')
-    properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
-
-    flux_metadata = os.path.join(data, 'station_metadata.csv')
-
-    write_field_properties(shapefile_path, irr, ssurgo, properties_json, lulc=modis_lulc, index_col=FEATURE_ID,
-                           flux_meta=flux_metadata)
-
+    pass
 # ========================= EOF ====================================================================

@@ -441,34 +441,6 @@ def gridmet_elevation(shp_in, shp_out):
 
 
 if __name__ == '__main__':
-    home = os.path.expanduser('~')
 
-    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
-
-    # data = os.path.join(root, 'tutorials', '2_Fort_Peck', 'data')
-    # selected_feature = 'US-FPe'
-
-    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
-
-    FEATURE_ID = 'field_1'
-
-    shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
-    correction_tifs = os.path.join(data, 'bias_correction_tif')
-
-    fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
-    gridmet_factors = os.path.join(data, 'gis', 'flux_fields_gfid.json')
-
-    correction_tifs = os.path.join(data, 'bias_correction_tif')
-
-    # get_gridmet_corrections(fields=shapefile_path,
-    #                         gridmet_ras=correction_tifs,
-    #                         fields_join=fields_gridmet,
-    #                         factors_js=gridmet_factors,
-    #                         feature_id='field_1',
-    #                         field_select=['S2'])
-
-    met = os.path.join(data, 'met_timeseries')
-
-    download_gridmet(fields_gridmet, gridmet_factors, met, start='1987-01-01', end='2023-12-31',
-                     overwrite=False, feature_id=FEATURE_ID, target_fields=None)
+    pass
 # ========================= EOF ====================================================================

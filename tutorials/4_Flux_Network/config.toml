@@ -1,7 +1,7 @@
 ## SWIM Configuration
 [FIELDS]
 project_name = '4_Flux_Network'
-project_folder = '{project_root}/step_2_calibration'
+project_folder = '{project_root}'
 
 data_folder = '{project_root}/data'
 obs_folder = '{project_root}/obs'

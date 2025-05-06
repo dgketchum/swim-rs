@@ -1,12 +1,11 @@
 import os
-import json
 
 import numpy as np
 import pandas as pd
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from run.initialize import initialize_data
+from model.initialize import initialize_data
 
 
 def irrigation_timeseries(field_data, feature, out_dir=None):

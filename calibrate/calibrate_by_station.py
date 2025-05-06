@@ -185,51 +185,5 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
 
 
 if __name__ == '__main__':
-
-    # project_ = '5_Flux_Ensemble'
-    project_ = '4_Flux_Network'
-
-    root = '/data/ssd2/swim'
-    data = os.path.join(root, project_, 'data')
-    workers, realizations = 20, 200
-    project_ws_ = os.path.join(root, project_)
-    config_file = os.path.join(project_ws_, 'config.toml')
-
-    if not os.path.isdir(root):
-        root = '/home/dgketchum/PycharmProjects/swim-rs'
-        data = os.path.join(root, 'tutorials', project_, 'data')
-        workers, realizations = 2, 10
-        project_ws_ = os.path.join(root, 'tutorials', project_)
-        config_file = os.path.join(project_ws_, 'config.toml')
-
-    station_file = os.path.join(data, 'station_metadata.csv')
-
-    sites_ = get_flux_sites(station_file, crop_only=False, western_only=False)
-    print(f'{len(sites_)} sites total')
-
-    results = os.path.join(project_ws_, 'results', 'tight')
-
-    incomplete = []
-    for site in sites_:
-
-        fcst_params = os.path.join(results, site, f'{site}.3.par.csv')
-        if not os.path.exists(fcst_params):
-            print(f'{site} has no parameters')
-            continue
-
-        modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
-
-        if modified_date > pd.to_datetime('2025-04-20'):
-            print(f'remove {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
-        else:
-            print(f'keep {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
-            incomplete.append(site)
-
-    print(f'{len(sites_)} sites not yet calibrated')
-    target_ = 'ssebop'
-    # members_ = ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
-
-    run_pest_sequence(config_file, project_ws_, workers=workers, target=target_, members=None,
-                      realizations=realizations, select_stations=sites_, pdc_remove=True, overwrite=True)
-
+    pass
 # ========================= EOF ============================================================================

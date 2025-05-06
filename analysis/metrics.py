@@ -46,7 +46,6 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
 
     df['swim'] = df['eto'] * df['kc_act']
 
-    # set aside a monthly dataframe
     df_monthly = df.copy()
 
     openet_rename = {'GEESEBAL_3x3': 'geesebal', 'PTJPL_3x3': 'ptjpl', 'SSEBOP_3x3': 'ssebop', 'SIMS_3x3': 'sims',
