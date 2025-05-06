@@ -27,7 +27,7 @@ def run():
 
     os.environ['PYTHONPATH'] = root
 
-    model_script = os.path.join(root, 'run', 'run_mp.py')
+    model_script = os.path.join(root, 'calibrate', 'run_mp.py')
 
     project_ws = os.path.join(root, 'tutorials', '4_Flux_Network')
 

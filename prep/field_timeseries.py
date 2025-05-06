@@ -126,43 +126,5 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
 
 if __name__ == '__main__':
-
-    project = '4_Flux_Network'
-    # project = '5_Flux_Ensemble'
-
-    root = '/data/ssd2/swim'
-    data = os.path.join(root, project, 'data')
-    if not os.path.isdir(root):
-        root = '/home/dgketchum/PycharmProjects/swim-rs'
-        data = os.path.join(root, 'tutorials', project, 'data')
-
-    landsat = os.path.join(data, 'landsat')
-    remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
-
-    FEATURE_ID = 'field_1'
-
-    fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
-    met = os.path.join(data, 'met_timeseries')
-
-    joined_timeseries = os.path.join(data, 'plot_timeseries')
-    snow = os.path.join(data, 'snodas', 'snodas.json')
-
-    station_file = os.path.join(data, 'station_metadata.csv')
-    sites_ = get_flux_sites(station_file)
-
-    remote_sensing_parameters = get_ensemble_parameters(
-        skip=['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'disalexi'])
-
-    join_daily_timeseries(fields=fields_gridmet,
-                          gridmet_dir=met,
-                          landsat_table=remote_sensing_file,
-                          snow=snow,
-                          dst_dir=joined_timeseries,
-                          overwrite=True,
-                          start_date='1987-01-01',
-                          end_date='2024-12-31',
-                          feature_id=FEATURE_ID,
-                          **{'params': remote_sensing_parameters,
-                             'target_fields': sites_})
-
+    pass
 # ========================= EOF ====================================================================

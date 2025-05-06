@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import plotly.io as pio
 from scipy.stats import gaussian_kde
 
-from run.initialize import initialize_data
+from model.initialize import initialize_data
 
 pio.templates.default = "plotly_dark"
 

@@ -8,7 +8,6 @@ import geopandas as gpd
 
 from data_extraction.ee.ee_utils import get_lanid
 from data_extraction.ee.ee_utils import landsat_masked, sentinel2_masked, is_authorized
-from etf_export import sparse_sample_etf
 
 sys.path.insert(0, os.path.abspath('../..'))
 sys.setrecursionlimit(5000)
@@ -284,79 +283,5 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
 
 if __name__ == '__main__':
 
-    is_authorized()
-
-    bucket = 'wudr'
-
-    # project = '4_Flux_Network'
-    project = '6_Flux_International'
-
-    home = os.path.expanduser('~')
-    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
-
-    if project == '6_Flux_International':
-        shapefile_path = os.path.join(root, 'tutorials', project, 'data', 'gis',
-                                      '6_Flux_International_EU_crops_AEA_200mBuf.shp')
-        FEATURE_ID = 'sid'
-    else:
-        shapefile_path = os.path.join(root, 'footprints', 'flux_static_footprints.shp')
-        FEATURE_ID = 'site_id'
-
-    data = os.path.join(root, 'tutorials', project, 'data')
-
-    fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
-
-    # Volk static footprints
-    select_sites = None
-    # select_sites = ['Aurade']
-
-    for src in ['etf']:
-        for mask in ['no_mask']:
-
-            if src == 'ndvi':
-
-                for inst in ['sentinel', 'landsat']:
-                    print(src, mask)
-                    rs_dst_dir = os.path.join(data, inst)
-                    if inst == 'landsat':
-                        grid = 3
-                        state_col = 'state'
-                    else:
-                        grid = None
-                        state_col = None
-
-                    dst = os.path.join(rs_dst_dir, 'extracts', src, mask)
-
-                    sparse_sample_ndvi(shapefile_path, bucket=bucket, debug=False, grid_spec=grid,
-                                       mask_type=mask, check_dir=dst, start_yr=2017, end_yr=2024, feature_id=FEATURE_ID,
-                                       state_col=state_col, select=select_sites, satellite=inst)
-
-            if src == 'etf':
-
-                if project == '6_Flux_International':
-                    models = ['ptjpl']
-                    source = 'users/dgketchum/openet/ptjpl/c02'
-                    scale = 1
-                    state_col = None
-                    grid = None
-
-
-                else:
-                    models = ['disalexi', 'geesebal', 'ptjpl', 'eemetric', 'ssebop', 'sims']
-                    source = None
-                    scale = None
-                    state_col = 'state'
-                    grid = 3
-
-                for model in models:
-                    rs_dst_dir = os.path.join(data, 'landsat')
-
-                    dst = os.path.join(rs_dst_dir, 'extracts', f'{model}_{src}', mask)
-
-                    print(src, mask, model)
-
-                    sparse_sample_etf(shapefile_path, bucket=bucket, debug=False, grid_spec=grid,
-                                      mask_type=mask, check_dir=None, start_yr=2015, end_yr=2024, feature_id=FEATURE_ID,
-                                      state_col=state_col, select=select_sites, model=model, scale=scale, source=source)
-
+    pass
 # ========================= EOF =======================================================================================

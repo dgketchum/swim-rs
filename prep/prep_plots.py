@@ -159,30 +159,5 @@ def preproc(config_file, project_ws, etf_target_model='openet'):
 
 
 if __name__ == '__main__':
-    root = '/home/dgketchum/PycharmProjects/swim-rs'
-
-    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
-    # project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
-    data = os.path.join(project_ws_, 'data')
-    landsat = os.path.join(data, 'landsat')
-
-    properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
-    dynamics_data = os.path.join(landsat, 'calibration_dynamics.json')
-    joined_timeseries = os.path.join(data, 'plot_timeseries')
-
-    prepped_input = os.path.join(data, 'prepped_input.json')
-
-    processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, dynamics_data,
-                                                           prepped_input, target_plots=None)
-
-    obs_dir = os.path.join(project_ws_, 'obs')
-    if not os.path.isdir(obs_dir):
-        os.makedirs(obs_dir, exist_ok=True)
-
-    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
-    # project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
-    config_path = os.path.join(project_ws_, 'config.toml')
-
-    preproc(config_path, project_ws_)
-
+    pass
 # ========================= EOF ====================================================================
