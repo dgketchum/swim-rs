@@ -103,7 +103,7 @@ if __name__ == '__main__':
     open_et_ = os.path.join(project_ws_, 'openet_flux')
 
     station_file = os.path.join(data, 'station_metadata.csv')
-    sites, sdf = get_flux_sites(station_file, crop_only=False, return_df=True)
+    sites, sdf = get_flux_sites(station_file, crop_only=False, return_df=True, header=1, index_col=0)
 
     incomplete, complete, results = [], [], []
 

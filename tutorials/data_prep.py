@@ -42,19 +42,15 @@ prepped_input = os.path.join(data, 'prepped_input.json')
 
 
 # Open-ET sites covered by overpass date image collections
-sites = get_flux_sites(shapefile_path, crop_only=False, western_only=True)
+sites = get_flux_sites(shapefile_path, crop_only=False, western_only=True, header=1, index_col=0)
 
 
 def prep_remote_sensing():
-    from prep.landsat_sensing import sparse_landsat_time_series, join_remote_sensing
+    from prep.remote_sensing import sparse_time_series, join_remote_sensing
 
     types_ = ['irr', 'inv_irr']
     sensing_params = ['etf', 'ndvi']
 
-    station_file = os.path.join(data, 'station_metadata.csv')
-
-    # use 'western_only' for sites with OpenET overpass coverage
-    sites_ = get_flux_sites(station_file, crop_only=False, western_only=False, return_df=False)
     models = get_ensemble_parameters(skip='ndvi')
     rs_files = []
 
@@ -79,8 +75,8 @@ def prep_remote_sensing():
                 src_ct = os.path.join(tables, '{}_{}_ct.csv'.format(sensing_param, mask_type))
 
             rs_files.extend([src, src_ct])
-            sparse_landsat_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                                       feature_id=FEATURE_ID, select=sites_)
+            sparse_time_series(shapefile_path, ee_data, yrs, src, src_ct,
+                               feature_id=FEATURE_ID, select=sites_)
 
     join_remote_sensing(rs_files, remote_sensing_file)
 
@@ -130,10 +126,8 @@ def prep_timeseries():
 def prep_dynamics():
     from prep.dynamics import SamplePlotDynamics
 
-    sites_ = get_flux_sites(station_file)
-
     dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3, etf_target='ssebop',
-                                  out_json_file=dyanmics_data, select=sites_)
+                                  out_json_file=dyanmics_data, select=sites)
     dynamics.analyze_groundwater_subsidy()
     dynamics.analyze_irrigation(lookback=5)
     dynamics.analyze_k_parameters()

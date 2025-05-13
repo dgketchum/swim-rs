@@ -84,7 +84,7 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 
 
 def evaluate():
-    sites, sdf = get_flux_sites(station_file, crop_only=False, return_df=True)
+    sites, sdf = get_flux_sites(station_file, crop_only=False, return_df=True, header=1, index_col=0)
 
     incomplete, complete, results = [], [], []
 

@@ -44,7 +44,7 @@ def run_calibration():
 
     station_file = os.path.join(data, 'station_metadata.csv')
 
-    sites_ = get_flux_sites(station_file, crop_only=False, western_only=False)
+    sites_ = get_flux_sites(station_file, crop_only=False, western_only=False, header=1, index_col=0)
     print(f'{len(sites_)} sites total')
 
     results = os.path.join(project_ws_, 'results', 'tight')

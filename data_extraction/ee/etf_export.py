@@ -1,17 +1,15 @@
 import os
+import subprocess
 import sys
 import time
-import subprocess
 
 import ee
-import utm
 import geopandas as gpd
 import pandas as pd
+import utm
 from tqdm import tqdm
-import pyproj
 
 from data_extraction.ee.ee_utils import get_lanid
-from data_extraction.ee.ee_utils import is_authorized
 
 EE = '/home/dgketchum/miniconda3/envs/swim/bin/earthengine'
 GSUTIL = '/home/dgketchum/google-cloud-sdk/bin/gsutil'
@@ -98,7 +96,7 @@ def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_ty
 
 def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, grid_spec=None,
                       feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3',
-                      model='ssebop', source=None, scale=None):
+                      model='ssebop', usgs_nhm=False, source=None, scale=None):
 
     df = gpd.read_file(shapefile)
     df.index = df[feature_id]
@@ -129,14 +127,19 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
     if source:
         pass
+
+    elif model == 'ssebop' and usgs_nhm:
+        source = 'projects/usgs-gee-nhm-ssebop/assets/ssebop/landsat/c02'
+
     elif source is None and model in members:
         source = f'projects/openet/assets/{model}/conus/gridmet/landsat/c02'
-    elif model == 'ssebop':
-        source = 'projects/usgs-gee-nhm-ssebop/assets/ssebop/landsat/c02'
+
     elif model == 'disalexi':
         source = 'projects/openet/assets/disalexi/landsat/c02'
+
     elif model == 'openet':
         source = 'projects/openet/assets/ensemble/conus/gridmet/landsat/c02'
+
     else:
         raise ValueError('Invalid model name')
 
@@ -419,17 +422,5 @@ def export_to_cloud(images_txt, bucket, pathrows=None):
 
 
 if __name__ == '__main__':
-
-    d = '/media/research/IrrigationGIS/swim'
-    if not os.path.exists(d):
-        d = '/home/dgketchum/data/IrrigationGIS/swim'
-
-    is_authorized()
-
-    bucket_ = 'ssebop026'
-    txt = '/home/dgketchum/Downloads/ssebop_list.txt'
-
-    prs_ = '/media/research/IrrigationGIS/swim/ssebop/wrs2_flux_volk.csv'
-
-    # export_to_cloud(txt, bucket_, prs_)
+    pass
 # ========================= EOF ====================================================================

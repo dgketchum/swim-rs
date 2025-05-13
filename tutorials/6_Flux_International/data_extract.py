@@ -1,12 +1,9 @@
 import os
 
-import ee
-
 from data_extraction.ee.ee_utils import is_authorized
-from prep import get_flux_sites, get_ensemble_parameters
-from swim.config import ProjectConfig
+from prep import get_flux_sites
 
-project = '4_Flux_Network'
+project = '6_Flux_International'
 
 root = '/data/ssd2/swim'
 data = os.path.join(root, project, 'data')
@@ -17,27 +14,22 @@ if not os.path.isdir(root):
     data = os.path.join(root, 'tutorials', project, 'data')
     project_ws = os.path.join(root, 'tutorials', project)
 
-config_file = os.path.join(project_ws, 'config.toml')
-
-config = ProjectConfig()
-config.read_config(config_file, project_ws)
-
-landsat = os.path.join(config.data_folder, 'landsat')
+landsat = os.path.join(data, 'landsat')
 extracts = os.path.join(landsat, 'extracts')
 tables = os.path.join(landsat, 'tables')
 
+era5_extracts = os.path.join(data, 'era5land', 'extracts')
+
 # GCS - Earth Engine
-fields_ = 'users/dgketchum/fields/flux'
+fields = 'projects/ee-dgketchum/assets/swim/eu_crop_flux_pt'
 bucket_ = 'wudr'
 
-# Volk Benchmark static footprints
-FEATURE_ID = 'site_id'
-state_col = 'state'
+# ICOS 200m station buffer shapefile index
+FEATURE_ID = 'sid'
 
-shapefile_path = os.path.join(data, 'gis', 'flux_static_footprints.shp')
-
-# Open-ET sites covered by overpass date image collections
-sites = get_flux_sites(shapefile_path, crop_only=False, western_only=True)
+# European crop sites
+shapefile_path = os.path.join(data, 'gis', '6_Flux_International_EU_crops_AEA_200mBuf.shp')
+sites = get_flux_sites(shapefile_path, index_col=FEATURE_ID)
 
 
 def extract_era5land_swe():
@@ -45,14 +37,8 @@ def extract_era5land_swe():
 
     is_authorized()
 
-    d = '/media/research/IrrigationGIS/swim'
-    if not os.path.exists(d):
-        d = '/home/dgketchum/data/IrrigationGIS/swim'
-
-    bucket_ = 'wudr'
     fields = 'projects/ee-dgketchum/assets/swim/eu_crop_flux_pt'
-    chk_swe = os.path.join(d, 'examples/tutorial/era5land/extracts/swe')
-    FEATURE_ID = 'sid'
+    chk_swe = os.path.join(era5_extracts, 'swe')
 
     sample_era5_swe_daily(
         feature_coll_asset_id=fields,
@@ -73,7 +59,7 @@ def extract_properties():
     index_col = 'sid'
 
     description = '{}_landcover'.format(project)
-    get_landcover(fields_, description, debug=True, selector=index_col, out_fmt='SHP')
+    get_landcover(fields, description, debug=True, selector=index_col, out_fmt='CSV')
 
 
 def extract_remote_sensing():
@@ -81,43 +67,34 @@ def extract_remote_sensing():
     from data_extraction.ee.etf_export import sparse_sample_etf
     from data_extraction.ee.ndvi_export import sparse_sample_ndvi
 
-    models = get_ensemble_parameters(skip='ndvi')
+    model = 'ptjpl'
 
     for src in ['ndvi', 'etf']:
-        for mask in ['irr', 'inv_irr']:
+        for mask in ['no_mask']:
 
             if src == 'ndvi':
                 print(src, mask)
                 dst = os.path.join(landsat, 'extracts', src, mask)
 
-                sparse_sample_ndvi(shapefile_path, bucket=bucket_, debug=False, grid_spec=3,
+                sparse_sample_ndvi(shapefile_path, bucket=bucket_, debug=False, grid_spec=None,
                                    mask_type=mask, check_dir=dst, start_yr=2016, end_yr=2024, feature_id=FEATURE_ID,
-                                   state_col=state_col, select=sites)
+                                   state_col=None, select=sites)
 
             if src == 'etf':
-                for model in models:
-                    dst = os.path.join(landsat, 'extracts', f'{model}_{src}', mask)
+                dst = os.path.join(landsat, 'extracts', f'{model}_{src}', mask)
 
-                    print(src, mask, model)
+                print(src, mask, model)
 
-                    sparse_sample_etf(shapefile_path, bucket=bucket_, debug=False, grid_spec=3,
-                                      mask_type=mask, check_dir=dst, start_yr=2016, end_yr=2024, feature_id=FEATURE_ID,
-                                      state_col=state_col, select=sites, model=model)
+                sparse_sample_etf(shapefile_path, bucket=bucket_, debug=False, grid_spec=None,
+                                  mask_type=mask, check_dir=dst, start_yr=2016, end_yr=2024, feature_id=FEATURE_ID,
+                                  state_col=None, select=sites, model=model)
 
 
 def extract_era5land_eto():
     from data_extraction.ee.ee_era5 import sample_era5_eto_daily
-    ee.Initialize()
+    is_authorized()
 
-    d = '/media/research/IrrigationGIS/swim'
-    if not os.path.exists(d):
-        d = '/home/dgketchum/data/IrrigationGIS/swim'
-
-    bucket_ = 'wudr'
-    fields = 'projects/ee-dgketchum/assets/swim/eu_crop_flux_pt'
-    FEATURE_ID = 'sid'
-
-    chk_eto = os.path.join(d, 'examples/tutorial/era5land/extracts/eto')
+    chk_eto = os.path.join(era5_extracts, 'eto')
     sample_era5_eto_daily(
         feature_coll_asset_id=fields,
         bucket=bucket_,
@@ -126,10 +103,9 @@ def extract_era5land_eto():
         overwrite=False,
         start_yr=2015,
         end_yr=2025,
-        feature_id_col=FEATURE_ID
-    )
+        feature_id_col=FEATURE_ID)
 
 
 if __name__ == '__main__':
-    pass
+    extract_properties()
 # ========================= EOF ====================================================================

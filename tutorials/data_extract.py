@@ -37,7 +37,7 @@ state_col = 'state'
 shapefile_path = os.path.join(data, 'gis', 'flux_static_footprints.shp')
 
 # Open-ET sites covered by overpass date image collections
-sites = get_flux_sites(shapefile_path, crop_only=False, western_only=True)
+sites = get_flux_sites(shapefile_path, crop_only=False, western_only=True, header=1, index_col=0)
 
 
 def extract_snodas():
