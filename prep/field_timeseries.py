@@ -14,10 +14,13 @@ import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
-def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, overwrite=False,
+def join_daily_timeseries(fields, gridmet_dir, landsat_table, dst_dir, snow=None, overwrite=False,
                           start_date=None, end_date=None, feature_id='FID', **kwargs):
-    with open(snow, 'r') as f:
-        snow = json.load(f)
+    """"""
+
+    if snow is not None:
+        with open(snow, 'r') as f:
+            snow = json.load(f)
 
     lst = pd.read_csv(landsat_table, parse_dates=True, index_col=0)
     lst = lst.sort_index(axis=1)
