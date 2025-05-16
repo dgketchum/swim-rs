@@ -15,97 +15,79 @@ if not os.path.isdir(root):
     project_ws = os.path.join(root, 'tutorials', project)
 
 landsat = os.path.join(data, 'landsat')
-extracts = os.path.join(landsat, 'extracts')
-tables = os.path.join(landsat, 'tables')
+landsat_extracts = os.path.join(landsat, 'extracts')
+landsat_tables = os.path.join(landsat, 'tables')
 
-era5_extracts = os.path.join(data, 'era5land', 'extracts')
+sentinel = os.path.join(data, 'sentinel')
+sentinel_extracts = os.path.join(sentinel, 'ee_extracts')
+sentinel_tables = os.path.join(sentinel, 'tables')
+
+era5_extracts = os.path.join(data, 'met_timeseries', 'extracts')
+
+modis_lulc = os.path.join(data, 'properties', f'{project}_landcover.csv')
+soils = os.path.join(data, 'properties', f'{project}_hwsd.csv')
+properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
 
 # GCS - Earth Engine
-fields = 'projects/ee-dgketchum/assets/swim/eu_crop_flux_pt'
+fields = 'projects/ee-dgketchum/assets/swim/6_Flux_International_landcover_150mBuf_13MAY2025'
 bucket_ = 'wudr'
 
 # ICOS 200m station buffer shapefile index
 FEATURE_ID = 'sid'
 
 # European crop sites
-shapefile_path = os.path.join(data, 'gis', '6_Flux_International_EU_crops_AEA_200mBuf.shp')
+shapefile_path = os.path.join(data, 'gis', '6_Flux_International_150mBuf.shp')
 sites = get_flux_sites(shapefile_path, index_col=FEATURE_ID)
 
 
-def extract_era5land_swe():
-    from data_extraction.ee.ee_era5 import sample_era5_swe_daily
-
+def extract_era5land():
+    from data_extraction.ee.ee_era5 import sample_era5_land_variables_daily
     is_authorized()
 
-    fields = 'projects/ee-dgketchum/assets/swim/eu_crop_flux_pt'
-    chk_swe = os.path.join(era5_extracts, 'swe')
-
-    sample_era5_swe_daily(
+    sample_era5_land_variables_daily(
         feature_coll_asset_id=fields,
         bucket=bucket_,
         debug=False,
-        check_dir=chk_swe,
+        check_dir=era5_extracts,
         overwrite=False,
         start_yr=2015,
         end_yr=2025,
-        feature_id_col=FEATURE_ID)
+        feature_id_col=FEATURE_ID
+    )
 
 
 def extract_properties():
-    from data_extraction.ee.ee_props import get_landcover
-
     is_authorized()
+    from data_extraction.ee.ee_props import get_landcover, get_hwsd
 
     index_col = 'sid'
+    get_landcover(fields, None, debug=False, selector=index_col, local_file=modis_lulc)
 
-    description = '{}_landcover'.format(project)
-    get_landcover(fields, description, debug=True, selector=index_col, out_fmt='CSV')
+    get_hwsd(fields, None, debug=False, selector=index_col, local_file=soils)
 
 
 def extract_remote_sensing():
     is_authorized()
-    from data_extraction.ee.etf_export import sparse_sample_etf
     from data_extraction.ee.ndvi_export import sparse_sample_ndvi
 
-    model = 'ptjpl'
+    src = 'ndvi'
+    mask = 'no_mask'
 
-    for src in ['ndvi', 'etf']:
-        for mask in ['no_mask']:
+    print('landsat', src, mask)
+    dst = os.path.join(landsat_extracts, src, mask)
+    sparse_sample_ndvi(shapefile_path, bucket=bucket_, debug=False, satellite='landsat',
+                       mask_type=mask, check_dir=dst, start_yr=2015, end_yr=2024, feature_id=FEATURE_ID,
+                       select=sites)
 
-            if src == 'ndvi':
-                print(src, mask)
-                dst = os.path.join(landsat, 'extracts', src, mask)
-
-                sparse_sample_ndvi(shapefile_path, bucket=bucket_, debug=False, grid_spec=None,
-                                   mask_type=mask, check_dir=dst, start_yr=2016, end_yr=2024, feature_id=FEATURE_ID,
-                                   state_col=None, select=sites)
-
-            if src == 'etf':
-                dst = os.path.join(landsat, 'extracts', f'{model}_{src}', mask)
-
-                print(src, mask, model)
-
-                sparse_sample_etf(shapefile_path, bucket=bucket_, debug=False, grid_spec=None,
-                                  mask_type=mask, check_dir=dst, start_yr=2016, end_yr=2024, feature_id=FEATURE_ID,
-                                  state_col=None, select=sites, model=model)
-
-
-def extract_era5land_eto():
-    from data_extraction.ee.ee_era5 import sample_era5_eto_daily
-    is_authorized()
-
-    chk_eto = os.path.join(era5_extracts, 'eto')
-    sample_era5_eto_daily(
-        feature_coll_asset_id=fields,
-        bucket=bucket_,
-        debug=True,
-        check_dir=chk_eto,
-        overwrite=False,
-        start_yr=2015,
-        end_yr=2025,
-        feature_id_col=FEATURE_ID)
+    print('sentinel', src, mask)
+    dst = os.path.join(sentinel_extracts, src, mask)
+    sparse_sample_ndvi(shapefile_path, bucket=bucket_, debug=False, satellite='sentinel',
+                       mask_type=mask, check_dir=dst, start_yr=2017, end_yr=2024, feature_id=FEATURE_ID,
+                       select=sites)
 
 
 if __name__ == '__main__':
     extract_properties()
+    extract_era5land()
+    extract_remote_sensing()
 # ========================= EOF ====================================================================
