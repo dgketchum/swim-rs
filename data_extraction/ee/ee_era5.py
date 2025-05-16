@@ -1,7 +1,7 @@
 import os
 import ee
+import time
 
-from ee_utils import is_authorized
 from openet.refetgee import Daily
 
 
@@ -48,6 +48,7 @@ def sample_era5_land_variables_daily(feature_coll_asset_id, bucket=None, debug=F
             current_month_selectors.append(f'tmin_{day_str_yyyymmdd_selector}')
             current_month_selectors.append(f'tmax_{day_str_yyyymmdd_selector}')
             current_month_selectors.append(f'precip_{day_str_yyyymmdd_selector}')
+            current_month_selectors.append(f'srad_{day_str_yyyymmdd_selector}')
 
         for day_date_ee in days_in_month_list:
             day_str_yyyymmdd = day_date_ee.format('YYYYMMdd').getInfo()
@@ -77,10 +78,14 @@ def sample_era5_land_variables_daily(feature_coll_asset_id, bucket=None, debug=F
                 .sum().multiply(1000).rename(f'precip_{day_str_yyyymmdd}')
             daily_total_precip_img = daily_total_precip_img.set('system:time_start', day_start_ee.millis())
 
+            daily_mean_srad_img = era5_coll_for_day_hourly.select('surface_solar_radiation_downwards_hourly') \
+                .mean().rename(f'srad_{day_str_yyyymmdd}')
+            daily_mean_srad_img = daily_mean_srad_img.set('system:time_start', day_start_ee.millis())
+
             all_daily_bands = [
                 daily_mean_swe_img, daily_eto_img,
                 daily_tmean_c_img, daily_tmin_c_img, daily_tmax_c_img,
-                daily_total_precip_img
+                daily_total_precip_img, daily_mean_srad_img
             ]
 
             if first_band_in_month:
@@ -115,30 +120,15 @@ def sample_era5_land_variables_daily(feature_coll_asset_id, bucket=None, debug=F
             selectors=current_month_selectors
         )
 
-        task.start()
+        try:
+            task.start()
+        except ee.ee_exception.EEException as e:
+            print('{}, waiting on '.format(e), desc, '......')
+            time.sleep(600)
+            task.start()
         exported_months += 1
 
 
 if __name__ == '__main__':
-    is_authorized()
-
-    d = '/media/research/IrrigationGIS/swim'
-    if not os.path.exists(d):
-        d = '/home/dgketchum/data/IrrigationGIS/swim'
-
-    bucket_ = 'wudr'
-    fields = 'projects/ee-dgketchum/assets/swim/eu_crop_flux_pt'
-    FEATURE_ID = 'sid'
-
-    chk_eto = os.path.join(d, 'examples/tutorial/era5land/extracts/eto')
-    sample_era5_land_variables_daily(
-        feature_coll_asset_id=fields,
-        bucket=bucket_,
-        debug=True,
-        check_dir=chk_eto,
-        overwrite=False,
-        start_yr=2015,
-        end_yr=2025,
-        feature_id_col=FEATURE_ID
-    )
+    pass
 # ========================= EOF ====================================================================
