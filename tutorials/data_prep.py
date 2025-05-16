@@ -110,17 +110,10 @@ def prep_timeseries():
     # process irr/inv_irr of all rs parameters, incl. NDVI
     remote_sensing_parameters = get_ensemble_parameters()
 
-    join_daily_timeseries(fields=fields_gridmet,
-                          gridmet_dir=met,
-                          landsat_table=remote_sensing_file,
-                          snow=snow_out,
-                          dst_dir=joined_timeseries,
-                          overwrite=True,
-                          start_date='1987-01-01',
-                          end_date='2024-12-31',
-                          feature_id=FEATURE_ID,
-                          **{'params': remote_sensing_parameters,
-                             'target_fields': sites})
+    join_daily_timeseries(fields=fields_gridmet, gridmet_dir=met, landsat_table=remote_sensing_file,
+                          dst_dir=joined_timeseries, snow=snow_out, overwrite=True, start_date='1987-01-01',
+                          end_date='2024-12-31', feature_id=FEATURE_ID, **{'params': remote_sensing_parameters,
+                                                                           'target_fields': sites})
 
 
 def prep_dynamics():

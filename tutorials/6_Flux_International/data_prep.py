@@ -1,9 +1,13 @@
 import json
 import os
+from tqdm import tqdm
+
+import numpy as np
 import pandas as pd
 from datetime import datetime
+from collections import defaultdict
 
-from prep import get_flux_sites, get_ensemble_parameters
+from prep import get_flux_sites, get_ensemble_parameters, COLUMN_MULTIINDEX
 
 project = '6_Flux_International'
 
@@ -17,12 +21,11 @@ if not os.path.isdir(root):
     project_ws = os.path.join(root, 'tutorials', project)
 
 landsat = os.path.join(data, 'landsat')
+sentinel = os.path.join(data, 'sentinel')
 met_timeseries = os.path.join(data, 'met_timeseries')
 
-extracts = os.path.join(landsat, 'extracts')
-tables = os.path.join(landsat, 'tables')
 ecostress = os.path.join(data, 'ecostress')
-era5 = os.path.join(data, 'era5land')
+era5 = os.path.join(data, 'met_timeseries')
 
 # GCS - Earth Engine
 fields = 'projects/ee-dgketchum/assets/swim/eu_crop_flux_pt'
@@ -32,153 +35,269 @@ bucket_ = 'wudr'
 FEATURE_ID = 'sid'
 
 # preparation-specific paths
-remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
+remote_sensing_file = os.path.join(data, 'rs_tables')
+
 joined_timeseries = os.path.join(data, 'plot_timeseries')
 station_file = os.path.join(data, 'station_metadata.csv')
 irr = os.path.join(data, 'properties', 'calibration_irr.csv')
 properties = os.path.join(data, 'properties', 'calibration_properties.csv')
 dyanmics_data = os.path.join(landsat, 'calibration_dynamics.json')
 
-eto_extract = os.path.join(era5, 'extracts', 'eto')
-snow_extract = os.path.join(era5, 'extracts', 'swe')
-snow_out = os.path.join(era5, 'era5land_swe.json')
+era5_extracts = os.path.join(era5, 'ee_extracts')
+era5_series = os.path.join(era5, 'station_met')
 
 prepped_input = os.path.join(data, 'prepped_input.json')
 
-ecostress_extract = os.path.join(ecostress, 'ecostress_extract.json')
-landsat_extract = os.path.join(landsat, 'landsat_extract.json')
+# Landsat processing - ETf from rasterstats code in openet-ptjpl fork, NDVI from Earth Engine
+landsat_extract = os.path.join(landsat, 'extracts', 'landsat_extract.json')
+landsat_tables = os.path.join(landsat, 'tables')
+landsat_etf_pqt = os.path.join(landsat_tables, '{}_{}.parquet'.format('etf', 'no_mask'))
+
+landsat_ee_data = os.path.join(landsat, 'extracts', 'ndvi', 'no_mask')
+landsat_ndvi = os.path.join(landsat_tables, '{}_{}.parquet'.format('ndvi', 'no_mask'))
+landsat_ndvi_ct = os.path.join(landsat_tables, '{}_{}_ct.parquet'.format('ndvi', 'no_mask'))
+
+# Sentinel processing -- From Earth Engine
+sentinel_ee_data = os.path.join(sentinel, 'extracts', 'ndvi', 'no_mask')
+sentinel_tables = os.path.join(sentinel, 'tables')
+sentinel_ndvi = os.path.join(sentinel_tables, '{}_{}.parquet'.format('ndvi', 'no_mask'))
+sentinel_ndvi_ct = os.path.join(sentinel_tables, '{}_{}_ct.parquet'.format('ndvi', 'no_mask'))
+
+# ECOSTRESS processing - from rasterstats code in openet-ptjpl fork
+ecostress_extracts = os.path.join(ecostress, 'extracts', 'ecostress_extract.json')
+ecostress_tables = os.path.join(ecostress, 'tables')
+ecostress_etf_pqt = os.path.join(ecostress_tables, '{}_{}.parquet'.format('etf', 'no_mask'))
+
+# '_ct', i.e., 'count' files are used to track observations in data that is interpolated
+rs_files = [
+    landsat_etf_pqt,
+    landsat_ndvi,
+    landsat_ndvi_ct,
+    sentinel_ndvi,
+    sentinel_ndvi_ct,
+    ecostress_etf_pqt,
+]
+
+modis_lulc = os.path.join(data, 'properties', f'{project}_landcover.csv')
+soils = os.path.join(data, 'properties', f'{project}_hwsd.csv')
+properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
 
 # European crop sites
-shapefile_path = os.path.join(data, 'gis', '6_Flux_International_landcover.shp')
+shapefile_path = os.path.join(data, 'gis', '6_Flux_International_150mBuf.shp')
 sites = get_flux_sites(shapefile_path, index_col=FEATURE_ID)
 
+ERA5LAND_PARAMS = ['swe', 'eto', 'tmean', 'tmin', 'tmax', 'precip', 'srad']
 
-def load_era5_eto_data(eto_csv_directory, swe_csv_directory, outdir):
-    all_dfs = []
 
-    for filename in os.listdir(eto_csv_directory):
+
+def prep_era5land():
+    all_sites_records = defaultdict(list)
+
+    filelist = sorted(os.listdir(era5_extracts))
+    for i, filename in enumerate(tqdm(filelist, desc="Reading monthly CSVs")):
         if filename.lower().endswith(".csv"):
-            filepath = os.path.join(eto_csv_directory, filename)
-            df = pd.read_csv(filepath, index_col=0).drop_duplicates().T
-            df.index = pd.DatetimeIndex([datetime.strptime(dt, '%Y%m%d') for dt in df.index])
-            all_dfs.append(df)
+            filepath = os.path.join(era5_extracts, filename)
+            df_month = pd.read_csv(filepath, index_col=0)
 
-    if not all_dfs:
-        return pd.DataFrame()
+            for sid, row_data in df_month.iterrows():
+                for col_name, value in row_data.items():
+                    parts = col_name.rsplit('_', 1)
+                    if len(parts) != 2:
+                        continue
+                    param_name, date_str = parts
 
-    combined_eto_df = pd.concat(all_dfs)
-    combined_eto_df.sort_index(inplace=True)
+                    if not date_str.isdigit() or len(date_str) != 8:
+                        continue
+                    date_obj = datetime.strptime(date_str, '%Y%m%d')
+                    all_sites_records[sid].append({
+                        'date': date_obj,
+                        'parameter': param_name,
+                        'value': value
+                    })
 
-    for col in combined_eto_df.columns:
-        s = combined_eto_df[col]
-        s.to_csv()
+    for i, (sid, records) in enumerate(tqdm(all_sites_records.items(), desc="Writing sites")):
+        if not records:
+            continue
 
-    return combined_eto_df
+        df = pd.DataFrame(records)
+
+        if df.empty:
+            continue
+
+        df = df.pivot_table(
+            index='date',
+            columns='parameter',
+            values='value'
+        )
+
+        if isinstance(df, pd.Series):
+            df = pd.DataFrame(df)
+
+        if 'srad' in df.columns:
+            df.loc[df['srad'] == 0.0, 'srad'] = np.nan
+
+        df = df.dropna(axis=1, how='all')
+
+        if 'ERA5LAND_PARAMS' in globals() and ERA5LAND_PARAMS:
+            missing_cols = [c for c in ERA5LAND_PARAMS if c not in df.columns]
+            if any(missing_cols):
+                continue
+
+        df.sort_index(inplace=True)
+
+        outfile = os.path.join(era5_series, f'{sid}.csv')
+        df.to_csv(outfile)
 
 
-def prep_remote_sensing_input():
-    """This depends on the fork of OpenET-PTJPL at https://github.com/dgketchum/openet-ptjpl
-    which is modified to use ERA5-LAND data to get daily EToF for Landsat, and has scripts
-    I added to use NASA AppEEARS to get ECOSTRESS ET daily data in W/m^2
+"""The following depends on the fork of OpenET-PTJPL at https://github.com/dgketchum/openet-ptjpl
+which is modified to use ERA5-LAND data to get daily EToF for Landsat, and has scripts
+I added to use NASA AppEEARS to get ECOSTRESS ET daily data in W/m^2
 
-    ECOSTRESS
-    1. Use ecostress_appeears_download.py to extract ECOSTRESS data from NASA AppEEARS.
-    2. Use ecostress_extract.py to get spatial stats for the ECOSTRESS data, in W/m^2.
+ECOSTRESS
+1. Use ecostress_appeears_download.py to extract ECOSTRESS data from NASA AppEEARS.
+2. Use ecostress_extract.py to get spatial stats for the ECOSTRESS data, in W/m^2.
 
-    Landsat
-    1. Use openet/ptjpl/image_export.py to export Landsat OpenET PTJPL data in chips to a bucket.
-    2. Use landsat_extract.py to get spatial stats for the Landsat EToF/et_fraction data.
+Landsat
+1. Use openet/ptjpl/image_export.py to export Landsat OpenET PTJPL data in chips to a bucket.
+2. Use landsat_extract.py to get spatial stats for the Landsat EToF/et_fraction data.
 
-    The following function takes the results of the extract scripts and puts them in a format
-    like the Earth Engine-based data, so they can be combined.
+The following functions take the results of the extract scripts and puts them in a format
+like the Earth Engine-based data, so they can be combined.
 
-    """
+"""
 
 
-    with open(ecostress_extract, 'r') as f:
-        ecostress_data = json.load(f)
-
+def prep_landsat_raster_extracts():
     with open(landsat_extract, 'r') as f:
-        landsat_data = json.load(f)
+        all_landsat_data = json.load(f)
 
-    interpolated_series_all_sites = {}
+    first_pass, adf, ctdf = True, None, None
+    common_dt_index = pd.date_range('2015-01-01', '2024-12-31', freq='D')
 
-    valid_sites = set(landsat_data.keys()) | set(ecostress_data.keys())
+    for site_id in sites:
+        site_df = pd.DataFrame(index=common_dt_index)
+        processed_data_for_site = False
 
-    era5_eto_df = load_era5_eto_data(eto_extract)
+        if site_id in all_landsat_data and all_landsat_data[site_id]:
+            etf_data_for_site = {}
+            for date_key, etf_value in all_landsat_data[site_id].items():
+                parsed_date = datetime.strptime(date_key, "%Y-%m-%d")
+                etf_data_for_site[parsed_date] = etf_value
 
-    for sid in sites:
+            if etf_data_for_site:
+                etf_series = pd.Series(etf_data_for_site)
+                site_df[(site_id, 'landsat', 'etf', 'ptjpl', 'value', 'mask')] = etf_series
+                processed_data_for_site = True
+            else:
+                print(f"No Landsat data values for site {site_id} after parsing.")
+        else:
+            print(f"Landsat source data not found or empty for site {site_id}.")
 
-        if sid not in valid_sites:
+        if not processed_data_for_site:
             continue
 
-        site_et_fractions = {}
+        if first_pass:
+            adf = site_df.copy()
+            first_pass = False
+        else:
+            adf = pd.concat([adf, site_df], axis=1, sort=False)
 
-        if sid in landsat_data:
-            for date_str, value in landsat_data[sid].items():
-                dt = datetime.strptime(date_str, "%Y-%m-%d")
-                site_et_fractions[dt] = value
+    if adf is not None and not adf.empty:
+        adf.columns = pd.MultiIndex.from_tuples(adf.columns, names=COLUMN_MULTIINDEX)
+        adf = adf.sort_index(axis=1)
+        adf.to_parquet(landsat_etf_pqt, engine='pyarrow')
+        print(f'wrote {landsat_etf_pqt}')
+    else:
+        print("No Landsat ADF data to write.")
 
-        if sid in ecostress_data and sid in era5_eto_df.columns:
-            site_ecostress_data = ecostress_data[sid]
-            site_eto_series = era5_eto_df[sid]
 
-            for date_str, w_m2_value in site_ecostress_data.items():
-                dt = datetime.strptime(date_str, "%Y-%m-%d")
-                if dt in site_eto_series.index:
-                    eto_value = site_eto_series[dt]
-                    if pd.notna(eto_value) and eto_value > 0:
-                        et_fraction = (w_m2_value * 0.03527) / eto_value
-                        site_et_fractions[dt] = et_fraction
+def prep_ecostress_raster_extracts():
+    with open(ecostress_extracts, 'r') as f:
+        all_ecostress_data = json.load(f)
 
-        if not site_et_fractions:
-            interpolated_series_all_sites[sid] = pd.Series(dtype='float64')
+    first_pass, adf, ctdf = True, None, None
+    common_dt_index = pd.date_range('2015-01-01', '2024-12-31', freq='D')
+
+    for site_id in sites:
+        site_df = pd.DataFrame(index=common_dt_index)
+        processed_data_for_site = False
+
+        if site_id in all_ecostress_data and all_ecostress_data[site_id]:
+            era5_file_path = os.path.join(era5_series, f'{site_id}.csv')
+            try:
+                site_era5_df = pd.read_csv(era5_file_path, index_col='date', parse_dates=True)
+            except FileNotFoundError:
+                print(f'ERA5-LAND data not found for site {site_id}. Skipping Ecostress for this site.')
+                continue
+
+            raw_le_data = {}
+            for date_key, stats_value in all_ecostress_data[site_id].items():
+                parsed_date = datetime.strptime(date_key, "%Y-%m-%d")
+                raw_le_data[parsed_date] = stats_value
+
+            etf_data_for_site = {}
+            for date_obj, le_stats in raw_le_data.items():
+                if le_stats['count'] < 10:
+                    continue
+                try:
+                    eto_value = site_era5_df.loc[date_obj, 'eto']
+                except KeyError:
+                    print(
+                        f"Warning: ETo for {date_obj.strftime('%Y-%m-%d')} not in ERA5 for site {site_id}. "
+                        f"Skipping Ecostress point.")
+                    continue
+
+                if pd.notna(eto_value) and eto_value > 0:
+                    eta_value = (le_stats['mean'] * 0.03527)
+                    etf_value = eta_value / eto_value
+                    if etf_value > 1.3:
+                        continue
+                    etf_data_for_site[date_obj] = etf_value
+
+            if etf_data_for_site:
+                etf_series = pd.Series(etf_data_for_site)
+                site_df[(site_id, 'ecostress', 'etf', 'ptjpl', 'value', 'mask')] = etf_series
+                processed_data_for_site = True
+            else:
+                print(f"No Ecostress ETf values derived for site {site_id} after filtering.")
+        else:
+            print(f"Ecostress source data not found or empty for site {site_id}.")
+
+        if not processed_data_for_site:
             continue
 
-        et_fraction_series = pd.Series(site_et_fractions).sort_index()
-
-        if not et_fraction_series.empty:
-            start_date = et_fraction_series.index.min()
-            end_date = et_fraction_series.index.max()
-            daily_index = pd.date_range(start=start_date, end=end_date, freq='D')
-            et_fraction_series = et_fraction_series.reindex(daily_index)
-
-            interpolated_series = et_fraction_series.interpolate(method='time')
-            interpolated_series_all_sites[sid] = interpolated_series
+        if first_pass:
+            adf = site_df.copy()
+            first_pass = False
         else:
-            interpolated_series_all_sites[sid] = pd.Series(dtype='float64')
+            adf = pd.concat([adf, site_df], axis=1, sort=False)
 
-    return interpolated_series_all_sites
+    if adf is not None and not adf.empty:
+        adf.columns = pd.MultiIndex.from_tuples(adf.columns, names=COLUMN_MULTIINDEX)
+        adf = adf.sort_index(axis=1)
+        adf.to_parquet(ecostress_etf_pqt,
+                       engine='pyarrow')
+        print(f'wrote {ecostress_etf_pqt}')
+    else:
+        print("No Ecostress ADF data to write.")
 
 
-def prep_remote_sensing_output():
-    from prep.remote_sensing import sparse_time_series, join_remote_sensing
+def prep_earthengine_extracts():
+    from prep.remote_sensing import sparse_time_series
 
-    sensing_params = ['etf', 'ndvi']
+    yrs = [x for x in range(2015, 2025)]
 
-    model = 'ptjpl'
-    rs_files = []
+    sparse_time_series(shapefile_path, landsat_ee_data, yrs, landsat_ndvi, landsat_ndvi_ct,
+                       instrument='landsat', algorithm='None', parameter='ndvi', mask='no_mask',
+                       feature_id=FEATURE_ID, select=sites, interoplate=True)
 
-    ee_data, src, src_ct, mask = None, None, None, 'no_mask'
+    sparse_time_series(shapefile_path, sentinel_ee_data, yrs, sentinel_ndvi, sentinel_ndvi_ct,
+                       instrument='sentinel', algorithm='None', parameter='ndvi', mask='no_mask',
+                       feature_id=FEATURE_ID, select=sites, interoplate=True)
 
-    for sensing_param in sensing_params:
 
-        yrs = [x for x in range(1987, 2025)]
-
-        if sensing_param == 'etf':
-
-            ee_data = os.path.join(landsat, 'extracts', f'{model}_{sensing_param}', mask)
-            src = os.path.join(tables, '{}_{}_{}.csv'.format(model, sensing_param, mask))
-            src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(model, sensing_param, mask))
-
-        else:
-            ee_data = os.path.join(landsat, 'extracts', sensing_param, mask)
-            src = os.path.join(tables, '{}_{}.csv'.format(sensing_param, mask))
-            src_ct = os.path.join(tables, '{}_{}_ct.csv'.format(sensing_param, mask))
-
-        rs_files.extend([src, src_ct])
-        sparse_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                           feature_id=FEATURE_ID, select=sites)
+def join_remote_sensing_data():
+    from prep.remote_sensing import join_remote_sensing
 
     join_remote_sensing(rs_files, remote_sensing_file)
 
@@ -186,19 +305,8 @@ def prep_remote_sensing_output():
 def prep_field_properties():
     from prep.field_properties import write_field_properties
 
-    modis_lulc = os.path.join(data, 'properties', 'calibration_lulc.csv')
-    properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
-
-    flux_metadata = os.path.join(data, 'station_metadata.csv')
-
-    write_field_properties(shapefile_path, js=properties_json, lulc=modis_lulc, index_col=FEATURE_ID,
-                           flux_meta=flux_metadata)
-
-
-def prep_snow():
-    from data_extraction.snodas.snodas import create_timeseries_json
-
-    create_timeseries_json(snow_extract, snow_out, feature_id=FEATURE_ID)
+    write_field_properties(shapefile_path, js=properties_json, soils=soils, lulc=modis_lulc, index_col=FEATURE_ID,
+                           flux_meta=None, lulc_key='modis_lc')
 
 
 def prep_timeseries():
@@ -208,19 +316,12 @@ def prep_timeseries():
     met = os.path.join(data, 'met_timeseries')
 
     # process irr/inv_irr of all rs parameters, incl. NDVI
-    remote_sensing_parameters = get_ensemble_parameters()
+    remote_sensing_parameters = ['ptjpl_etf', '']
 
-    join_daily_timeseries(fields=fields_gridmet,
-                          gridmet_dir=met,
-                          landsat_table=remote_sensing_file,
-                          snow=snow_out,
-                          dst_dir=joined_timeseries,
-                          overwrite=True,
-                          start_date='1987-01-01',
-                          end_date='2024-12-31',
-                          feature_id=FEATURE_ID,
-                          **{'params': remote_sensing_parameters,
-                             'target_fields': sites})
+    join_daily_timeseries(fields=fields_gridmet, gridmet_dir=met, landsat_table=remote_sensing_file,
+                          dst_dir=joined_timeseries, overwrite=True, start_date='2015-01-01', end_date='2024-12-31',
+                          feature_id=FEATURE_ID, **{'params': remote_sensing_parameters,
+                                                    'target_fields': sites})
 
 
 def prep_dynamics():
@@ -243,10 +344,12 @@ def prep_input_json():
 
 
 if __name__ == '__main__':
-    prep_remote_sensing_input()
-    # prep_remote_sensing_output()
+    # prep_era5land()
+    # prep_landsat_raster_extracts()
+    # prep_ecostress_raster_extracts()
+    # prep_earthengine_extracts()
+    join_remote_sensing_data()
     # prep_field_properties()
-    # prep_snow()
     # prep_timeseries()
     # prep_dynamics()
     # prep_input_json()

@@ -1,6 +1,8 @@
 import pandas as pd
 import geopandas as gpd
 
+COLUMN_MULTIINDEX = ['site', 'instrument', 'parameter', 'algorithm', 'flag', 'mask']
+
 # Global estimation of effective plant rooting depth: Implications for hydrological modeling
 # https://doi.org/10.1002/2016WR019392
 # mapped to Land Cover Type 1: Annual International Geosphere-Biosphere Programme (IGBP) classification
