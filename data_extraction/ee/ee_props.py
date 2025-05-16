@@ -1,17 +1,15 @@
+import pandas as pd
+
 import ee
 from data_extraction.ee.ee_utils import get_lanid
+
 
 IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 
 # See https://websoilsurvey.nrcs.usda.gov/app/WebSoilSurvey.aspx
 # to check soil parameters
 
-# OpenET AWC is in cm/cm
-AWC = 'projects/openet/soil/ssurgo_AWC_WTA_0to152cm_composite'
-# OpenET KSAT is in micrometers/sec
-KSAT = 'projects/openet/soil/ssurgo_Ksat_WTA_0to152cm_composite'
-CLAY = 'projects/openet/soil/ssurgo_Clay_WTA_0to152cm_composite'
-SAND = 'projects/openet/soil/ssurgo_Sand_WTA_0to152cm_composite'
+
 
 STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
 
@@ -109,16 +107,23 @@ def get_irrigation(fields, desc, debug=False, selector='FID', lanid=False):
 
 
 def get_ssurgo(fields, desc, debug=False, selector='FID'):
+    # OpenET AWC is in cm/cm
+    awc_asset = 'projects/openet/soil/ssurgo_AWC_WTA_0to152cm_composite'
+    # OpenET KSAT is in micrometers/sec
+    ksat_asset = 'projects/openet/soil/ssurgo_Ksat_WTA_0to152cm_composite'
+    clay_asset = 'projects/openet/soil/ssurgo_Clay_WTA_0to152cm_composite'
+    sand_asset = 'projects/openet/soil/ssurgo_Sand_WTA_0to152cm_composite'
+
     plots = ee.FeatureCollection(fields)
 
-    ksat = ee.Image(KSAT).select('b1').rename('ksat')
-    awc = ee.Image(AWC).select('b1').rename('awc')
-    clay = ee.Image(CLAY).select('b1').rename('clay')
-    sand = ee.Image(SAND).select('b1').rename('sand')
+    ksat_ = ee.Image(ksat_asset).select('b1').rename('ksat')
+    awc_ = ee.Image(awc_asset).select('b1').rename('awc')
+    clay_ = ee.Image(clay_asset).select('b1').rename('clay')
+    sand_ = ee.Image(sand_asset).select('b1').rename('sand')
 
-    img = ksat.addBands([awc, clay, sand])
+    img = ksat_.addBands([awc_, clay_, sand_])
 
-    _selectors = [selector, 'LAT', 'LON'] + ['awc', 'ksat', 'clay', 'sand']
+    _selectors = [selector] + ['awc', 'ksat', 'clay', 'sand']
 
     means = img.reduceRegions(collection=plots,
                               reducer=ee.Reducer.mean(),
@@ -139,53 +144,79 @@ def get_ssurgo(fields, desc, debug=False, selector='FID'):
     print(desc)
 
 
-def get_landcover(fields, desc, debug=False, selector='FID', out_fmt='CSV'):
+def get_hwsd(fields, desc, debug=False, selector='FID', out_fmt='CSV', local_file=None):
+    plots = ee.FeatureCollection(fields)
+
+    stype = ee.Image('projects/sat-io/open-datasets/FAO/HWSD_V2_SMU').select('AWC').rename('awc')
+
+    modes = stype.reduceRegions(collection=plots,
+                                reducer=ee.Reducer.mode(),
+                                scale=30)
+
+    # single value reduction results in stat name: 'mode' instead of image name
+    _selectors = [selector, 'mode']
+
+    if debug:
+        debug = modes.filterMetadata('FID', 'equals', 'US-CRT').getInfo()
+
+    if local_file:
+        modes = modes.getInfo()
+        df = pd.DataFrame([v['properties'] for v in modes['features']]).rename(columns={'mode': 'awc'})
+        df.to_csv(local_file)
+
+    else:
+
+        export_kwargs = dict(description=desc,
+                             bucket='wudr',
+                             fileNamePrefix=desc,
+                             fileFormat=out_fmt)
+
+        if out_fmt == 'CSV':
+
+            export_kwargs.update({'selectors': _selectors})
+
+        task = ee.batch.Export.table.toCloudStorage(
+            modes, **export_kwargs)
+        task.start()
+        print(desc)
+
+def get_landcover(fields, desc, debug=False, selector='FID', out_fmt='CSV', local_file=None):
     plots = ee.FeatureCollection(fields)
 
     vtype = ee.ImageCollection('MODIS/061/MCD12Q1').select('LC_Type1').first().rename('modis_lc')
     vtype = vtype.addBands([ee.ImageCollection('projects/sat-io/open-datasets/FROM-GLC10')
                            .mosaic().rename('glc10_lc')])
 
-    export_kwargs = dict(description=desc,
-                         bucket='wudr',
-                         fileNamePrefix=desc,
-                         fileFormat=out_fmt)
-
-    if out_fmt == 'CSV':
-        _selectors = [selector, 'LAT', 'LON'] + ['veg_type', 'glc10_lc']
-        export_kwargs.update({'selectors': _selectors})
-
-    means = vtype.reduceRegions(collection=plots,
+    modes = vtype.reduceRegions(collection=plots,
                                 reducer=ee.Reducer.mode(),
                                 scale=30)
+    _selectors = [selector, 'modis_lc', 'glc10_lc']
 
     if debug:
-        debug = means.filterMetadata('FID', 'equals', 'US-CRT').getInfo()
+        debug = modes.filterMetadata('FID', 'equals', 'US-CRT').getInfo()
 
-    task = ee.batch.Export.table.toCloudStorage(
-        means, **export_kwargs)
+    if local_file:
+        modes = modes.getInfo()
+        df = pd.DataFrame([v['properties'] for v in modes['features']])[_selectors]
+        df.to_csv(local_file)
 
-    task.start()
-    print(desc)
+    else:
+
+        export_kwargs = dict(description=desc,
+                             bucket='wudr',
+                             fileNamePrefix=desc,
+                             fileFormat=out_fmt)
+
+        if out_fmt == 'CSV':
+
+            export_kwargs.update({'selectors': _selectors})
+
+        task = ee.batch.Export.table.toCloudStorage(
+            modes, **export_kwargs)
+        task.start()
+        print(desc)
 
 
 if __name__ == '__main__':
-    ee.Initialize(project='ee-dgketchum')
-
-    project = 'tutorial'
-    index_col = 'field_1'
-    fields_ = 'users/dgketchum/fields/flux'
-
-    description = '{}_cdl'.format(project)
-    get_cdl(fields_, description, selector=index_col)
-
-    description = '{}_irr'.format(project)
-    get_irrigation(fields_, description, debug=True, selector=index_col, lanid=True)
-
-    description = '{}_ssurgo'.format(project)
-    get_ssurgo(fields_, description, debug=False, selector=index_col)
-
-    description = '{}_landcover'.format(project)
-    get_landcover(fields_, description, debug=True, selector=index_col, out_fmt='SHP')
-
+    pass
 # ========================= EOF ====================================================================
