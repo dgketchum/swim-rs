@@ -84,12 +84,8 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
     df = gpd.read_file(shapefile)
     df.index = df[feature_id]
 
-    try:
-        assert df.crs.srs == 'EPSG:5071'
-    except AssertionError:
-        assert df.crs.name == 'Europe_Albers_Equal_Area_Conic'
-
-    df = df.to_crs(epsg=4326)
+    if not df.crs.srs == 'EPSG:4326':
+        df = df.to_crs(epsg=4326)
 
     s, e = '1987-01-01', '2024-12-31'
     irr_coll = ee.ImageCollection(IRR)
@@ -113,12 +109,12 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
             if grid_spec is not None:
                 grid_sz = row['grid_size']
-                desc = 'ndvi_{}_p{}_{}_{}'.format(site, grid_sz, mask_type, year)
+                desc = 'ndvi_{}_p{}_{}_{}_{}'.format(site, grid_sz, satellite, mask_type, year)
                 if grid_sz != grid_spec:
                     continue
 
             else:
-                desc = 'ndvi_{}_{}_{}'.format(site, mask_type, year)
+                desc = 'ndvi_{}_{}_{}_{}'.format(site, satellite, mask_type, year)
 
             if check_dir:
                 f = os.path.join(check_dir, '{}.csv'.format(desc))
@@ -172,15 +168,23 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
                     bands = nd_img
                     first = False
                 else:
-                    bands = bands.addBands([nd_img])
+                    if nd_img is not None:
+                        bands = bands.addBands([nd_img])
+                    else:
+                        print(f'{fid} image data for {_name} is None, skipping')
+                        continue
 
                 if debug:
                     data = nd_img.sample(fc, 30).getInfo()
                     print(data['features'])
 
-            data = bands.reduceRegions(collection=fc,
+            try:
+                data = bands.reduceRegions(collection=fc,
                                        reducer=ee.Reducer.mean(),
                                        scale=30)
+            except AttributeError:
+                print(f'{fid} image data for {year} is None, skipping')
+                continue
 
             task = ee.batch.Export.table.toCloudStorage(
                 data,
