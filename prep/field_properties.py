@@ -7,20 +7,21 @@ import pandas as pd
 from prep import MAX_EFFECTIVE_ROOTING_DEPTH as RZ
 
 
-def write_field_properties(shp, js, lulc, irr=None, ssurgo=None, cdl=None, flux_meta=None, index_col='FID'):
+def write_field_properties(shp, js, lulc, irr=None, soils=None, cdl=None, flux_meta=None, index_col='FID',
+                           lulc_key='mode'):
     """"""
     if lulc is None:
         raise ValueError("The 'lulc' CSV file path must be provided.")
 
     lulc_df = pd.read_csv(lulc, index_col=index_col)
-    rz = lulc_df[['mode']].copy()
+    rz = lulc_df[[lulc_key]].copy().replace(np.nan, '0').astype(int)
     rz = rz.T.to_dict()
     dct = {}
     for k, v in rz.items():
         dct[k] = {
-            'root_depth': RZ.get(str(v['mode']), {}).get('rooting_depth', np.nan),
-            'zr_mult': RZ.get(str(v['mode']), {}).get('zr_multiplier', np.nan),
-            'lulc_code': v['mode']
+            'root_depth': RZ.get(str(v[lulc_key]), {}).get('rooting_depth', np.nan),
+            'zr_mult': RZ.get(str(v[lulc_key]), {}).get('zr_multiplier', np.nan),
+            'lulc_code': v[lulc_key]
         }
 
     if irr is not None:
@@ -32,25 +33,27 @@ def write_field_properties(shp, js, lulc, irr=None, ssurgo=None, cdl=None, flux_
             if k in dct:
                 dct[k]['irr'] = {int(kk.split('_')[1]): vv for kk, vv in v.items()}
 
-    if ssurgo is not None:
-        soils = pd.read_csv(ssurgo, index_col=index_col)
-        awc = soils[['awc']].copy().T.to_dict()
-        ksat = soils[['ksat']].copy().T.to_dict()
-        clay = soils[['clay']].copy().T.to_dict()
-        sand = soils[['sand']].copy().T.to_dict()
-        for k in dct:
-            if k in awc:
-                dct[k]['awc'] = awc[k]['awc']
-            if k in ksat:
-                dct[k]['ksat'] = ksat[k]['ksat']
-            if k in clay:
-                dct[k]['clay'] = clay[k]['clay']
-            if k in sand:
-                dct[k]['sand'] = sand[k]['sand']
+    if soils is not None:
+        soils = pd.read_csv(soils, index_col=index_col)
+        props = ['awc', 'ksat', 'clay', 'sand']
+
+        for prop in props:
+            if prop not in soils.columns:
+                continue
+            d = soils[[prop]].copy().T.to_dict()
+            for k in dct:
+                if k in d:
+                    dct[k]['awc'] = d[k]['awc']
 
     fields = gpd.read_file(shp)
     fields.index = fields[index_col]
-    fields['area_sq_m'] = [g.area for g in fields['geometry']]
+
+    if fields.crs and fields.crs.is_geographic:
+        dummy = fields.copy().to_crs(epsg=6933)
+        fields['area_sq_m'] = dummy['geometry'].area
+    else:
+        fields['area_sq_m'] = fields.geometry.area
+
     area_sq_m = fields[['area_sq_m']].copy().T.to_dict()
     for k in dct:
         if k in area_sq_m:
