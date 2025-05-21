@@ -35,16 +35,16 @@ bucket_ = 'wudr'
 FEATURE_ID = 'sid'
 
 # preparation-specific paths
-remote_sensing_file = os.path.join(data, 'rs_tables')
+remote_sensing_tables = os.path.join(data, 'rs_tables')
 
 joined_timeseries = os.path.join(data, 'plot_timeseries')
 station_file = os.path.join(data, 'station_metadata.csv')
-irr = os.path.join(data, 'properties', 'calibration_irr.csv')
+static_properties = os.path.join(data, 'properties', 'calibration_properties.json')
 properties = os.path.join(data, 'properties', 'calibration_properties.csv')
 dyanmics_data = os.path.join(landsat, 'calibration_dynamics.json')
 
 era5_extracts = os.path.join(era5, 'ee_extracts')
-era5_series = os.path.join(era5, 'station_met')
+era5_series = os.path.join(era5, 'era5_land')
 
 prepped_input = os.path.join(data, 'prepped_input.json')
 
@@ -82,7 +82,7 @@ modis_lulc = os.path.join(data, 'properties', f'{project}_landcover.csv')
 soils = os.path.join(data, 'properties', f'{project}_hwsd.csv')
 properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
 
-# European crop sites
+# flux sites
 shapefile_path = os.path.join(data, 'gis', '6_Flux_International_150mBuf.shp')
 sites = get_flux_sites(shapefile_path, index_col=FEATURE_ID)
 
@@ -287,19 +287,19 @@ def prep_earthengine_extracts():
 
     yrs = [x for x in range(2015, 2025)]
 
-    sparse_time_series(shapefile_path, landsat_ee_data, yrs, landsat_ndvi, landsat_ndvi_ct,
-                       instrument='landsat', algorithm='None', parameter='ndvi', mask='no_mask',
+    sparse_time_series(shapefile_path, landsat_ee_data, yrs, landsat_ndvi, out_pqt_ct=landsat_ndvi_ct,
+                       instrument='landsat', algorithm='none', parameter='ndvi', mask='no_mask',
                        feature_id=FEATURE_ID, select=sites, interoplate=True)
 
-    sparse_time_series(shapefile_path, sentinel_ee_data, yrs, sentinel_ndvi, sentinel_ndvi_ct,
-                       instrument='sentinel', algorithm='None', parameter='ndvi', mask='no_mask',
+    sparse_time_series(shapefile_path, sentinel_ee_data, yrs, sentinel_ndvi, out_pqt_ct=sentinel_ndvi_ct,
+                       instrument='sentinel', algorithm='none', parameter='ndvi', mask='no_mask',
                        feature_id=FEATURE_ID, select=sites, interoplate=True)
 
 
 def join_remote_sensing_data():
     from prep.remote_sensing import join_remote_sensing
 
-    join_remote_sensing(rs_files, remote_sensing_file)
+    join_remote_sensing(rs_files, remote_sensing_tables, station_selection='exclusive')
 
 
 def prep_field_properties():
@@ -312,22 +312,15 @@ def prep_field_properties():
 def prep_timeseries():
     from prep.field_timeseries import join_daily_timeseries
 
-    fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
-    met = os.path.join(data, 'met_timeseries')
-
-    # process irr/inv_irr of all rs parameters, incl. NDVI
-    remote_sensing_parameters = ['ptjpl_etf', '']
-
-    join_daily_timeseries(fields=fields_gridmet, gridmet_dir=met, landsat_table=remote_sensing_file,
+    join_daily_timeseries(fields=shapefile_path, met_dir=era5_series, rs_dir=remote_sensing_tables,
                           dst_dir=joined_timeseries, overwrite=True, start_date='2015-01-01', end_date='2024-12-31',
-                          feature_id=FEATURE_ID, **{'params': remote_sensing_parameters,
-                                                    'target_fields': sites})
+                          feature_id=FEATURE_ID, **{'target_fields': sites})
 
 
 def prep_dynamics():
     from prep.dynamics import SamplePlotDynamics
 
-    dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3, etf_target='ssebop',
+    dynamics = SamplePlotDynamics(joined_timeseries, static_properties, irr_threshold=0.3, etf_target='ssebop',
                                   out_json_file=dyanmics_data, select=sites)
     dynamics.analyze_groundwater_subsidy()
     dynamics.analyze_irrigation(lookback=5)
@@ -348,9 +341,9 @@ if __name__ == '__main__':
     # prep_landsat_raster_extracts()
     # prep_ecostress_raster_extracts()
     # prep_earthengine_extracts()
-    join_remote_sensing_data()
+    # join_remote_sensing_data()
     # prep_field_properties()
     # prep_timeseries()
-    # prep_dynamics()
+    prep_dynamics()
     # prep_input_json()
 # ========================= EOF ====================================================================

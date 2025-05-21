@@ -2,7 +2,7 @@ import os
 
 from prep import get_flux_sites, get_ensemble_parameters
 
-project = '4_Flux_Network'
+project = '5_Flux_Ensemble'
 
 root = '/data/ssd2/swim'
 data = os.path.join(root, project, 'data')
@@ -14,8 +14,8 @@ if not os.path.isdir(root):
     project_ws = os.path.join(root, 'tutorials', project)
 
 landsat = os.path.join(data, 'landsat')
-extracts = os.path.join(landsat, 'extracts')
-tables = os.path.join(landsat, 'tables')
+landsat_ee_data = os.path.join(landsat, 'extracts')
+landsat_tables = os.path.join(landsat, 'tables')
 
 # GCS - Earth Engine
 fields_ = 'users/dgketchum/fields/flux'
@@ -25,10 +25,12 @@ bucket_ = 'wudr'
 FEATURE_ID = 'site_id'
 state_col = 'state'
 
-shapefile_path = os.path.join(data, 'gis', 'flux_static_footprints.shp')
+gridmet_mapping = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
+footprint_shapefile = os.path.join(data, 'gis', 'flux_static_footprints.shp')
+station_metadata = os.path.join(data, 'station_metadata.csv')
 
 # preparation-specific paths
-remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
+remote_sensing_tables = os.path.join(data, 'rs_tables')
 joined_timeseries = os.path.join(data, 'plot_timeseries')
 station_file = os.path.join(data, 'station_metadata.csv')
 irr = os.path.join(data, 'properties', 'calibration_irr.csv')
@@ -40,21 +42,20 @@ snow_out = os.path.join(data, 'snodas', 'snodas.json')
 
 prepped_input = os.path.join(data, 'prepped_input.json')
 
-
 # Open-ET sites covered by overpass date image collections
-sites = get_flux_sites(shapefile_path, crop_only=False, western_only=True, header=1, index_col=0)
+sites = get_flux_sites(station_metadata, crop_only=False, western_only=True, header=1, index_col=0)
 
 
-def prep_remote_sensing():
+def prep_earthengine_extracts():
     from prep.remote_sensing import sparse_time_series, join_remote_sensing
 
     types_ = ['irr', 'inv_irr']
     sensing_params = ['etf', 'ndvi']
 
-    models = get_ensemble_parameters(skip='ndvi')
+    models = ['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
     rs_files = []
 
-    ee_data, src, src_ct = None, None, None
+    overwrite = False
 
     for mask_type in types_:
 
@@ -66,19 +67,32 @@ def prep_remote_sensing():
 
                 for model in models:
                     ee_data = os.path.join(landsat, 'extracts', f'{model}_{sensing_param}', mask_type)
-                    src = os.path.join(tables, '{}_{}_{}.csv'.format(model, sensing_param, mask_type))
-                    src_ct = os.path.join(tables, '{}_{}_{}_ct.csv'.format(model, sensing_param, mask_type))
+                    src = os.path.join(landsat_tables, '{}_{}_{}.parquet'.format(model, sensing_param, mask_type))
+                    src_ct = None
+                    rs_files.extend([src])
+                    if os.path.exists(src) and not overwrite:
+                        continue
+                    else:
+                        sparse_time_series(footprint_shapefile, ee_data, yrs, src, out_pqt_ct=src_ct,
+                                           instrument='landsat', algorithm=model, parameter=sensing_param,
+                                           mask=mask_type, footprint_spec=3,
+                                           feature_id=FEATURE_ID, select=sites, interoplate=False)
 
             else:
                 ee_data = os.path.join(landsat, 'extracts', sensing_param, mask_type)
-                src = os.path.join(tables, '{}_{}.csv'.format(sensing_param, mask_type))
-                src_ct = os.path.join(tables, '{}_{}_ct.csv'.format(sensing_param, mask_type))
+                src = os.path.join(landsat_tables, '{}_{}.parquet'.format(sensing_param, mask_type))
+                src_ct = os.path.join(landsat_tables, '{}_{}_ct.parquet'.format(sensing_param, mask_type))
+                rs_files.extend([src, src_ct])
+                if os.path.exists(src) and os.path.exists(src_ct) and not overwrite:
+                    continue
+                else:
+                    sparse_time_series(footprint_shapefile, ee_data, yrs, src, out_pqt_ct=src_ct, footprint_spec=3,
+                                       instrument='landsat', algorithm='none', parameter=sensing_param, mask=mask_type,
+                                       feature_id=FEATURE_ID, select=sites, interoplate=True)
 
-            rs_files.extend([src, src_ct])
-            sparse_time_series(shapefile_path, ee_data, yrs, src, src_ct,
-                               feature_id=FEATURE_ID, select=sites_)
 
-    join_remote_sensing(rs_files, remote_sensing_file)
+
+    join_remote_sensing(rs_files, remote_sensing_tables, station_selection='inclusive')
 
 
 def prep_field_properties():
@@ -91,7 +105,7 @@ def prep_field_properties():
 
     flux_metadata = os.path.join(data, 'station_metadata.csv')
 
-    write_field_properties(shapefile_path, irr, ssurgo, properties_json, lulc=modis_lulc, index_col=FEATURE_ID,
+    write_field_properties(footprint_shapefile, irr, ssurgo, properties_json, lulc=modis_lulc, index_col=FEATURE_ID,
                            flux_meta=flux_metadata)
 
 
@@ -104,15 +118,12 @@ def prep_snow():
 def prep_timeseries():
     from prep.field_timeseries import join_daily_timeseries
 
-    fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
     met = os.path.join(data, 'met_timeseries')
 
-    # process irr/inv_irr of all rs parameters, incl. NDVI
-    remote_sensing_parameters = get_ensemble_parameters()
-
-    join_daily_timeseries(fields=fields_gridmet, gridmet_dir=met, landsat_table=remote_sensing_file,
+    join_daily_timeseries(fields=gridmet_mapping, met_dir=met, rs_dir=remote_sensing_tables,
                           dst_dir=joined_timeseries, snow=snow_out, overwrite=True, start_date='1987-01-01',
-                          end_date='2024-12-31', feature_id=FEATURE_ID, **{'params': remote_sensing_parameters,
+                          end_date='2024-12-31', feature_id=FEATURE_ID, **{'met_mapping': 'GFID',
+                                                                           'mapped_dir': met,
                                                                            'target_fields': sites})
 
 
@@ -136,5 +147,9 @@ def prep_input_json():
 
 
 if __name__ == '__main__':
-    pass
+    # prep_earthengine_extracts()
+    prep_field_properties()
+    prep_timeseries()
+    # prep_dynamics()
+    # prep_input_json()
 # ========================= EOF ====================================================================

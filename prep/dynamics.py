@@ -10,13 +10,13 @@ from prep import get_flux_sites
 
 
 class SamplePlotDynamics:
-    def __init__(self, plot_timeseries, irr_csv_file, out_json_file, etf_target='ssebop',
+    def __init__(self, plot_timeseries, properties_json, out_json_file, etf_target='ssebop',
                  irr_threshold=0.1, select=None):
 
         self.time_series = plot_timeseries
 
         self.model = etf_target
-        self.irr_csv_file = irr_csv_file
+        self.properties_json = properties_json
         self.out_json_file = out_json_file
         self.irr_threshold = irr_threshold
         self.select = select
@@ -33,9 +33,9 @@ class SamplePlotDynamics:
             if self.select and fid not in self.select:
                 continue
 
-            _file = os.path.join(self.time_series, f'{fid}_daily.csv')
+            _file = os.path.join(self.time_series, f'{fid}.parquet')
             try:
-                field_time_series = pd.read_csv(_file, index_col=0, parse_dates=True)
+                field_time_series = pd.read_parquet(_file)
             except FileNotFoundError:
                 print(f'{_file} not found, skipping')
                 continue
@@ -51,14 +51,14 @@ class SamplePlotDynamics:
             if self.select and fid not in self.select:
                 continue
 
-            _file = os.path.join(self.time_series, f'{fid}_daily.csv')
+            _file = os.path.join(self.time_series, f'{fid}.parquet')
             try:
-                field_time_series = pd.read_csv(_file, index_col=0, parse_dates=True)
+                field_time_series = pd.read_parquet(_file)
             except FileNotFoundError:
                 print(f'{_file} not found, skipping')
                 continue
 
-            self.years = [int(y) for y in field_time_series['year'].unique()]
+            self.years = [int(y) for y in field_time_series.index.year.unique()]
             field_data = self._analyze_field_groundwater_subsidy(fid, field_time_series)
             if field_data is not None:
                 self.fields['gwsub'][fid] = field_data
@@ -68,9 +68,9 @@ class SamplePlotDynamics:
             if self.select and fid not in self.select:
                 continue
 
-            _file = os.path.join(self.time_series, f'{fid}_daily.csv')
+            _file = os.path.join(self.time_series, f'{fid}.parquet')
             try:
-                field_time_series = pd.read_csv(_file, index_col=0, parse_dates=True)
+                field_time_series = pd.read_parquet(_file)
             except FileNotFoundError:
                 print(f'{_file} not found, skipping')
                 continue
@@ -82,8 +82,13 @@ class SamplePlotDynamics:
             print(f'wrote {self.out_json_file}')
 
     def _load_data(self):
-        self.irr = pd.read_csv(self.irr_csv_file, index_col=0)
-        self.irr.drop(columns=['LAT', 'LON'], inplace=True)
+        with open(self.properties_json, 'r') as fp:
+            js_data = json.load(fp)
+        self.irr = pd.DataFrame.from_dict(js_data).T
+        try:
+            self.irr.drop(columns=['LAT', 'LON'], inplace=True)
+        except KeyError:
+            pass
 
         try:
             _ = float(self.irr.index[0])
@@ -97,7 +102,7 @@ class SamplePlotDynamics:
             return None
 
         if np.all(np.isnan(self.irr.loc[field])):
-            print(f'{field} is all nan in {self.irr_csv_file}')
+            print(f'{field} is all nan in {self.properties_json}')
             return None
 
         field_data = {}
@@ -191,7 +196,7 @@ class SamplePlotDynamics:
             return None
 
         if np.all(np.isnan(self.irr.loc[field])):
-            print(f'{field} is all nan in {self.irr_csv_file}')
+            print(f'{field} is all nan in {self.properties_json}')
             return None
 
         field_data = {}
