@@ -10,14 +10,21 @@ from prep import COLUMN_MULTIINDEX
 
 
 def sparse_time_series(in_shp, csv_dir, years, out_pqt, out_pqt_ct, feature_id='FID',
-                       instrument='landsat', parameter='ndvi', algorithm='None', mask='no_mask',
+                       instrument='landsat', parameter='ndvi', algorithm='none', mask='no_mask',
                        interoplate=False, select=None, footprint_spec=None):
     """"""
     gdf = gpd.read_file(in_shp)
     gdf.index = gdf[feature_id]
 
     if select:
+        dummy  = select.copy()
+        select = [s for s in dummy if s in gdf.index]
+        dropped = [s for s in dummy if s not in select]
+        print(f'dropping {dropped} not found in index')
         gdf = gdf.loc[select]
+
+    if footprint_spec:
+        gdf = gdf[gdf['grid_size'] == footprint_spec]
 
     print(csv_dir)
 
@@ -176,11 +183,16 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, out_pqt_ct, feature_id='
         print(f'wrote {out_pqt_ct}')
 
 
-def join_remote_sensing(files, dst):
+def join_remote_sensing(files, dst, station_selection='exclusive'):
     """"""
     dfs = [pd.read_parquet(f) for f in files]
     sids_list = [{c[0] for c in df.columns} for df in dfs]
-    common_sids = sids_list[0].intersection(*sids_list[1:])
+    if station_selection == 'exclusive':
+        common_sids = sids_list[0].intersection(*sids_list[1:])
+    elif station_selection == 'inclusive':
+        common_sids = sids_list[0].union(*sids_list[1:])
+    else:
+        raise ValueError("Must choose 'inclusive' or 'exclusive'")
 
     valid_indices = [df.index for df in dfs if isinstance(df.index, pd.DatetimeIndex) and not df.index.empty]
 
