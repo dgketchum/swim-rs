@@ -9,15 +9,14 @@ from tqdm import tqdm
 from prep import COLUMN_MULTIINDEX
 
 
-def sparse_time_series(in_shp, csv_dir, years, out_pqt, out_pqt_ct, feature_id='FID',
-                       instrument='landsat', parameter='ndvi', algorithm='none', mask='no_mask',
-                       interoplate=False, select=None, footprint_spec=None):
+def sparse_time_series(in_shp, csv_dir, years, out_pqt, feature_id='FID', instrument='landsat', parameter='ndvi',
+                       algorithm='none', mask='no_mask', select=None, footprint_spec=None):
     """"""
     gdf = gpd.read_file(in_shp)
     gdf.index = gdf[feature_id]
 
     if select:
-        dummy  = select.copy()
+        dummy = select.copy()
         select = [s for s in dummy if s in gdf.index]
         dropped = [s for s in dummy if s not in select]
         print(f'dropping {dropped} not found in index')
@@ -45,20 +44,15 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, out_pqt_ct, feature_id='
 
     empty_yrs = [y for y in years if y not in rs_years]
 
-    target_columns = [(sid, instrument, parameter, algorithm, 'value', mask) for sid in gdf.index]
+    target_columns = [(sid, instrument, parameter, 'unitless', algorithm, mask) for sid in gdf.index]
     target_columns = pd.MultiIndex.from_tuples(target_columns,
                                                names=COLUMN_MULTIINDEX)
-    target_ct_columns = [(sid, instrument, parameter, algorithm, 'obs_flag', mask) for sid in gdf.index]
-    target_ct_columns = pd.MultiIndex.from_tuples(target_ct_columns, names=COLUMN_MULTIINDEX)
 
     if len(empty_yrs) > 0:
         print(f'{len(empty_yrs)} years without remote sensing data, {empty_yrs[0]} to {empty_yrs[-1]}')
         dt_index = pd.date_range('{}-01-01'.format(empty_yrs[0]), '{}-12-31'.format(empty_yrs[-1]), freq='D')
         adf = pd.DataFrame(data=np.zeros((len(dt_index), len(gdf.index))) * np.nan,
                            index=dt_index, columns=target_columns)
-        if interoplate:
-            ctdf = pd.DataFrame(data=np.zeros(adf.shape).astype(int), index=dt_index, columns=target_ct_columns)
-
         first = False
 
     source = os.path.normpath(csv_dir).split(os.sep)
@@ -67,9 +61,7 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, out_pqt_ct, feature_id='
 
         dt_index = pd.date_range('{}-01-01'.format(yr), '{}-12-31'.format(yr), freq='D')
 
-        df = pd.DataFrame(index=dt_index, columns=target_columns)
-        if interoplate:
-            ct = pd.DataFrame(index=dt_index, columns=target_ct_columns)
+        data_series_list_for_year = []
 
         if footprint_spec is None:
             yr_files = [f for f in file_list if f'_{yr}' in f]
@@ -78,8 +70,8 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, out_pqt_ct, feature_id='
 
         if len(yr_files) > 0:
             for f in yr_files:
-                field = pd.read_csv(f)
-                sid = field.columns[0]
+                field_data_csv = pd.read_csv(f)
+                sid = field_data_csv.columns[0]
 
                 if sid not in gdf.index:
                     continue
@@ -87,19 +79,18 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, out_pqt_ct, feature_id='
                 if select and sid not in select:
                     continue
 
-                target_col = (sid, instrument, parameter, algorithm, 'value', mask)
+                target_col = (sid, instrument, parameter, 'unitless', algorithm, mask)
 
-                # dicey
-                cols = [c for c in field.columns if len(c.split('_')) == 3]
+                cols = [c for c in field_data_csv.columns if len(c.split('_')) == 3]
 
                 if instrument == 'landsat':
                     f_idx_dt = [c.split('_')[-1] for c in cols]
                     f_idx_dt = [pd.to_datetime(i) for i in f_idx_dt]
-                    f_idx = [i for i in f_idx_dt if i in df.index]
+                    f_idx = [i for i in f_idx_dt if i in dt_index]
                 elif instrument == 'sentinel':
                     f_idx_dt = [c[:8] for c in cols]
                     f_idx_dt = [pd.to_datetime(i) for i in f_idx_dt]
-                    f_idx = [i for i in f_idx_dt if i in df.index]
+                    f_idx = [i for i in f_idx_dt if i in dt_index]
                 else:
                     raise ValueError
 
@@ -110,7 +101,7 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, out_pqt_ct, feature_id='
                     out_datestrs = [datetime.strftime(i, '%Y%m%d') for i in f_idx_dt if i not in f_idx]
                     print(f'\nData falls outside {yr}: {out_datestrs}')
 
-                field = pd.DataFrame(columns=[sid], data=field[cols].values.T, index=f_idx)
+                field = pd.DataFrame(columns=[sid], data=field_data_csv[cols].values.T, index=f_idx)
 
                 field = field.replace([0.0], np.nan)
                 field = field.dropna()
@@ -136,51 +127,31 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, out_pqt_ct, feature_id='
                 field = field.sort_index()
                 field[field[sid] < 0.05] = np.nan
 
-                df.loc[field.index, target_col] = field[sid]
+                data_s = pd.Series(np.nan, index=dt_index, name=target_col)
+                data_s.loc[field.index] = field[sid]
+                data_series_list_for_year.append(data_s)
 
-                if interoplate:
-                    target_ct_col = (sid, instrument, parameter, algorithm, 'obs_flag', mask)
-                    ct.loc[f_idx, target_ct_col] = ~pd.isna(field[sid])
-
-            if prev_df is not None and df.loc[f'{yr}-01'].isna().all().any() and interoplate:
-                df.loc[f'{yr}-01-01'] = prev_df.loc[f'{yr - 1}-12-31']
-
-            df = df.replace(0.0, np.nan)
-            if interoplate:
-                # only necessary to have interpolated daily values for NDVI in SWIM
-                df = df.astype(float).interpolate()
-                df = df.bfill()
-
-                ct = ct.astype(float)
-                ct = ct.fillna(0.0)
-                ct = ct.astype(int)
+        if data_series_list_for_year:
+            df = pd.concat(data_series_list_for_year, axis=1)
+            df = df.reindex(columns=target_columns)
+        else:
+            df = pd.DataFrame(np.nan, index=dt_index, columns=target_columns)
 
         if first:
             adf = df.copy()
-
-            if interoplate:
-                ctdf = ct.copy()
-
             first = False
-
         else:
-            adf = pd.concat([adf, df], axis=0, ignore_index=False, sort=True)
+            if adf is None:
+                adf = df.copy()
+            else:
+                adf = pd.concat([adf, df], axis=0, ignore_index=False, sort=False)
 
-            if interoplate:
-                ctdf = pd.concat([ctdf, ct], axis=0, ignore_index=False, sort=True)
-
-        prev_df = df.copy()
-
-    adf = adf.dropna(how='all', axis=1)
-    adf.to_parquet(out_pqt, engine='pyarrow')
-    print(f'wrote {out_pqt}')
-
-    if interoplate:
-        ctdf = ctdf.dropna(how='all', axis=1)
-        ctdf = ctdf.astype(int)
-        ctdf.to_parquet(out_pqt_ct,
-                        engine='pyarrow')
-        print(f'wrote {out_pqt_ct}')
+    if adf is not None:
+        adf = adf.dropna(how='all', axis=1)
+        adf.to_parquet(out_pqt, engine='pyarrow')
+        print(f'wrote {out_pqt}')
+    else:
+        print(f'No data processed for {out_pqt}')
 
 
 def join_remote_sensing(files, dst, station_selection='exclusive'):
@@ -205,9 +176,8 @@ def join_remote_sensing(files, dst, station_selection='exclusive'):
 
         target_cols = [col for df in dfs for col in df.columns if col[0] == sid]
         target_cols = pd.MultiIndex.from_tuples(target_cols, names=COLUMN_MULTIINDEX)
-        target_series =  [df[col].values for df in dfs for col in df.columns if col[0] == sid]
+        target_series = [df[col].values for df in dfs for col in df.columns if col[0] == sid]
         site_df = pd.DataFrame(data=np.array(target_series).T, index=new_daily_index, columns=target_cols)
-
 
         if not site_df.columns.empty:
             output_filename = f"{sid}.parquet"

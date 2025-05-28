@@ -16,21 +16,21 @@ from datetime import datetime
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 
-REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
+REQUIRED = ['tmin', 'tmax', 'srad', 'swe', 'prcp', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
             'prcp_hr_05', 'prcp_hr_06', 'prcp_hr_07', 'prcp_hr_08', 'prcp_hr_09', 'prcp_hr_10',
             'prcp_hr_11', 'prcp_hr_12', 'prcp_hr_13', 'prcp_hr_14', 'prcp_hr_15', 'prcp_hr_16',
             'prcp_hr_17', 'prcp_hr_18', 'prcp_hr_19', 'prcp_hr_20', 'prcp_hr_21', 'prcp_hr_22',
             'prcp_hr_23']
 
-REQ_UNIRR = ['etr_mm_uncorr',
-             'eto_mm_uncorr']
+REQ_UNIRR = ['etr',
+             'eto']
 
-REQ_IRR = ['etr_mm',
-           'eto_mm']
+REQ_IRR = ['etr_corr',
+           'eto_corr']
 
 
-ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['obs_swe']
+ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['swe']
 
 
 def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, target_plots=None):
@@ -43,7 +43,7 @@ def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, targe
     dct = {'props': {i: r for i, r in properties.items() if i in target_plots}}
 
     missing = [x for x in target_plots if x not in dct['props'].keys()]
-    missing += [x for x in target_plots if not os.path.exists(os.path.join(time_series, '{}_daily.csv'.format(x)))]
+    missing += [x for x in target_plots if not os.path.exists(os.path.join(time_series, '{}.parquet'.format(x)))]
     missing = list(set(missing))
 
     if missing:
@@ -69,13 +69,12 @@ def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, targe
         if fid in missing:
             continue
 
-        _file = os.path.join(time_series, '{}_daily.csv'.format(fid))
-        df = pd.read_csv(_file, index_col='date', parse_dates=True)
+        _file = os.path.join(time_series, '{}.parquet'.format(fid))
+        df = pd.read_parquet(_file)
         if first:
             shape = df.shape[0]
             doys = [int(dt.strftime('%j')) for dt in df.index]
-            dts = [(int(r['year']), int(r['month']), int(r['day'])) for i, r in df.iterrows()]
-            dts = ['{}-{:02d}-{:02d}'.format(y, m, d) for y, m, d in dts]
+            dts = [f'{i.year}-{i.month:02d}-{i.day:02d}' for i in df.index]
             data = {dt: {'doy': doy} for dt, doy in zip(dts, doys)}
             order = [fid]
             first = False
@@ -85,8 +84,15 @@ def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, targe
                 print('{} does not have shape {}'.format(fid, df.shape[0]))
                 continue
 
+        idx = pd.IndexSlice
         for p in required_params:
-            a = df[p].values
+            if p in rs_params:
+                a = df.loc[:, idx[:, :, [p], :, :, :, :]].values
+                raise NotImplementedError('remove obsflag values')
+            else:
+                a = df.loc[:, idx[:, :, [p], :, :, :, :]].values
+                raise NotImplementedError('remove obsflag values')
+
             arrays[p].append(a)
 
     for p in required_params:

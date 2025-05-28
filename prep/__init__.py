@@ -1,7 +1,28 @@
 import pandas as pd
 import geopandas as gpd
 
-COLUMN_MULTIINDEX = ['site', 'instrument', 'parameter', 'algorithm', 'flag', 'mask']
+COLUMN_MULTIINDEX = ['site', 'instrument', 'parameter', 'units', 'algorithm', 'mask']
+
+ACCEPTED_UNITS_MAP = {'elev': 'm',
+                      'tmin': 'c',
+                      'tmax': 'c',
+                      'etr': 'mm',
+                      'etr_corr': 'mm',
+                      'eto': 'mm',
+                      'eto_corr': 'mm',
+                      'prcp': 'mm',
+                      'srad': 'wm2',
+                      'u2': 'ms',
+                      'ea': 'kpa',
+                      'et_fraction': 'unitless',
+                      'nld_ppt_d': 'mm',
+                      'centroid_lat': 'degrees',
+                      'centroid_lon': 'degrees',
+                      'swe': 'mm',
+                      }
+
+[ACCEPTED_UNITS_MAP.update({v: 'mm'}) for v in
+ ['prcp_hr_{}'.format(str(e).rjust(2, '0')) for e in range(0, 24)]]
 
 # Global estimation of effective plant rooting depth: Implications for hydrological modeling
 # https://doi.org/10.1002/2016WR019392

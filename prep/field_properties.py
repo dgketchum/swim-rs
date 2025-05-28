@@ -7,22 +7,30 @@ import pandas as pd
 from prep import MAX_EFFECTIVE_ROOTING_DEPTH as RZ
 
 
-def write_field_properties(shp, js, lulc, irr=None, soils=None, cdl=None, flux_meta=None, index_col='FID',
-                           lulc_key='mode'):
+def write_field_properties(shp, out_js, lulc, irr=None, soils=None, cdl=None, flux_meta=None, index_col='FID',
+                           lulc_key='mode', **kwargs):
     """"""
     if lulc is None:
         raise ValueError("The 'lulc' CSV file path must be provided.")
 
     lulc_df = pd.read_csv(lulc, index_col=index_col)
-    rz = lulc_df[[lulc_key]].copy().replace(np.nan, '0').astype(int)
-    rz = rz.T.to_dict()
+    # lulc can be for global landcover or modis; this is modis
+    lc = lulc_df[[lulc_key]].copy().replace(np.nan, '0').astype(int)
+    lc = lc.T.to_dict()
     dct = {}
-    for k, v in rz.items():
+    for k, v in lc.items():
         dct[k] = {
             'root_depth': RZ.get(str(v[lulc_key]), {}).get('rooting_depth', np.nan),
             'zr_mult': RZ.get(str(v[lulc_key]), {}).get('zr_multiplier', np.nan),
             'lulc_code': v[lulc_key]
         }
+
+    if 'extra_lulc_key' in kwargs:
+        elc_key = kwargs['extra_lulc_key']
+        elc = lulc_df[[elc_key]].copy().replace(np.nan, '0').astype(int)
+        elc = elc.T.to_dict()
+        for k, v in elc.items():
+            dct[k][elc_key] = v[elc_key]
 
     if irr is not None:
         irr_df = pd.read_csv(irr, index_col=index_col)
@@ -34,16 +42,19 @@ def write_field_properties(shp, js, lulc, irr=None, soils=None, cdl=None, flux_m
                 dct[k]['irr'] = {int(kk.split('_')[1]): vv for kk, vv in v.items()}
 
     if soils is not None:
-        soils = pd.read_csv(soils, index_col=index_col)
+        soil_df = pd.read_csv(soils, index_col=index_col)
         props = ['awc', 'ksat', 'clay', 'sand']
 
         for prop in props:
-            if prop not in soils.columns:
+            if prop not in soil_df.columns:
                 continue
-            d = soils[[prop]].copy().T.to_dict()
+            d = soil_df[[prop]].copy().T.to_dict()
             for k in dct:
                 if k in d:
-                    dct[k]['awc'] = d[k]['awc']
+                    try:
+                        dct[k].update({'awc': d[k]['awc']})
+                    except KeyError:
+                        continue
 
     fields = gpd.read_file(shp)
     fields.index = fields[index_col]
@@ -95,9 +106,9 @@ def write_field_properties(shp, js, lulc, irr=None, soils=None, cdl=None, flux_m
             _ = d.pop(k)
             print(f'skipping {k}: has small area')
 
-    with open(js, 'w') as fp:
+    with open(out_js, 'w') as fp:
         json.dump(d, fp, indent=4)
-    print(f'wrote {len(d)} fields\n {js}')
+    print(f'wrote {len(d)} fields\n {out_js}')
 
 
 if __name__ == '__main__':

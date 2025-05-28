@@ -50,6 +50,7 @@ def get_cdl(fields, desc, selector='FID'):
         selectors=_selectors)
 
     task.start()
+    print(desc)
 
 
 def get_irrigation(fields, desc, debug=False, selector='FID', lanid=False):
@@ -104,6 +105,7 @@ def get_irrigation(fields, desc, debug=False, selector='FID', lanid=False):
         selectors=_selectors)
 
     task.start()
+    print(desc)
 
 
 def get_ssurgo(fields, desc, debug=False, selector='FID'):

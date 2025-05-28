@@ -37,7 +37,7 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
         output.loc[irr_index, 'capture'] = output.loc[irr_index, f'{model}_etf_irr_ct']
 
     df = pd.DataFrame({'kc_act': output['kc_act'], 'ET_corr': flux_data['ET_corr'],
-                       'etf': output['etf'], 'capture': output['capture'], 'eto': output['eto_mm']})
+                       'etf': output['etf'], 'capture': output['capture'], 'eto': output['eto']})
 
     df['flux'] = flux_data['ET']
     df['flux_fill'] = flux_data['ET_fill']

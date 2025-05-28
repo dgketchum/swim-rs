@@ -47,7 +47,7 @@ def debug_calibration(conf_path, project_ws, fid, out_csv, params=None, pdc_file
                        'EToF': flux_data['EToF'],
                        'ET_corr': flux_data['ET_corr'],
                        'capture': output['capture'],
-                       'eto': output['eto_mm']})
+                       'eto': output['eto']})
     if params:
         df[params] = output[params]
 

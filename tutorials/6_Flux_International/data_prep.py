@@ -7,7 +7,7 @@ import pandas as pd
 from datetime import datetime
 from collections import defaultdict
 
-from prep import get_flux_sites, get_ensemble_parameters, COLUMN_MULTIINDEX
+from prep import get_flux_sites, get_ensemble_parameters, COLUMN_MULTIINDEX, ACCEPTED_UNITS_MAP
 
 project = '6_Flux_International'
 
@@ -87,6 +87,7 @@ shapefile_path = os.path.join(data, 'gis', '6_Flux_International_150mBuf.shp')
 sites = get_flux_sites(shapefile_path, index_col=FEATURE_ID)
 
 ERA5LAND_PARAMS = ['swe', 'eto', 'tmean', 'tmin', 'tmax', 'precip', 'srad']
+PARAMS_MAPPING = {'precip': 'prcp'}
 
 
 
@@ -94,7 +95,7 @@ def prep_era5land():
     all_sites_records = defaultdict(list)
 
     filelist = sorted(os.listdir(era5_extracts))
-    for i, filename in enumerate(tqdm(filelist, desc="Reading monthly CSVs")):
+    for i, filename in enumerate(tqdm(filelist, desc="Reading monthly ERA5 LAND CSVs")):
         if filename.lower().endswith(".csv"):
             filepath = os.path.join(era5_extracts, filename)
             df_month = pd.read_csv(filepath, index_col=0)
@@ -115,7 +116,7 @@ def prep_era5land():
                         'value': value
                     })
 
-    for i, (sid, records) in enumerate(tqdm(all_sites_records.items(), desc="Writing sites")):
+    for i, (sid, records) in enumerate(tqdm(all_sites_records.items(), desc="Writing ERA5 LAND parquet")):
         if not records:
             continue
 
@@ -144,12 +145,20 @@ def prep_era5land():
                 continue
 
         df.sort_index(inplace=True)
+        df = df.rename(columns=PARAMS_MAPPING)
 
-        outfile = os.path.join(era5_series, f'{sid}.csv')
-        df.to_csv(outfile)
+        # multi-index columns
+        # ['site', 'instrument', 'parameter', 'units', 'algorithm', 'flag', 'mask']
+        cols = [(sid, 'none', c, ACCEPTED_UNITS_MAP.get(c, 'none'), 'era5_land', 'value', 'no_mask') for c in df.columns]
+        cols = pd.MultiIndex.from_tuples(cols,  names=COLUMN_MULTIINDEX)
+        df.columns = cols
+
+        outfile = os.path.join(era5_series, f'{sid}.parquet')
+        df.to_parquet(outfile)
 
 
-"""The following depends on the fork of OpenET-PTJPL at https://github.com/dgketchum/openet-ptjpl
+"""
+The following depends on the fork of OpenET-PTJPL at https://github.com/dgketchum/openet-ptjpl
 which is modified to use ERA5-LAND data to get daily EToF for Landsat, and has scripts
 I added to use NASA AppEEARS to get ECOSTRESS ET daily data in W/m^2
 
@@ -186,7 +195,7 @@ def prep_landsat_raster_extracts():
 
             if etf_data_for_site:
                 etf_series = pd.Series(etf_data_for_site)
-                site_df[(site_id, 'landsat', 'etf', 'ptjpl', 'value', 'mask')] = etf_series
+                site_df[(site_id, 'landsat', 'etf', 'unitless', 'ptjpl', 'value', 'no_mask')] = etf_series
                 processed_data_for_site = True
             else:
                 print(f"No Landsat data values for site {site_id} after parsing.")
@@ -223,9 +232,9 @@ def prep_ecostress_raster_extracts():
         processed_data_for_site = False
 
         if site_id in all_ecostress_data and all_ecostress_data[site_id]:
-            era5_file_path = os.path.join(era5_series, f'{site_id}.csv')
+            era5_file_path = os.path.join(era5_series, f'{site_id}.parquet')
             try:
-                site_era5_df = pd.read_csv(era5_file_path, index_col='date', parse_dates=True)
+                site_era5_df = pd.read_parquet(era5_file_path)
             except FileNotFoundError:
                 print(f'ERA5-LAND data not found for site {site_id}. Skipping Ecostress for this site.')
                 continue
@@ -240,7 +249,8 @@ def prep_ecostress_raster_extracts():
                 if le_stats['count'] < 10:
                     continue
                 try:
-                    eto_value = site_era5_df.loc[date_obj, 'eto']
+                    idx = pd.IndexSlice
+                    eto_value = site_era5_df.loc[date_obj, idx[:, :, ['eto'], :,:, 'no_mask']].item()
                 except KeyError:
                     print(
                         f"Warning: ETo for {date_obj.strftime('%Y-%m-%d')} not in ERA5 for site {site_id}. "
@@ -256,7 +266,7 @@ def prep_ecostress_raster_extracts():
 
             if etf_data_for_site:
                 etf_series = pd.Series(etf_data_for_site)
-                site_df[(site_id, 'ecostress', 'etf', 'ptjpl', 'value', 'mask')] = etf_series
+                site_df[(site_id, 'ecostress', 'etf', 'unitless', 'ptjpl', 'value', 'no_mask')] = etf_series
                 processed_data_for_site = True
             else:
                 print(f"No Ecostress ETf values derived for site {site_id} after filtering.")
@@ -287,13 +297,11 @@ def prep_earthengine_extracts():
 
     yrs = [x for x in range(2015, 2025)]
 
-    sparse_time_series(shapefile_path, landsat_ee_data, yrs, landsat_ndvi, out_pqt_ct=landsat_ndvi_ct,
-                       instrument='landsat', algorithm='none', parameter='ndvi', mask='no_mask',
-                       feature_id=FEATURE_ID, select=sites, interoplate=True)
+    sparse_time_series(shapefile_path, landsat_ee_data, yrs, landsat_ndvi, feature_id=FEATURE_ID, instrument='landsat',
+                       parameter='ndvi', algorithm='none', mask='no_mask', select=sites)
 
-    sparse_time_series(shapefile_path, sentinel_ee_data, yrs, sentinel_ndvi, out_pqt_ct=sentinel_ndvi_ct,
-                       instrument='sentinel', algorithm='none', parameter='ndvi', mask='no_mask',
-                       feature_id=FEATURE_ID, select=sites, interoplate=True)
+    sparse_time_series(shapefile_path, sentinel_ee_data, yrs, sentinel_ndvi, feature_id=FEATURE_ID,
+                       instrument='sentinel', parameter='ndvi', algorithm='none', mask='no_mask', select=sites)
 
 
 def join_remote_sensing_data():
@@ -305,8 +313,8 @@ def join_remote_sensing_data():
 def prep_field_properties():
     from prep.field_properties import write_field_properties
 
-    write_field_properties(shapefile_path, js=properties_json, soils=soils, lulc=modis_lulc, index_col=FEATURE_ID,
-                           flux_meta=None, lulc_key='modis_lc')
+    write_field_properties(shapefile_path, out_js=properties_json, soils=soils, lulc=modis_lulc, index_col=FEATURE_ID,
+                           flux_meta=None, lulc_key='modis_lc', **{'extra_lulc_key': 'glc10_lc'})
 
 
 def prep_timeseries():
@@ -320,10 +328,11 @@ def prep_timeseries():
 def prep_dynamics():
     from prep.dynamics import SamplePlotDynamics
 
-    dynamics = SamplePlotDynamics(joined_timeseries, static_properties, irr_threshold=0.3, etf_target='ssebop',
+    dynamics = SamplePlotDynamics(joined_timeseries, static_properties, irr_threshold=0.3, etf_target='ptjpl',
                                   out_json_file=dyanmics_data, select=sites)
+
+    dynamics.analyze_irrigation(lookback=5, use_lulc=True, use_mask=False)
     dynamics.analyze_groundwater_subsidy()
-    dynamics.analyze_irrigation(lookback=5)
     dynamics.analyze_k_parameters()
     dynamics.save_json()
 
@@ -346,4 +355,5 @@ if __name__ == '__main__':
     # prep_timeseries()
     prep_dynamics()
     # prep_input_json()
+    pass
 # ========================= EOF ====================================================================

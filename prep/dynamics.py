@@ -1,17 +1,14 @@
+import json
 import os
 
-import pandas as pd
-import geopandas as gpd
 import numpy as np
-import json
+import pandas as pd
 from tqdm import tqdm
-
-from prep import get_flux_sites
 
 
 class SamplePlotDynamics:
     def __init__(self, plot_timeseries, properties_json, out_json_file, etf_target='ssebop',
-                 irr_threshold=0.1, select=None):
+                 irr_threshold=0.1, select=None, masks=('no_mask',)):
 
         self.time_series = plot_timeseries
 
@@ -21,17 +18,22 @@ class SamplePlotDynamics:
         self.irr_threshold = irr_threshold
         self.select = select
         self.years = None
+        self.masks = masks
+        self.target_fid = None
 
-        self.irr = None
+        self.properties = None
         self.fields = {'irr': {}, 'gwsub': {}, 'ke_max': {}, 'kc_max': {}}
 
         self._load_data()
 
-    def analyze_irrigation(self, lookback=10):
+    def analyze_irrigation(self, lookback=10, use_mask=True, use_lulc=False):
 
-        for fid in tqdm(self.irr.index, desc='Analyzing Irrigation', total=len(self.irr.index)):
+        for fid, data in tqdm(self.properties.items(), desc='Analyzing Irrigation', total=len(self.properties)):
+
             if self.select and fid not in self.select:
                 continue
+
+            self.target_fid = fid
 
             _file = os.path.join(self.time_series, f'{fid}.parquet')
             try:
@@ -40,16 +42,20 @@ class SamplePlotDynamics:
                 print(f'{_file} not found, skipping')
                 continue
 
-            self.years = [int(y) for y in field_time_series['year'].unique()]
-            field_data = self._analyze_field_irrigation(fid, field_time_series, lookback)
+            self.years = [int(y) for y in field_time_series.index.year.unique()]
+            field_data = self._analyze_field_irrigation(fid, field_time_series, lookback, use_mask=use_mask,
+                                                        use_lulc=use_lulc)
             if field_data is not None:
                 self.fields['irr'][fid] = field_data
 
     def analyze_groundwater_subsidy(self):
 
-        for fid in tqdm(self.irr.index, desc='Analyzing Groundwater Subsidy', total=len(self.irr.index)):
+        for fid, data in tqdm(self.properties.items(), desc='Analyzing Groundwater Subsidy',
+                              total=len(self.properties)):
             if self.select and fid not in self.select:
                 continue
+
+            self.target_fid = fid
 
             _file = os.path.join(self.time_series, f'{fid}.parquet')
             try:
@@ -64,9 +70,12 @@ class SamplePlotDynamics:
                 self.fields['gwsub'][fid] = field_data
 
     def analyze_k_parameters(self):
-        for fid in tqdm(self.irr.index, desc='Calculating K Parameters', total=len(self.irr.index)):
+        for fid, data in tqdm(self.properties.items(), desc='Calculating K Parameters', total=len(self.properties)):
+
             if self.select and fid not in self.select:
                 continue
+
+            self.target_fid = fid
 
             _file = os.path.join(self.time_series, f'{fid}.parquet')
             try:
@@ -74,6 +83,7 @@ class SamplePlotDynamics:
             except FileNotFoundError:
                 print(f'{_file} not found, skipping')
                 continue
+
             self._find_field_k_parameters(fid, field_time_series)
 
     def save_json(self):
@@ -83,66 +93,63 @@ class SamplePlotDynamics:
 
     def _load_data(self):
         with open(self.properties_json, 'r') as fp:
-            js_data = json.load(fp)
-        self.irr = pd.DataFrame.from_dict(js_data).T
-        try:
-            self.irr.drop(columns=['LAT', 'LON'], inplace=True)
-        except KeyError:
-            pass
+            self.properties = json.load(fp)
 
-        try:
-            _ = float(self.irr.index[0])
-            self.irr.index = [str(i) for i in self.irr.index]
-        except (TypeError, ValueError):
-            pass
-
-    def _analyze_field_groundwater_subsidy(self, field, field_time_series):
-        if field not in self.irr.index:
-            print(f'{field} not in index')
-            return None
-
-        if np.all(np.isnan(self.irr.loc[field])):
-            print(f'{field} is all nan in {self.properties_json}')
-            return None
-
+    def _analyze_field_groundwater_subsidy(self, field, df):
+        """"""
         field_data = {}
-        selectors = [f'{self.model}_etf_inv_irr', f'{self.model}_etf_irr', 'prcp_mm', 'eto_mm_uncorr', 'eto_mm']
+        idx = pd.IndexSlice
 
-        check = field_time_series[[f'{self.model}_etf_inv_irr', f'{self.model}_etf_irr']]
-        check = check.fillna(0).sum(axis=1)
-        years = check[check > 0.0].index.year.unique().to_list()
+        check = df.loc[:, idx[:, :, ['etf'], :, self.model, :]]
+        check = check.resample('YE').sum()
+        check = check[check > 0.0].dropna(axis=0)
+        etf_years = check.index.year.unique().to_list()
 
-        irr_overall = np.mean([self.irr.at[field, f'irr_{yr}'] > self.irr_threshold for yr in range(2016, 2025)]).item()
-
+        irr_overall = np.mean([self.properties[field]['irr'][str(yr)] > self.irr_threshold
+                               for yr in etf_years]).item()
         if irr_overall > 0.6:
             generally_irrigated = True
         else:
             generally_irrigated = False
 
         gw_ct = 0
-        missing_years = [y for y in self.years if y not in years]
+        missing_years = [y for y in self.years if y not in etf_years]
 
-        for yr in years:
-            if yr > 2024:
-                continue
+        for yr in etf_years:
 
             try:
-                f_irr = self.irr.at[field, f'irr_{yr}']
+                f_irr = self.properties[field]['irr'][str(yr)]
             except (ValueError, KeyError):
                 f_irr = np.nan
 
             irrigated = f_irr > self.irr_threshold
 
-            df = field_time_series.loc[f'{yr}-01-01': f'{yr}-12-31', selectors]
+            if irrigated and 'irr' in self.masks:
+                mask = 'irr'
+            elif 'irr' in self.masks:
+                mask = 'inv_irr'
+            else:
+                mask = 'no_mask'
+
+            t_index = [i for i in df.index if i.year == yr]
+            etf_ = df.loc[t_index, idx[:, :, ['etf'], :, [self.model], mask]]
+            ppt_ = df.loc[t_index, idx[:, :, ['prcp'], :, :, ['no_mask']]]
+            eto_ = df.loc[t_index, idx[:, :, ['eto'], :, :, ['no_mask']]]
+            ydf = pd.DataFrame(data=np.array([etf_, ppt_, eto_]).T[0], index=t_index, columns=['etf', 'ppt', 'eto'])
+            ydf['etf'] = ydf['etf'].interpolate()
+            ydf['etf'] = ydf['etf'].bfill().ffill()
+
+            ydf['eta'] = ydf['etf'] * ydf['eto']
+
             df['doy'] = [i.dayofyear for i in df.index]
 
-            if irrigated:
-                df['eta'] = df['eto_mm_uncorr'] * df[f'{self.model}_etf_irr']
-            else:
-                df['eta'] = df['eto_mm'] * df[f'{self.model}_etf_inv_irr']
+            ratio = ydf['eta'].sum() / (ydf['ppt'].sum() + 1.0)
 
-            eta, ppt = df['eta'].sum(), df['prcp_mm'].sum()
-            ratio = eta / (ppt + 1.0)
+            ppt_yr = ydf['ppt'].sum().item()
+            if ppt_yr == 0.0:
+                raise ValueError('Check your precip data')
+
+            eta_yr = ydf['eta'].sum().item()
 
             if irrigated or generally_irrigated:
                 field_data[yr] = {'subsidized': 0,
@@ -150,12 +157,12 @@ class SamplePlotDynamics:
                                   'f_irr': f_irr,
                                   'ratio': ratio,
                                   'months': [],
-                                  'ppt': ppt,
-                                  'eta': eta}
+                                  'ppt': ppt_yr,
+                                  'eta': eta_yr}
                 continue
 
-            mdf = df.resample('ME').sum()
-            months = mdf[mdf['eta'] > mdf['prcp_mm']].index.month.to_list()
+            mdf = ydf.resample('ME').sum()
+            months = mdf[mdf['eta'] > mdf['ppt']].index.month.to_list()
 
             if ratio > 1:
                 subsidized = 1
@@ -167,18 +174,19 @@ class SamplePlotDynamics:
             field_data[yr] = {'subsidized': subsidized,
                               'f_sub': f_sub,
                               'f_irr': f_irr,
-                              'ratio': eta / ppt,
+                              'ratio': eta_yr / ppt_yr,
                               'months': months,
-                              'ppt': ppt,
-                              'eta': eta}
-            gw_ct += 1
+                              'ppt': ppt_yr,
+                              'eta': eta_yr}
+            if f_sub > 0.1:
+                gw_ct += 1
 
-        if len(years) > 0 and gw_ct / len(years) > 0.5 and len(missing_years) > 0:
-            mean_sub = np.array([field_data[yr]['f_sub'] for yr in years]).mean()
-            months = []
-            months = list(set([months.extend(field_data[yr]['months']) for yr in years]))
-            mean_ppt = np.array([field_data[yr]['ppt'] for yr in years]).mean()
-            mean_eta = np.array([field_data[yr]['eta'] for yr in years]).mean()
+        if len(etf_years) > 0 and gw_ct / len(etf_years) > 0.5 and len(missing_years) > 0:
+            mean_sub = np.array([field_data[yr]['f_sub'] for yr in etf_years]).mean()
+            months = [field_data[yr]['months'] for yr in etf_years]
+            months = list(set([y for sl in months for y in sl]))
+            mean_ppt = np.array([field_data[yr]['ppt'] for yr in etf_years]).mean()
+            mean_eta = np.array([field_data[yr]['eta'] for yr in etf_years]).mean()
             for y in missing_years:
                 field_data[y] = {'subsidized': 1,
                                  'f_sub': mean_sub,
@@ -190,36 +198,95 @@ class SamplePlotDynamics:
 
         return field_data
 
-    def _analyze_field_irrigation(self, field, field_time_series, lookback, backfill_irr=True):
-        if field not in self.irr.index:
-            print(f'{field} not in index')
-            return None
-
-        if np.all(np.isnan(self.irr.loc[field])):
-            print(f'{field} is all nan in {self.properties_json}')
-            return None
+    def _analyze_field_irrigation(self, field, df, lookback, backfill_irr=True,
+                                  use_mask=False, use_lulc=False):
+        idx = pd.IndexSlice
 
         field_data = {}
         fallow = []
+
         if backfill_irr:
             irr_fill = []
         else:
             irr_fill = None
 
-        selector = 'ndvi_irr'
+        check = df.loc[:, idx[:, :, ['etf'], :, self.model, :]]
+        check = check.resample('YE').sum()
+        if check.shape[1] > 1:
+            # multiple instruments
+            if len(check.columns.levels[1]) > 1:
+                check = check.loc[:, idx[:, ['landsat'], ['etf'], :, [self.model], :]]
+
+        check = check[check > 0.0].dropna(axis=0)
+        etf_years = check.index.year.unique().to_list()
+
+        lulc_code = self.properties[field]['lulc_code']
+        glc10_code = self.properties[field].get('glc10_lc', None)
+
+        if glc10_code is not None:
+            cropped = (lulc_code in [12, 13, 14]) | (glc10_code == 10)
+        else:
+            cropped = lulc_code in [12, 13, 14]
 
         for yr in self.years:
-            if yr > 2024:
-                continue
+
+            if yr == self.years[0]:
+                extended_years = [yr, yr + 1]
+            else:
+                extended_years = [yr - 1, yr, yr + 1]
+
+            if yr not in etf_years and use_lulc and backfill_irr:
+                irr_fill.append(yr)
+
+            t_index = [i for i in df.index if i.year == yr]
+            ext_index = [i for i in df.index if i.year in extended_years]
+
+            ppt_ = df.loc[ext_index, idx[:, :, ['prcp'], :, :, ['no_mask']]]
+            eto_ = df.loc[ext_index, idx[:, :, ['eto'], :, :, ['no_mask']]]
+
+            etf_ = df.loc[ext_index, idx[:, :, ['etf'], :, [self.model], :]]
+            if etf_.shape[1] > 1:
+                # mutliple mask options
+                if len(etf_.columns.levels[6]) > 1 and etf_.shape[1] > 1:
+                    etf_ = df.loc[ext_index, idx[:, :, ['etf'], :, [self.model], 'irr']]
+
+                # multiple instruments
+                if len(etf_.columns.levels[1]) > 1 and etf_.shape[1] > 1:
+                    etf_ = etf_.loc[ext_index, idx[:, ['landsat', 'ecostress'],
+                                               ['etf'], :, [self.model], :]].mean(axis=1).values.reshape((-1, 1))
+
+            ydf = pd.DataFrame(data=np.array([etf_, ppt_, eto_]).T[0], index=ext_index,
+                               columns=['etf', 'ppt', 'eto'])
+
+            ydf['etf'] = ydf['etf'].interpolate()
+            ydf['etf'] = ydf['etf'].bfill().ffill()
+            ydf['eta'] = ydf['etf'] * ydf['eto']
+
+            ydf['doy'] = [i.dayofyear for i in ydf.index]
 
             irr_doys, periods = [], 0
 
-            try:
-                f_irr = self.irr.at[field, f'irr_{yr}']
-            except (ValueError, KeyError):
-                f_irr = np.nan
+            if use_mask:
+                try:
+                    f_irr = self.properties[field]['irr'][str(yr)]
+                except (ValueError, KeyError):
+                    f_irr = np.nan
 
-            irrigated = f_irr > self.irr_threshold
+                irrigated = f_irr > self.irr_threshold
+
+            elif use_lulc:
+                ratio = ydf.loc[t_index, 'eta'].sum() / (ydf.loc[t_index, 'ppt'].sum() + 1.0)
+
+                if ratio > 1.3 and cropped:
+                    irrigated = True
+                    f_irr = 1.0
+
+                else:
+                    irrigated = False
+                    f_irr = 0.0
+
+            else:
+                raise ValueError('Must choose between "use_lulc" and "use_mask" for irrigation analysis')
 
             if not irrigated:
                 fallow.append(yr)
@@ -228,27 +295,52 @@ class SamplePlotDynamics:
                                   'f_irr': f_irr}
                 continue
 
-            df = field_time_series.loc[f'{yr}-01-01': f'{yr}-12-31', [selector]]
-
-            if df.empty:
+            if ydf.empty:
                 print(f'{field} in {yr} is empty')
                 return None
 
-            df['doy'] = [i.dayofyear for i in df.index]
-            df[selector] = df[selector].rolling(window=32, center=True).mean()
+            ydf['doy'] = [i.dayofyear for i in ydf.index]
+            if use_mask:
+                mask = 'irr'
+            else:
+                mask = 'no_mask'
 
-            df['diff'] = df[selector].diff()
+            ndvi_ = df.loc[ext_index, idx[:, :, ['ndvi'], :, :, 'value', mask]]
+            if ndvi_.shape[1] > 1:
+                obs_mask = df.loc[ext_index, idx[:, ['landsat'], ['ndvi'], :, :, 'obs_flag', mask]].astype(
+                    bool).values.flatten()
+                ndvi_ = df.loc[ext_index, idx[:, ['landsat'], ['ndvi'], :, :, 'value', mask]].values.flatten()
+                ndvi_[~obs_mask] = np.nan
 
-            nan_ct = np.count_nonzero(np.isnan(df[selector].values))
+                obs_mask = df.loc[ext_index, idx[:, ['sentinel'], ['ndvi'], :, :, 'obs_flag', mask]].astype(
+                    bool).values.flatten()
+                ndvi_ = df.loc[ext_index, idx[:, ['sentinel'], ['ndvi'], :, :, 'value', mask]].values.flatten()
+                ndvi_[~obs_mask] = np.nan
+
+                ydf['ndvi'] = ndvi_
+                ydf['ndvi'] = ydf['ndvi'].interpolate()
+                ydf['ndvi'] = ydf['ndvi'].bfill().ffill()
+            else:
+                ydf['ndvi'] = ndvi_
+
+            ydf['ndvi'] = ydf['ndvi'].rolling(window=32, center=True).mean()
+
+            ydf['ndvi'] = ydf['ndvi'].bfill().ffill()
+
+            ydf = ydf.loc[t_index]
+
+            ydf['diff'] = ydf['ndvi'].diff()
+
+            nan_ct = np.count_nonzero(np.isnan(ydf['ndvi'].values))
             if nan_ct > 200:
                 fallow.append(yr)
                 continue
 
-            local_min_indices = df[(df['diff'] > 0) & (df['diff'].shift(1) < 0)].index
+            local_min_indices = ydf[(ydf['diff'] > 0) & (ydf['diff'].shift(1) < 0)].index
 
-            positive_slope = (df['diff'] > 0)
+            positive_slope = (ydf['diff'] > 0)
             groups = (positive_slope != positive_slope.shift()).cumsum()
-            df['groups'] = groups
+            ydf['groups'] = groups
             group_counts = positive_slope.groupby(groups).sum()
             long_positive_slope_groups = group_counts[group_counts >= 10].index
 
@@ -263,13 +355,22 @@ class SamplePlotDynamics:
                     start_doy = start_index.dayofyear
 
                 end_doy = (end_index + pd.Timedelta(days=2))
-                if df.loc[end_doy - pd.Timedelta(days=1)][selector] > 0.3:
-                    ndvi_doy = df.loc[end_doy - pd.Timedelta(days=1)][selector]
-                    while ndvi_doy > 0.3:
-                        end_doy += pd.Timedelta(days=1)
-                        ndvi_doy = df.loc[end_doy - pd.Timedelta(days=1)][selector]
 
-                elif df.loc[end_doy - pd.Timedelta(days=1)][selector] < 0.5:
+                if end_doy > end_index:
+                    prev_doy = ydf.iloc[-1]['ndvi']
+                    end_doy = end_index
+                else:
+                    prev_doy = ydf.loc[end_doy - pd.Timedelta(days=1)]['ndvi']
+
+                if prev_doy > 0.3:
+
+                    ndvi_doy = ydf.loc[end_doy - pd.Timedelta(days=1)]['ndvi']
+
+                    while ndvi_doy > 0.3 and end_doy in ydf.index:
+                        end_doy += pd.Timedelta(days=1)
+                        ndvi_doy = ydf.loc[end_doy - pd.Timedelta(days=1)]['ndvi']
+
+                elif ydf.loc[end_doy - pd.Timedelta(days=1)]['ndvi'] < 0.5:
                     continue
 
                 end_doy = (end_doy + pd.Timedelta(days=1)).dayofyear
@@ -300,16 +401,34 @@ class SamplePlotDynamics:
         field_data['fallow_years'] = fallow
         return field_data
 
-    def _find_field_k_parameters(self, fid, field_time_series):
+    def _find_field_k_parameters(self, fid, df):
 
-        etf_columns = [col for col in [f'{self.model}_etf_inv_irr', f'{self.model}_etf_irr']
-                       if col in field_time_series.columns]
-        ndvi_columns = [col for col in ['ndvi_inv_irr', 'ndvi_irr'] if col in field_time_series.columns]
-        if not etf_columns or not ndvi_columns:
-            raise ValueError('Remote sensing parameters not found')
+        idx = pd.IndexSlice
 
-        all_etf = field_time_series[etf_columns].values.flatten()
-        all_ndvi = field_time_series[ndvi_columns].values.flatten()
+        check = df.loc[:, idx[:, :, ['etf'], :, self.model, :]]
+        check = check.resample('YE').sum()
+        check = check[check > 0.0].dropna(axis=0)
+        years = check.index.year.unique().to_list()
+
+        t_index = [i for i in df.index if i.year in years]
+
+        etf_ = df.loc[t_index, idx[:, :, ['etf'], :, [self.model], :, :]]
+        ndvi_ = df.loc[t_index, idx[:, :, ['ndvi'], :, :, 'value', :]]
+
+        try:
+            ydf = pd.DataFrame(data=np.array([etf_, ndvi_]).T[0], index=t_index,
+                               columns=['etf', 'ndvi'])
+        except ValueError:
+            ndvi_ = df.loc[t_index, idx[:, :, ['ndvi'], :, :, 'value', 'irr']]
+            ydf = pd.DataFrame(data=np.array([etf_, ndvi_]).T[0], index=t_index,
+                               columns=['etf', 'ndvi'])
+
+        ydf['etf'] = ydf['etf'].interpolate()
+        ydf['etf'] = ydf['etf'].bfill().ffill()
+        ydf['doy'] = [i.dayofyear for i in ydf.index]
+
+        all_etf = ydf['etf'].values.flatten()
+        all_ndvi = ydf['ndvi'].values.flatten()
 
         nan_mask = np.isnan(all_etf)
         all_etf = all_etf[~nan_mask]

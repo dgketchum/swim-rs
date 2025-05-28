@@ -95,8 +95,8 @@ class DayData:
         self.min_temp = np.array(vals['tmin_c']).reshape(1, -1)
         self.max_temp = np.array(vals['tmax_c']).reshape(1, -1)
         self.temp_avg = (self.min_temp + self.max_temp) / 2.
-        self.srad = np.array(vals['srad_wm2']).reshape(1, -1)
-        self.precip = np.array(vals['prcp_mm'])
+        self.srad = np.array(vals['srad']).reshape(1, -1)
+        self.precip = np.array(vals['prcp'])
 
         hr_ppt = np.array([vals[k] for k in hr_ppt_keys]).reshape(24, size)
         if np.any(self.precip > 0.):
