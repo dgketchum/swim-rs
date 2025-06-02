@@ -121,8 +121,6 @@ def evaluate():
 
         modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
         print(f'Calibration made {modified_date}')
-        if modified_date < pd.to_datetime('2025-04-20'):
-            continue
 
         cal = os.path.join(project_ws_, f'tight_pest', 'mult')
 
@@ -161,5 +159,6 @@ def evaluate():
 
 
 if __name__ == '__main__':
+    evaluate()
     pass
 # ========================= EOF ====================================================================

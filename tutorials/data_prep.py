@@ -53,7 +53,7 @@ sites = get_flux_sites(station_metadata, crop_only=False, western_only=True, hea
 irrigation_threshold = 0.3
 
 
-def prep_earthengine_extracts():
+def prep_earthengine_extracts(overwrite=False):
     from prep.remote_sensing import sparse_time_series, join_remote_sensing
 
     types_ = ['irr', 'inv_irr']
@@ -61,8 +61,6 @@ def prep_earthengine_extracts():
 
     models = ['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
     rs_files = []
-
-    overwrite = True
 
     for mask_type in types_:
 
@@ -129,9 +127,10 @@ def prep_timeseries():
 def prep_dynamics():
     from prep.dynamics import SamplePlotDynamics
 
+    # sites = ['Almond_High']
     dynamics = SamplePlotDynamics(joined_timeseries, properties_json, irr_threshold=irrigation_threshold,
                                   etf_target='openet', out_json_file=dyanmics_data, select=sites,
-                                  masks=('irr', 'inv_irr'))
+                                  masks=('irr', 'inv_irr'), instruments=('landsat', ))
 
     dynamics.analyze_irrigation(lookback=5, use_lulc=False, use_mask=True)
     dynamics.analyze_k_parameters()
@@ -144,13 +143,15 @@ def prep_input_json():
 
     params = get_ensemble_parameters()
     prep_fields_json(properties_json, joined_timeseries, dyanmics_data,
-                     prepped_input, target_plots=sites, rs_params=params)
+                     prepped_input, target_plots=sites, rs_params=params,
+                     interp_params=('ndvi', ))
 
 
 if __name__ == '__main__':
     # prep_earthengine_extracts()
     # prep_field_properties()
-    prep_timeseries()
-    prep_dynamics()
-    prep_input_json()
+    # prep_timeseries()
+    # prep_dynamics()
+    # prep_input_json()
+    pass
 # ========================= EOF ====================================================================

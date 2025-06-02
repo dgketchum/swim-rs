@@ -136,11 +136,9 @@ def get_ensemble_parameters(skip=None, include=None):
             if include and model not in include:
                 continue
 
-            ensemble_params.append(f'{model}_etf_{mask}')
-            ensemble_params.append(f'{model}_etf_{mask}_ct')
+            ensemble_params.append((f'{model}', 'etf', f'{mask}'))
 
-        ensemble_params.append(f'ndvi_{mask}')
-        ensemble_params.append(f'ndvi_{mask}_ct')
+        ensemble_params.append(('none', 'ndvi', f'{mask}'))
 
     return ensemble_params
 

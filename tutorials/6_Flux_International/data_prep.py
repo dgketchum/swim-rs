@@ -39,9 +39,9 @@ remote_sensing_tables = os.path.join(data, 'rs_tables')
 
 joined_timeseries = os.path.join(data, 'plot_timeseries')
 station_file = os.path.join(data, 'station_metadata.csv')
-static_properties = os.path.join(data, 'properties', 'calibration_properties.json')
-properties = os.path.join(data, 'properties', 'calibration_properties.csv')
-dyanmics_data = os.path.join(landsat, 'calibration_dynamics.json')
+static_properties = os.path.join(data, 'properties', f'{project}_properties.json')
+# properties = os.path.join(data, 'properties', f'{project}_properties.csv')
+dyanmics_data = os.path.join(data, f'{project}_dynamics.json')
 
 era5_extracts = os.path.join(era5, 'ee_extracts')
 era5_series = os.path.join(era5, 'era5_land')
@@ -55,32 +55,26 @@ landsat_etf_pqt = os.path.join(landsat_tables, '{}_{}.parquet'.format('etf', 'no
 
 landsat_ee_data = os.path.join(landsat, 'extracts', 'ndvi', 'no_mask')
 landsat_ndvi = os.path.join(landsat_tables, '{}_{}.parquet'.format('ndvi', 'no_mask'))
-landsat_ndvi_ct = os.path.join(landsat_tables, '{}_{}_ct.parquet'.format('ndvi', 'no_mask'))
 
 # Sentinel processing -- From Earth Engine
 sentinel_ee_data = os.path.join(sentinel, 'extracts', 'ndvi', 'no_mask')
 sentinel_tables = os.path.join(sentinel, 'tables')
 sentinel_ndvi = os.path.join(sentinel_tables, '{}_{}.parquet'.format('ndvi', 'no_mask'))
-sentinel_ndvi_ct = os.path.join(sentinel_tables, '{}_{}_ct.parquet'.format('ndvi', 'no_mask'))
 
 # ECOSTRESS processing - from rasterstats code in openet-ptjpl fork
 ecostress_extracts = os.path.join(ecostress, 'extracts', 'ecostress_extract.json')
 ecostress_tables = os.path.join(ecostress, 'tables')
 ecostress_etf_pqt = os.path.join(ecostress_tables, '{}_{}.parquet'.format('etf', 'no_mask'))
 
-# '_ct', i.e., 'count' files are used to track observations in data that is interpolated
 rs_files = [
     landsat_etf_pqt,
     landsat_ndvi,
-    landsat_ndvi_ct,
     sentinel_ndvi,
-    sentinel_ndvi_ct,
     ecostress_etf_pqt,
 ]
 
 modis_lulc = os.path.join(data, 'properties', f'{project}_landcover.csv')
 soils = os.path.join(data, 'properties', f'{project}_hwsd.csv')
-properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
 
 # flux sites
 shapefile_path = os.path.join(data, 'gis', '6_Flux_International_150mBuf.shp')
@@ -89,6 +83,7 @@ sites = get_flux_sites(shapefile_path, index_col=FEATURE_ID)
 ERA5LAND_PARAMS = ['swe', 'eto', 'tmean', 'tmin', 'tmax', 'precip', 'srad']
 PARAMS_MAPPING = {'precip': 'prcp'}
 
+irrigation_threshold = 0.3
 
 
 def prep_era5land():
@@ -149,13 +144,12 @@ def prep_era5land():
 
         # multi-index columns
         # ['site', 'instrument', 'parameter', 'units', 'algorithm', 'flag', 'mask']
-        cols = [(sid, 'none', c, ACCEPTED_UNITS_MAP.get(c, 'none'), 'era5_land', 'value', 'no_mask') for c in df.columns]
+        cols = [(sid, 'none', c, ACCEPTED_UNITS_MAP.get(c, 'none'), 'era5_land', 'no_mask') for c in df.columns]
         cols = pd.MultiIndex.from_tuples(cols,  names=COLUMN_MULTIINDEX)
         df.columns = cols
 
         outfile = os.path.join(era5_series, f'{sid}.parquet')
         df.to_parquet(outfile)
-
 
 """
 The following depends on the fork of OpenET-PTJPL at https://github.com/dgketchum/openet-ptjpl
@@ -195,7 +189,7 @@ def prep_landsat_raster_extracts():
 
             if etf_data_for_site:
                 etf_series = pd.Series(etf_data_for_site)
-                site_df[(site_id, 'landsat', 'etf', 'unitless', 'ptjpl', 'value', 'no_mask')] = etf_series
+                site_df[(site_id, 'landsat', 'etf', 'unitless', 'ptjpl', 'no_mask')] = etf_series
                 processed_data_for_site = True
             else:
                 print(f"No Landsat data values for site {site_id} after parsing.")
@@ -250,7 +244,7 @@ def prep_ecostress_raster_extracts():
                     continue
                 try:
                     idx = pd.IndexSlice
-                    eto_value = site_era5_df.loc[date_obj, idx[:, :, ['eto'], :,:, 'no_mask']].item()
+                    eto_value = site_era5_df.loc[date_obj, idx[:, :, ['eto'], :, :, 'no_mask']].item()
                 except KeyError:
                     print(
                         f"Warning: ETo for {date_obj.strftime('%Y-%m-%d')} not in ERA5 for site {site_id}. "
@@ -266,7 +260,7 @@ def prep_ecostress_raster_extracts():
 
             if etf_data_for_site:
                 etf_series = pd.Series(etf_data_for_site)
-                site_df[(site_id, 'ecostress', 'etf', 'unitless', 'ptjpl', 'value', 'no_mask')] = etf_series
+                site_df[(site_id, 'ecostress', 'etf', 'unitless', 'ptjpl', 'no_mask')] = etf_series
                 processed_data_for_site = True
             else:
                 print(f"No Ecostress ETf values derived for site {site_id} after filtering.")
@@ -297,8 +291,8 @@ def prep_earthengine_extracts():
 
     yrs = [x for x in range(2015, 2025)]
 
-    sparse_time_series(shapefile_path, landsat_ee_data, yrs, landsat_ndvi, feature_id=FEATURE_ID, instrument='landsat',
-                       parameter='ndvi', algorithm='none', mask='no_mask', select=sites)
+    sparse_time_series(shapefile_path, landsat_ee_data, yrs, landsat_ndvi, feature_id=FEATURE_ID,
+                       instrument='landsat', parameter='ndvi', algorithm='none', mask='no_mask', select=sites)
 
     sparse_time_series(shapefile_path, sentinel_ee_data, yrs, sentinel_ndvi, feature_id=FEATURE_ID,
                        instrument='sentinel', parameter='ndvi', algorithm='none', mask='no_mask', select=sites)
@@ -313,7 +307,7 @@ def join_remote_sensing_data():
 def prep_field_properties():
     from prep.field_properties import write_field_properties
 
-    write_field_properties(shapefile_path, out_js=properties_json, soils=soils, lulc=modis_lulc, index_col=FEATURE_ID,
+    write_field_properties(shapefile_path, out_js=static_properties, soils=soils, lulc=modis_lulc, index_col=FEATURE_ID,
                            flux_meta=None, lulc_key='modis_lc', **{'extra_lulc_key': 'glc10_lc'})
 
 
@@ -328,10 +322,11 @@ def prep_timeseries():
 def prep_dynamics():
     from prep.dynamics import SamplePlotDynamics
 
-    dynamics = SamplePlotDynamics(joined_timeseries, static_properties, irr_threshold=0.3, etf_target='ptjpl',
+    dynamics = SamplePlotDynamics(joined_timeseries, static_properties, irr_threshold=irrigation_threshold,
+                                  etf_target='ptjpl', use_lulc=True, use_mask=False,
                                   out_json_file=dyanmics_data, select=sites)
 
-    dynamics.analyze_irrigation(lookback=5, use_lulc=True, use_mask=False)
+    dynamics.analyze_irrigation(lookback=5)
     dynamics.analyze_groundwater_subsidy()
     dynamics.analyze_k_parameters()
     dynamics.save_json()
@@ -340,9 +335,10 @@ def prep_dynamics():
 def prep_input_json():
     from prep.prep_plots import prep_fields_json
 
-    params = get_ensemble_parameters()
-    prep_fields_json(properties, joined_timeseries, dyanmics_data,
-                     prepped_input, target_plots=sites, rs_params=params)
+    params = [('none', 'ndvi', 'no_mask'), ('ptjpl', 'etf', 'no_mask')]
+    prep_fields_json(static_properties, joined_timeseries, dyanmics_data,
+                     prepped_input, target_plots=sites, rs_params=params,
+                     interp_params=['ndvi'])
 
 
 if __name__ == '__main__':
@@ -353,7 +349,8 @@ if __name__ == '__main__':
     # join_remote_sensing_data()
     # prep_field_properties()
     # prep_timeseries()
-    prep_dynamics()
-    # prep_input_json()
+    # prep_dynamics()
+    prep_input_json()
+
     pass
 # ========================= EOF ====================================================================

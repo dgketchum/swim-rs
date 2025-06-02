@@ -15,6 +15,7 @@ from datetime import datetime
 
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
+from prep.ndvi_regression import sentinel_adjust_quantile_mapping
 
 REQUIRED = ['tmin', 'tmax', 'srad', 'swe', 'prcp', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
@@ -23,17 +24,16 @@ REQUIRED = ['tmin', 'tmax', 'srad', 'swe', 'prcp', 'nld_ppt_d',
             'prcp_hr_17', 'prcp_hr_18', 'prcp_hr_19', 'prcp_hr_20', 'prcp_hr_21', 'prcp_hr_22',
             'prcp_hr_23']
 
-REQ_UNIRR = ['etr',
-             'eto']
+REQ_UNIRR = ['eto']
 
-REQ_IRR = ['etr_corr',
-           'eto_corr']
-
+REQ_IRR = ['eto_corr']
 
 ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['swe']
 
 
-def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, target_plots=None):
+def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, target_plots=None,
+                     interp_params=None):
+    """"""
     with open(properties, 'r') as fp:
         properties = json.load(fp)
 
@@ -56,14 +56,19 @@ def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, targe
     with open(dynamics, 'r') as fp:
         dynamics = json.load(fp)
 
-    required_params = REQUIRED + REQ_IRR + REQ_UNIRR + rs_params
+    required_met_params = REQUIRED + REQ_IRR + REQ_UNIRR
     dct['irr_data'] = {fid: v for fid, v in dynamics['irr'].items() if fid in target_plots}
     dct['gwsub_data'] = {fid: v for fid, v in dynamics['gwsub'].items() if fid in target_plots}
     dct['ke_max'] = {fid: v for fid, v in dynamics['ke_max'].items() if fid in target_plots}
     dct['kc_max'] = {fid: v for fid, v in dynamics['kc_max'].items() if fid in target_plots}
 
     dts, order = None, []
-    first, arrays, shape = True, {r: [] for r in required_params}, None
+    first, shape, data = True, None, None
+    arrays = {r: [] for r in required_met_params}
+
+    rs_params_strs = ['_'.join(r) if 'etf' in r else '_'.join(r[1:])  for r in rs_params]
+    [arrays.update({r: [] for r in rs_params_strs})]
+
     for fid, v in tqdm(dct['props'].items(), total=len(dct['props'])):
 
         if fid in missing:
@@ -85,23 +90,59 @@ def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, targe
                 continue
 
         idx = pd.IndexSlice
-        for p in required_params:
-            if p in rs_params:
-                a = df.loc[:, idx[:, :, [p], :, :, :, :]].values
-                raise NotImplementedError('remove obsflag values')
+        p_cols = [c[2] for c in df.columns]
+        for p in required_met_params:
+
+            # TODO: get hourly ERA5-Land precip data
+            if p == 'nld_ppt_d' and p not in  p_cols:
+                a = df.loc[:, idx[:, :, ['prcp'], :, :, :]].values
+
+            elif p in REQUIRED[6:] and not any([c[2] == p for c in df.columns]):
+                a = df.loc[:, idx[:, :, ['prcp'], :, :, :]].values / 24.0
+
+            elif p in ['etr_corr', 'eto_corr'] and p not in p_cols:
+                a = np.ones_like(df.loc[:, idx[:, :, ['prcp'], :, :, :]].values) * np.nan
+
             else:
-                a = df.loc[:, idx[:, :, [p], :, :, :, :]].values
-                raise NotImplementedError('remove obsflag values')
+                a = df.loc[:, idx[:, :, [p], :, :, :]].values
 
             arrays[p].append(a)
 
-    for p in required_params:
+        for p in rs_params:
+            alg, param, mask = p
+
+            try:
+                if interp_params is not None and param in interp_params:
+                    int_arr = df.loc[:, idx[:, :, [param], :, [alg], [mask]]]
+                    if int_arr.shape[1] > 1:
+                        lndvi = df.loc[:, idx[:, ['landsat'], ['ndvi'], :, :, mask]]
+                        sndvi_unadj = df.loc[:, idx[:, ['sentinel'], ['ndvi'], :, :, mask]]
+                        sent_adj_ndvi = sentinel_adjust_quantile_mapping(sentinel_ndvi_df=sndvi_unadj,
+                                                                         landsat_ndvi_df=lndvi,
+                                                                         min_pairs=20, window_days=1)
+                        int_arr = pd.concat([lndvi, pd.DataFrame(sent_adj_ndvi)], ignore_index=False, axis=1).mean(axis=1)
+
+                    int_arr = int_arr.interpolate(limit=100)
+                    a = int_arr.bfill().ffill().values.reshape((df.shape[0], -1))
+                    arrays['_'.join(p[1:])].append(a)
+                else:
+                    a = df.loc[:, idx[:, :, [param], :, [alg], [mask]]].values
+                    if df.shape[1] > 1:
+                        a = np.nanmean(a, axis=1).reshape((df.shape[0], 1))
+                    arrays['_'.join(p)].append(a)
+
+            except KeyError:
+                a = np.ones((df.shape[0], 1)) * np.nan
+                arrays['_'.join(p[1:])].append(a)
+
+    all_params = required_met_params + rs_params_strs
+    for p in all_params:
         a = np.array(arrays[p]).T
         arrays[p] = a
 
     for i, dt in enumerate(dts):
-        for p in required_params:
-            data[dt][p] = arrays[p][i, :].tolist()
+        for p in all_params:
+            data[dt][p] = arrays[p][0, i, :].tolist()
 
     dct.update({'order': order, 'time_series': data})
     dct.update({'missing': missing})
