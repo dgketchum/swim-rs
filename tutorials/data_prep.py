@@ -1,66 +1,17 @@
 import os
 
+from swim.config import ProjectConfig
 from prep import get_flux_sites, get_ensemble_parameters
 
-project = '5_Flux_Ensemble'
 
-root = '/data/ssd2/swim'
-data = os.path.join(root, project, 'data')
-project_ws = os.path.join(root, project)
-
-if not os.path.isdir(root):
-    root = os.path.join(os.path.expanduser('~'), 'PycharmProjects', 'swim-rs')
-    data = os.path.join(root, 'tutorials', project, 'data')
-    project_ws = os.path.join(root, 'tutorials', project)
-
-landsat = os.path.join(data, 'landsat')
-landsat_ee_data = os.path.join(landsat, 'extracts')
-landsat_tables = os.path.join(landsat, 'tables')
-
-met = os.path.join(data, 'met_timeseries', 'gridmet')
-
-# GCS - Earth Engine
-fields_ = 'users/dgketchum/fields/flux'
-bucket_ = 'wudr'
-
-gridmet_mapping = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
-gridmet_mapping_index = 'field_1'
-
-footprint_shapefile = os.path.join(data, 'gis', 'flux_static_footprints.shp')
-# Volk Benchmark static footprints
-FEATURE_ID = 'site_id'
-state_col = 'state'
-
-station_metadata = os.path.join(data, 'station_metadata.csv')
-
-# preparation-specific paths
-remote_sensing_tables = os.path.join(data, 'rs_tables')
-joined_timeseries = os.path.join(data, 'plot_timeseries')
-dyanmics_data = os.path.join(landsat, f'{project}_dynamics.json')
-
-snow_in = os.path.join(data, 'snodas', 'extracts')
-snow_out = os.path.join(data, 'snodas', 'snodas.json')
-
-irr = os.path.join(data, 'properties', f'{project}_irr.csv')
-ssurgo = os.path.join(data, 'properties', f'{project}_ssurgo.csv')
-lulc = os.path.join(data, 'properties', f'{project}_landcover.csv')
-properties_json = os.path.join(data, 'properties', f'{project}_properties.json')
-prepped_input = os.path.join(data, 'prepped_input.json')
-
-# Open-ET sites covered by overpass date image collections
-sites = get_flux_sites(station_metadata, crop_only=False, western_only=True, header=1, index_col=0)
-
-irrigation_threshold = 0.3
-
-
-def prep_earthengine_extracts(overwrite=False):
+def prep_earthengine_extracts(conf, sites, overwrite=False):
     from prep.remote_sensing import sparse_time_series, join_remote_sensing
 
     types_ = ['irr', 'inv_irr']
     sensing_params = ['etf', 'ndvi']
 
-    models = ['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
     rs_files = []
+    models = [conf.etf_target_model] + conf.etf_ensemble_members
 
     for mask_type in types_:
 
@@ -71,87 +22,114 @@ def prep_earthengine_extracts(overwrite=False):
             if sensing_param == 'etf':
 
                 for model in models:
-                    ee_data = os.path.join(landsat, 'extracts', f'{model}_{sensing_param}', mask_type)
-                    src = os.path.join(landsat_tables, '{}_{}_{}.parquet'.format(model, sensing_param, mask_type))
+                    ee_data = os.path.join(conf.landsat_dir, 'extracts', f'{model}_{sensing_param}', mask_type)
+                    src = os.path.join(conf.landsat_tables_dir, '{}_{}_{}.parquet'.format(model, sensing_param, mask_type))
                     rs_files.extend([src])
                     if os.path.exists(src) and not overwrite:
                         continue
                     else:
-                        sparse_time_series(footprint_shapefile, ee_data, yrs, src, feature_id=FEATURE_ID,
+                        sparse_time_series(conf.footprint_shapefile, ee_data, yrs, src, feature_id=conf.feature_id,
                                            instrument='landsat', parameter=sensing_param, algorithm=model,
                                            mask=mask_type, select=sites, footprint_spec=3)
 
             else:
-                ee_data = os.path.join(landsat, 'extracts', sensing_param, mask_type)
-                src = os.path.join(landsat_tables, '{}_{}.parquet'.format(sensing_param, mask_type))
+                ee_data = os.path.join(conf.landsat_dir, 'extracts', sensing_param, mask_type)
+                src = os.path.join(conf.landsat_tables_dir, '{}_{}.parquet'.format(sensing_param, mask_type))
                 rs_files.extend([src])
                 if os.path.exists(src) and not overwrite:
                     continue
                 else:
-                    sparse_time_series(footprint_shapefile, ee_data, yrs, src, feature_id=FEATURE_ID,
+                    sparse_time_series(conf.footprint_shapefile, ee_data, yrs, src, feature_id=conf.feature_id,
                                        instrument='landsat', parameter=sensing_param, algorithm='none', mask=mask_type,
                                        select=sites, footprint_spec=3)
 
-    join_remote_sensing(rs_files, remote_sensing_tables, station_selection='inclusive')
+    join_remote_sensing(rs_files, conf.remote_sensing_tables_dir, station_selection='inclusive')
 
 
-def prep_field_properties():
+def prep_field_properties(conf):
     from prep.field_properties import write_field_properties
 
-    flux_metadata = os.path.join(data, 'station_metadata.csv')
-
-    write_field_properties(footprint_shapefile, properties_json, lulc,
-                           irr=irr,
+    write_field_properties(conf.footprint_shapefile_shp, conf.properties_json, conf.lulc_csv,
+                           irr=conf.irr_csv,
                            lulc_key='modis_lc',
-                           soils=ssurgo,
-                           index_col=FEATURE_ID,
-                           flux_meta=flux_metadata)
+                           soils=conf.ssurgo_csv,
+                           index_col=conf.feature_id_col,
+                           flux_meta=conf.station_metadata_csv)
 
 
-def prep_snow():
+def prep_snow(conf):
     from data_extraction.snodas.snodas import create_timeseries_json
 
-    create_timeseries_json(snow_in, snow_out, feature_id=FEATURE_ID)
+    create_timeseries_json(conf.snodas_in_dir, conf.snodas_out_json, feature_id=conf.gridmet_mapping_index_col)
 
 
-def prep_timeseries():
+def prep_timeseries(conf, sites):
     from prep.field_timeseries import join_daily_timeseries
 
-    join_daily_timeseries(fields=gridmet_mapping, met_dir=met, rs_dir=remote_sensing_tables,
-                          dst_dir=joined_timeseries, snow=snow_out, overwrite=True,
-                          start_date='1987-01-01', end_date='2024-12-31',
-                          feature_id=gridmet_mapping_index, **{'met_mapping': 'GFID',
-                                                               'target_fields': sites})
+    join_daily_timeseries(fields=conf.gridmet_mapping_shp,
+                          met_dir=conf.met_dir,
+                          rs_dir=conf.remote_sensing_tables_dir,
+                          dst_dir=conf.joined_timeseries_dir,
+                          snow=conf.snodas_out_json,
+                          overwrite=True,
+                          start_date='1987-01-01',
+                          end_date='2024-12-31',
+                          feature_id=conf.gridmet_mapping_index_col,
+                          **{'met_mapping': 'GFID',
+                             'target_fields': sites})
 
 
-def prep_dynamics():
+def prep_dynamics(conf, sites):
     from prep.dynamics import SamplePlotDynamics
 
     # sites = ['Almond_High']
-    dynamics = SamplePlotDynamics(joined_timeseries, properties_json, irr_threshold=irrigation_threshold,
-                                  etf_target='openet', out_json_file=dyanmics_data, select=sites,
-                                  masks=('irr', 'inv_irr'), instruments=('landsat', ))
+    dynamics = SamplePlotDynamics(conf.joined_timeseries_dir,
+                                  conf.properties_json,
+                                  irr_threshold=conf.irrigation_threshold,
+                                  etf_target=conf.etf_target_model,
+                                  out_json_file=conf.dynamics_data_json,
+                                  select=sites,
+                                  use_lulc=False,
+                                  use_mask=True,
+                                  masks=('irr', 'inv_irr'),
+                                  instruments=('landsat',))
 
-    dynamics.analyze_irrigation(lookback=5, use_lulc=False, use_mask=True)
+    dynamics.analyze_irrigation(lookback=5)
     dynamics.analyze_k_parameters()
     dynamics.analyze_groundwater_subsidy()
     dynamics.save_json()
 
 
-def prep_input_json():
+def prep_input_json(conf, sites):
     from prep.prep_plots import prep_fields_json
 
     params = get_ensemble_parameters()
-    prep_fields_json(properties_json, joined_timeseries, dyanmics_data,
-                     prepped_input, target_plots=sites, rs_params=params,
-                     interp_params=('ndvi', ))
+    prep_fields_json(conf.properties_json,
+                     conf.joined_timeseries_dir,
+                     conf.dynamics_data_json,
+                     conf.prepped_input_json,
+                     target_plots=sites,
+                     rs_params=params,
+                     interp_params=('ndvi',))
 
 
 if __name__ == '__main__':
-    # prep_earthengine_extracts()
-    # prep_field_properties()
-    # prep_timeseries()
-    # prep_dynamics()
-    # prep_input_json()
-    pass
+    project = '5_Flux_Ensemble'
+
+    home = os.path.expanduser('~')
+    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, 'flux_ensemble.toml')
+
+    config = ProjectConfig()
+    config.read_config(config_file)
+
+    select_sites = get_flux_sites(config.station_metadata_csv, crop_only=False, western_only=True, header=1,
+                                  index_col=0)
+
+    prep_earthengine_extracts(config, select_sites)
+    prep_field_properties(config)
+    prep_snow(config)
+    prep_timeseries(config, select_sites)
+    prep_dynamics(config, select_sites)
+    prep_input_json(config, select_sites)
+
 # ========================= EOF ====================================================================
