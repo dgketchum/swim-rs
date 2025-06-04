@@ -90,20 +90,18 @@ def evaluate():
 
     overwrite_ = False
 
+    cal_results = os.path.join(project_ws_, 'results')
+
     for ee, site_ in enumerate(sites):
 
         lulc = sdf.at[site_, 'General classification']
-
-        # if lulc != 'Croplands':
-        #     continue
 
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
-        run_const = os.path.join(project_ws_, 'results', 'tight')
-        output_ = os.path.join(run_const, site_)
+        output_ = os.path.join(cal_results, site_)
 
         prepped_input = os.path.join(output_, f'prepped_input.json')
         spinup_ = os.path.join(output_, f'spinup.json')
@@ -148,8 +146,8 @@ def evaluate():
 
         out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'model_output', 'png')
 
-        # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model=model,
-        #                     members=['ssebop', 'disalexi', 'geesebal', 'eemetric', 'ptjpl', 'sims'])
+        flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model=model,
+                            members=['ssebop', 'disalexi', 'geesebal', 'eemetric', 'ptjpl', 'sims'])
 
     pprint({s: [t[0] for t in results].count(s) for s in set(t[0] for t in results)})
     pprint(

@@ -29,6 +29,9 @@ def join_daily_timeseries(fields, met_dir, rs_dir, dst_dir, snow=None, overwrite
 
     for fid, row in tqdm(field_df.iterrows(), total=field_df.shape[0]):
 
+        if fid != 'S2':
+            continue
+
         if 'target_fields' in kwargs:
             if str(fid) not in kwargs['target_fields']:
                 continue
@@ -78,10 +81,11 @@ def join_daily_timeseries(fields, met_dir, rs_dir, dst_dir, snow=None, overwrite
 
         if snow is not None:
             swe = pd.DataFrame.from_dict(snow_dct[fid])
+            swe.index = pd.DatetimeIndex(swe['date'])
             swe = swe.sort_index()
             match_idx = [i for i in df.index if i in swe.index]
             df[(fid, 'none', 'swe', 'mm', 'snodas', 'no_mask')] = np.nan
-            df.loc[match_idx, (fid, 'none', 'swe', 'mm', 'snodas', 'no_mask')] = swe
+            df.loc[match_idx, (fid, 'none', 'swe', 'mm', 'snodas', 'no_mask')] = swe['value']
 
         df = pd.concat([df, rsdf], axis=1, ignore_index=False)
         cols = pd.MultiIndex.from_tuples(df.columns, names=COLUMN_MULTIINDEX)

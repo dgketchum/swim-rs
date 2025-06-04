@@ -9,24 +9,27 @@ from analysis.metrics import compare_etf_estimates
 from model.initialize import initialize_data
 from model import obs_field_cycle
 from prep import get_flux_sites
-from run import run_flux_sites
+from swim.config import ProjectConfig
+from prep.prep_plots import prep_fields_json, preproc
+from prep import get_flux_sites, get_ensemble_parameters
+from swim.sampleplots import SamplePlots
 
-project = '5_Flux_Ensemble'
-model = 'openet'
 
-root = '/data/ssd2/swim'
-data = os.path.join(root, project, 'data')
-project_ws_ = os.path.join(root, project)
-if not os.path.isdir(root):
-    root = '/home/dgketchum/PycharmProjects/swim-rs'
-    project_ws_ = os.path.join(root, 'tutorials', project)
-    data = os.path.join(project_ws_, 'data')
+def run_flux_sites(fid, config, plot_data, outfile):
+    start_time = time.time()
 
-config_file = os.path.join(project_ws_, 'config.toml')
+    df_dct = obs_field_cycle.field_day_loop(config, plot_data, debug_flag=True)
 
-open_et_ = os.path.join(project_ws_, 'openet_flux')
+    end_time = time.time()
+    print('\nExecution time: {:.2f} seconds\n'.format(end_time - start_time))
 
-station_file = os.path.join(data, 'station_metadata.csv')
+    df = df_dct[fid].copy()
+    in_df = plot_data.input_to_dataframe(fid)
+    df = pd.concat([df, in_df], axis=1, ignore_index=False)
+
+    df = df.loc[config.start_dt:config.end_dt]
+
+    df.to_csv(outfile)
 
 
 def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='ssebop',
@@ -83,12 +86,26 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
     # print('\n')
 
 
-def evaluate():
-    sites, sdf = get_flux_sites(station_file, crop_only=False, return_df=True, header=1, index_col=0)
+if __name__ == '__main__':
+
+    project = '5_Flux_Ensemble'
+
+    home = os.path.expanduser('~')
+    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, 'flux_ensemble.toml')
+
+    config = ProjectConfig()
+    config.read_config(config_file)
+
+    open_et_ = os.path.join(config.project_ws, 'openet_flux')
+    flux_dir = os.path.join(config.project_ws, 'data', 'daily_flux_files')
+
+    sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
+                                return_df=True, western_only=True, header=1)
 
     incomplete, complete, results = [], [], []
 
     overwrite_ = False
+    use_new_input = False
 
     for ee, site_ in enumerate(sites):
 
@@ -102,49 +119,62 @@ def evaluate():
 
         print(f'\n{ee} {site_}: {lulc}')
 
-        run_const = os.path.join(project_ws_, 'results', 'tight')
+        run_const = os.path.join(config.project_ws, 'results', 'tight')
         output_ = os.path.join(run_const, site_)
 
-        prepped_input = os.path.join(output_, f'prepped_input.json')
-        spinup_ = os.path.join(output_, f'spinup.json')
-
-        if not os.path.exists(prepped_input):
-            prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
-            spinup_ = os.path.join(output_, f'spinup_{site_}.json')
-
-        flux_dir = os.path.join(project_ws_, 'data', 'daily_flux_files')
         flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
 
         fcst_params = os.path.join(output_, f'{site_}.3.par.csv')
         if not os.path.exists(fcst_params):
             continue
 
+        target_dir = os.path.join(config.project_ws, 'testrun', site_)
+
+        if use_new_input:
+
+            station_prepped_input = os.path.join(target_dir, f'prepped_input_{site_}.json')
+
+            if not os.path.isfile(station_prepped_input):
+
+                if not os.path.isdir(target_dir):
+                    os.makedirs(target_dir)
+
+                models = [config.etf_target_model] + config.etf_ensemble_members
+                rs_params_ = get_ensemble_parameters(include=models)
+                prep_fields_json(config.properties_json, config.plot_timeseries, config.dynamics_data_json,
+                                 station_prepped_input, target_plots=[site_], rs_params=rs_params_,
+                                 interp_params=('ndvi',))
+
+        else:
+            prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
+            config.input = prepped_input
+            spinup_ = os.path.join(output_, f'spinup_{site_}.json')
+            config.spinup = spinup_
+
         modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
         print(f'Calibration made {modified_date}')
 
-        cal = os.path.join(project_ws_, f'tight_pest', 'mult')
-
         out_csv = os.path.join(output_, f'{site_}.csv')
 
-        config_, fields_ = initialize_data(config_file, project_ws_, input_data=prepped_input, spinup_data=spinup_,
-                                           forecast=True, forecast_file=fcst_params)
+        plots_ = SamplePlots()
+        plots_.initialize_plot_data(config)
 
-        try:
-            if not os.path.exists(out_csv) or overwrite_:
-                run_flux_sites(site_, config_, fields_, out_csv)
-        except ValueError as exc:
-            print(f'{site_} error: {exc}')
-            continue
+        # try:
+        #     if not os.path.exists(out_csv) or overwrite_:
+        #         run_flux_sites(site_, config, plots_, out_csv)
+        # except ValueError as exc:
+        #     print(f'{site_} error: {exc}')
+        #     continue
 
-        result = compare_openet(site_, flux_data, out_csv, open_et_, fields_,
-                                model=model, return_comparison=True, gap_tolerance=5)
+        result = compare_openet(site_, flux_data, out_csv, open_et_, plots_,
+                                model=config.etf_target_model, return_comparison=True, gap_tolerance=5)
 
         if result:
             results.append((result, lulc))
 
         complete.append(site_)
 
-        out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'model_output', 'png')
+        # out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'model_output', 'png')
 
         # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model=model,
         #                     members=['ssebop', 'disalexi', 'geesebal', 'eemetric', 'ptjpl', 'sims'])
@@ -156,9 +186,4 @@ def evaluate():
          category in set(t[1] for t in results)})
     print(f'complete: {complete}')
     print(f'incomplete: {incomplete}')
-
-
-if __name__ == '__main__':
-    evaluate()
-    pass
 # ========================= EOF ====================================================================

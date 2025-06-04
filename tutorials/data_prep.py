@@ -107,7 +107,7 @@ def prep_input_json(conf, sites):
     prep_fields_json(conf.properties_json,
                      conf.joined_timeseries_dir,
                      conf.dynamics_data_json,
-                     conf.prepped_input_json,
+                     conf.input_data,
                      target_plots=sites,
                      rs_params=params,
                      interp_params=('ndvi',))
@@ -125,11 +125,11 @@ if __name__ == '__main__':
     select_sites = get_flux_sites(config.station_metadata_csv, crop_only=False, western_only=True, header=1,
                                   index_col=0)
 
-    prep_earthengine_extracts(config, select_sites)
-    prep_field_properties(config)
-    prep_snow(config)
-    prep_timeseries(config, select_sites)
-    prep_dynamics(config, select_sites)
+    # prep_earthengine_extracts(config, select_sites)
+    # prep_field_properties(config)
+    # prep_snow(config)
+    # prep_timeseries(config, select_sites)
+    # prep_dynamics(config, select_sites)
     prep_input_json(config, select_sites)
 
 # ========================= EOF ====================================================================

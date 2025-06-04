@@ -76,7 +76,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
                 if not os.path.isdir(obs_dir):
                     os.makedirs(obs_dir, exist_ok=True)
 
-                preproc(conf_path, project_ws, etf_target_model=target_)
+                preproc(conf_path, project_ws, etf_target_model=target)
 
                 prepped_data = True
 

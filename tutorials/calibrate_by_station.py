@@ -20,37 +20,29 @@ def run_pest_sequence(conf, select_stations=None, pdc_remove=False, overwrite=Fa
 
         print(f'{fid}: {i} of {len(select_stations)} stations')
 
-        prepped_data, prepped_input = False, None
-
-        target_dir = os.path.join(conf.project_ws, 'results', fid)
+        target_dir = os.path.join(conf.project_ws, 'refactor_res', fid)
+        station_prepped_input = os.path.join(target_dir, f'prepped_input_{fid}.json')
 
         if not os.path.isdir(target_dir):
             os.mkdir(target_dir)
-        elif overwrite:
-            pass
-        else:
-            print(f'{fid} exists, skipping')
-            continue
 
-        os.chdir(os.path.dirname(__file__))
+        if not os.path.isfile(station_prepped_input) and not overwrite:
 
-        if not prepped_data:
-            rs_params_ = get_ensemble_parameters(include=conf.etf_ensemble_members)
+            models = [conf.etf_target_model] + conf.etf_ensemble_members
+            rs_params_ = get_ensemble_parameters(include=models)
             prep_fields_json(config.properties_json, conf.plot_timeseries, conf.dynamics_data_json,
-                             conf.prepped_input_json, target_plots=[fid], rs_params=rs_params_,
+                             conf.input_data, target_plots=[fid], rs_params=rs_params_,
                              interp_params=('ndvi',))
 
             obs_dir = os.path.join(conf.project_ws, 'obs')
             if not os.path.isdir(obs_dir):
                 os.makedirs(obs_dir, exist_ok=True)
 
-            preproc(conf, conf.project_ws, etf_target_model=conf.etf_target_model)
-
+            preproc(conf)
 
         py_script = os.path.join(conf.project_ws, 'custom_forward_run.py')
 
-        station_prepped_input = os.path.join(target_dir, f'prepped_input_{fid}.json')
-        shutil.copyfile(prepped_input, station_prepped_input)
+        shutil.copyfile(conf.input_data, station_prepped_input)
 
         p_dir = os.path.join(conf.project_ws, f'pest')
         if os.path.isdir(p_dir):
@@ -75,8 +67,7 @@ def run_pest_sequence(conf, select_stations=None, pdc_remove=False, overwrite=Fa
         # cwd must be reset to avoid FileNotFound on PstFrom.log
         os.chdir(os.path.dirname(__file__))
 
-        builder = PestBuilder(project_ws=conf.project_ws, config_file=conf,
-                              use_existing=False, python_script=py_script,
+        builder = PestBuilder(conf, use_existing=False, python_script=py_script,
                               conflicted_obs=None)
         builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
         builder.build_localizer()
@@ -105,15 +96,13 @@ def run_pest_sequence(conf, select_stations=None, pdc_remove=False, overwrite=Fa
                 temp_pdc = os.path.join(temp_dir, f'{project}.pdc.csv')
                 shutil.copyfile(pdc_file, temp_pdc)
 
-                builder = PestBuilder(project_ws=conf.project_ws, config_file=conf,
-                                      use_existing=False, python_script=py_script,
-                                      conflicted_obs=temp_pdc)
-                builder.build_pest(target_etf=target, members=members)
+                builder = PestBuilder(conf, use_existing=False, python_script=py_script, conflicted_obs=temp_pdc)
+                builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
                 builder.build_localizer()
                 builder.write_control_settings(noptmax=0)
                 builder.dry_run(exe_)
 
-        builder.write_control_settings(noptmax=3, reals=realizations)
+        builder.write_control_settings(noptmax=3, reals=conf.realizations)
 
         _pst = f'{project}.pst'
 
@@ -166,6 +155,7 @@ if __name__ == '__main__':
     flux_meta_csv = os.path.join(config.data_folder, 'station_metadata.csv')
     flux_meta_df = pd.read_csv(flux_meta_csv, header=1, skip_blank_lines=True, index_col='Site ID')
     sites = sorted(flux_meta_df.index.to_list())
+    sites = ['S2']
 
-    run_pest_sequence(config, select_stations=sites)
+    run_pest_sequence(config, select_stations=sites, overwrite=True)
 # ========================= EOF ============================================================================

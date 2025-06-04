@@ -79,12 +79,12 @@ class DayData:
             irrigated = self.irr_status[0, i]
             if irrigated:
                 self.ndvi[0, i] = vals['ndvi_irr'][i]
-                self.refet[0, i] = vals['{}_mm'.format(config.refet_type)][i]
+                self.refet[0, i] = vals['{}_corr'.format(config.refet_type)][i]
                 self.irr_day[0, i] = int(self.doy in self.irr_doys[i])
 
             else:
                 self.ndvi[0, i] = vals['ndvi_inv_irr'][i]
-                self.refet[0, i] = vals['{}_mm_uncorr'.format(config.refet_type)][i]
+                self.refet[0, i] = vals['{}'.format(config.refet_type)][i]
                 self.irr_day[0, i] = 0
 
     def update_daily_inputs(self, vals, size):
@@ -92,8 +92,8 @@ class DayData:
         self.capture = self.capture.reshape(1, -1)
         self.refet = self.refet.reshape(1, -1)
 
-        self.min_temp = np.array(vals['tmin_c']).reshape(1, -1)
-        self.max_temp = np.array(vals['tmax_c']).reshape(1, -1)
+        self.min_temp = np.array(vals['tmin']).reshape(1, -1)
+        self.max_temp = np.array(vals['tmax']).reshape(1, -1)
         self.temp_avg = (self.min_temp + self.max_temp) / 2.
         self.srad = np.array(vals['srad']).reshape(1, -1)
         self.precip = np.array(vals['prcp'])

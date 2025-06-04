@@ -52,7 +52,7 @@ def write_field_properties(shp, out_js, lulc, irr=None, soils=None, cdl=None, fl
             for k in dct:
                 if k in d:
                     try:
-                        dct[k].update({'awc': d[k]['awc']})
+                        dct[k].update({prop: d[k][prop]})
                     except KeyError:
                         continue
 

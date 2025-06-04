@@ -69,7 +69,7 @@ def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, targe
     rs_params_strs = ['_'.join(r) if 'etf' in r else '_'.join(r[1:])  for r in rs_params]
     [arrays.update({r: [] for r in rs_params_strs})]
 
-    for fid, v in tqdm(dct['props'].items(), total=len(dct['props'])):
+    for fid, v in tqdm(dct['props'].items(), total=len(dct['props']), desc='Writing model input json'):
 
         if fid in missing:
             continue
@@ -120,7 +120,8 @@ def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, targe
                         sent_adj_ndvi = sentinel_adjust_quantile_mapping(sentinel_ndvi_df=sndvi_unadj,
                                                                          landsat_ndvi_df=lndvi,
                                                                          min_pairs=20, window_days=1)
-                        int_arr = pd.concat([lndvi, pd.DataFrame(sent_adj_ndvi)], ignore_index=False, axis=1).mean(axis=1)
+                        int_arr = pd.concat([lndvi, pd.DataFrame(sent_adj_ndvi)],
+                                            ignore_index=False, axis=1).mean(axis=1)
 
                     int_arr = int_arr.interpolate(limit=100)
                     a = int_arr.bfill().ffill().values.reshape((df.shape[0], -1))
@@ -133,7 +134,10 @@ def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, targe
 
             except KeyError:
                 a = np.ones((df.shape[0], 1)) * np.nan
-                arrays['_'.join(p[1:])].append(a)
+                if param == 'ndvi':
+                    arrays['_'.join(p[1:])].append(a)
+                else:
+                    arrays['_'.join(p)].append(a)
 
     all_params = required_met_params + rs_params_strs
     for p in all_params:
@@ -158,12 +162,11 @@ def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, targe
     return target_plots, missing
 
 
-def preproc(config_file, project_ws, etf_target_model='openet'):
+def preproc(config):
     ct = 0
 
     print('Writing observations to file...')
-    config = ProjectConfig()
-    config.read_config(config_file, project_ws)
+
     start = datetime.strftime(config.start_dt, '%Y-%m-%d')
     end = datetime.strftime(config.end_dt, '%Y-%m-%d')
 
@@ -189,16 +192,16 @@ def preproc(config_file, project_ws, etf_target_model='openet'):
 
         data = data.loc[start: end]
 
-        data['etf'] = data[f'{etf_target_model}_etf_inv_irr']
-        data.loc[irr_index, 'etf'] = data.loc[irr_index, f'{etf_target_model}_etf_irr']
+        data['etf'] = data[f'{config.etf_target_model}_etf_inv_irr']
+        data.loc[irr_index, 'etf'] = data.loc[irr_index, f'{config.etf_target_model}_etf_irr']
 
         print('\n{}\npreproc ETf mean: {:.2f}'.format(fid, np.nanmean(data['etf'].values)))
         _file = os.path.join(config.obs_folder, 'obs_etf_{}.np'.format(fid))
         np.savetxt(_file, data['etf'].values)
 
-        print('preproc SWE mean: {:.2f}\n'.format(np.nanmean(data['obs_swe'].values)))
+        print('preproc SWE mean: {:.2f}\n'.format(np.nanmean(data['swe'].values)))
         _file = os.path.join(config.obs_folder, 'obs_swe_{}.np'.format(fid))
-        np.savetxt(_file, data['obs_swe'].values)
+        np.savetxt(_file, data['swe'].values)
 
         ct += 1
 
