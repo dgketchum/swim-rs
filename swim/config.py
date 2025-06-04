@@ -8,6 +8,11 @@ from pprint import pprint
 class ProjectConfig:
     def __init__(self):
         super().__init__()
+        self.forecast_parameters = None
+        self.forecast_param_csv = None
+        self.parameter_set_json = None
+        self.parameter_dist_csv = None
+        self.calibration_dir_override = None
         self.resolved_config = {}
         self.project_name = None
         self.root_path = None
@@ -74,7 +79,7 @@ class ProjectConfig:
         self.cover_proxy = None
         self.toml_calibration_dir = None
         self.toml_initial_values_csv = None
-        self.toml_forecast_parameters_csv = None
+        self.forecast_parameters_csv = None
         self.era5land_params = None
         self.era5land_param_mapping = None
         self.alternative_root_config = {}
@@ -216,6 +221,10 @@ class ProjectConfig:
         self.realizations = calib_toml_conf.get('realizations')
         self.obs_folder = calib_toml_conf.get('obs_folder')
 
+        self.calibration_dir_override = calibration_dir_override
+        self.parameter_set_json = parameter_set_json
+        self.forecast_param_csv = forecast_param_csv
+
         self.elev_units = misc_conf.get('elev_units', 'm')
         self.refet_type = misc_conf.get('refet_type')
         self.irr_threshold = self.irrigation_threshold
@@ -237,15 +246,26 @@ class ProjectConfig:
 
         self.toml_calibration_dir = calib_toml_conf.get('calibration_dir')
         self.toml_initial_values_csv = calib_toml_conf.get('initial_values_csv')
-        self.toml_forecast_parameters_csv = forecast_toml_conf.get('forecast_parameters')
+        self.forecast_parameters_csv = forecast_toml_conf.get('forecast_parameters')
         self.spinup = calib_toml_conf.get('spinup')
 
         if self.calibrate or calibration_dir_override:
+            self.calibration_dir_override = calibration_dir_override
+            self.read_calibration_parameters()
+
+        elif self.forecast:
+            self.calibration_dir = None
+            self.read_forecast_parameters()
+
+    def read_calibration_parameters(self):
+
             self.calibrate = True
-            if calibration_dir_override:
-                self.calibration_dir = calibration_dir_override
+
+            if self.calibration_dir_override:
+                self.calibration_dir = self.calibration_dir_override
             elif self.toml_calibration_dir:
                 self.calibration_dir = self.toml_calibration_dir
+
             initial_values_csv_path = self.toml_initial_values_csv
             if not os.path.isabs(initial_values_csv_path) and self.project_ws:
                 initial_values_csv_path = os.path.join(self.project_ws, initial_values_csv_path)
@@ -254,38 +274,43 @@ class ProjectConfig:
             _files = list(param_init['mult_name'])
             self.calibration_files = {k: os.path.join(self.calibration_dir, f)
                                       for k, f in zip(self.calibrated_parameters, _files)}
-        elif self.forecast:
-            self.calibration_dir = None
-            if forecast_param_csv:
-                parameter_dist_csv = forecast_param_csv
-            elif self.toml_forecast_parameters_csv:
-                parameter_dist_csv = self.toml_forecast_parameters_csv
-                if not os.path.isabs(parameter_dist_csv) and self.project_ws:
-                    parameter_dist_csv = os.path.join(self.project_ws, parameter_dist_csv)
-            else:
-                parameter_dist_csv = None
-            if parameter_dist_csv:
-                param_dist = pd.read_csv(parameter_dist_csv, index_col=0)
-                param_mean = param_dist.mean(axis=0)
-                p_str = ['_'.join(s.split(':')[1].split('_')[1:-1]) if ':' in s and len(s.split(':')) > 1 else s for s
-                         in list(param_mean.index)]
-                param_mean.index = p_str
-                self.forecast_parameters = param_mean.copy()
-                self.parameter_list = param_mean.index.to_list()
-            elif parameter_set_json:
-                with open(parameter_set_json, 'r') as f:
-                    param_arr = json.load(f)
-                d = param_arr['fields']
-                self.forecast_parameter_groups = [list(v.keys()) for k, v in d.items()][0]
-                k_list = []
-                for main_key, val_dict in d.items():
-                    for sub_key in val_dict.keys():
-                        k_list.append(f'{sub_key}_{main_key}')
-                v_list = []
-                for tup in [(i.split('_')[0], '_'.join(i.split('_')[1:])) for i in k_list]:
-                    v_list.append(d[tup[1]][tup[0]])
-                self.forecast_parameters = pd.Series(index=k_list, data=v_list)
-                self.parameter_list = self.forecast_parameters.index.to_list()
+
+    def read_forecast_parameters(self):
+
+        self.calibration_dir = None
+
+        if self.forecast_param_csv:
+            parameter_dist_csv = self.forecast_param_csv
+
+        elif self.forecast_parameters_csv:
+            parameter_dist_csv = self.forecast_parameters_csv
+            if not os.path.isabs(parameter_dist_csv) and self.project_ws:
+                parameter_dist_csv = os.path.join(self.project_ws, parameter_dist_csv)
+        else:
+            parameter_dist_csv = None
+        if parameter_dist_csv:
+            param_dist = pd.read_csv(parameter_dist_csv, index_col=0)
+            param_mean = param_dist.mean(axis=0)
+            p_str = ['_'.join(s.split(':')[1].split('_')[1:-1]) if ':' in s and len(s.split(':')) > 1 else s for s
+                     in list(param_mean.index)]
+            param_mean.index = p_str
+            self.forecast_parameters = param_mean.copy()
+            self.parameter_list = param_mean.index.to_list()
+
+        elif self.parameter_set_json:
+            with open(self.parameter_set_json, 'r') as f:
+                param_arr = json.load(f)
+            d = param_arr['fields']
+            self.forecast_parameter_groups = [list(v.keys()) for k, v in d.items()][0]
+            k_list = []
+            for main_key, val_dict in d.items():
+                for sub_key in val_dict.keys():
+                    k_list.append(f'{sub_key}_{main_key}')
+            v_list = []
+            for tup in [(i.split('_')[0], '_'.join(i.split('_')[1:])) for i in k_list]:
+                v_list.append(d[tup[1]][tup[0]])
+            self.forecast_parameters = pd.Series(index=k_list, data=v_list)
+            self.parameter_list = self.forecast_parameters.index.to_list()
 
     def __str__(self):
         return (
