@@ -114,9 +114,6 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['US-xJR']:
-            continue
-
         print(f'\n{ee} {site_}: {lulc}')
 
         # run_const = os.path.join(project_ws_, 'results', '31MAR_irr_spec')
