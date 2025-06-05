@@ -24,17 +24,10 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
                  and v['f_irr'] >= irr_threshold]
     irr_index = [i for i in output.index if i.year in irr_years]
 
-    try:
-        output['etf'] = output['etf_inv_irr']
-        output.loc[irr_index, 'etf'] = output.loc[irr_index, 'etf_irr']
-        output['capture'] = output['etf_inv_irr_ct']
-        output.loc[irr_index, 'capture'] = output.loc[irr_index, 'etf_irr_ct']
-
-    except KeyError:
-        output['etf'] = output[f'{model}_etf_inv_irr']
-        output.loc[irr_index, 'etf'] = output.loc[irr_index, f'{model}_etf_irr']
-        output['capture'] = output[f'{model}_etf_inv_irr_ct']
-        output.loc[irr_index, 'capture'] = output.loc[irr_index, f'{model}_etf_irr_ct']
+    output['etf'] = output[f'{model}_etf_inv_irr']
+    output.loc[irr_index, 'etf'] = output.loc[irr_index, f'{model}_etf_irr']
+    output['capture'] = ~np.isnan(output[f'{model}_etf_inv_irr'].values)
+    output.loc[irr_index, 'capture'] = ~np.isnan(output.loc[irr_index, f'{model}_etf_irr'].values)
 
     df = pd.DataFrame({'kc_act': output['kc_act'], 'ET_corr': flux_data['ET_corr'],
                        'etf': output['etf'], 'capture': output['capture'], 'eto': output['eto']})

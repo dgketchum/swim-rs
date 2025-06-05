@@ -47,7 +47,7 @@ def run_flux_sites(fid, config, overwrite_input=False):
 
     df = df.loc[config.start_dt:config.end_dt]
 
-    a = 1
+    print(f'run complete: {fid}')
 
 
 if __name__ == '__main__':

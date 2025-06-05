@@ -96,8 +96,8 @@ if __name__ == '__main__':
     config = ProjectConfig()
     config.read_config(config_file)
 
-    open_et_ = os.path.join(config.project_ws, 'openet_flux')
-    flux_dir = os.path.join(config.project_ws, 'data', 'daily_flux_files')
+    open_et_ = os.path.join(config.data_dir, 'openet_flux')
+    flux_dir = os.path.join(config.data_dir, 'daily_flux_files')
 
     sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
                                 return_df=True, western_only=True, header=1)
@@ -124,44 +124,43 @@ if __name__ == '__main__':
 
         flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
 
-        fcst_params = os.path.join(output_, f'{site_}.3.par.csv')
-        if not os.path.exists(fcst_params):
-            continue
-
         target_dir = os.path.join(config.project_ws, 'testrun', site_)
+        station_prepped_input = os.path.join(target_dir, f'prepped_input_{site_}.json')
 
-        if use_new_input:
+        if not os.path.isfile(station_prepped_input) or overwrite_:
 
-            station_prepped_input = os.path.join(target_dir, f'prepped_input_{site_}.json')
+            if not os.path.isdir(target_dir):
+                os.makedirs(target_dir)
 
-            if not os.path.isfile(station_prepped_input):
+            models = [config.etf_target_model] + config.etf_ensemble_members
+            rs_params_ = get_ensemble_parameters(include=models)
+            prep_fields_json(config.properties_json, config.plot_timeseries, config.dynamics_data_json,
+                             station_prepped_input, target_plots=[site_], rs_params=rs_params_,
+                             interp_params=('ndvi',))
 
-                if not os.path.isdir(target_dir):
-                    os.makedirs(target_dir)
+        config.input_data = station_prepped_input
 
-                models = [config.etf_target_model] + config.etf_ensemble_members
-                rs_params_ = get_ensemble_parameters(include=models)
-                prep_fields_json(config.properties_json, config.plot_timeseries, config.dynamics_data_json,
-                                 station_prepped_input, target_plots=[site_], rs_params=rs_params_,
-                                 interp_params=('ndvi',))
+        out_csv = os.path.join(target_dir, f'{site_}.csv')
 
-        else:
-            prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
-            config.input = prepped_input
-            spinup_ = os.path.join(output_, f'spinup_{site_}.json')
-            config.spinup = spinup_
+        try:
+            plots_ = SamplePlots()
+            plots_.initialize_plot_data(config)
+        except FileNotFoundError:
+            print(f'file {os.path.basename(config.input_data)} not found')
 
-        modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
+        # bring in forecast from previous work
+        config.calibrate = False
+        config.forecast = True
+        config.forecast_parameters_csv = os.path.join(output_, f'{site_}.3.par.csv')
+        if not os.path.exists(config.forecast_parameters_csv):
+            continue
+        modified_date = datetime.fromtimestamp(os.path.getmtime(config.forecast_parameters_csv))
         print(f'Calibration made {modified_date}')
-
-        out_csv = os.path.join(output_, f'{site_}.csv')
-
-        plots_ = SamplePlots()
-        plots_.initialize_plot_data(config)
+        config.read_forecast_parameters()
 
         # try:
-        #     if not os.path.exists(out_csv) or overwrite_:
-        #         run_flux_sites(site_, config, plots_, out_csv)
+        if not os.path.exists(out_csv) or overwrite_:
+            run_flux_sites(site_, config, plots_, out_csv)
         # except ValueError as exc:
         #     print(f'{site_} error: {exc}')
         #     continue
