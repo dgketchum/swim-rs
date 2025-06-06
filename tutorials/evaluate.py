@@ -88,10 +88,17 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 
 if __name__ == '__main__':
 
-    project = '5_Flux_Ensemble'
+    """"""
+    project = '4_Flux_Network'
+    config_filename = 'flux_network'
+    western_only = False
+
+    # project = '5_Flux_Ensemble'
+    # config_filename = 'flux_ensemble'
+    # western_only = True
 
     home = os.path.expanduser('~')
-    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, 'flux_ensemble.toml')
+    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{config_filename}.toml')
 
     config = ProjectConfig()
     config.read_config(config_file)
@@ -100,12 +107,12 @@ if __name__ == '__main__':
     flux_dir = os.path.join(config.data_dir, 'daily_flux_files')
 
     sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
-                                return_df=True, western_only=True, header=1)
+                                return_df=True, western_only=western_only, header=1)
 
     incomplete, complete, results = [], [], []
 
-    overwrite_ = False
-    use_new_input = False
+    overwrite_ = True
+    use_new_input = True
 
     for ee, site_ in enumerate(sites):
 
@@ -119,7 +126,7 @@ if __name__ == '__main__':
 
         print(f'\n{ee} {site_}: {lulc}')
 
-        run_const = os.path.join(config.project_ws, 'results', 'tight')
+        run_const = os.path.join(config.project_ws, 'results', 'openet_9APR2025')
         output_ = os.path.join(run_const, site_)
 
         flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
@@ -132,7 +139,10 @@ if __name__ == '__main__':
             if not os.path.isdir(target_dir):
                 os.makedirs(target_dir)
 
-            models = [config.etf_target_model] + config.etf_ensemble_members
+            models = [config.etf_target_model]
+            if config.etf_ensemble_members is not None:
+                models += config.etf_ensemble_members
+
             rs_params_ = get_ensemble_parameters(include=models)
             prep_fields_json(config.properties_json, config.plot_timeseries, config.dynamics_data_json,
                              station_prepped_input, target_plots=[site_], rs_params=rs_params_,
@@ -147,11 +157,13 @@ if __name__ == '__main__':
             plots_.initialize_plot_data(config)
         except FileNotFoundError:
             print(f'file {os.path.basename(config.input_data)} not found')
+            continue
 
         # bring in forecast from previous work
         config.calibrate = False
         config.forecast = True
         config.forecast_parameters_csv = os.path.join(output_, f'{site_}.3.par.csv')
+        config.spinup = os.path.join(output_, f'spinup_{site_}.json')
         if not os.path.exists(config.forecast_parameters_csv):
             continue
         modified_date = datetime.fromtimestamp(os.path.getmtime(config.forecast_parameters_csv))

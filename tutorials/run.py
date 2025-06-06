@@ -16,13 +16,16 @@ from swim.sampleplots import SamplePlots
 def run_flux_sites(fid, config, overwrite_input=False):
     start_time = time.time()
 
-    models = [config.etf_target_model] + config.etf_ensemble_members
+    models = [config.etf_target_model]
+    if config.etf_ensemble_members is not None:
+        models += config.etf_ensemble_members
+
     rs_params_ = get_ensemble_parameters(include=models)
 
     target_dir = os.path.join(config.project_ws, 'testrun', fid)
     station_prepped_input = os.path.join(target_dir, f'prepped_input_{fid}.json')
 
-    if not os.path.isfile(station_prepped_input) and not overwrite_input:
+    if not os.path.isfile(station_prepped_input) or overwrite_input:
 
         if not os.path.isdir(target_dir):
             os.makedirs(target_dir)
@@ -32,6 +35,7 @@ def run_flux_sites(fid, config, overwrite_input=False):
                          interp_params=('ndvi',))
 
     config.input_data = station_prepped_input
+    config.spinup = os.path.join(target_dir, f'spinup_{fid}.json')
 
     plots = SamplePlots()
     plots.initialize_plot_data(config)
@@ -47,17 +51,28 @@ def run_flux_sites(fid, config, overwrite_input=False):
 
     df = df.loc[config.start_dt:config.end_dt]
 
-    print(f'run complete: {fid}')
+    out_csv = os.path.join(target_dir, f'{fid}.csv')
+
+    df.to_csv(out_csv)
+
+    print(f'run complete: {fid}, wrote {out_csv}')
 
 
 if __name__ == '__main__':
-    project = '5_Flux_Ensemble'
+    """"""
+    project = '4_Flux_Network'
+    config_filename = 'flux_network'
+    western_only = False
+
+    # project = '5_Flux_Ensemble'
+    # config_filename = 'flux_ensemble'
+    # western_only = True
 
     home = os.path.expanduser('~')
-    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, 'flux_ensemble.toml')
+    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{config_filename}.toml')
 
     config = ProjectConfig()
     config.read_config(config_file)
 
-    run_flux_sites('S2', config)
+    run_flux_sites('S2', config, overwrite_input=True)
 # ========================= EOF ====================================================================

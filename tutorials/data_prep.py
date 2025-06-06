@@ -11,7 +11,9 @@ def prep_earthengine_extracts(conf, sites, overwrite=False):
     sensing_params = ['etf', 'ndvi']
 
     rs_files = []
-    models = [conf.etf_target_model] + conf.etf_ensemble_members
+    models = [conf.etf_target_model]
+    if conf.etf_ensemble_members is not None:
+        models += conf.etf_ensemble_members
 
     for mask_type in types_:
 
@@ -23,12 +25,14 @@ def prep_earthengine_extracts(conf, sites, overwrite=False):
 
                 for model in models:
                     ee_data = os.path.join(conf.landsat_dir, 'extracts', f'{model}_{sensing_param}', mask_type)
-                    src = os.path.join(conf.landsat_tables_dir, '{}_{}_{}.parquet'.format(model, sensing_param, mask_type))
+                    src = os.path.join(conf.landsat_tables_dir,
+                                       '{}_{}_{}.parquet'.format(model, sensing_param, mask_type))
                     rs_files.extend([src])
                     if os.path.exists(src) and not overwrite:
                         continue
                     else:
-                        sparse_time_series(conf.footprint_shapefile, ee_data, yrs, src, feature_id=conf.feature_id,
+                        sparse_time_series(conf.footprint_shapefile_shp, ee_data, yrs, src,
+                                           feature_id=conf.feature_id_col,
                                            instrument='landsat', parameter=sensing_param, algorithm=model,
                                            mask=mask_type, select=sites, footprint_spec=3)
 
@@ -39,7 +43,7 @@ def prep_earthengine_extracts(conf, sites, overwrite=False):
                 if os.path.exists(src) and not overwrite:
                     continue
                 else:
-                    sparse_time_series(conf.footprint_shapefile, ee_data, yrs, src, feature_id=conf.feature_id,
+                    sparse_time_series(conf.footprint_shapefile_shp, ee_data, yrs, src, feature_id=conf.feature_id_col,
                                        instrument='landsat', parameter=sensing_param, algorithm='none', mask=mask_type,
                                        select=sites, footprint_spec=3)
 
@@ -60,7 +64,7 @@ def prep_field_properties(conf):
 def prep_snow(conf):
     from data_extraction.snodas.snodas import create_timeseries_json
 
-    create_timeseries_json(conf.snodas_in_dir, conf.snodas_out_json, feature_id=conf.gridmet_mapping_index_col)
+    create_timeseries_json(conf.snodas_in_dir, conf.snodas_out_json, feature_id=conf.feature_id_col)
 
 
 def prep_timeseries(conf, sites):
@@ -114,22 +118,29 @@ def prep_input_json(conf, sites):
 
 
 if __name__ == '__main__':
-    project = '5_Flux_Ensemble'
+    """"""
+    project = '4_Flux_Network'
+    config_filename = 'flux_network'
+    western_only = False
+
+    # project = '5_Flux_Ensemble'
+    # config_filename = 'flux_ensemble'
+    # western_only = True
 
     home = os.path.expanduser('~')
-    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, 'flux_ensemble.toml')
+    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{config_filename}.toml')
 
     config = ProjectConfig()
     config.read_config(config_file)
 
-    select_sites = get_flux_sites(config.station_metadata_csv, crop_only=False, western_only=True, header=1,
+    select_sites = get_flux_sites(config.station_metadata_csv, crop_only=False, western_only=western_only, header=1,
                                   index_col=0)
 
-    # prep_earthengine_extracts(config, select_sites)
-    # prep_field_properties(config)
-    # prep_snow(config)
-    # prep_timeseries(config, select_sites)
-    # prep_dynamics(config, select_sites)
+    prep_earthengine_extracts(config, select_sites)
+    prep_field_properties(config)
+    prep_snow(config)
+    prep_timeseries(config, select_sites)
+    prep_dynamics(config, select_sites)
     prep_input_json(config, select_sites)
 
 # ========================= EOF ====================================================================
