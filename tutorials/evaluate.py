@@ -1,17 +1,16 @@
+import collections
 import os
 import time
-import collections
 from datetime import datetime
 from pprint import pprint
+
 import pandas as pd
 
 from analysis.metrics import compare_etf_estimates
-from model.initialize import initialize_data
 from model import obs_field_cycle
-from prep import get_flux_sites
-from swim.config import ProjectConfig
-from prep.prep_plots import prep_fields_json, preproc
 from prep import get_flux_sites, get_ensemble_parameters
+from prep.prep_plots import prep_fields_json
+from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 
 
@@ -89,19 +88,25 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 if __name__ == '__main__':
 
     """"""
-    project = '4_Flux_Network'
-    config_filename = 'flux_network'
-    western_only = False
+    # project = '4_Flux_Network'
+    project = '5_Flux_Ensemble'
 
-    # project = '5_Flux_Ensemble'
-    # config_filename = 'flux_ensemble'
-    # western_only = True
 
     home = os.path.expanduser('~')
-    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{config_filename}.toml')
+    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
 
     config = ProjectConfig()
     config.read_config(config_file)
+
+    if project == '5_Flux_Ensemble':
+        config_filename = 'flux_network'
+        western_only = False
+        run_const = os.path.join(config.project_ws, 'results', 'tight')
+
+    else:
+        run_const = os.path.join(config.project_ws, 'results', 'openet_9APR2025')
+        config_filename = 'flux_ensemble'
+        western_only = True
 
     open_et_ = os.path.join(config.data_dir, 'openet_flux')
     flux_dir = os.path.join(config.data_dir, 'daily_flux_files')
@@ -126,7 +131,6 @@ if __name__ == '__main__':
 
         print(f'\n{ee} {site_}: {lulc}')
 
-        run_const = os.path.join(config.project_ws, 'results', 'openet_9APR2025')
         output_ = os.path.join(run_const, site_)
 
         flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
