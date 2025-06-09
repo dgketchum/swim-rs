@@ -72,17 +72,25 @@ MAX_EFFECTIVE_ROOTING_DEPTH = {
 }
 
 
-def get_openet_sites(sites, crop_only=False, return_df=False):
+def get_openet_sites(sites, crop_only=False, return_df=False, western_only=False,
+                   index_col=0, header=None):
     """"""
-    target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
 
-    sdf = pd.read_csv(sites, index_col=0, header=1)
+    if sites.endswith('.shp'):
+        sdf = gpd.read_file(sites)
+        sdf.index = sdf[index_col]
+
+    else:
+        sdf = pd.read_csv(sites, index_col=index_col, header=header)
 
     if crop_only:
         sdf = sdf[sdf['General classification'] == 'Croplands']
 
-    state_idx = [i for i, r in sdf.iterrows() if r['State'] in target_states]
-    sdf = sdf.loc[state_idx]
+    if western_only:
+        target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
+        state_idx = [i for i, r in sdf.iterrows() if r['State'] in target_states]
+        sdf = sdf.loc[state_idx]
+
     sites_ = list(set(sdf.index.unique().to_list()))
 
     sites_.sort()

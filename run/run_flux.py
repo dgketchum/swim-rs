@@ -85,8 +85,8 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 
 if __name__ == '__main__':
 
-    project = '5_Flux_Ensemble'
-    # project = '4_Flux_Network'
+    # project = '5_Flux_Ensemble'
+    project = '4_Flux_Network'
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project, 'data')
@@ -96,12 +96,19 @@ if __name__ == '__main__':
         project_ws_ = os.path.join(root, 'tutorials', project)
         data = os.path.join(project_ws_, 'data')
 
+    if project == '5_Flux_Ensemble':
+        western = True
+        run_const = os.path.join(project_ws_, 'results', 'tight')
+    else:
+        run_const = os.path.join(project_ws_, 'results', 'openet_9APR2025')
+        western = False
+
     config_file = os.path.join(project_ws_, 'config.toml')
 
     open_et_ = os.path.join(project_ws_, 'openet_flux')
-
     station_file = os.path.join(data, 'station_metadata.csv')
-    sites, sdf = get_openet_sites(station_file, crop_only=False, return_df=True)
+    sites, sdf = get_openet_sites(station_file, crop_only=False, return_df=True, western_only=western,
+                                  header=1, index_col=0)
 
     incomplete, complete, results = [], [], []
 
@@ -116,9 +123,6 @@ if __name__ == '__main__':
 
         print(f'\n{ee} {site_}: {lulc}')
 
-        # run_const = os.path.join(project_ws_, 'results', '31MAR_irr_spec')
-        # run_const = os.path.join(project_ws_, 'results', 'openet_9APR2025')
-        run_const = os.path.join(project_ws_, 'results', 'tight')
         output_ = os.path.join(run_const, site_)
 
         prepped_input = os.path.join(output_, f'prepped_input.json')
@@ -137,8 +141,8 @@ if __name__ == '__main__':
 
         modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
         print(f'Calibration made {modified_date}')
-        if modified_date < pd.to_datetime('2025-04-16'):
-            continue
+        # if modified_date < pd.to_datetime('2025-04-16'):
+        #     continue
 
         cal = os.path.join(project_ws_, f'tight_pest', 'mult')
 
