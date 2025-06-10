@@ -99,8 +99,10 @@ if __name__ == '__main__':
     if project == '5_Flux_Ensemble':
         western = True
         run_const = os.path.join(project_ws_, 'results', 'tight')
+        model_ = 'openet'
     else:
-        run_const = os.path.join(project_ws_, 'results', 'openet_9APR2025')
+        run_const = os.path.join(project_ws_, 'results', 'tight')
+        model_ = 'ssebop'
         western = False
 
     config_file = os.path.join(project_ws_, 'config.toml')
@@ -159,7 +161,7 @@ if __name__ == '__main__':
             continue
 
         result = compare_openet(site_, flux_data, out_csv, open_et_, fields_,
-                                model='openet', return_comparison=True, gap_tolerance=5)
+                                model=model_, return_comparison=True, gap_tolerance=5)
 
         if result:
             results.append((result, lulc))
