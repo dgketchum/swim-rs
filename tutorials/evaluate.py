@@ -88,9 +88,8 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 if __name__ == '__main__':
 
     """"""
-    # project = '4_Flux_Network'
-    project = '5_Flux_Ensemble'
-
+    project = '4_Flux_Network'
+    # project = '5_Flux_Ensemble'
 
     home = os.path.expanduser('~')
     config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
@@ -99,14 +98,14 @@ if __name__ == '__main__':
     config.read_config(config_file)
 
     if project == '5_Flux_Ensemble':
-        config_filename = 'flux_network'
-        western_only = False
+        config_filename = 'flux_ensemble'
+        western_only = True
         run_const = os.path.join(config.project_ws, 'results', 'tight')
 
     else:
         run_const = os.path.join(config.project_ws, 'results', 'openet_9APR2025')
-        config_filename = 'flux_ensemble'
-        western_only = True
+        config_filename = 'flux_network'
+        western_only = False
 
     open_et_ = os.path.join(config.data_dir, 'openet_flux')
     flux_dir = os.path.join(config.data_dir, 'daily_flux_files')
@@ -114,9 +113,10 @@ if __name__ == '__main__':
     sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
                                 return_df=True, western_only=western_only, header=1)
 
+    print(f'{len(sites)} sites to evalutate in {project}')
     incomplete, complete, results = [], [], []
 
-    overwrite_ = True
+    overwrite_ = False
     use_new_input = True
 
     for ee, site_ in enumerate(sites):
@@ -127,6 +127,9 @@ if __name__ == '__main__':
         #     continue
 
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
+            continue
+
+        if site_ not in ['Ellendale']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
@@ -168,6 +171,9 @@ if __name__ == '__main__':
         config.forecast = True
         config.forecast_parameters_csv = os.path.join(output_, f'{site_}.3.par.csv')
         config.spinup = os.path.join(output_, f'spinup_{site_}.json')
+        if not os.path.exists(config.spinup):
+            print(f'file {os.path.basename(config.spinup)} not found')
+            continue
         if not os.path.exists(config.forecast_parameters_csv):
             continue
         modified_date = datetime.fromtimestamp(os.path.getmtime(config.forecast_parameters_csv))

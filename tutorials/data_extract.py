@@ -10,7 +10,7 @@ def extract_snodas(conf):
 
     from data_extraction.ee.snodas_export import sample_snodas_swe
 
-    sample_snodas_swe(feature_coll=conf.ee_fields_flux3p, bucket=conf.ee_bucket, debug=False, check_dir=None,
+    sample_snodas_swe(feature_coll=conf.ee_fields_flux, bucket=conf.ee_bucket, debug=False, check_dir=None,
                       feature_id=conf.feature_id_col)
 
 
@@ -20,16 +20,16 @@ def extract_properties(conf):
     from data_extraction.ee.ee_props import get_irrigation, get_ssurgo, get_cdl, get_landcover
 
     description = '{}_cdl'.format(project)
-    get_cdl(conf.ee_fields_flux3p, description, selector=conf.feature_id_col)
+    get_cdl(conf.ee_fields_flux, description, selector=conf.feature_id_col)
 
     description = '{}_irr'.format(project)
-    get_irrigation(conf.ee_fields_flux3p, description, debug=True, selector=conf.feature_id_col, lanid=True)
+    get_irrigation(conf.ee_fields_flux, description, debug=True, selector=conf.feature_id_col, lanid=True)
 
     description = '{}_ssurgo'.format(project)
-    get_ssurgo(conf.ee_fields_flux3p, description, debug=False, selector=conf.feature_id_col)
+    get_ssurgo(conf.ee_fields_flux, description, debug=False, selector=conf.feature_id_col)
 
     description = '{}_landcover'.format(project)
-    get_landcover(conf.ee_fields_flux3p, description, debug=False, selector=conf.feature_id_col, out_fmt='CSV')
+    get_landcover(conf.ee_fields_flux, description, debug=False, selector=conf.feature_id_col, out_fmt='CSV')
 
 
 def extract_remote_sensing(conf, sites):
@@ -67,30 +67,28 @@ def extract_gridmet(conf, sites):
     from data_extraction.gridmet.gridmet import get_gridmet_corrections
     from data_extraction.gridmet.gridmet import download_gridmet
 
-    # get_gridmet_corrections(fields=conf.gridmet_mapping_shp,
-    #                         gridmet_ras=conf.correction_tifs,
-    #                         fields_join=conf.gridmet_mapping_shp,
-    #                         factors_js=conf.gridmet_factors,
-    #                         feature_id='field_1',
-    #                         field_select=sites)
+    get_gridmet_corrections(fields=conf.gridmet_mapping_shp,
+                            gridmet_ras=conf.correction_tifs,
+                            fields_join=conf.gridmet_mapping_shp,
+                            factors_js=conf.gridmet_factors,
+                            feature_id='field_1',
+                            field_select=sites)
 
     download_gridmet(conf.gridmet_mapping_shp, conf.gridmet_factors, conf.met_dir, start='1987-01-01', end='2024-12-31',
-                     overwrite=True, append=False,
+                     overwrite=False, append=False,
                      feature_id=conf.gridmet_mapping_index_col, target_fields=sites)
 
 
 if __name__ == '__main__':
 
     project = '4_Flux_Network'
-    config_filename = 'flux_network'
     western_only = False
 
     # project = '5_Flux_Ensemble'
-    # config_filename = 'flux_ensemble'
     # western_only = True
 
     home = os.path.expanduser('~')
-    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{config_filename}.toml')
+    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
 
     config = ProjectConfig()
     config.read_config(config_file)

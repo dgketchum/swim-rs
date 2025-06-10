@@ -149,7 +149,7 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, feature_id='FID', instru
     if adf is not None:
         adf = adf.dropna(how='all', axis=1)
         adf.to_parquet(out_pqt, engine='pyarrow')
-        print(f'wrote {out_pqt}')
+        print(f'wrote {out_pqt} with {adf.shape[1]} columns')
     else:
         print(f'No data processed for {out_pqt}')
 
@@ -172,6 +172,7 @@ def join_remote_sensing(files, dst, station_selection='exclusive'):
 
     new_daily_index = pd.date_range(start=min_date, end=max_date, freq='D', name='datetime')
 
+    success_ct = 0
     for sid in common_sids:
 
         target_cols = [col for df in dfs for col in df.columns if col[0] == sid]
@@ -184,6 +185,9 @@ def join_remote_sensing(files, dst, station_selection='exclusive'):
             output_path = os.path.join(dst, output_filename)
             site_df.to_parquet(output_path)
             print(f'{sid} ({site_df.shape}) to {output_path}')
+            success_ct += 1
+
+    print(f'{success_ct} joined remote sensing files written to {dst}')
 
 
 if __name__ == '__main__':

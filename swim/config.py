@@ -42,7 +42,6 @@ class ProjectConfig:
         self.era5_extracts_dir = None
         self.era5_series_dir = None
         self.gis_dir = None
-        self.shapefile = None
         self.gridmet_mapping_shp = None
         self.footprint_shapefile_shp = None
         self.properties_dir = None
@@ -176,7 +175,6 @@ class ProjectConfig:
         self.era5_extracts_dir = paths_conf.get('era5_extracts')
         self.era5_series_dir = paths_conf.get('era5_series')
         self.gis_dir = paths_conf.get('gis')
-        self.shapefile = paths_conf.get('shapefile_path')
 
         self.gridmet_mapping_shp = paths_conf.get('gridmet_mapping')
         self.correction_tifs = paths_conf.get('correction_tifs')
@@ -319,7 +317,7 @@ class ProjectConfig:
             f"  Root Path: {self.root_path}\n"
             f"  Project Workspace: {self.project_ws}\n"
             f"  Data Directory: {self.data_dir}\n"
-            f"  Shapefile: {self.shapefile}\n"
+            f"  Shapefile: {self.footprint_shapefile_shp}\n"
             f"  Start Date: {self.start_dt}\n"
             f"  End Date: {self.end_dt}\n"
             f"  Calibrate Mode: {self.calibrate}\n"

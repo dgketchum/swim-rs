@@ -223,7 +223,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
     hr_cols = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
 
-    downloaded = {}
+    downloaded, skipped_exists = {}, []
 
     for k, v in tqdm(fields.iterrows(), desc='Downloading GridMET', total=len(fields)):
 
@@ -241,6 +241,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
         _file = os.path.join(gridmet_csv_dir, '{}.parquet'.format(g_fid))
         if os.path.exists(_file) and not overwrite and not append:
+            skipped_exists.append(_file)
             continue
 
         if os.path.exists(_file) and append:
@@ -345,6 +346,9 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
         if return_df:
             return df
+
+    print(f'downloaded {len(downloaded)} files')
+    print(f'skipped {len(skipped_exists)} existing files')
 
 
 # from CGMorton's RefET (github.com/WSWUP/RefET)

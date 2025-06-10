@@ -19,7 +19,7 @@ def create_timeseries_json(directory, json_out, feature_id='FID'):
 
     with open(json_out, 'w') as f:
         json.dump(timeseries, f)
-        print(f'wrote {json_out}')
+        print(f'wrote {len(timeseries)} points to {json_out}')
 
 
 if __name__ == '__main__':

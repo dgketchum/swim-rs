@@ -108,7 +108,7 @@ def write_field_properties(shp, out_js, lulc, irr=None, soils=None, cdl=None, fl
 
     with open(out_js, 'w') as fp:
         json.dump(d, fp, indent=4)
-    print(f'wrote {len(d)} fields\n {out_js}')
+    print(f'wrote {len(d)} fields properties\n {out_js}')
 
 
 if __name__ == '__main__':

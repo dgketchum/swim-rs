@@ -27,7 +27,7 @@ def join_daily_timeseries(fields, met_dir, rs_dir, dst_dir, snow=None, overwrite
         with open(snow, 'r') as fp:
             snow_dct = json.load(fp)
 
-    for fid, row in tqdm(field_df.iterrows(), total=field_df.shape[0]):
+    for fid, row in tqdm(field_df.iterrows(), total=field_df.shape[0],  desc="Processing Time Series files"):
 
         if 'target_fields' in kwargs:
             if str(fid) not in kwargs['target_fields']:
