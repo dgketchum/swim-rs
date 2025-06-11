@@ -72,16 +72,22 @@ MAX_EFFECTIVE_ROOTING_DEPTH = {
 }
 
 
-def get_flux_sites(sites, crop_only=False, return_df=False, western_only=False):
+def get_openet_sites(sites, crop_only=False, return_df=False, western_only=False,
+                   index_col=0, header=None):
     """"""
-    target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
 
-    sdf = pd.read_csv(sites, index_col=0, header=1)
+    if sites.endswith('.shp'):
+        sdf = gpd.read_file(sites)
+        sdf.index = sdf[index_col]
+
+    else:
+        sdf = pd.read_csv(sites, index_col=index_col, header=header)
 
     if crop_only:
         sdf = sdf[sdf['General classification'] == 'Croplands']
 
     if western_only:
+        target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
         state_idx = [i for i, r in sdf.iterrows() if r['State'] in target_states]
         sdf = sdf.loc[state_idx]
 
@@ -94,19 +100,12 @@ def get_flux_sites(sites, crop_only=False, return_df=False, western_only=False):
         return sites_
 
 
-def get_ensemble_parameters(skip=None, include=None):
-    """"""
+def get_ensemble_parameters(skip=None):
     ensemble_params = []
-
     for mask in ['irr', 'inv_irr']:
-
         for model in ['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']:
-
             if skip and model in skip:
                 continue
-            if include and model not in include:
-                continue
-
             ensemble_params.append(f'{model}_etf_{mask}')
             ensemble_params.append(f'{model}_etf_{mask}_ct')
 
