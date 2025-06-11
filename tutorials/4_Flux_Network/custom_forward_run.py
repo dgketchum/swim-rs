@@ -21,9 +21,7 @@ def split_path(path):
 def run():
     """This script is meant to be executed by PEST++"""
 
-    path = split_path(__file__)
-    project_top = path.index('swim-rs')
-    root = os.path.join(*path[:project_top + 1])
+    root = '/home/dgketchum/PycharmProjects/swim-rs'
 
     os.environ['PYTHONPATH'] = root
 
@@ -31,17 +29,19 @@ def run():
 
     project_ws = os.path.join(root, 'tutorials', '4_Flux_Network')
 
-    conf_file = os.path.join(project_ws, 'config.toml')
+    conf_file = os.path.join(project_ws, '4_Flux_Network.toml')
 
     cwd = os.getcwd()
+
+    input_data = os.path.join(cwd, 'prepped_input.json')
 
     calibration_dir = os.path.join(cwd, 'mult')
 
     args = ['python' + ' {}'.format(model_script),
-            '--project_dir', project_ws,
             '--config_path', conf_file,
-            '--worker_dir', cwd,
-            '--calibration_dir', calibration_dir]
+            '--input_data_path', input_data,
+            '--calibration_dir', calibration_dir,
+            '--worker_dir', cwd]
 
     os.system(' '.join(args))
 

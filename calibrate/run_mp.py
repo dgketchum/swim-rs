@@ -1,6 +1,7 @@
 import os
 import time
 import argparse
+from argparse import Namespace
 
 import numpy as np
 
@@ -9,15 +10,21 @@ from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 
 
-def optimize_fields(ini_path, project_dir, worker_dir, calibration_dir=False):
+def optimize_fields(config_path, input_data_path, worker_dir, calibration_dir):
     start_time = time.time()
     end_time = None
 
     config = ProjectConfig()
-    config.read_config(ini_path, project_dir, calibration_dir=calibration_dir)
+    config.read_config(config_path, calibration_dir_override=calibration_dir)
+
+    config.calibrate = True
+    config.input_data = input_data_path
+    config.calibration_dir = calibration_dir
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)
+
+    config.read_calibration_parameters(sites=fields.input['order'])
 
     df = obs_field_cycle.field_day_loop(config, fields, debug_flag=False)
 
@@ -34,11 +41,11 @@ def optimize_fields(ini_path, project_dir, worker_dir, calibration_dir=False):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', required=True, help='Path to config file')
-    parser.add_argument('--project_dir', required=True, help='Project directory')
+    parser.add_argument('--input_data_path', required=True, help='Input Data JSON File Path')
     parser.add_argument('--worker_dir', required=True, help='Worker directory')
     parser.add_argument('--calibration_dir', required=False, help='Calibration (mult) directory')
     args = parser.parse_args()
-    optimize_fields(args.config_path, args.project_dir, args.worker_dir, calibration_dir=args.calibration_dir)
+    optimize_fields(args.config_path, args.input_data_path, args.worker_dir, args.calibration_dir)
 
 
 if __name__ == '__main__':

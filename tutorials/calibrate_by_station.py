@@ -11,63 +11,66 @@ from prep.prep_plots import prep_fields_json, preproc
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 from prep import get_flux_sites, get_ensemble_parameters
+from calibrate.run_mp import optimize_fields
 
 
-def run_pest_sequence(conf, select_stations=None, pdc_remove=False, overwrite=False):
+def run_pest_sequence(conf, results, select_stations=None, pdc_remove=False, overwrite=False):
     """"""
 
     for i, fid in enumerate(select_stations, start=1):
 
         print(f'{fid}: {i} of {len(select_stations)} stations')
 
-        target_dir = os.path.join(conf.project_ws, 'refactor_res', fid)
+        if os.path.isdir(conf.pest_run_dir):
+            shutil.rmtree(conf.pest_run_dir)
+
+        target_dir = os.path.join(results_dir, fid)
         station_prepped_input = os.path.join(target_dir, f'prepped_input_{fid}.json')
 
         if not os.path.isdir(target_dir):
             os.mkdir(target_dir)
 
-        if not os.path.isfile(station_prepped_input) and not overwrite:
+        if not os.path.isfile(station_prepped_input) or overwrite:
 
-            models = [conf.etf_target_model] + conf.etf_ensemble_members
+            models = [conf.etf_target_model]
+            if conf.etf_ensemble_members is not None:
+                models += conf.etf_ensemble_members
+
             rs_params_ = get_ensemble_parameters(include=models)
             prep_fields_json(config.properties_json, conf.plot_timeseries, conf.dynamics_data_json,
                              conf.input_data, target_plots=[fid], rs_params=rs_params_,
                              interp_params=('ndvi',))
 
-            obs_dir = os.path.join(conf.project_ws, 'obs')
+            obs_dir = os.path.join(conf.pest_run_dir, 'obs')
             if not os.path.isdir(obs_dir):
                 os.makedirs(obs_dir, exist_ok=True)
 
             preproc(conf)
 
-        py_script = os.path.join(conf.project_ws, 'custom_forward_run.py')
-
+        # move station-specific input data to the results dir and to the pest project
         shutil.copyfile(conf.input_data, station_prepped_input)
+        shutil.copyfile(conf.input_data, os.path.join(conf.pest_run_dir, os.path.basename(conf.input_data)))
 
-        p_dir = os.path.join(conf.project_ws, f'pest')
+        p_dir = os.path.join(conf.pest_run_dir, f'pest')
         if os.path.isdir(p_dir):
             shutil.rmtree(p_dir)
-
-        m_dir = os.path.join(conf.project_ws, f'master')
+        #
+        m_dir = os.path.join(conf.pest_run_dir, f'master')
         if os.path.isdir(m_dir):
             shutil.rmtree(m_dir)
-
-        w_dir = os.path.join(conf.project_ws, 'workers')
+        #
+        w_dir = os.path.join(conf.pest_run_dir, 'workers')
         if os.path.isdir(w_dir):
             shutil.rmtree(w_dir)
 
-        r_dir = os.path.join(conf.project_ws, 'refactor_res')
-        if not os.path.isdir(r_dir):
-            os.mkdir(r_dir)
-
-        station_results = os.path.join(r_dir, fid)
+        station_results = os.path.join(results, fid)
         if not os.path.exists(station_results):
             os.mkdir(station_results)
 
         # cwd must be reset to avoid FileNotFound on PstFrom.log
         os.chdir(os.path.dirname(__file__))
 
-        builder = PestBuilder(conf, use_existing=False, python_script=py_script,
+        builder = PestBuilder(conf, use_existing=False, python_script=conf.source_python_script,
                               conflicted_obs=None)
         builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
         builder.build_localizer()
@@ -79,8 +82,8 @@ def run_pest_sequence(conf, select_stations=None, pdc_remove=False, overwrite=Fa
             builder.write_control_settings(noptmax=0)
 
         builder.spinup(overwrite=True)
-        # copy spinup to station results location
 
+        # copy spinup to station results location
         spinup_out = os.path.join(station_results, f'spinup_{fid}.json')
         shutil.copyfile(builder.config.spinup, spinup_out)
 
@@ -96,7 +99,7 @@ def run_pest_sequence(conf, select_stations=None, pdc_remove=False, overwrite=Fa
                 temp_pdc = os.path.join(temp_dir, f'{project}.pdc.csv')
                 shutil.copyfile(pdc_file, temp_pdc)
 
-                builder = PestBuilder(conf, use_existing=False, python_script=py_script, conflicted_obs=temp_pdc)
+                builder = PestBuilder(conf, use_existing=False, python_script=conf.source_python_script, conflicted_obs=temp_pdc)
                 builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
                 builder.build_localizer()
                 builder.write_control_settings(noptmax=0)
@@ -106,7 +109,7 @@ def run_pest_sequence(conf, select_stations=None, pdc_remove=False, overwrite=Fa
 
         _pst = f'{project}.pst'
 
-        run_pst(p_dir, exe_, _pst, num_workers=workers, worker_root=w_dir,
+        run_pst(p_dir, exe_, _pst, num_workers=conf.workers, worker_root=w_dir,
                 master_dir=m_dir, verbose=False, cleanup=False)
 
         fcst_file = os.path.join(m_dir, f'{project}.3.par.csv')
@@ -143,19 +146,21 @@ def run_pest_sequence(conf, select_stations=None, pdc_remove=False, overwrite=Fa
 
 
 if __name__ == '__main__':
-
-    project = '5_Flux_Ensemble'
+    # project = '5_Flux_Ensemble'
+    project = '4_Flux_Network'
 
     home = os.path.expanduser('~')
-    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, 'flux_ensemble.toml')
+    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
 
     config = ProjectConfig()
     config.read_config(config_file)
 
+    results_dir = os.path.join(config.project_ws, 'testrun')
+
     flux_meta_csv = os.path.join(config.data_folder, 'station_metadata.csv')
     flux_meta_df = pd.read_csv(flux_meta_csv, header=1, skip_blank_lines=True, index_col='Site ID')
     sites = sorted(flux_meta_df.index.to_list())
-    sites = ['S2']
+    sites = ['ALARC2_Smith6', 'B_11', 'ET_8', 'MR', 'US-ARb']
 
-    run_pest_sequence(config, select_stations=sites, overwrite=True)
+    run_pest_sequence(config, results_dir, select_stations=sites, overwrite=True)
 # ========================= EOF ============================================================================

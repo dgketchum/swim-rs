@@ -19,7 +19,7 @@ class ProjectConfig:
         self.project_dir = None
         self.data_dir = None
         self.project_ws = None
-        self.config_file_in_project = None
+        self.conf_file_path = None
         self.landsat_dir = None
         self.landsat_ee_data_dir = None
         self.landsat_extracts_dir = None
@@ -99,6 +99,9 @@ class ProjectConfig:
         self.calibrated_parameters = None
         self.calibration_files = None
         self.obs_folder = None
+        self.source_python_script = None
+
+
         self.ts_quantity = int(1)
         self.calibration_groups = None
         self.static_keys = None
@@ -153,7 +156,7 @@ class ProjectConfig:
         self.project_dir = paths_conf.get('project')
         self.data_dir = paths_conf.get('data')
         self.project_ws = paths_conf.get('project_workspace', self.project_dir)
-        self.config_file_in_project = paths_conf.get('config_file')
+        self.conf_file_path = conf_file_path
         self.landsat_dir = paths_conf.get('landsat')
         self.landsat_ee_data_dir = paths_conf.get('landsat_ee_data')
         self.landsat_extracts_dir = paths_conf.get('landsat_extracts', self.landsat_ee_data_dir)
@@ -220,6 +223,7 @@ class ProjectConfig:
         self.realizations = calib_toml_conf.get('realizations')
         self.obs_folder = calib_toml_conf.get('obs_folder')
 
+        self.source_python_script =calib_toml_conf.get('source_python_script')
         self.pest_run_dir = calib_toml_conf.get('pest_run_dir')
         self.calibration_dir_override = calibration_dir_override
         self.parameter_set_json = parameter_set_json
@@ -257,7 +261,7 @@ class ProjectConfig:
             self.calibration_dir = None
             self.read_forecast_parameters()
 
-    def read_calibration_parameters(self):
+    def read_calibration_parameters(self, sites=None):
 
             self.calibrate = True
 
@@ -270,6 +274,13 @@ class ProjectConfig:
             if not os.path.isabs(initial_values_csv_path) and self.project_ws:
                 initial_values_csv_path = os.path.join(self.project_ws, initial_values_csv_path)
             param_init = pd.read_csv(initial_values_csv_path, index_col=0)
+            if sites:
+                applicable_params = []
+                for site in sites:
+                    idx = [i for i in param_init.index if site in i]
+                    applicable_params.extend(idx)
+                param_init = param_init.loc[applicable_params]
+
             self.calibrated_parameters = param_init.index
             _files = list(param_init['mult_name'])
             self.calibration_files = {k: os.path.join(self.calibration_dir, f)

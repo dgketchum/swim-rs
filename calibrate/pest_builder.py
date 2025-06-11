@@ -38,9 +38,10 @@ class PestBuilder:
 
         self.masks = ['inv_irr', 'irr', 'no_mask']
 
-        self.params_file = None
         self.pest = None
         self.etf_std = None
+
+        self.params_file = os.path.join(self.pest_run_dir, 'params.csv')
 
         self.prior_contstraint = prior_constraint
 
@@ -82,10 +83,6 @@ class PestBuilder:
         et_ins = ['etf_{}.ins'.format(fid) for fid in targets]
         swe_ins = ['swe_{}.ins'.format(fid) for fid in targets]
 
-        self.params_file = os.path.join(self.pest_run_dir, 'params.csv')
-        if not os.path.isfile(self.params_file):
-            params_src = os.path.join(self.project_ws, 'params.csv')
-            shutil.copyfile(params_src, self.params_file)
 
         pars = self.initial_parameter_dict()
         p_list = list(pars.keys())
