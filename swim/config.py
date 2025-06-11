@@ -93,6 +93,7 @@ class ProjectConfig:
         self.etf_target_model = None
         self.etf_ensemble_members = None
 
+        self.pest_run_dir = None
         self.calibrate = None
         self.calibration_dir = None
         self.calibrated_parameters = None
@@ -219,6 +220,7 @@ class ProjectConfig:
         self.realizations = calib_toml_conf.get('realizations')
         self.obs_folder = calib_toml_conf.get('obs_folder')
 
+        self.pest_run_dir = calib_toml_conf.get('pest_run_dir')
         self.calibration_dir_override = calibration_dir_override
         self.parameter_set_json = parameter_set_json
         self.forecast_param_csv = forecast_param_csv

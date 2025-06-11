@@ -24,6 +24,10 @@ class PestBuilder:
 
         self.config = config
         self.project_ws = config.project_ws
+        self.pest_run_dir = config.pest_run_dir
+
+        if not os.path.isdir(self.pest_run_dir):
+            os.mkdir(self.pest_run_dir)
 
         self.plots = SamplePlots()
         self.plots.initialize_plot_data(self.config)
@@ -42,11 +46,11 @@ class PestBuilder:
 
         self.conflicted_obs = conflicted_obs
 
-        self.pest_dir = os.path.join(config.project_ws, 'pest')
-        self.master_dir = os.path.join(config.project_ws, 'master')
+        self.pest_dir = os.path.join(config.pest_run_dir, 'pest')
+        self.master_dir = os.path.join(config.pest_run_dir, 'master')
 
-        self.workers_dir = os.path.join(config.project_ws, 'workers')
-        self.obs_dir = os.path.join(config.project_ws, 'obs')
+        self.workers_dir = os.path.join(config.pest_run_dir, 'workers')
+        self.obs_dir = os.path.join(config.pest_run_dir, 'obs')
 
         self.pst_file = os.path.join(self.pest_dir, f'{self.config.project_name}.pst')
         self.obs_idx_file = os.path.join(self.pest_dir, f'{self.config.project_name}.idx.csv')
@@ -77,7 +81,11 @@ class PestBuilder:
 
         et_ins = ['etf_{}.ins'.format(fid) for fid in targets]
         swe_ins = ['swe_{}.ins'.format(fid) for fid in targets]
-        self.params_file = os.path.join(self.project_ws, 'params.csv')
+
+        self.params_file = os.path.join(self.pest_run_dir, 'params.csv')
+        if not os.path.isfile(self.params_file):
+            params_src = os.path.join(self.project_ws, 'params.csv')
+            shutil.copyfile(params_src, self.params_file)
 
         pars = self.initial_parameter_dict()
         p_list = list(pars.keys())
@@ -158,7 +166,7 @@ class PestBuilder:
             raise NotImplementedError('Use of exising Pest++ project was specified, '
                                       'running "build_pest" will overwrite it.')
 
-        self.pest = PstFrom(self.project_ws, self.pest_dir, remove_existing=True)
+        self.pest = PstFrom(self.pest_run_dir, self.pest_dir, remove_existing=True)
 
         self._write_params()
 
@@ -174,7 +182,7 @@ class PestBuilder:
         self.pest.py_run_file = 'custom_forward_run.py'
         self.pest.mod_command = 'python custom_forward_run.py'
 
-        self.pest.build_pst(version=2)
+        self.pest.build_pst(filename=self.pst_file, version=2)
 
         auto_gen = os.path.join(self.pest_dir, self.pest.py_run_file)
         runner = self.pest_args['python_script']
@@ -432,7 +440,7 @@ class PestBuilder:
             captures = []
             for ix, r in etf.iterrows():
                 for mask in self.masks:
-                    if f'{target}_{mask}' in r and not np.isnan(r[f'{target}_{mask}']):
+                    if f'{target}_etf_{mask}' in r and not np.isnan(r[f'{target}_etf_{mask}']):
                         captures.append(ix)
 
             captures = etf['obs_id'].loc[captures]
