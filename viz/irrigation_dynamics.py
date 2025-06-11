@@ -6,11 +6,15 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from model.initialize import initialize_data
+from swim.sampleplots import SamplePlots
+from prep import get_flux_sites, get_ensemble_parameters
+from swim.config import ProjectConfig
+from prep.prep_plots import prep_fields_json
 
 
 def irrigation_timeseries(field_data, feature, out_dir=None):
 
-    for year in range(2005, 2023):
+    for year in range(2022, 2023):
         field = field_data.input['irr_data'][f'{feature}'][str(year)]
 
         column, desc, color = f'ndvi_irr', f'Irrigated NDVI (Smoothed) - {feature}', 'green'
@@ -23,13 +27,14 @@ def irrigation_timeseries(field_data, feature, out_dir=None):
 
         df_year[column + '_rolling'] = df_year[column].rolling(window=7, center=True).mean()
 
-        ct_column = column + '_ct'
         scatter_data = df_year[column].copy()
-        scatter_data[df_year[ct_column] == 0] = np.nan
 
         irr_dates = [pd.to_datetime(f'{year}-01-01') + pd.Timedelta(days=doy - 1) for doy in field['irr_doys']
                      if doy in df_year['doy'].tolist()]
         irr_values = df_year.loc[irr_dates, column + '_rolling']
+
+        idf = pd.DataFrame(data=irr_values, index=irr_dates)
+        idf['doy'] = df_year.loc[irr_dates, 'doy']
 
         fig = make_subplots()
 
@@ -65,42 +70,87 @@ def irrigation_timeseries(field_data, feature, out_dir=None):
 
 
 if __name__ == '__main__':
-    home = os.path.expanduser('~')
-    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
 
+    """"""
     project = '4_Flux_Network'
-    constraint_ = 'tight'
+    # project = '5_Flux_Ensemble'
 
-    project_ws_ = os.path.join(root, 'tutorials', project)
-    run_data = os.path.join(root, 'tutorials')
+    home = os.path.expanduser('~')
+    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
 
-    data_ = os.path.join(project_ws_, 'data')
-    config_file = os.path.join(project_ws_, 'config.toml')
+    config = ProjectConfig()
+    config.read_config(config_file)
 
-    station_file = os.path.join(data_, 'station_metadata.csv')
+    if project == '5_Flux_Ensemble':
+        config_filename = 'flux_ensemble'
+        western_only = True
+        run_const = os.path.join(config.project_ws, 'results', 'tight')
 
-    sdf = pd.read_csv(station_file, index_col=0, header=1)
-    sites = list(set(sdf.index.unique().to_list()))
+    else:
+        run_const = os.path.join(config.project_ws, 'results', 'tight')
+        config_filename = 'flux_network'
+        western_only = False
 
-    sites.sort()
+    sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
+                                return_df=True, western_only=western_only, header=1)
 
-    for site_ in sites:
+    sites  = ['B_11']
 
-        if site_ not in ['Almond_High']:
+    print(f'{len(sites)} sites to evalutate in {project}')
+    incomplete, complete, results = [], [], []
+
+    overwrite_ = False
+    use_new_input = True
+
+
+
+    for ee, site_ in enumerate(sites):
+
+        lulc = sdf.at[site_, 'General classification']
+
+        if lulc != 'Croplands':
             continue
 
-        run_const = os.path.join(run_data, '4_Flux_Network', 'results', constraint_)
+        if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
+            continue
+
+        if site_ not in ['B_11', 'DVDV', 'ET_8', 'MR', 'US-ARb', 'US-Aud', 'US-Bo1', 'US-Br3', 'US-Ced', 'US-Ctn',
+                         'US-Dk2', 'US-GMF', 'US-Goo', 'US-MMS', 'US-NC3', 'US-Ro1', 'US-Ro2', 'US-Ro3', 'US-Rwf',
+                         'US-SO3', 'US-SP2', 'US-SP3', 'US-SRC', 'US-WCr', 'VR', 'manilacotton']:
+            continue
+
+        print(f'\n{ee} {site_}: {lulc}')
+
         output_ = os.path.join(run_const, site_)
 
-        prepped_input = os.path.join(output_, f'prepped_input.json')
-        ndvi_forecast_ = os.path.join(output_, f'ndvi_forecast.json')
-        if not os.path.exists(prepped_input):
-            prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
-            ndvi_forecast_ = os.path.join(output_, f'ndvi_forecast_{site_}.json')
+        for branch in ['ensemble', 'ptjpl']:
 
-        config_, fields_ = initialize_data(config_file, project_ws_, input_data=prepped_input)
+            if branch == 'ptjpl':
+                target_dir = os.path.join(config.project_ws, 'testrun', site_)
+                station_prepped_input = os.path.join(target_dir, f'prepped_input_{site_}.json')
+                models = [config.etf_target_model]
+                if config.etf_ensemble_members is not None:
+                    models += config.etf_ensemble_members
 
-        out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'irrigation', 'png')
+                rs_params_ = get_ensemble_parameters(include=models)
+                prep_fields_json(config.properties_json, config.plot_timeseries, config.dynamics_data_json,
+                                 station_prepped_input, target_plots=[site_], rs_params=rs_params_,
+                                 interp_params=('ndvi',))
 
-        irrigation_timeseries(fields_, site_, out_dir=out_fig_dir_)
+
+            elif branch == 'ensemble':
+                station_prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
+
+            else:
+                raise ValueError
+
+            out_fig_dir_ = os.path.join(os.path.expanduser('~'), 'Downloads', 'figures', 'irrigation', f'{branch}')
+
+            plots_ = SamplePlots()
+
+            config.input_data = station_prepped_input
+
+            plots_.initialize_plot_data(config)
+
+            irrigation_timeseries(plots_, site_, out_dir=out_fig_dir_)
 # ========================= EOF ====================================================================
