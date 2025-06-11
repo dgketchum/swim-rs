@@ -103,7 +103,7 @@ if __name__ == '__main__':
         run_const = os.path.join(config.project_ws, 'results', 'tight')
 
     else:
-        run_const = os.path.join(config.project_ws, 'results', 'openet_9APR2025')
+        run_const = os.path.join(config.project_ws, 'results', 'tight')
         config_filename = 'flux_network'
         western_only = False
 
@@ -116,7 +116,7 @@ if __name__ == '__main__':
     print(f'{len(sites)} sites to evalutate in {project}')
     incomplete, complete, results = [], [], []
 
-    overwrite_ = False
+    overwrite_ = True
     use_new_input = True
 
     for ee, site_ in enumerate(sites):
@@ -127,9 +127,6 @@ if __name__ == '__main__':
         #     continue
 
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
-            continue
-
-        if site_ not in ['Ellendale']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')

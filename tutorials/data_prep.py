@@ -140,7 +140,7 @@ if __name__ == '__main__':
     # prep_field_properties(config)
     # prep_snow(config)
     # prep_timeseries(config, select_sites)
-    # prep_dynamics(config, select_sites)
+    prep_dynamics(config, select_sites)
     prep_input_json(config, select_sites)
 
 # ========================= EOF ====================================================================

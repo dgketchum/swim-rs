@@ -94,7 +94,7 @@ if __name__ == '__main__':
     sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
                                 return_df=True, western_only=western_only, header=1)
 
-    sites  = ['B_11']
+    sites  = ['MR']
 
     print(f'{len(sites)} sites to evalutate in {project}')
     incomplete, complete, results = [], [], []
@@ -108,7 +108,7 @@ if __name__ == '__main__':
 
         lulc = sdf.at[site_, 'General classification']
 
-        if lulc != 'Croplands':
+        if lulc == 'Croplands':
             continue
 
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
@@ -144,6 +144,8 @@ if __name__ == '__main__':
             else:
                 raise ValueError
 
+            config.input_data = station_prepped_input
+
             out_fig_dir_ = os.path.join(os.path.expanduser('~'), 'Downloads', 'figures', 'irrigation', f'{branch}')
 
             plots_ = SamplePlots()
@@ -152,5 +154,8 @@ if __name__ == '__main__':
 
             plots_.initialize_plot_data(config)
 
-            irrigation_timeseries(plots_, site_, out_dir=out_fig_dir_)
+            months = [i for sl in [plots_.input['gwsub_data'][site_][str(yr)]['months'] for yr in range(1987, 2025)] for i in sl]
+            print(f'{branch}: {len(months)} months of gw subsidy')
+
+            # irrigation_timeseries(plots_, site_, out_dir=out_fig_dir_)
 # ========================= EOF ====================================================================
