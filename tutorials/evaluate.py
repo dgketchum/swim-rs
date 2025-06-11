@@ -98,13 +98,11 @@ if __name__ == '__main__':
     config.read_config(config_file)
 
     if project == '5_Flux_Ensemble':
-        config_filename = 'flux_ensemble'
         western_only = True
         run_const = os.path.join(config.project_ws, 'results', 'tight')
 
     else:
         run_const = os.path.join(config.project_ws, 'results', 'tight')
-        config_filename = 'flux_network'
         western_only = False
 
     open_et_ = os.path.join(config.data_dir, 'openet_flux')
@@ -118,6 +116,7 @@ if __name__ == '__main__':
 
     overwrite_ = True
     use_new_input = True
+    use_new_params = True
 
     for ee, site_ in enumerate(sites):
 
@@ -127,6 +126,9 @@ if __name__ == '__main__':
         #     continue
 
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
+            continue
+
+        if site_ not in ['ALARC2_Smith6']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
@@ -166,8 +168,14 @@ if __name__ == '__main__':
         # bring in forecast from previous work
         config.calibrate = False
         config.forecast = True
-        config.forecast_parameters_csv = os.path.join(output_, f'{site_}.3.par.csv')
-        config.spinup = os.path.join(output_, f'spinup_{site_}.json')
+
+        if use_new_params:
+            config.forecast_parameters_csv = os.path.join(target_dir, f'{site_}.3.par.csv')
+            config.spinup = os.path.join(target_dir, f'spinup_{site_}.json')
+        else:
+            config.forecast_parameters_csv = os.path.join(output_, f'{site_}.3.par.csv')
+            config.spinup = os.path.join(output_, f'spinup_{site_}.json')
+
         if not os.path.exists(config.spinup):
             print(f'file {os.path.basename(config.spinup)} not found')
             continue
