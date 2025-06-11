@@ -82,19 +82,15 @@ if __name__ == '__main__':
     config.read_config(config_file)
 
     if project == '5_Flux_Ensemble':
-        config_filename = 'flux_ensemble'
         western_only = True
         run_const = os.path.join(config.project_ws, 'results', 'tight')
 
     else:
         run_const = os.path.join(config.project_ws, 'results', 'tight')
-        config_filename = 'flux_network'
         western_only = False
 
     sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
                                 return_df=True, western_only=western_only, header=1)
-
-    sites  = ['MR']
 
     print(f'{len(sites)} sites to evalutate in {project}')
     incomplete, complete, results = [], [], []
@@ -108,15 +104,13 @@ if __name__ == '__main__':
 
         lulc = sdf.at[site_, 'General classification']
 
-        if lulc == 'Croplands':
-            continue
+        # if lulc == 'Croplands':
+        #     continue
 
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['B_11', 'DVDV', 'ET_8', 'MR', 'US-ARb', 'US-Aud', 'US-Bo1', 'US-Br3', 'US-Ced', 'US-Ctn',
-                         'US-Dk2', 'US-GMF', 'US-Goo', 'US-MMS', 'US-NC3', 'US-Ro1', 'US-Ro2', 'US-Ro3', 'US-Rwf',
-                         'US-SO3', 'US-SP2', 'US-SP3', 'US-SRC', 'US-WCr', 'VR', 'manilacotton']:
+        if site_ not in ['ALARC2_Smith6']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
@@ -154,8 +148,8 @@ if __name__ == '__main__':
 
             plots_.initialize_plot_data(config)
 
-            months = [i for sl in [plots_.input['gwsub_data'][site_][str(yr)]['months'] for yr in range(1987, 2025)] for i in sl]
-            print(f'{branch}: {len(months)} months of gw subsidy')
+            # months = [i for sl in [plots_.input['gwsub_data'][site_][str(yr)]['months'] for yr in range(1987, 2025)] for i in sl]
+            # print(f'{branch}: {len(months)} months of gw subsidy')
 
-            # irrigation_timeseries(plots_, site_, out_dir=out_fig_dir_)
+            irrigation_timeseries(plots_, site_, out_dir=out_fig_dir_)
 # ========================= EOF ====================================================================
