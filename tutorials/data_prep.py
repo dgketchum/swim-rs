@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 
 from swim.config import ProjectConfig
 from prep import get_flux_sites, get_ensemble_parameters
@@ -19,7 +20,7 @@ def prep_earthengine_extracts(conf, sites, overwrite=False):
 
         for sensing_param in sensing_params:
 
-            yrs = [x for x in range(1987, 2025)]
+            yrs = [x for x in range(conf.start_dt.year, conf.end_dt.year + 1)]
 
             if sensing_param == 'etf':
 
@@ -76,8 +77,8 @@ def prep_timeseries(conf, sites):
                           dst_dir=conf.joined_timeseries_dir,
                           snow=conf.snodas_out_json,
                           overwrite=True,
-                          start_date='1987-01-01',
-                          end_date='2024-12-31',
+                          start_date=conf.start_dt,
+                          end_date=conf.end_dt,
                           feature_id=conf.gridmet_mapping_index_col,
                           **{'met_mapping': 'GFID',
                              'target_fields': sites})
@@ -120,27 +121,26 @@ def prep_input_json(conf, sites):
 if __name__ == '__main__':
     """"""
     project = '4_Flux_Network'
-    config_filename = 'flux_network'
     western_only = False
 
     # project = '5_Flux_Ensemble'
-    # config_filename = 'flux_ensemble'
     # western_only = True
 
     home = os.path.expanduser('~')
-    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{config_filename}.toml')
+    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
 
     config = ProjectConfig()
     config.read_config(config_file)
 
     select_sites = get_flux_sites(config.station_metadata_csv, crop_only=False, western_only=western_only, header=1,
                                   index_col=0)
+    select_sites =  ['ALARC2_Smith6']
 
-    # prep_earthengine_extracts(config, select_sites, overwrite=True)
+    # prep_earthengine_extracts(config, select_sites, overwrite=False)
     # prep_field_properties(config)
     # prep_snow(config)
     # prep_timeseries(config, select_sites)
-    prep_dynamics(config, select_sites)
-    prep_input_json(config, select_sites)
+    # prep_dynamics(config, select_sites)
+    # prep_input_json(config, select_sites)
 
 # ========================= EOF ====================================================================

@@ -144,12 +144,13 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, feature_id='FID', instru
             if adf is None:
                 adf = df.copy()
             else:
-                adf = pd.concat([adf, df], axis=0, ignore_index=False, sort=False)
+                adf = pd.concat([adf, df], axis=0, ignore_index=False)
 
     if adf is not None:
+        adf = adf.sort_index()
         adf = adf.dropna(how='all', axis=1)
         adf.to_parquet(out_pqt, engine='pyarrow')
-        print(f'wrote {out_pqt} with {adf.shape[1]} columns')
+        print(f'wrote {out_pqt} with {adf.shape[1]} columns from {adf.index[0]} to {adf.index[-1]}')
     else:
         print(f'No data processed for {out_pqt}')
 
@@ -164,6 +165,9 @@ def join_remote_sensing(files, dst, station_selection='exclusive'):
         common_sids = sids_list[0].union(*sids_list[1:])
     else:
         raise ValueError("Must choose 'inclusive' or 'exclusive'")
+
+    list_of_indices_same = [df.index for df in dfs]
+    assert all(idx.equals(list_of_indices_same[0]) for idx in list_of_indices_same)
 
     valid_indices = [df.index for df in dfs if isinstance(df.index, pd.DatetimeIndex) and not df.index.empty]
 

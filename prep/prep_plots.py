@@ -193,7 +193,8 @@ def preproc(config):
         data = data.loc[start: end]
 
         data['etf'] = data[f'{config.etf_target_model}_etf_inv_irr']
-        data.loc[irr_index, 'etf'] = data.loc[irr_index, f'{config.etf_target_model}_etf_irr']
+        idx_match = [i for i in irr_index if i in data.index]
+        data.loc[idx_match, 'etf'] = data.loc[idx_match, f'{config.etf_target_model}_etf_irr']
 
         print('\n{}\npreproc ETf mean: {:.2f}'.format(fid, np.nanmean(data['etf'].values)))
         _file = os.path.join(config.obs_folder, 'obs_etf_{}.np'.format(fid))
