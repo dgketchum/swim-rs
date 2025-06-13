@@ -173,8 +173,10 @@ def preproc(config):
     fields = SamplePlots()
     fields.initialize_plot_data(config)
 
+    # somehow this needs chdir to write savetxt
     if not os.path.isdir(config.obs_folder):
-        os.mkdir(config.obs_folder)
+        os.makedirs(config.obs_folder, exist_ok=True)
+        os.chdir(config.obs_folder)
 
     for fid in fields.input['order']:
 

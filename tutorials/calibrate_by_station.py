@@ -40,11 +40,6 @@ def run_pest_sequence(conf, results, select_stations=None, pdc_remove=False, ove
             prep_fields_json(config.properties_json, conf.plot_timeseries, conf.dynamics_data_json,
                              conf.input_data, target_plots=[fid], rs_params=rs_params_,
                              interp_params=('ndvi',))
-
-            obs_dir = os.path.join(conf.pest_run_dir, 'obs')
-            if not os.path.isdir(obs_dir):
-                os.makedirs(obs_dir, exist_ok=True)
-
             preproc(conf)
 
         # move station-specific input data to the results dir and to the pest project
@@ -99,7 +94,8 @@ def run_pest_sequence(conf, results, select_stations=None, pdc_remove=False, ove
                 temp_pdc = os.path.join(temp_dir, f'{project}.pdc.csv')
                 shutil.copyfile(pdc_file, temp_pdc)
 
-                builder = PestBuilder(conf, use_existing=False, python_script=conf.source_python_script, conflicted_obs=temp_pdc)
+                builder = PestBuilder(conf, use_existing=False, python_script=conf.source_python_script,
+                                      conflicted_obs=temp_pdc)
                 builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
                 builder.build_localizer()
                 builder.write_control_settings(noptmax=0)
@@ -146,8 +142,14 @@ def run_pest_sequence(conf, results, select_stations=None, pdc_remove=False, ove
 
 
 if __name__ == '__main__':
+    """"""
     # project = '5_Flux_Ensemble'
     project = '4_Flux_Network'
+
+    if project == '5_Flux_Ensemble':
+        western_only = True
+    else:
+        western_only = False
 
     home = os.path.expanduser('~')
     config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
@@ -155,12 +157,10 @@ if __name__ == '__main__':
     config = ProjectConfig()
     config.read_config(config_file)
 
-    results_dir = os.path.join(config.project_ws, 'testrun')
+    results_dir = os.path.join(config.project_ws, 'ptjpl_test')
 
-    flux_meta_csv = os.path.join(config.data_folder, 'station_metadata.csv')
-    flux_meta_df = pd.read_csv(flux_meta_csv, header=1, skip_blank_lines=True, index_col='Site ID')
-    sites = sorted(flux_meta_df.index.to_list())
-    sites = ['ALARC2_Smith6', 'B_11', 'ET_8', 'MR', 'US-ARb']
+    sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
+                                return_df=True, western_only=western_only, header=1)
 
     run_pest_sequence(config, results_dir, select_stations=sites, overwrite=True)
 # ========================= EOF ============================================================================

@@ -115,8 +115,7 @@ if __name__ == '__main__':
     incomplete, complete, results = [], [], []
 
     overwrite_ = True
-    use_new_input = True
-    use_new_params = True
+    use_new_params = False
 
     for ee, site_ in enumerate(sites):
 
@@ -128,8 +127,8 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['ALARC2_Smith6']:
-            continue
+        # if site_ not in ['ALARC2_Smith6', 'B_11', 'ET_8', 'MR', 'US-ARb']:
+        #     continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
@@ -137,7 +136,7 @@ if __name__ == '__main__':
 
         flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
 
-        target_dir = os.path.join(config.project_ws, 'testrun', site_)
+        target_dir = os.path.join(config.project_ws, 'ptjpl_test', site_)
         station_prepped_input = os.path.join(target_dir, f'prepped_input_{site_}.json')
 
         if not os.path.isfile(station_prepped_input) or overwrite_:
@@ -181,6 +180,7 @@ if __name__ == '__main__':
             continue
         if not os.path.exists(config.forecast_parameters_csv):
             continue
+
         modified_date = datetime.fromtimestamp(os.path.getmtime(config.forecast_parameters_csv))
         print(f'Calibration made {modified_date}')
         config.read_forecast_parameters()

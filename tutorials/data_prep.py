@@ -134,13 +134,12 @@ if __name__ == '__main__':
 
     select_sites = get_flux_sites(config.station_metadata_csv, crop_only=False, western_only=western_only, header=1,
                                   index_col=0)
-    select_sites =  ['ALARC2_Smith6']
 
-    # prep_earthengine_extracts(config, select_sites, overwrite=False)
-    # prep_field_properties(config)
-    # prep_snow(config)
-    # prep_timeseries(config, select_sites)
-    # prep_dynamics(config, select_sites)
-    # prep_input_json(config, select_sites)
+    prep_earthengine_extracts(config, select_sites, overwrite=True)
+    prep_field_properties(config)
+    prep_snow(config)
+    prep_timeseries(config, select_sites)
+    prep_dynamics(config, select_sites)
+    prep_input_json(config, select_sites)
 
 # ========================= EOF ====================================================================
