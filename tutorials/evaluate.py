@@ -127,8 +127,8 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        # if site_ not in ['ALARC2_Smith6', 'B_11', 'ET_8', 'MR', 'US-ARb']:
-        #     continue
+        if site_ not in ['ALARC2_Smith6']:
+            continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
@@ -150,7 +150,7 @@ if __name__ == '__main__':
 
             rs_params_ = get_ensemble_parameters(include=models)
             prep_fields_json(config.properties_json, config.plot_timeseries, config.dynamics_data_json,
-                             station_prepped_input, target_plots=[site_], rs_params=rs_params_,
+                             out_js=station_prepped_input, target_plots=[site_], rs_params=rs_params_,
                              interp_params=('ndvi',))
 
         config.input_data = station_prepped_input
