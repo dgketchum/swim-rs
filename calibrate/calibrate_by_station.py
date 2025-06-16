@@ -10,7 +10,7 @@ from calibrate.run_pest import run_pst
 from prep.prep_plots import prep_fields_json, preproc
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
-from prep import get_flux_sites, get_ensemble_parameters
+from prep import get_openet_sites, get_ensemble_parameters
 
 
 def run_pest_sequence(conf_path, project_ws, workers, realizations, target, members,
@@ -74,7 +74,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
                 if not os.path.isdir(obs_dir):
                     os.makedirs(obs_dir, exist_ok=True)
 
-                preproc(conf_path, project_ws, etf_target_model=target_)
+                preproc(conf_path, project_ws, etf_target_model=target)
 
                 prepped_data = True
 

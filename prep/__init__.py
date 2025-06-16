@@ -100,11 +100,13 @@ def get_openet_sites(sites, crop_only=False, return_df=False, western_only=False
         return sites_
 
 
-def get_ensemble_parameters(skip=None):
+def get_ensemble_parameters(skip=None, include=None):
     ensemble_params = []
     for mask in ['irr', 'inv_irr']:
         for model in ['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']:
             if skip and model in skip:
+                continue
+            if include and model not in include:
                 continue
             ensemble_params.append(f'{model}_etf_{mask}')
             ensemble_params.append(f'{model}_etf_{mask}_ct')
