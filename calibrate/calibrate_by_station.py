@@ -51,7 +51,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
 
         for prior_constraint in ['tight']:
 
-            target_dir = os.path.join(project_ws, 'results', prior_constraint, fid)
+            target_dir = os.path.join(project_ws, 'results', 'verify', fid)
 
             if not os.path.isdir(target_dir):
                 os.mkdir(target_dir)
@@ -99,7 +99,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
             if not os.path.isdir(r_dir):
                 os.mkdir(r_dir)
 
-            station_results = os.path.join(r_dir, prior_constraint, fid)
+            station_results = os.path.join(r_dir, 'verify', fid)
             if not os.path.exists(station_results):
                 os.mkdir(station_results)
 
@@ -207,25 +207,11 @@ if __name__ == '__main__':
     sites_ = get_flux_sites(station_file, crop_only=False, western_only=False)
     print(f'{len(sites_)} sites total')
 
-    results = os.path.join(project_ws_, 'results', 'tight')
-
-    incomplete = []
-    for site in sites_:
-
-        fcst_params = os.path.join(results, site, f'{site}.3.par.csv')
-        if not os.path.exists(fcst_params):
-            print(f'{site} has no parameters')
-            continue
-
-        modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
-
-        if modified_date > pd.to_datetime('2025-04-20'):
-            print(f'remove {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
-        else:
-            print(f'keep {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
-            incomplete.append(site)
+    results = os.path.join(project_ws_, 'results', 'verify')
 
     print(f'{len(sites_)} sites not yet calibrated')
+
+    sites_ = ['ALARC2_Smith6']
     target_ = 'ssebop'
     # members_ = ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
 
