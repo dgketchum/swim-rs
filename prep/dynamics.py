@@ -327,15 +327,26 @@ class SamplePlotDynamics:
 
 
 if __name__ == '__main__':
-    project = '5_Flux_Ensemble'
+    ''''''
+    # project_ = '4_Flux_Network'
+    project_ = '5_Flux_Ensemble'
+
+    if project_ == '4_Flux_Network':
+        western = False
+        start_date_='1987-01-01'
+        end_date_='2024-12-31'
+
+    elif project_ == '5_Flux_Ensemble':
+        western = True
+        start_date_='2016-01-01'
+        end_date_='2024-12-31'
+
+    else:
+        raise ValueError
 
     root = '/data/ssd2/swim'
-    data = os.path.join(root, project, 'data')
-    if not os.path.isdir(root):
-        root = '/home/dgketchum/PycharmProjects/swim-rs'
-        data = os.path.join(root, 'tutorials', project, 'data')
+    data = os.path.join(root, project_, 'data')
 
-    shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 
     irr = os.path.join(data, 'properties', 'calibration_irr.csv')
 
@@ -347,7 +358,10 @@ if __name__ == '__main__':
 
     cuttings_json = os.path.join(landsat, 'calibration_dynamics.json')
 
-    sites_ = get_openet_sites(shapefile_path)
+    station_file = os.path.join(data, 'station_metadata.csv')
+
+    sites_, sdf = get_openet_sites(station_file, crop_only=False, return_df=True, western_only=western,
+                                   header=1, index_col=0)
 
     dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3, etf_target='openet',
                                   out_json_file=cuttings_json, select=sites_)

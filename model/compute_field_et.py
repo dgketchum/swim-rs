@@ -7,9 +7,6 @@ from model import k_dynamics as kd
 
 def compute_field_et(swb, day_data):
 
-    if day_data.dt_string == '2003-02-03':
-        a = 1
-
     swb.kc_bas = np.maximum(swb.kc_min, swb.kc_bas)
     swb.fc = ((swb.kc_bas - swb.kc_min) / (swb.kc_max - swb.kc_min))
 

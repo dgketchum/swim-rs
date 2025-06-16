@@ -70,6 +70,7 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
             continue
 
         if not time_covered or missing_gridmet:
+            print(f'downloading gridmet for {f}')
             bias_factors = fields.replace('.shp', '.json')
             gridmet = download_gridmet(fields, bias_factors, gridmet_dir, start_date, end_date, return_df=True,
                                        overwrite=False, append=True, target_fields=[f], feature_id=feature_id)
@@ -100,6 +101,9 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
         accept, bad = True, 0
 
+        if 'date' in gridmet.columns:
+            gridmet = gridmet.drop(columns=['date'])
+
         chkdf = gridmet.resample('A').sum()
         for i in chkdf.index:
             for m in models:
@@ -127,13 +131,27 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
 
 if __name__ == '__main__':
 
-    project = '5_Flux_Ensemble'
+    # project_ = '4_Flux_Network'
+    project_ = '5_Flux_Ensemble'
+
+    if project_ == '4_Flux_Network':
+        western = False
+        start_date_='1987-01-01'
+        end_date_='2024-12-31'
+
+    elif project_ == '5_Flux_Ensemble':
+        western = True
+        start_date_='1987-01-01'
+        end_date_='2024-12-31'
+
+    else:
+        raise ValueError
 
     root = '/data/ssd2/swim'
-    data = os.path.join(root, project, 'data')
+    data = os.path.join(root, project_, 'data')
     if not os.path.isdir(root):
         root = '/home/dgketchum/PycharmProjects/swim-rs'
-        data = os.path.join(root, 'tutorials', project, 'data')
+        data = os.path.join(root, 'tutorials', project_, 'data')
 
     landsat = os.path.join(data, 'landsat')
     remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
@@ -146,7 +164,11 @@ if __name__ == '__main__':
     joined_timeseries = os.path.join(data, 'plot_timeseries')
     snow = os.path.join(data, 'snodas', 'snodas.json')
 
-    sites_ = get_openet_sites(fields_gridmet)
+    station_file = os.path.join(data, 'station_metadata.csv')
+
+    sites_, sdf = get_openet_sites(station_file, crop_only=False, return_df=True, western_only=western,
+                                   header=1, index_col=0)
+
     remote_sensing_parameters = get_ensemble_parameters(skip=None)
 
     join_daily_timeseries(fields=fields_gridmet,
@@ -155,8 +177,8 @@ if __name__ == '__main__':
                           snow=snow,
                           dst_dir=joined_timeseries,
                           overwrite=True,
-                          start_date='1987-01-01',
-                          end_date='2024-12-31',
+                          start_date=start_date_,
+                          end_date=end_date_,
                           feature_id=FEATURE_ID,
                           **{'params': remote_sensing_parameters,
                              'target_fields': sites_})

@@ -11,9 +11,10 @@ from prep.prep_plots import prep_fields_json, preproc
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 from prep import get_openet_sites
+from model import obs_field_cycle
 
 
-def run_pest_sequence(conf_path, project_ws, workers, realizations, target, members,
+def run_pest_sequence(conf_path, project_ws, workers, realizations, target, members, results, pest_project,
                       select_stations=None, pdc_remove=False, overwrite=False):
     """"""
     config = ProjectConfig()
@@ -49,149 +50,159 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
         if select_stations and fid not in select_stations:
             continue
 
-        for prior_constraint in ['tight']:
+        target_dir = os.path.join(results, fid)
 
-            target_dir = os.path.join(project_ws, 'results', prior_constraint, fid)
+        if not os.path.isdir(target_dir):
+            os.mkdir(target_dir)
+        elif overwrite:
+            pass
+        else:
+            print(f'{fid} exists, skipping')
+            continue
 
-            if not os.path.isdir(target_dir):
-                os.mkdir(target_dir)
-            elif overwrite:
-                pass
-            else:
-                print(f'{fid} {prior_constraint} exists, skipping')
-                continue
+        os.chdir(os.path.dirname(__file__))
 
-            os.chdir(os.path.dirname(__file__))
+        if not prepped_data:
+            prepped_input = os.path.join(project_ws_, 'data', 'prepped_input.json')
 
-            if not prepped_data:
-                prepped_input = os.path.join(data_dir, 'prepped_input.json')
+            prep_fields_json(properties_json, joined_timeseries, dynamics_data,
+                             prepped_input, target_plots=[fid])
 
-                prep_fields_json(properties_json, joined_timeseries, dynamics_data,
-                                 prepped_input, target_plots=[fid])
+            obs_dir = os.path.join(pest_project, 'obs')
+            if not os.path.isdir(obs_dir):
+                os.makedirs(obs_dir, exist_ok=True)
 
-                obs_dir = os.path.join(project_ws, 'obs')
-                if not os.path.isdir(obs_dir):
-                    os.makedirs(obs_dir, exist_ok=True)
+            preproc(conf_path, pest_project, etf_target_model=target, alt_data_path=prepped_input)
 
-                preproc(conf_path, project_ws)
+        py_script = os.path.join(project_ws, 'custom_forward_run.py')
 
-                prepped_data = True
+        station_prepped_input = os.path.join(target_dir, f'prepped_input_{fid}.json')
+        shutil.copyfile(prepped_input, station_prepped_input)
 
-            py_script = os.path.join(project_ws, 'custom_forward_run.py')
-
-            station_prepped_input = os.path.join(target_dir, f'prepped_input_{fid}.json')
-            shutil.copyfile(prepped_input, station_prepped_input)
-
-            p_dir = os.path.join(project_ws, f'{prior_constraint}_pest')
-            if os.path.isdir(p_dir):
-                shutil.rmtree(p_dir)
-
-            m_dir = os.path.join(project_ws, f'{prior_constraint}_master')
-            if os.path.isdir(m_dir):
-                shutil.rmtree(m_dir)
-
-            w_dir = os.path.join(project_ws, 'workers')
-            if os.path.isdir(w_dir):
-                shutil.rmtree(w_dir)
-
-            r_dir = os.path.join(project_ws, 'results')
-            if not os.path.isdir(r_dir):
-                os.mkdir(r_dir)
-
-            station_results = os.path.join(r_dir, prior_constraint, fid)
-            if not os.path.exists(station_results):
-                os.mkdir(station_results)
-
-            # cwd must be reset to avoid FileNotFound on PstFrom.log
-            os.chdir(os.path.dirname(__file__))
-
-            builder = PestBuilder(project_ws=project_ws, config_file=conf_path,
-                                  use_existing=False, python_script=py_script,
-                                  prior_constraint=prior_constraint, conflicted_obs=None)
-            builder.build_pest(target_etf=target, members=members)
-            builder.build_localizer()
-
-            # short run sets up base realization and checks for prior-data conflict
-            if pdc_remove:
-                builder.write_control_settings(noptmax=-1, reals=5)
-            else:
-                builder.write_control_settings(noptmax=0)
-
-            builder.spinup(overwrite=True)
-            # copy spinup to station results location
-
-            spinup_out = os.path.join(station_results, f'spinup_{fid}.json')
-            shutil.copyfile(builder.config.spinup, spinup_out)
-
-            exe_ = 'pestpp-ies'
-
-            builder.dry_run(exe_)
-
-            # Check for prior-data conflict, remove and rebuild if necessary
-            pdc_file = os.path.join(p_dir, f'{project}.pdc.csv')
-
-            if os.path.exists(pdc_file) and pdc_remove:
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    temp_pdc = os.path.join(temp_dir, f'{project}.pdc.csv')
-                    shutil.copyfile(pdc_file, temp_pdc)
-
-                    builder = PestBuilder(project_ws=project_ws, config_file=conf_path,
-                                          use_existing=False, python_script=py_script,
-                                          prior_constraint=prior_constraint, conflicted_obs=temp_pdc)
-                    builder.build_pest(target_etf=target, members=members)
-                    builder.build_localizer()
-                    builder.write_control_settings(noptmax=0)
-                    builder.dry_run(exe_)
-
-            builder.write_control_settings(noptmax=3, reals=realizations)
-
-            _pst = f'{project}.pst'
-
-            run_pst(p_dir, exe_, _pst, num_workers=workers, worker_root=w_dir,
-                    master_dir=m_dir, verbose=False, cleanup=False)
-
-            fcst_file = os.path.join(m_dir, f'{project}.3.par.csv')
-            fcst_out = os.path.join(station_results, f'{fid}.3.par.csv')
-            if not os.path.exists(fcst_file):
-                fcst_file = os.path.join(m_dir, f'{project}.2.par.csv')
-                fcst_out = os.path.join(station_results, f'{fid}.2.par.csv')
-
-            shutil.copyfile(fcst_file, fcst_out)
-            print(f'Wrote {fcst_out}')
-
-            phi_csv = os.path.join(m_dir, f'{project}.phi.meas.csv')
-            phi_csv_out = os.path.join(station_results, f'{fid}.phi.meas.csv')
-
-            shutil.copyfile(phi_csv, phi_csv_out)
-            print(f'Wrote {phi_csv_out}')
-
-            pdc_file = os.path.join(m_dir, f'{project}.pdc.csv')
-            pdc_out = os.path.join(station_results, f'{fid}.pdc.csv')
-
-            obs_idx_file = os.path.join(m_dir, f'{project}.idx.csv')
-            obs_idx_out = os.path.join(station_results, f'{fid}.idx.csv')
-
-            if os.path.exists(pdc_file):
-                shutil.copyfile(pdc_file, pdc_out)
-                shutil.copyfile(obs_idx_file, obs_idx_out)
-                print(f'Wrote {pdc_out}')
-                print(f'Wrote {obs_idx_out}')
-                print('')
-
+        p_dir = os.path.join(pest_project, 'pest')
+        if os.path.isdir(p_dir):
             shutil.rmtree(p_dir)
+
+        m_dir = os.path.join(pest_project, 'master')
+        if os.path.isdir(m_dir):
             shutil.rmtree(m_dir)
+
+        w_dir = os.path.join(pest_project, 'workers')
+        if os.path.isdir(w_dir):
             shutil.rmtree(w_dir)
+
+        if not os.path.isdir(results):
+            os.mkdir(results)
+
+        station_results = os.path.join(results, fid)
+        if not os.path.exists(station_results):
+            os.mkdir(station_results)
+
+        # cwd must be reset to avoid FileNotFound on PstFrom.log
+        os.chdir(os.path.dirname(__file__))
+
+        builder = PestBuilder(project_ws=pest_project, config_file=conf_path, input_data=prepped_input,
+                              use_existing=False, python_script=py_script,
+                              prior_constraint='tight', conflicted_obs=None)
+        builder.build_pest(target_etf=target, members=members)
+        builder.build_localizer()
+
+        # short run sets up base realization and checks for prior-data conflict
+        if pdc_remove:
+            builder.write_control_settings(noptmax=-1, reals=5)
+        else:
+            builder.write_control_settings(noptmax=0)
+
+        builder.spinup(overwrite=True)
+        # copy spinup to station results location
+
+        spinup_out = os.path.join(station_results, f'spinup_{fid}.json')
+        shutil.copyfile(builder.config.spinup, spinup_out)
+
+        exe_ = 'pestpp-ies'
+
+        builder.dry_run(exe_)
+
+        # Check for prior-data conflict, remove and rebuild if necessary
+        pdc_file = os.path.join(p_dir, f'{project}.pdc.csv')
+
+        if os.path.exists(pdc_file) and pdc_remove:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_pdc = os.path.join(temp_dir, f'{project}.pdc.csv')
+                shutil.copyfile(pdc_file, temp_pdc)
+
+                builder = PestBuilder(project_ws=pest_project, config_file=conf_path, input_data=prepped_input,
+                                      use_existing=False, python_script=py_script,
+                                      prior_constraint='tight', conflicted_obs=temp_pdc)
+                builder.build_pest(target_etf=target, members=members)
+                builder.build_localizer()
+                builder.write_control_settings(noptmax=0)
+                builder.dry_run(exe_)
+
+        builder.write_control_settings(noptmax=3, reals=realizations)
+
+        _pst = f'{project}.pst'
+
+        run_pst(p_dir, exe_, _pst, num_workers=workers, worker_root=w_dir,
+                master_dir=m_dir, verbose=False, cleanup=False)
+
+        fcst_file = os.path.join(m_dir, f'{project}.3.par.csv')
+        fcst_out = os.path.join(station_results, f'{fid}.3.par.csv')
+        if not os.path.exists(fcst_file):
+            fcst_file = os.path.join(m_dir, f'{project}.2.par.csv')
+            fcst_out = os.path.join(station_results, f'{fid}.2.par.csv')
+
+        shutil.copyfile(fcst_file, fcst_out)
+        print(f'Wrote {fcst_out}')
+
+        phi_csv = os.path.join(m_dir, f'{project}.phi.meas.csv')
+        phi_csv_out = os.path.join(station_results, f'{fid}.phi.meas.csv')
+
+        shutil.copyfile(phi_csv, phi_csv_out)
+        print(f'Wrote {phi_csv_out}')
+
+        pdc_file = os.path.join(m_dir, f'{project}.pdc.csv')
+        pdc_out = os.path.join(station_results, f'{fid}.pdc.csv')
+
+        obs_idx_file = os.path.join(m_dir, f'{project}.idx.csv')
+        obs_idx_out = os.path.join(station_results, f'{fid}.idx.csv')
+
+        if os.path.exists(pdc_file):
+            shutil.copyfile(pdc_file, pdc_out)
+            shutil.copyfile(obs_idx_file, obs_idx_out)
+            print(f'Wrote {pdc_out}')
+            print(f'Wrote {obs_idx_out}')
+            print('')
+
+        shutil.rmtree(p_dir)
+        shutil.rmtree(m_dir)
+        shutil.rmtree(w_dir)
 
 
 if __name__ == '__main__':
 
+    # project_ = '4_Flux_Network'
     project_ = '5_Flux_Ensemble'
+
+    if project_ == '4_Flux_Network':
+        target_ = 'ssebop'
+        western = False
+        members_ = None
+
+    elif project_ == '5_Flux_Ensemble':
+        target_ = 'openet'
+        western = True
+        members_ = ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
+
+    else:
+        raise ValueError
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project_, 'data')
     workers, realizations = 20, 200
     project_ws_ = os.path.join(root, project_)
     config_file = os.path.join(project_ws_, 'config.toml')
+    pest_project_ = os.path.join(project_ws_, 'pestrun')
 
     if not os.path.isdir(root):
         root = '/home/dgketchum/PycharmProjects/swim-rs'
@@ -201,10 +212,10 @@ if __name__ == '__main__':
         config_file = os.path.join(project_ws_, 'config.toml')
 
     station_file = os.path.join(data, 'station_metadata.csv')
+    sites_, sdf = get_openet_sites(station_file, crop_only=False, return_df=True, western_only=western,
+                                   header=1, index_col=0)
 
-    sites_ = get_openet_sites(station_file, crop_only=False)
-
-    results = os.path.join(project_ws_, 'results', 'tight')
+    results = os.path.join(project_ws_, 'results', 'verify')
     for site in sites_:
         fcst_params = os.path.join(results, site, f'{site}.3.par.csv')
         if not os.path.exists(fcst_params):
@@ -214,12 +225,10 @@ if __name__ == '__main__':
         if modified_date > pd.to_datetime('2025-04-16'):
             sites_.remove(site)
 
-    target_ = 'openet'
-    members_ = ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
+    sites_ = ['ALARC2_Smith6']
 
-    # sites_ = ['US-Hn3', 'ALARC2_Smith6', 'S2']
-
-    run_pest_sequence(config_file, project_ws_, workers=workers, target=target_, members=members_,
-                      realizations=realizations, select_stations=sites_, pdc_remove=True, overwrite=True)
+    run_pest_sequence(config_file, project_ws_, workers=workers, target=target_, members=members_, results=results,
+                      pest_project=pest_project_, realizations=realizations, select_stations=sites_,
+                      pdc_remove=True, overwrite=True)
 
 # ========================= EOF ============================================================================

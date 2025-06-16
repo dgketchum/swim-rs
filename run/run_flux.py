@@ -85,8 +85,8 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 
 if __name__ == '__main__':
 
-    # project = '5_Flux_Ensemble'
-    project = '4_Flux_Network'
+    project = '5_Flux_Ensemble'
+    # project = '4_Flux_Network'
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project, 'data')
@@ -121,6 +121,9 @@ if __name__ == '__main__':
         lulc = sdf.at[site_, 'General classification']
 
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
+            continue
+
+        if site_ not in ['ALARC2_Smith6']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')

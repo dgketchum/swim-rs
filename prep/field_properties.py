@@ -88,13 +88,27 @@ def write_field_properties(shp, irr, ssurgo, js, cdl=None, lulc=None, flux_meta=
 
 
 if __name__ == '__main__':
-    project = '4_Flux_Network'
+    ''''''
+    # project_ = '4_Flux_Network'
+    project_ = '5_Flux_Ensemble'
 
+    if project_ == '4_Flux_Network':
+        western = False
+        start_date_='1987-01-01'
+        end_date_='2024-12-31'
+
+    elif project_ == '5_Flux_Ensemble':
+        western = True
+        start_date_='2016-01-01'
+        end_date_='2024-12-31'
+
+    else:
+        raise ValueError
     root = '/data/ssd2/swim'
-    data = os.path.join(root, project, 'data')
+    data = os.path.join(root, project_, 'data')
     if not os.path.isdir(root):
         root = '/home/dgketchum/PycharmProjects/swim-rs'
-        data = os.path.join(root, 'tutorials', project, 'data')
+        data = os.path.join(root, 'tutorials', project_, 'data')
 
     shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
 

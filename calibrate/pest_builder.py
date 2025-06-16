@@ -19,15 +19,19 @@ from calibrate.run_pest import run_pst
 class PestBuilder:
 
     def __init__(self, config_file, project_ws, use_existing=False, python_script=None, prior_constraint=None,
-                 conflicted_obs=None):
+                 conflicted_obs=None, input_data=None):
 
         self.project_ws = project_ws
 
         self.config = ProjectConfig()
         self.config.read_config(config_file, project_ws)
 
+        if input_data:
+            self.config.input_data = input_data
+
         self.plots = SamplePlots()
         self.plots.initialize_plot_data(self.config)
+
         self.irr = self.plots.input['irr_data']
         self.plot_order = self.plots.input['order']
         self.plot_properties = self.plots.input['props']
@@ -41,12 +45,8 @@ class PestBuilder:
 
         self.conflicted_obs = conflicted_obs
 
-        if prior_constraint:
-            self.pest_dir = os.path.join(project_ws, f'{prior_constraint}_pest')
-            self.master_dir = os.path.join(project_ws, f'{prior_constraint}_master')
-        else:
-            self.pest_dir = os.path.join(project_ws, 'pest')
-            self.master_dir = os.path.join(project_ws, 'master')
+        self.pest_dir = os.path.join(project_ws, 'pest')
+        self.master_dir = os.path.join(project_ws, 'master')
 
         self.workers_dir = os.path.join(project_ws, 'workers')
         self.obs_dir = os.path.join(project_ws, 'obs')
@@ -177,7 +177,7 @@ class PestBuilder:
         self.pest.py_run_file = 'custom_forward_run.py'
         self.pest.mod_command = 'python custom_forward_run.py'
 
-        self.pest.build_pst(version=2)
+        self.pest.build_pst(filename=self.pst_file, version=2)
 
         auto_gen = os.path.join(self.pest_dir, self.pest.py_run_file)
         runner = self.pest_args['python_script']

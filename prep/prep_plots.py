@@ -30,7 +30,7 @@ REQ_UNIRR = ['etr_mm_uncorr',
 REQ_IRR = ['etr_mm',
            'eto_mm']
 
-REMOTE_SENSING = get_ensemble_parameters(skip=['ssebop'])
+REMOTE_SENSING = get_ensemble_parameters()
 
 ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['obs_swe']
 
@@ -72,7 +72,7 @@ def prep_fields_json(properties, time_series, dynamics, out_js, target_plots=Non
             continue
 
         _file = os.path.join(time_series, '{}_daily.csv'.format(fid))
-        df = pd.read_csv(_file, index_col='date', parse_dates=True)
+        df = pd.read_csv(_file, index_col=0, parse_dates=True)
         if first:
             shape = df.shape[0]
             doys = [int(dt.strftime('%j')) for dt in df.index]
@@ -113,7 +113,7 @@ def prep_fields_json(properties, time_series, dynamics, out_js, target_plots=Non
     return target_plots, missing
 
 
-def preproc(config_file, project_ws, etf_target_model='openet'):
+def preproc(config_file, project_ws, etf_target_model='openet', alt_data_path=None):
     ct = 0
 
     print('Writing observations to file...')
@@ -121,6 +121,9 @@ def preproc(config_file, project_ws, etf_target_model='openet'):
     config.read_config(config_file, project_ws)
     start = datetime.strftime(config.start_dt, '%Y-%m-%d')
     end = datetime.strftime(config.end_dt, '%Y-%m-%d')
+
+    if alt_data_path:
+        config.input_data = alt_data_path
 
     fields = SamplePlots()
     fields.initialize_plot_data(config)
@@ -137,12 +140,11 @@ def preproc(config_file, project_ws, etf_target_model='openet'):
             irr_years = [int(k) for k, v in fields.input['irr_data'][fid].items() if k != 'fallow_years'
                          and v['f_irr'] >= irr_threshold]
         except KeyError:
-            print(f'missing {fid}')
+            print(f'missing {fid} from irrigation properties')
             continue
 
-        irr_index = [i for i in data.index if i.year in irr_years]
-
         data = data.loc[start: end]
+        irr_index = [i for i in data.index if i.year in irr_years]
 
         data['etf'] = data[f'{etf_target_model}_etf_inv_irr']
         data.loc[irr_index, 'etf'] = data.loc[irr_index, f'{etf_target_model}_etf_irr']
@@ -161,10 +163,14 @@ def preproc(config_file, project_ws, etf_target_model='openet'):
 
 
 if __name__ == '__main__':
-    root = '/home/dgketchum/PycharmProjects/swim-rs'
+    """"""
+    # project_ = '4_Flux_Network'
+    project_ = '5_Flux_Ensemble'
 
-    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
-    # project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
+    root = '/data/ssd2/swim'
+    data = os.path.join(root, project_, 'data')
+
+    project_ws_ = os.path.join(root, f'{project_}')
     data = os.path.join(project_ws_, 'data')
     landsat = os.path.join(data, 'landsat')
 
@@ -181,8 +187,6 @@ if __name__ == '__main__':
     if not os.path.isdir(obs_dir):
         os.makedirs(obs_dir, exist_ok=True)
 
-    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
-    # project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
     config_path = os.path.join(project_ws_, 'config.toml')
 
     preproc(config_path, project_ws_)
