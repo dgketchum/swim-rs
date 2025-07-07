@@ -74,9 +74,13 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
                 if not os.path.isdir(obs_dir):
                     os.makedirs(obs_dir, exist_ok=True)
 
-                preproc(conf_path, project_ws, etf_target_model=target_)
+                proc_success = preproc(conf_path, project_ws, etf_target_model=target_)
 
-                prepped_data = True
+                if proc_success:
+                    prepped_data = True
+                else:
+                    print(f'{fid} processing observtions failed due to all nan in data, skipping\n')
+                    continue
 
             py_script = os.path.join(project_ws, 'custom_forward_run.py')
 
@@ -209,13 +213,29 @@ if __name__ == '__main__':
 
     results = os.path.join(project_ws_, 'results', 'verify')
 
-    print(f'{len(sites_)} sites not yet calibrated')
+    incomplete = []
+    for site in sites_:
 
-    sites_ = ['ALARC2_Smith6']
+        fcst_params = os.path.join(results, site, f'{site}.3.par.csv')
+        if not os.path.exists(fcst_params):
+            print(f'{site} has no parameters')
+            incomplete.append(site)
+            continue
+
+        modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
+
+        if modified_date > pd.to_datetime('2025-07-01'):
+            print(f'remove {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
+        else:
+            print(f'keep {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
+            incomplete.append(site)
+
+    print(f'{len(incomplete)} sites not yet calibrated')
+
     target_ = 'ssebop'
     # members_ = ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
 
     run_pest_sequence(config_file, project_ws_, workers=workers, target=target_, members=None,
-                      realizations=realizations, select_stations=sites_, pdc_remove=True, overwrite=True)
+                      realizations=realizations, select_stations=incomplete, pdc_remove=True, overwrite=True)
 
 # ========================= EOF ============================================================================

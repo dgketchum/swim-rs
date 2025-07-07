@@ -120,7 +120,7 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['ALARC2_Smith6']:
+        if site_ not in ['US-Ro4']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
@@ -144,7 +144,7 @@ if __name__ == '__main__':
 
         modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
         print(f'Calibration made {modified_date}')
-        if modified_date < pd.to_datetime('2025-04-20'):
+        if modified_date < pd.to_datetime('2025-07-01'):
             continue
 
         cal = os.path.join(project_ws_, f'tight_pest', 'mult')
