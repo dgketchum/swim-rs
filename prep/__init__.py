@@ -72,7 +72,7 @@ MAX_EFFECTIVE_ROOTING_DEPTH = {
 }
 
 
-def get_openet_sites(sites, crop_only=False):
+def get_flux_sites(sites, crop_only=False, return_df=False, western_only=False):
     """"""
     target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
 
@@ -81,20 +81,32 @@ def get_openet_sites(sites, crop_only=False):
     if crop_only:
         sdf = sdf[sdf['General classification'] == 'Croplands']
 
-    state_idx = [i for i, r in sdf.iterrows() if r['State'] in target_states]
-    sdf = sdf.loc[state_idx]
+    if western_only:
+        state_idx = [i for i, r in sdf.iterrows() if r['State'] in target_states]
+        sdf = sdf.loc[state_idx]
+
     sites_ = list(set(sdf.index.unique().to_list()))
 
     sites_.sort()
-    return sites_
+    if return_df:
+        return sites_, sdf
+    else:
+        return sites_
 
 
-def get_ensemble_parameters(skip=None):
+def get_ensemble_parameters(skip=None, include=None):
+    """"""
     ensemble_params = []
+
     for mask in ['irr', 'inv_irr']:
+
         for model in ['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']:
+
             if skip and model in skip:
                 continue
+            if include and model not in include:
+                continue
+
             ensemble_params.append(f'{model}_etf_{mask}')
             ensemble_params.append(f'{model}_etf_{mask}_ct')
 

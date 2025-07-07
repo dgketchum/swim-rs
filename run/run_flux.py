@@ -9,6 +9,7 @@ from analysis.metrics import compare_etf_estimates
 from initialize import initialize_data
 from model import obs_field_cycle
 from viz.swim_timeseries import flux_pdc_timeseries
+from prep import get_flux_sites
 
 
 def run_flux_sites(fid, config, plot_data, outfile):
@@ -30,7 +31,6 @@ def run_flux_sites(fid, config, plot_data, outfile):
 
 def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='ssebop',
                    return_comparison=False, gap_tolerance=5):
-
     openet_daily = os.path.join(openet_dir, 'daily_data', f'{fid}.csv')
     openet_monthly = os.path.join(openet_dir, 'monthly_data', f'{fid}.csv')
     irr_ = plot_data_.input['irr_data'][fid]
@@ -49,6 +49,7 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 
     rmse_values = {k.split('_')[1]: v for k, v in agg_comp.items() if k.startswith('rmse_')
                    if 'swim' in k or 'openet' in k}
+
     if len(rmse_values) == 0:
         return None
 
@@ -100,10 +101,7 @@ if __name__ == '__main__':
     open_et_ = os.path.join(project_ws_, 'openet_flux')
 
     station_file = os.path.join(data, 'station_metadata.csv')
-
-    sdf = pd.read_csv(station_file, index_col=0, header=1)
-    sites = list(set(sdf.index.unique().to_list()))
-    sites.sort()
+    sites, sdf = get_flux_sites(station_file, crop_only=False, return_df=True)
 
     incomplete, complete, results = [], [], []
 
@@ -142,9 +140,7 @@ if __name__ == '__main__':
 
         print(f'\n{ee} {site_}: {lulc}')
 
-        # run_const = os.path.join(project_ws_, 'results', '31MAR_irr_spec')
-        # run_const = os.path.join(project_ws_, 'results', 'openet_9APR2025')
-        run_const = os.path.join(project_ws_, 'results', 'tight')
+        run_const = os.path.join(project_ws_, 'results', 'verify')
         output_ = os.path.join(run_const, site_)
 
         prepped_input = os.path.join(output_, f'prepped_input.json')
@@ -163,7 +159,7 @@ if __name__ == '__main__':
 
         modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
         print(f'Calibration made {modified_date}')
-        if modified_date < pd.to_datetime('2025-04-16'):
+        if modified_date < pd.to_datetime('2025-07-01'):
             continue
 
         cal = os.path.join(project_ws_, f'tight_pest', 'mult')

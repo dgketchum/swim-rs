@@ -119,7 +119,7 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
         source = 'projects/openet/assets/ensemble/conus/gridmet/landsat/c02'
 
     else:
-        raise ValueError('Must choose from "ssebop" or "openet" models')
+        raise ValueError('Invalid model name')
 
     for fid, row in tqdm(df.iterrows(), desc='Processing Fields', total=df.shape[0]):
 

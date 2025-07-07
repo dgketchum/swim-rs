@@ -6,7 +6,7 @@ import numpy as np
 import json
 from tqdm import tqdm
 
-from prep import get_openet_sites
+from prep import get_flux_sites
 
 
 class SamplePlotDynamics:
@@ -335,7 +335,7 @@ if __name__ == '__main__':
         root = '/home/dgketchum/PycharmProjects/swim-rs'
         data = os.path.join(root, 'tutorials', project, 'data')
 
-    shapefile_path = os.path.join(data, 'gis', 'flux_fields.shp')
+    station_file = os.path.join(data, 'station_metadata.csv')
 
     irr = os.path.join(data, 'properties', 'calibration_irr.csv')
 
@@ -347,12 +347,12 @@ if __name__ == '__main__':
 
     cuttings_json = os.path.join(landsat, 'calibration_dynamics.json')
 
-    sites_ = get_openet_sites(shapefile_path)
+    sites_ = get_flux_sites(station_file)
 
     dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3, etf_target='openet',
                                   out_json_file=cuttings_json, select=sites_)
-    dynamics.analyze_irrigation(lookback=5)
     dynamics.analyze_groundwater_subsidy()
+    dynamics.analyze_irrigation(lookback=5)
     dynamics.analyze_k_parameters()
     dynamics.save_json()
 

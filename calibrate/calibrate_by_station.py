@@ -10,7 +10,7 @@ from calibrate.run_pest import run_pst
 from prep.prep_plots import prep_fields_json, preproc
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
-from prep import get_openet_sites
+from prep import get_flux_sites, get_ensemble_parameters
 
 
 def run_pest_sequence(conf_path, project_ws, workers, realizations, target, members,
@@ -51,7 +51,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
 
         for prior_constraint in ['tight']:
 
-            target_dir = os.path.join(project_ws, 'results', prior_constraint, fid)
+            target_dir = os.path.join(project_ws, 'results', 'verify', fid)
 
             if not os.path.isdir(target_dir):
                 os.mkdir(target_dir)
@@ -66,16 +66,21 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
             if not prepped_data:
                 prepped_input = os.path.join(data_dir, 'prepped_input.json')
 
+                rs_params_ = get_ensemble_parameters()
                 prep_fields_json(properties_json, joined_timeseries, dynamics_data,
-                                 prepped_input, target_plots=[fid])
+                                 prepped_input, target_plots=[fid], rs_params=rs_params_)
 
                 obs_dir = os.path.join(project_ws, 'obs')
                 if not os.path.isdir(obs_dir):
                     os.makedirs(obs_dir, exist_ok=True)
 
-                preproc(conf_path, project_ws)
+                proc_success = preproc(conf_path, project_ws, etf_target_model=target_)
 
-                prepped_data = True
+                if proc_success:
+                    prepped_data = True
+                else:
+                    print(f'{fid} processing observtions failed due to all nan in data, skipping\n')
+                    continue
 
             py_script = os.path.join(project_ws, 'custom_forward_run.py')
 
@@ -98,7 +103,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
             if not os.path.isdir(r_dir):
                 os.mkdir(r_dir)
 
-            station_results = os.path.join(r_dir, prior_constraint, fid)
+            station_results = os.path.join(r_dir, 'verify', fid)
             if not os.path.exists(station_results):
                 os.mkdir(station_results)
 
@@ -202,17 +207,29 @@ if __name__ == '__main__':
 
     station_file = os.path.join(data, 'station_metadata.csv')
 
-    sites_ = get_openet_sites(station_file, crop_only=True)
+    sites_ = get_flux_sites(station_file, crop_only=False, western_only=True)
+    print(f'{len(sites_)} sites total')
 
-    results = os.path.join(project_ws_, 'results', 'tight')
+    results = os.path.join(project_ws_, 'results', 'verify')
+
+    incomplete = []
     for site in sites_:
+
         fcst_params = os.path.join(results, site, f'{site}.3.par.csv')
         if not os.path.exists(fcst_params):
+            print(f'{site} has no parameters')
+            incomplete.append(site)
             continue
+
         modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
 
-        if modified_date < pd.to_datetime('2025-04-16'):
-            sites_.remove(site)
+        if modified_date > pd.to_datetime('2025-07-01'):
+            print(f'remove {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
+        else:
+            print(f'keep {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
+            incomplete.append(site)
+
+    print(f'{len(incomplete)} sites not yet calibrated')
 
     target_ = 'openet'
     members_ = ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
@@ -220,6 +237,6 @@ if __name__ == '__main__':
     # sites_ = ['US-Hn3', 'ALARC2_Smith6', 'S2']
 
     run_pest_sequence(config_file, project_ws_, workers=workers, target=target_, members=members_,
-                      realizations=realizations, select_stations=sites_, pdc_remove=True, overwrite=True)
+                      realizations=realizations, select_stations=incomplete, pdc_remove=True, overwrite=True)
 
 # ========================= EOF ============================================================================

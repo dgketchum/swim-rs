@@ -30,12 +30,12 @@ REQ_UNIRR = ['etr_mm_uncorr',
 REQ_IRR = ['etr_mm',
            'eto_mm']
 
-REMOTE_SENSING = get_ensemble_parameters(skip=['ssebop'])
+REMOTE_SENSING = get_ensemble_parameters(skip=None)
 
 ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['obs_swe']
 
 
-def prep_fields_json(properties, time_series, dynamics, out_js, target_plots=None):
+def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, target_plots=None):
     with open(properties, 'r') as fp:
         properties = json.load(fp)
 
@@ -147,7 +147,11 @@ def preproc(config_file, project_ws, etf_target_model='openet'):
         data['etf'] = data[f'{etf_target_model}_etf_inv_irr']
         data.loc[irr_index, 'etf'] = data.loc[irr_index, f'{etf_target_model}_etf_irr']
 
-        print('\n{}\npreproc ETf mean: {:.2f}'.format(fid, np.nanmean(data['etf'].values)))
+        mean_etf = np.nanmean(data['etf'].values)
+        if np.isnan(mean_etf):
+            return False
+
+        print('\n{}\npreproc ETf mean: {:.2f}'.format(fid, mean_etf))
         _file = os.path.join(config.obs_folder, 'obs_etf_{}.np'.format(fid))
         np.savetxt(_file, data['etf'].values)
 
@@ -158,6 +162,7 @@ def preproc(config_file, project_ws, etf_target_model='openet'):
         ct += 1
 
     print('Prepped {} fields input'.format(ct))
+    return True
 
 
 if __name__ == '__main__':
@@ -175,7 +180,7 @@ if __name__ == '__main__':
     prepped_input = os.path.join(data, 'prepped_input.json')
 
     processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, dynamics_data,
-                                                           prepped_input, target_plots=None)
+                                                           prepped_input, rs_params=REMOTE_SENSING, target_plots=None)
 
     obs_dir = os.path.join(project_ws_, 'obs')
     if not os.path.isdir(obs_dir):
