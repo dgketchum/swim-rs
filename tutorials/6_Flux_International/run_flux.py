@@ -119,9 +119,12 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
+        if site_ not in ['US-Ro4']:
+            continue
+
         print(f'\n{ee} {site_}: {lulc}')
 
-        run_const = os.path.join(project_ws_, 'results', 'tight')
+        run_const = os.path.join(project_ws_, 'results', 'verify')
         output_ = os.path.join(run_const, site_)
 
         prepped_input = os.path.join(output_, f'prepped_input.json')
@@ -140,7 +143,7 @@ if __name__ == '__main__':
 
         modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
         print(f'Calibration made {modified_date}')
-        if modified_date < pd.to_datetime('2025-04-20'):
+        if modified_date < pd.to_datetime('2025-07-01'):
             continue
 
         cal = os.path.join(project_ws_, f'tight_pest', 'mult')

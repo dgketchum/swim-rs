@@ -145,7 +145,11 @@ def preproc(config_file, project_ws, etf_target_model='openet'):
         data['etf'] = data[f'{etf_target_model}_etf_inv_irr']
         data.loc[irr_index, 'etf'] = data.loc[irr_index, f'{etf_target_model}_etf_irr']
 
-        print('\n{}\npreproc ETf mean: {:.2f}'.format(fid, np.nanmean(data['etf'].values)))
+        mean_etf = np.nanmean(data['etf'].values)
+        if np.isnan(mean_etf):
+            return False
+
+        print('\n{}\npreproc ETf mean: {:.2f}'.format(fid, mean_etf))
         _file = os.path.join(config.obs_folder, 'obs_etf_{}.np'.format(fid))
         np.savetxt(_file, data['etf'].values)
 
@@ -156,6 +160,7 @@ def preproc(config_file, project_ws, etf_target_model='openet'):
         ct += 1
 
     print('Prepped {} fields input'.format(ct))
+    return True
 
 
 if __name__ == '__main__':

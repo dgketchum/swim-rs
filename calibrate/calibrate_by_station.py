@@ -10,7 +10,7 @@ from calibrate.run_pest import run_pst
 from prep.prep_plots import prep_fields_json, preproc
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
-from prep import get_openet_sites, get_ensemble_parameters
+from prep import get_flux_sites, get_ensemble_parameters
 
 
 def run_pest_sequence(conf_path, project_ws, workers, realizations, target, members,
@@ -51,7 +51,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
 
         for prior_constraint in ['tight']:
 
-            target_dir = os.path.join(project_ws, 'results', prior_constraint, fid)
+            target_dir = os.path.join(project_ws, 'results', 'verify', fid)
 
             if not os.path.isdir(target_dir):
                 os.mkdir(target_dir)
@@ -74,9 +74,13 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
                 if not os.path.isdir(obs_dir):
                     os.makedirs(obs_dir, exist_ok=True)
 
-                preproc(conf_path, project_ws, etf_target_model=target)
+                proc_success = preproc(conf_path, project_ws, etf_target_model=target_)
 
-                prepped_data = True
+                if proc_success:
+                    prepped_data = True
+                else:
+                    print(f'{fid} processing observtions failed due to all nan in data, skipping\n')
+                    continue
 
             py_script = os.path.join(project_ws, 'custom_forward_run.py')
 
@@ -99,7 +103,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
             if not os.path.isdir(r_dir):
                 os.mkdir(r_dir)
 
-            station_results = os.path.join(r_dir, prior_constraint, fid)
+            station_results = os.path.join(r_dir, 'verify', fid)
             if not os.path.exists(station_results):
                 os.mkdir(station_results)
 
@@ -185,5 +189,53 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
 
 
 if __name__ == '__main__':
-    pass
+
+    # project_ = '5_Flux_Ensemble'
+    project_ = '4_Flux_Network'
+
+    root = '/data/ssd2/swim'
+    data = os.path.join(root, project_, 'data')
+    workers, realizations = 20, 200
+    project_ws_ = os.path.join(root, project_)
+    config_file = os.path.join(project_ws_, 'config.toml')
+
+    if not os.path.isdir(root):
+        root = '/home/dgketchum/PycharmProjects/swim-rs'
+        data = os.path.join(root, 'tutorials', project_, 'data')
+        workers, realizations = 2, 10
+        project_ws_ = os.path.join(root, 'tutorials', project_)
+        config_file = os.path.join(project_ws_, 'config.toml')
+
+    station_file = os.path.join(data, 'station_metadata.csv')
+
+    sites_ = get_flux_sites(station_file, crop_only=False, western_only=False)
+    print(f'{len(sites_)} sites total')
+
+    results = os.path.join(project_ws_, 'results', 'verify')
+
+    incomplete = []
+    for site in sites_:
+
+        fcst_params = os.path.join(results, site, f'{site}.3.par.csv')
+        if not os.path.exists(fcst_params):
+            print(f'{site} has no parameters')
+            incomplete.append(site)
+            continue
+
+        modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
+
+        if modified_date > pd.to_datetime('2025-07-01'):
+            print(f'remove {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
+        else:
+            print(f'keep {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
+            incomplete.append(site)
+
+    print(f'{len(incomplete)} sites not yet calibrated')
+
+    target_ = 'ssebop'
+    # members_ = ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
+
+    run_pest_sequence(config_file, project_ws_, workers=workers, target=target_, members=None,
+                      realizations=realizations, select_stations=incomplete, pdc_remove=True, overwrite=True)
+
 # ========================= EOF ============================================================================
