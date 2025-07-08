@@ -66,7 +66,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
             if not prepped_data:
                 prepped_input = os.path.join(data_dir, 'prepped_input.json')
 
-                rs_params_ = get_ensemble_parameters(include=['ssebop'])
+                rs_params_ = get_ensemble_parameters()
                 prep_fields_json(properties_json, joined_timeseries, dynamics_data,
                                  prepped_input, target_plots=[fid], rs_params=rs_params_)
 

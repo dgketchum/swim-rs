@@ -15,6 +15,7 @@ from datetime import datetime
 
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
+from prep import get_ensemble_parameters
 
 REQUIRED = ['tmin_c', 'tmax_c', 'srad_wm2', 'obs_swe', 'prcp_mm', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
@@ -153,7 +154,7 @@ def preproc(config_file, project_ws, etf_target_model='openet'):
         _file = os.path.join(config.obs_folder, 'obs_etf_{}.np'.format(fid))
         np.savetxt(_file, data['etf'].values)
 
-        print('preproc SWE mean: {:.2f}\n'.format(np.nanmean(data['obs_swe'].values)))
+        print('preproc SWE mean: {:.2f}, {}\n'.format(np.nanmean(data['obs_swe'].values), data.shape[0]))
         _file = os.path.join(config.obs_folder, 'obs_swe_{}.np'.format(fid))
         np.savetxt(_file, data['obs_swe'].values)
 
@@ -164,5 +165,39 @@ def preproc(config_file, project_ws, etf_target_model='openet'):
 
 
 if __name__ == '__main__':
-    pass
+    project_ = '5_Flux_Ensemble'
+
+    root = '/data/ssd2/swim'
+    data = os.path.join(root, project_, 'data')
+    project_ws_ = os.path.join(root, project_)
+    config_file = os.path.join(project_ws_, 'config.toml')
+
+    if not os.path.isdir(root):
+        root = '/home/dgketchum/PycharmProjects/swim-rs'
+        data = os.path.join(root, 'tutorials', project_, 'data')
+        project_ws_ = os.path.join(root, 'tutorials', project_)
+        config_file = os.path.join(project_ws_, 'config.toml')
+
+    landsat = os.path.join(data, 'landsat')
+
+    properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
+    dynamics_data = os.path.join(landsat, 'calibration_dynamics.json')
+    joined_timeseries = os.path.join(data, 'plot_timeseries')
+
+    prepped_input = os.path.join(data, 'prepped_input.json')
+
+    REMOTE_SENSING = get_ensemble_parameters(skip=None)
+
+    processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, dynamics_data,
+                                                           prepped_input, rs_params=REMOTE_SENSING, target_plots=None)
+
+    obs_dir = os.path.join(project_ws_, 'obs')
+    if not os.path.isdir(obs_dir):
+        os.makedirs(obs_dir, exist_ok=True)
+
+    project_ws_ = os.path.join(root, 'tutorials', project_)
+    config_path = os.path.join(project_ws_, 'config.toml')
+
+    preproc(config_path, project_ws_)
+
 # ========================= EOF ====================================================================

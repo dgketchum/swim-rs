@@ -72,7 +72,7 @@ MAX_EFFECTIVE_ROOTING_DEPTH = {
 }
 
 
-def get_openet_sites(sites, crop_only=False, return_df=False, western_only=False,
+def get_flux_sites(sites, crop_only=False, return_df=False, western_only=False,
                    index_col=0, header=None):
     """"""
 
@@ -101,13 +101,20 @@ def get_openet_sites(sites, crop_only=False, return_df=False, western_only=False
 
 
 def get_ensemble_parameters(skip=None, include=None):
+    """"""
     ensemble_params = []
+
     for mask in ['irr', 'inv_irr']:
+
         for model in ['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']:
+
             if skip and model in skip:
                 continue
             if include and model not in include:
                 continue
+            if include and model not in include:
+                continue
+
             ensemble_params.append(f'{model}_etf_{mask}')
             ensemble_params.append(f'{model}_etf_{mask}_ct')
 

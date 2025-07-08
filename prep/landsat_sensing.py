@@ -341,8 +341,8 @@ if __name__ == '__main__':
     FEATURE_ID = 'field_1'
     selected_feature = None
 
-    # models = ['ptjpl', 'eemetric', 'openet', 'geesebal', 'sims', 'disalexi', 'ssebop']
-    models = ['ssebop']
+    models = ['ptjpl', 'eemetric', 'openet', 'geesebal', 'sims', 'disalexi', 'ssebop']
+    # models = ['ssebop']
 
     types_ = ['irr', 'inv_irr']
     sensing_params = ['etf', 'ndvi']

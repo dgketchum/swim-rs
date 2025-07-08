@@ -241,8 +241,8 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
             continue
 
         if os.path.exists(_file) and append:
-            existing = pd.read_csv(_file, index_col='date', parse_dates=True)
-            existing['date'] = existing.index
+            existing = pd.read_csv(_file)
+            existing.index = pd.DatetimeIndex(existing['date'])
             target_dates = pd.date_range(start, end, freq='D')
             missing_dates = [i for i in target_dates if i not in existing.index]
 
