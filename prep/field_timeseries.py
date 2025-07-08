@@ -58,7 +58,7 @@ def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, ove
         gridmet_file = os.path.join(gridmet_dir, 'gridmet_{}.csv'.format(int(row['GFID'])))
 
         if os.path.exists(gridmet_file):
-            gridmet = pd.read_csv(gridmet_file, index_col='date', parse_dates=True).loc[start_date: end_date]
+            gridmet = pd.read_csv(gridmet_file, index_col='date', parse_dates=True)
             gridmet.index = pd.DatetimeIndex(gridmet.index)
             missing_gridmet = False
             time_covered = ((pd.to_datetime(start_date) >= gridmet.index[0]) &
@@ -147,7 +147,7 @@ if __name__ == '__main__':
     snow = os.path.join(data, 'snodas', 'snodas.json')
 
     station_file = os.path.join(data, 'station_metadata.csv')
-    sites_ = get_flux_sites(station_file)
+    sites_ = get_flux_sites(station_file, western_only=True)
 
     remote_sensing_parameters = get_ensemble_parameters(skip=None)
 

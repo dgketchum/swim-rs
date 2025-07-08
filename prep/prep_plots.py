@@ -30,8 +30,6 @@ REQ_UNIRR = ['etr_mm_uncorr',
 REQ_IRR = ['etr_mm',
            'eto_mm']
 
-REMOTE_SENSING = get_ensemble_parameters(skip=None)
-
 ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['obs_swe']
 
 
@@ -58,7 +56,7 @@ def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, targe
     with open(dynamics, 'r') as fp:
         dynamics = json.load(fp)
 
-    required_params = REQUIRED + REQ_IRR + REQ_UNIRR + REMOTE_SENSING
+    required_params = REQUIRED + REQ_IRR + REQ_UNIRR + rs_params
     dct['irr_data'] = {fid: v for fid, v in dynamics['irr'].items() if fid in target_plots}
     dct['gwsub_data'] = {fid: v for fid, v in dynamics['gwsub'].items() if fid in target_plots}
     dct['ke_max'] = {fid: v for fid, v in dynamics['ke_max'].items() if fid in target_plots}
@@ -151,11 +149,11 @@ def preproc(config_file, project_ws, etf_target_model='openet'):
         if np.isnan(mean_etf):
             return False
 
-        print('\n{}\npreproc ETf mean: {:.2f}'.format(fid, mean_etf))
+        print('\n{}\npreproc ETf mean: {:.2f}, {}'.format(fid, mean_etf, data.shape[0]))
         _file = os.path.join(config.obs_folder, 'obs_etf_{}.np'.format(fid))
         np.savetxt(_file, data['etf'].values)
 
-        print('preproc SWE mean: {:.2f}\n'.format(np.nanmean(data['obs_swe'].values)))
+        print('preproc SWE mean: {:.2f}, {}\n'.format(np.nanmean(data['obs_swe'].values), data.shape[0]))
         _file = os.path.join(config.obs_folder, 'obs_swe_{}.np'.format(fid))
         np.savetxt(_file, data['obs_swe'].values)
 
@@ -166,11 +164,19 @@ def preproc(config_file, project_ws, etf_target_model='openet'):
 
 
 if __name__ == '__main__':
-    root = '/home/dgketchum/PycharmProjects/swim-rs'
+    project_ = '5_Flux_Ensemble'
 
-    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
-    # project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
-    data = os.path.join(project_ws_, 'data')
+    root = '/data/ssd2/swim'
+    data = os.path.join(root, project_, 'data')
+    project_ws_ = os.path.join(root, project_)
+    config_file = os.path.join(project_ws_, 'config.toml')
+
+    if not os.path.isdir(root):
+        root = '/home/dgketchum/PycharmProjects/swim-rs'
+        data = os.path.join(root, 'tutorials', project_, 'data')
+        project_ws_ = os.path.join(root, 'tutorials', project_)
+        config_file = os.path.join(project_ws_, 'config.toml')
+
     landsat = os.path.join(data, 'landsat')
 
     properties_json = os.path.join(data, 'properties', 'calibration_properties.json')
@@ -179,6 +185,8 @@ if __name__ == '__main__':
 
     prepped_input = os.path.join(data, 'prepped_input.json')
 
+    REMOTE_SENSING = get_ensemble_parameters(skip=None)
+
     processed_targets, excluded_targets = prep_fields_json(properties_json, joined_timeseries, dynamics_data,
                                                            prepped_input, rs_params=REMOTE_SENSING, target_plots=None)
 
@@ -186,8 +194,7 @@ if __name__ == '__main__':
     if not os.path.isdir(obs_dir):
         os.makedirs(obs_dir, exist_ok=True)
 
-    project_ws_ = os.path.join(root, 'tutorials', '4_Flux_Network')
-    # project_ws_ = os.path.join(root, 'tutorials', 'alarc_test')
+    project_ws_ = os.path.join(root, 'tutorials', project_)
     config_path = os.path.join(project_ws_, 'config.toml')
 
     preproc(config_path, project_ws_)
