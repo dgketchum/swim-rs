@@ -127,7 +127,7 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['ALARC2_Smith6']:
+        if site_ not in ['AFS']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
@@ -161,7 +161,7 @@ if __name__ == '__main__':
             plots_ = SamplePlots()
             plots_.initialize_plot_data(config)
         except FileNotFoundError:
-            print(f'file {os.path.basename(config.input_data)} not found')
+            print(f'file {config.input_data} not found')
             continue
 
         # bring in forecast from previous work
@@ -176,7 +176,7 @@ if __name__ == '__main__':
             config.spinup = os.path.join(output_, f'spinup_{site_}.json')
 
         if not os.path.exists(config.spinup):
-            print(f'file {os.path.basename(config.spinup)} not found')
+            print(f'file {config.spinup} not found')
             continue
         if not os.path.exists(config.forecast_parameters_csv):
             continue
