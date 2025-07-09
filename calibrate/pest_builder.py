@@ -169,7 +169,7 @@ class PestBuilder:
 
         i = self._write_etf_obs(target_etf, members)
         count = i + 1
-        self._write_swe_obs(count, i)
+        self._write_swe_obs(count)
 
         ofiles = [str(x).replace('obs', 'pred') for x in self.pest.output_filenames]
         self.pest.output_filenames = ofiles
@@ -370,23 +370,20 @@ class PestBuilder:
                 transform = 'log'
             self.pest.add_parameters(_file, 'constant', transform=transform, alt_inst_str='{}_'.format(k), **v)
 
-    def _write_swe_obs(self, count, i):
+    def _write_swe_obs(self, count):
         obsnme_str = 'oname:obs_swe_{}_otype:arr_i:{}_j:0'
 
         for j, fid in enumerate(self.pest_args['targets']):
 
             # only weight swe Nov - Apr
-            swe_df = pd.read_parquet(self.pest_args['inputs'][i])
+            swe_df = pd.read_parquet(self.pest_args['inputs'][j])
             swe_df = swe_df[[c for c in swe_df.columns if 'swe' in c[2]]]
             swe_df.columns = ['swe']
-            if 'start' in self.pest_args.keys():
-                swe_df = swe_df.loc[self.config.start_dt: self.config.end_dt]
-                swe_df.to_csv(self.pest_args['inputs'][i])
 
             self.pest.add_observations(self.pest_args['swe_obs']['file'][j],
                                        insfile=self.pest_args['swe_obs']['insfile'][j])
 
-            swe_df['obs_id'] = [obsnme_str.format(fid, j) for j in range(swe_df.shape[0])]
+            swe_df['obs_id'] = [obsnme_str.format(fid, k) for k in range(swe_df.shape[0])]
             valid = [ix for ix, r in swe_df.iterrows() if np.isfinite(r['swe']) and r['swe'] > 0.0]
             valid = swe_df['obs_id'].loc[valid]
 
@@ -415,32 +412,25 @@ class PestBuilder:
         if members is not None:
             self.etf_std = {fid: None for fid in self.pest_args['targets']}
 
+        all_captures = []
         for i, fid in enumerate(self.pest_args['targets']):
-
-            # only weight etf on capture dates
             etf = pd.read_parquet(self.pest_args['inputs'][i])
             etf = etf[[c for c in etf.columns if 'etf' in c[2]]]
-            cols = [f'{c[-2]}_etf_{c[-1]}' for c in etf.columns]
-            etf.columns = cols
-
-            if 'start' in self.pest_args.keys():
-                etf = etf.loc[self.config.start_dt: self.config.end_dt]
-                etf.to_csv(self.pest_args['inputs'][i])
+            etf.columns = [f'{c[-2]}_etf_{c[-1]}' for c in etf.columns]
 
             self.pest.add_observations(self.pest_args['etf_obs']['file'][i],
                                        insfile=self.pest_args['etf_obs']['insfile'][i])
 
             etf['obs_id'] = [obsnme_str.format(fid, j).lower() for j in range(etf.shape[0])]
-            idx = etf['obs_id']
-            idx.to_csv(self.obs_idx_file)
+            etf['obs_id'].to_csv(self.obs_idx_file, mode='a', header=(i == 0), index=False)
 
-            captures = []
+            captures_for_this_target = []
             for ix, r in etf.iterrows():
                 for mask in self.masks:
                     if f'{target}_etf_{mask}' in r and not np.isnan(r[f'{target}_etf_{mask}']):
-                        captures.append(ix)
+                        captures_for_this_target.append(etf.loc[ix, 'obs_id'])
 
-            captures = etf['obs_id'].loc[captures]
+            all_captures.append(captures_for_this_target)
 
             if members is not None:
                 etf_std = pd.DataFrame()
@@ -488,21 +478,23 @@ class PestBuilder:
                 etf_std['mean'] = multimodel_dt_mean
                 self.etf_std = etf_std.copy()
 
+            total_valid_obs = sum(len(c) for c in all_captures)
+
+        for i, fid in enumerate(self.pest_args['targets']):
             d = self.pest.obs_dfs[i].copy()
+            d.index = d.index.str.lower()
+            captures_for_this_df = d.index.intersection(all_captures[i])
+
             d['weight'] = 0.0
 
-            try:
-                d.loc[captures, 'weight'] = 2.0 * d.loc[captures, 'obsval']
-            except KeyError:
-                captures = [v.lower() for v in captures.values]
-                d.loc[captures, 'weight'] = 2.0 * d.loc[captures, 'obsval']
+            if not captures_for_this_df.empty and total_valid_obs > 0:
+                weight_value = 100.0 / total_valid_obs
+                d.loc[captures_for_this_df, 'weight'] = weight_value
 
-            d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
-            d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
+            d.loc[d['obsval'].isna(), 'obsval'] = -99.0
 
             d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
-            d = d.sort_values(by='idx')
-            d.drop(columns=['idx'], inplace=True)
+            d = d.sort_values(by='idx').drop(columns=['idx'])
 
             self.pest.obs_dfs[i] = d
 

@@ -21,8 +21,11 @@ def run_pest_sequence(conf, results, select_stations=None, pdc_remove=False, ove
 
         print(f'{fid}: {i} of {len(select_stations)} stations')
 
+        # rebuild pest calibration directory from scratch
         if os.path.isdir(conf.pest_run_dir):
             shutil.rmtree(conf.pest_run_dir)
+
+        os.makedirs(conf.pest_run_dir, exist_ok=False)
 
         target_dir = os.path.join(results_dir, fid)
         station_prepped_input = os.path.join(target_dir, f'prepped_input_{fid}.json')
@@ -46,17 +49,9 @@ def run_pest_sequence(conf, results, select_stations=None, pdc_remove=False, ove
         shutil.copyfile(conf.input_data, station_prepped_input)
         shutil.copyfile(conf.input_data, os.path.join(conf.pest_run_dir, os.path.basename(conf.input_data)))
 
-        p_dir = os.path.join(conf.pest_run_dir, f'pest')
-        if os.path.isdir(p_dir):
-            shutil.rmtree(p_dir)
-        #
-        m_dir = os.path.join(conf.pest_run_dir, f'master')
-        if os.path.isdir(m_dir):
-            shutil.rmtree(m_dir)
-        #
+        p_dir = os.path.join(conf.pest_run_dir, 'pest')
+        m_dir = os.path.join(conf.pest_run_dir, 'master')
         w_dir = os.path.join(conf.pest_run_dir, 'workers')
-        if os.path.isdir(w_dir):
-            shutil.rmtree(w_dir)
 
         station_results = os.path.join(results, fid)
         if not os.path.exists(station_results):
@@ -67,7 +62,7 @@ def run_pest_sequence(conf, results, select_stations=None, pdc_remove=False, ove
 
         builder = PestBuilder(conf, use_existing=False, python_script=conf.source_python_script,
                               conflicted_obs=None)
-        builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
+        builder.build_pest(target_etf=conf.etf_target_model, members=None)
         builder.build_localizer()
 
         # short run sets up base realization and checks for prior-data conflict
@@ -96,7 +91,7 @@ def run_pest_sequence(conf, results, select_stations=None, pdc_remove=False, ove
 
                 builder = PestBuilder(conf, use_existing=False, python_script=conf.source_python_script,
                                       conflicted_obs=temp_pdc)
-                builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
+                builder.build_pest(target_etf=conf.etf_target_model, members=None)
                 builder.build_localizer()
                 builder.write_control_settings(noptmax=0)
                 builder.dry_run(exe_)
@@ -143,8 +138,8 @@ def run_pest_sequence(conf, results, select_stations=None, pdc_remove=False, ove
 
 if __name__ == '__main__':
     """"""
-    # project = '5_Flux_Ensemble'
-    project = '4_Flux_Network'
+    project = '5_Flux_Ensemble'
+    # project = '4_Flux_Network'
 
     if project == '5_Flux_Ensemble':
         western_only = True
@@ -156,6 +151,7 @@ if __name__ == '__main__':
 
     config = ProjectConfig()
     config.read_config(config_file)
+
 
     results_dir = os.path.join(config.project_ws, 'ptjpl_test')
 

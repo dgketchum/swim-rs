@@ -115,7 +115,7 @@ if __name__ == '__main__':
     incomplete, complete, results = [], [], []
 
     overwrite_ = True
-    use_new_params = False
+    use_new_params = True
 
     for ee, site_ in enumerate(sites):
 
