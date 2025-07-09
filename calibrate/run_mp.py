@@ -26,6 +26,9 @@ def optimize_fields(config_path, input_data_path, worker_dir, calibration_dir):
 
     config.read_calibration_parameters(sites=fields.input['order'])
 
+    if len(config.calibrated_parameters) == 0:
+        raise ValueError
+
     df = obs_field_cycle.field_day_loop(config, fields, debug_flag=False)
 
     # debug_flag=False just returns the ndarray for writing
