@@ -504,6 +504,10 @@ class PestBuilder:
         return i
 
     def _finalize_obs(self):
+        """
+        We *should* be able to write std to the observations dataframes, in the etf and swe writers, but they are
+        lost in the pest build call, so are written here.
+        """
         pst = Pst(self.pst_file)
         obs = pst.observation_data
 

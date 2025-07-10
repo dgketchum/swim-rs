@@ -62,7 +62,7 @@ def run_pest_sequence(conf, results, select_stations=None, pdc_remove=False, ove
 
         builder = PestBuilder(conf, use_existing=False, python_script=conf.source_python_script,
                               conflicted_obs=None)
-        builder.build_pest(target_etf=conf.etf_target_model, members=None)
+        builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
         builder.build_localizer()
 
         # short run sets up base realization and checks for prior-data conflict
@@ -91,7 +91,7 @@ def run_pest_sequence(conf, results, select_stations=None, pdc_remove=False, ove
 
                 builder = PestBuilder(conf, use_existing=False, python_script=conf.source_python_script,
                                       conflicted_obs=temp_pdc)
-                builder.build_pest(target_etf=conf.etf_target_model, members=None)
+                builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
                 builder.build_localizer()
                 builder.write_control_settings(noptmax=0)
                 builder.dry_run(exe_)
@@ -138,8 +138,8 @@ def run_pest_sequence(conf, results, select_stations=None, pdc_remove=False, ove
 
 if __name__ == '__main__':
     """"""
-    project = '5_Flux_Ensemble'
-    # project = '4_Flux_Network'
+    # project = '5_Flux_Ensemble'
+    project = '4_Flux_Network'
 
     if project == '5_Flux_Ensemble':
         western_only = True
@@ -152,11 +152,10 @@ if __name__ == '__main__':
     config = ProjectConfig()
     config.read_config(config_file)
 
-
     results_dir = os.path.join(config.project_ws, 'ptjpl_test')
 
     sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
                                 return_df=True, western_only=western_only, header=1)
-    sites = ['AFS']
+    # sites = ['AFS']
     run_pest_sequence(config, results_dir, select_stations=sites, overwrite=True)
 # ========================= EOF ============================================================================

@@ -88,8 +88,8 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 if __name__ == '__main__':
 
     """"""
-    project = '4_Flux_Network'
-    # project = '5_Flux_Ensemble'
+    # project = '4_Flux_Network'
+    project = '5_Flux_Ensemble'
 
     home = os.path.expanduser('~')
     config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
@@ -114,21 +114,22 @@ if __name__ == '__main__':
     print(f'{len(sites)} sites to evalutate in {project}')
     incomplete, complete, results = [], [], []
 
-    overwrite_ = True
+    overwrite_ = False
     use_new_params = True
+    only_finished = True
 
     for ee, site_ in enumerate(sites):
 
         lulc = sdf.at[site_, 'General classification']
 
-        # if lulc != 'Croplands':
-        #     continue
+        if lulc != 'Croplands':
+            continue
 
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['AFS']:
-            continue
+        # if site_ not in ['AFS', 'AFD', 'ALARC2_Smith6']:
+        #     continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
@@ -138,6 +139,10 @@ if __name__ == '__main__':
 
         target_dir = os.path.join(config.project_ws, 'ptjpl_test', site_)
         station_prepped_input = os.path.join(target_dir, f'prepped_input_{site_}.json')
+
+        if not os.path.isfile(station_prepped_input) and only_finished:
+            print(f'{target_dir} not finished')
+            continue
 
         if not os.path.isfile(station_prepped_input) or overwrite_:
 
@@ -183,14 +188,16 @@ if __name__ == '__main__':
 
         modified_date = datetime.fromtimestamp(os.path.getmtime(config.forecast_parameters_csv))
         print(f'Calibration made {modified_date}')
+        if modified_date < pd.to_datetime('2025-07-09'):
+            continue
         config.read_forecast_parameters()
 
-        # try:
-        if not os.path.exists(out_csv) or overwrite_:
-            run_flux_sites(site_, config, plots_, out_csv)
-        # except ValueError as exc:
-        #     print(f'{site_} error: {exc}')
-        #     continue
+        try:
+            if not os.path.exists(out_csv) or overwrite_:
+                run_flux_sites(site_, config, plots_, out_csv)
+        except (ValueError, KeyError) as exc:
+            print(f'{site_} error: {exc}')
+            continue
 
         result = compare_openet(site_, flux_data, out_csv, open_et_, plots_,
                                 model=config.etf_target_model, return_comparison=True, gap_tolerance=5)
