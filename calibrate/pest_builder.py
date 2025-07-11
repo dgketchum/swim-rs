@@ -283,7 +283,7 @@ class PestBuilder:
             # 'aw' and zr are applied by Tracker.load_soils and load_root_depth
 
             'aw': {'file': self.params_file,
-                   'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 400.0,
+                   'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 450.0,
                    'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'rew': {'file': self.params_file,
