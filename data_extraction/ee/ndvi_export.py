@@ -207,13 +207,13 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
 
 def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None,
-                          start_yr=2004, end_yr=2023, feature_id='FID'):
+                          start_yr=2004, end_yr=2023, feature_id='FID', satellite='landsat'):
     feature_coll = ee.FeatureCollection(feature_coll)
 
     s, e = '1987-01-01', '2021-12-31'
     irr_coll = ee.ImageCollection(IRR)
-    coll = irr_coll.filterDate(s, e).select('classification')
-    remap = coll.map(lambda img: img.lt(1))
+    irr_coll = irr_coll.filterDate(s, e).select('classification')
+    remap = irr_coll.map(lambda img: img.lt(1))
     irr_min_yr_mask = remap.sum().gte(5)
 
     for year in range(start_yr, end_yr + 1):
@@ -225,7 +225,7 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
         first, bands = True, None
         selectors = [feature_id]
 
-        desc = 'ndvi_{}_{}'.format(mask_type, year)
+        desc = 'ndvi_{}_{}'.format(year, mask_type)
 
         if check_dir:
             f = os.path.join(check_dir, '{}.csv'.format(desc))
@@ -233,7 +233,13 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
                 print(desc, 'exists, skipping')
                 continue
 
-        coll = landsat_masked(year, feature_coll).map(lambda x: x.normalizedDifference(['B5', 'B4']))
+        if satellite == 'landsat':
+            coll = landsat_masked(year, feature_coll).map(lambda x: x.normalizedDifference(['B5', 'B4']))
+        elif satellite == 'sentinel':
+            coll = sentinel2_masked(year, feature_coll).map(lambda x: x.normalizedDifference(['B8', 'B4']))
+        else:
+            raise ValueError('Must choose a satellite from landsat or sentinel')
+
         ndvi_scenes = coll.aggregate_histogram('system:index').getInfo()
 
         for img_id in ndvi_scenes:
@@ -242,9 +248,6 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
             _name = '_'.join(splt[-3:])
 
             selectors.append(_name)
-
-            # if splt[-1] not in ['20000514', '20000515']:
-            #     continue
 
             nd_img = coll.filterMetadata('system:index', 'equals', img_id).first().rename(_name)
 
@@ -268,10 +271,13 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
                                        scale=30).getInfo()
             print(data['features'])
 
-        # TODO extract pixel count to filter data
-        data = bands.reduceRegions(collection=feature_coll,
-                                   reducer=ee.Reducer.mean(),
-                                   scale=30)
+        try:
+            data = bands.reduceRegions(collection=feature_coll,
+                                       reducer=ee.Reducer.mean(),
+                                       scale=30)
+        except AttributeError as exc:
+            print(f'{desc} raised {exc}')
+            continue
 
         task = ee.batch.Export.table.toCloudStorage(
             data,
@@ -287,5 +293,17 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
 
 if __name__ == '__main__':
 
-    pass
+    d = '/media/research/IrrigationGIS/swim'
+    if not os.path.exists(d):
+        d = '/home/dgketchum/data/IrrigationGIS/swim'
+
+    is_authorized()
+    bucket_ = 'wudr'
+    fields = 'users/dgketchum/fields/tongue_9MAY2023'
+    sat = 'sentinel'
+    for mask in ['inv_irr', 'irr']:
+        chk = os.path.join(d, 'examples/tongue/{}/extracts/ndvi/{}'.format(sat, mask))
+        clustered_sample_ndvi(fields, bucket_, debug=False, mask_type=mask, check_dir=chk,
+                              start_yr=2017, end_yr=2024, satellite=sat)
+
 # ========================= EOF =======================================================================================
