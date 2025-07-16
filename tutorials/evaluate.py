@@ -88,8 +88,8 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 if __name__ == '__main__':
 
     """"""
-    # project = '4_Flux_Network'
-    project = '5_Flux_Ensemble'
+    project = '4_Flux_Network'
+    # project = '5_Flux_Ensemble'
 
     home = os.path.expanduser('~')
     config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
@@ -114,7 +114,7 @@ if __name__ == '__main__':
     print(f'{len(sites)} sites to evalutate in {project}')
     incomplete, complete, results = [], [], []
 
-    overwrite_ = False
+    overwrite_ = True
     use_new_params = True
     only_finished = True
 
@@ -128,7 +128,7 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        # if site_ not in ['AFS', 'AFD', 'ALARC2_Smith6']:
+        # if site_ not in ['AFD']:
         #     continue
 
         print(f'\n{ee} {site_}: {lulc}')
