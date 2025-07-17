@@ -104,11 +104,12 @@ if __name__ == '__main__':
     open_et_ = os.path.join(project_ws_, 'openet_flux')
 
     station_file = os.path.join(data, 'station_metadata.csv')
+
     sites, sdf = get_flux_sites(station_file, crop_only=False, return_df=True)
 
     incomplete, complete, results = [], [], []
 
-    overwrite_ = False
+    overwrite_ = True
 
     for ee, site_ in enumerate(sites):
 
@@ -120,8 +121,8 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['US-Ro4']:
-            continue
+        # if site_ not in ['US-Ro4']:
+        #     continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
