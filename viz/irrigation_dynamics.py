@@ -14,7 +14,7 @@ from prep.prep_plots import prep_fields_json
 
 def irrigation_timeseries(field_data, feature, out_dir=None):
 
-    for year in range(2022, 2023):
+    for year in range(1987, 2023):
         field = field_data.input['irr_data'][f'{feature}'][str(year)]
 
         column, desc, color = f'ndvi_irr', f'Irrigated NDVI (Smoothed) - {feature}', 'green'
@@ -83,10 +83,10 @@ if __name__ == '__main__':
 
     if project == '5_Flux_Ensemble':
         western_only = True
-        run_const = os.path.join(config.project_ws, 'results', 'tight')
+        run_const = os.path.join(config.project_ws, 'results', 'verify')
 
     else:
-        run_const = os.path.join(config.project_ws, 'results', 'tight')
+        run_const = os.path.join(config.project_ws, 'results', 'verify')
         western_only = False
 
     sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
@@ -117,10 +117,10 @@ if __name__ == '__main__':
 
         output_ = os.path.join(run_const, site_)
 
-        for branch in ['ensemble', 'ptjpl']:
+        for branch in ['main', 'ptjpl']:
 
             if branch == 'ptjpl':
-                target_dir = os.path.join(config.project_ws, 'testrun', site_)
+                target_dir = os.path.join(config.project_ws, 'ptjpl_test', site_)
                 station_prepped_input = os.path.join(target_dir, f'prepped_input_{site_}.json')
                 models = [config.etf_target_model]
                 if config.etf_ensemble_members is not None:
@@ -132,7 +132,7 @@ if __name__ == '__main__':
                                  interp_params=('ndvi',))
 
 
-            elif branch == 'ensemble':
+            elif branch == 'main':
                 station_prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
 
             else:
