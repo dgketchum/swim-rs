@@ -156,6 +156,6 @@ if __name__ == '__main__':
 
     sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
                                 return_df=True, western_only=western_only, header=1)
-    sites = ['AFD']
+
     run_pest_sequence(config, results_dir, select_stations=sites, overwrite=True)
 # ========================= EOF ============================================================================

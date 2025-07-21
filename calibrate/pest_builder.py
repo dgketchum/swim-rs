@@ -300,15 +300,15 @@ class PestBuilder:
             #            'pargp': 'kc_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ks_alpha': {'file': self.params_file,
-                         'initial_value': 0.1, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'initial_value': 0.15, 'lower_bound': 0.01, 'upper_bound': 1.0,
                          'pargp': 'ks_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'kr_alpha': {'file': self.params_file,
-                         'initial_value': 0.15, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'initial_value': 0.25, 'lower_bound': 0.01, 'upper_bound': 1.0,
                          'pargp': 'kr_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_k': {'file': self.params_file,
-                       'initial_value': 6.0, 'lower_bound': 4, 'upper_bound': 10,
+                       'initial_value': 6.5, 'lower_bound': 4, 'upper_bound': 10,
                        'pargp': 'ndvi_k', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_0': {'file': self.params_file,
@@ -488,7 +488,7 @@ class PestBuilder:
             d['weight'] = 0.0
 
             if not captures_for_this_df.empty and total_valid_obs > 0:
-                weight_value = 100.0 / total_valid_obs
+                weight_value = 1000.0 / total_valid_obs
                 d.loc[captures_for_this_df, 'weight'] = weight_value
 
             d.loc[d['obsval'].isna(), 'obsval'] = -99.0
