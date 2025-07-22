@@ -121,8 +121,8 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        # if site_ not in ['US-Ro4']:
-        #     continue
+        if site_ not in ['B_01']:
+            continue
 
         print(f'\n{ee} {site_}: {lulc}')
 

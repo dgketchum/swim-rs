@@ -8,7 +8,8 @@ from model import obs_kcb_daily
 from model.tracker import SampleTracker, TUNABLE_PARAMS
 from model.day_data import DayData
 
-OUTPUT_FMT = ['et_act',
+OUTPUT_FMT = ['aw',
+              'et_act',
               'etref',
               'kc_act',
               'kc_bas',
