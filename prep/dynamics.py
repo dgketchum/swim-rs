@@ -461,6 +461,10 @@ class SamplePlotDynamics:
         idx = pd.IndexSlice
 
         check = df.loc[:, idx[:, :, ['etf'], :, self.model, :]]
+
+        if check.shape[1] > 1:
+            check = check.max(axis=1)
+
         check = check.resample('YE').sum()
         check = check[check > 0.0].dropna(axis=0)
         years = check.index.year.unique().to_list()
@@ -480,6 +484,10 @@ class SamplePlotDynamics:
 
         ydf['etf'] = ydf['etf'].interpolate()
         ydf['etf'] = ydf['etf'].bfill().ffill()
+
+        ydf['ndvi'] = ydf['ndvi'].interpolate()
+        ydf['ndvi'] = ydf['ndvi'].bfill().ffill()
+
         ydf['doy'] = [i.dayofyear for i in ydf.index]
 
         all_etf = ydf['etf'].values.flatten()
