@@ -283,7 +283,7 @@ class PestBuilder:
             # 'aw' and zr are applied by Tracker.load_soils and load_root_depth
 
             'aw': {'file': self.params_file,
-                   'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 450.0,
+                   'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 400.0,
                    'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'rew': {'file': self.params_file,
@@ -300,15 +300,15 @@ class PestBuilder:
             #            'pargp': 'kc_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ks_alpha': {'file': self.params_file,
-                         'initial_value': 0.15, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'initial_value': 0.1, 'lower_bound': 0.01, 'upper_bound': 1.0,
                          'pargp': 'ks_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'kr_alpha': {'file': self.params_file,
-                         'initial_value': 0.25, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'initial_value': 0.15, 'lower_bound': 0.01, 'upper_bound': 1.0,
                          'pargp': 'kr_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_k': {'file': self.params_file,
-                       'initial_value': 6.5, 'lower_bound': 4, 'upper_bound': 10,
+                       'initial_value': 6.0, 'lower_bound': 4, 'upper_bound': 10,
                        'pargp': 'ndvi_k', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_0': {'file': self.params_file,
@@ -488,10 +488,10 @@ class PestBuilder:
             d['weight'] = 0.0
 
             if not captures_for_this_df.empty and total_valid_obs > 0:
-                weight_value = 1000.0 / total_valid_obs
-                d.loc[captures_for_this_df, 'weight'] = weight_value
+                d.loc[captures_for_this_df, 'weight'] = 2 * d.loc[captures_for_this_df, 'obsval']
 
             d.loc[d['obsval'].isna(), 'obsval'] = -99.0
+            d.loc[d['weight'].isna(), 'weight'] = -99.0
 
             d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
             d = d.sort_values(by='idx').drop(columns=['idx'])
