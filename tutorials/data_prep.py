@@ -51,7 +51,7 @@ def prep_earthengine_extracts(conf, sites, overwrite=False):
     join_remote_sensing(rs_files, conf.remote_sensing_tables_dir, station_selection='inclusive')
 
 
-def prep_field_properties(conf):
+def prep_field_properties(conf, sites):
     from prep.field_properties import write_field_properties
 
     write_field_properties(conf.footprint_shapefile_shp, conf.properties_json, conf.lulc_csv,
@@ -59,7 +59,10 @@ def prep_field_properties(conf):
                            lulc_key='modis_lc',
                            soils=conf.ssurgo_csv,
                            index_col=conf.feature_id_col,
-                           flux_meta=conf.station_metadata_csv)
+                           flux_meta=conf.station_metadata_csv,
+                           select=sites,
+                           **{'extra_lulc_key': 'glc10_lc'}
+                           )
 
 
 def prep_snow(conf):
@@ -136,7 +139,7 @@ if __name__ == '__main__':
                                   index_col=0)
 
     prep_earthengine_extracts(config, select_sites, overwrite=True)
-    prep_field_properties(config)
+    prep_field_properties(config, select_sites)
     prep_snow(config)
     prep_timeseries(config, select_sites)
     prep_dynamics(config, select_sites)

@@ -8,17 +8,21 @@ from prep import MAX_EFFECTIVE_ROOTING_DEPTH as RZ
 
 
 def write_field_properties(shp, out_js, lulc, irr=None, soils=None, cdl=None, flux_meta=None, index_col='FID',
+                           select=None,
                            lulc_key='mode', **kwargs):
     """"""
     if lulc is None:
         raise ValueError("The 'lulc' CSV file path must be provided.")
 
+    dct = {}
+
     lulc_df = pd.read_csv(lulc, index_col=index_col)
     # lulc can be for global landcover or modis; this is modis
     lc = lulc_df[[lulc_key]].copy().replace(np.nan, '0').astype(int)
     lc = lc.T.to_dict()
-    dct = {}
     for k, v in lc.items():
+        if select is not None and k not in select:
+            continue
         dct[k] = {
             'root_depth': RZ.get(str(v[lulc_key]), {}).get('rooting_depth', np.nan),
             'zr_mult': RZ.get(str(v[lulc_key]), {}).get('zr_multiplier', np.nan),
@@ -30,7 +34,16 @@ def write_field_properties(shp, out_js, lulc, irr=None, soils=None, cdl=None, fl
         elc = lulc_df[[elc_key]].copy().replace(np.nan, '0').astype(int)
         elc = elc.T.to_dict()
         for k, v in elc.items():
-            dct[k][elc_key] = v[elc_key]
+            if k in dct:
+                val = v[elc_key]
+                if val == 10 and dct[k]['lulc_code'] != 12:
+                    print(f'override {k} with crop code from {elc_key}')
+                    dct[k] = {
+                        'root_depth': RZ.get(str(12), {}).get('rooting_depth', np.nan),
+                        'zr_mult': RZ.get(str(12), {}).get('zr_multiplier', np.nan),
+                        'lulc_code': 12
+                    }
+                dct[k][elc_key] = val
 
     if irr is not None:
         irr_df = pd.read_csv(irr, index_col=index_col)
@@ -39,7 +52,16 @@ def write_field_properties(shp, out_js, lulc, irr=None, soils=None, cdl=None, fl
         irr_dct = irr_df.T.to_dict()
         for k, v in irr_dct.items():
             if k in dct:
-                dct[k]['irr'] = {int(kk.split('_')[1]): vv for kk, vv in v.items()}
+                vals = {int(kk.split('_')[1]): vv for kk, vv in v.items()}
+                irr_val = np.array([v for v in vals.values()]).mean()
+                if irr_val > 0.3 and dct[k]['lulc_code'] != 12:
+                    print(f'override {k} with crop code from irrigation')
+                    dct[k] = {
+                        'root_depth': RZ.get(str(12), {}).get('rooting_depth', np.nan),
+                        'zr_mult': RZ.get(str(12), {}).get('zr_multiplier', np.nan),
+                        'lulc_code': 12
+                    }
+                dct[k]['irr'] = vals
 
     if soils is not None:
         soil_df = pd.read_csv(soils, index_col=index_col)
