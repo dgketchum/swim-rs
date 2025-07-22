@@ -396,7 +396,7 @@ class SamplePlotDynamics:
 
             local_min_indices = ydf[(ydf['diff'] > 0) & (ydf['diff'].shift(1) < 0)].index
 
-            positive_slope = (ydf['diff'] > 0.005)
+            positive_slope = (ydf['diff'] > 0)
             groups = (positive_slope != positive_slope.shift()).cumsum()
             ydf['groups'] = groups
             group_counts = positive_slope.groupby(groups).sum()
@@ -416,11 +416,11 @@ class SamplePlotDynamics:
 
                 prev_day_ndvi = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
 
-                if prev_day_ndvi > 0.4:
+                if prev_day_ndvi > 0.3:
 
                     ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
 
-                    while ndvi_doy > 0.4 and end_day in ydf.index:
+                    while ndvi_doy > 0.3 and end_day in ydf.index:
                         end_day += pd.Timedelta(days=1)
                         ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
 
