@@ -99,11 +99,11 @@ class PestBuilder:
 
                 if 'aw_' in k:
                     aw_ = aw[i] * 1000.
-                    if np.isnan(aw_):
+                    if np.isnan(aw_) or aw_ < pars[k]['lower_bound']:
                         aw_ = 150.0
 
-                    pars[k]['lower_bound'] = aw_ * 0.5
-                    pars[k]['upper_bound'] = aw_ * 1.5
+                    if aw_ > pars[k]['upper_bound']:
+                        aw_ = pars[k]['upper_bound'] * 0.8
 
                     params.append((k, aw_, 'p_{}_0_constant.csv'.format(k)))
 
@@ -287,7 +287,7 @@ class PestBuilder:
             # 'aw' and zr are applied by Tracker.load_soils and load_root_depth
 
             'aw': {'file': self.params_file,
-                   'initial_value': None, 'lower_bound': None, 'upper_bound': None,
+                   'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 400.0,
                    'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'rew': {'file': self.params_file,
@@ -492,7 +492,7 @@ class PestBuilder:
             d['weight'] = 0.0
 
             if not captures_for_this_df.empty and total_valid_obs > 0:
-                d.loc[captures_for_this_df, 'weight'] = 2 * d.loc[captures_for_this_df, 'obsval']
+                d.loc[captures_for_this_df, 'weight'] = 1.0
 
             d.loc[d['obsval'].isna(), 'obsval'] = -99.0
             d.loc[d['weight'].isna(), 'weight'] = 0.0
