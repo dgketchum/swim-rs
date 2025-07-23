@@ -29,15 +29,20 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
     output['capture'] = ~np.isnan(output[f'{model}_etf_inv_irr'].values)
     output.loc[irr_index, 'capture'] = ~np.isnan(output.loc[irr_index, f'{model}_etf_irr'].values)
 
+    if len(irr_years) > 0:
+        eto_source = 'eto_corr'
+    else:
+        eto_source = 'eto'
+
     df = pd.DataFrame({'kc_act': output['kc_act'], 'ET_corr': flux_data['ET_corr'],
-                       'etf': output['etf'], 'capture': output['capture'], 'eto': output['eto']})
+                       'etf': output['etf'], 'capture': output['capture'], 'eto': output[eto_source]})
 
     df['flux'] = flux_data['ET']
     df['flux_fill'] = flux_data['ET_fill']
     df.loc[np.isnan(df['flux']), 'flux'] = df.loc[np.isnan(df['flux']), 'flux_fill']
     df['flux_gapfill'] = flux_data['ET_gap'].astype(int)
 
-    df['swim'] = df['eto'] * df['kc_act']
+    df['swim'] = output['et_act']
 
     df_monthly = df.copy()
 
