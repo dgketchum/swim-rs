@@ -491,7 +491,7 @@ class PestBuilder:
                 d.loc[captures_for_this_df, 'weight'] = 2 * d.loc[captures_for_this_df, 'obsval']
 
             d.loc[d['obsval'].isna(), 'obsval'] = -99.0
-            d.loc[d['weight'].isna(), 'weight'] = -99.0
+            d.loc[d['weight'].isna(), 'weight'] = 0.0
 
             d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
             d = d.sort_values(by='idx').drop(columns=['idx'])
