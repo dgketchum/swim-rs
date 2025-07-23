@@ -122,14 +122,14 @@ if __name__ == '__main__':
 
         lulc = sdf.at[site_, 'General classification']
 
-        # if lulc != 'Croplands':
-        #     continue
+        if lulc != 'Croplands':
+            continue
 
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['B_01']:
-            continue
+        # if site_ not in ['B_01']:
+        #     continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
@@ -142,6 +142,24 @@ if __name__ == '__main__':
 
         if not os.path.isfile(station_prepped_input) and only_finished:
             print(f'{target_dir} not finished')
+            continue
+
+        if use_new_params:
+            config.forecast_parameters_csv = os.path.join(target_dir, f'{site_}.3.par.csv')
+            config.spinup = os.path.join(target_dir, f'spinup_{site_}.json')
+        else:
+            config.forecast_parameters_csv = os.path.join(output_, f'{site_}.3.par.csv')
+            config.spinup = os.path.join(output_, f'spinup_{site_}.json')
+
+        if not os.path.exists(config.spinup):
+            print(f'file {config.spinup} not found')
+            continue
+        if not os.path.exists(config.forecast_parameters_csv):
+            continue
+
+        modified_date = datetime.fromtimestamp(os.path.getmtime(config.forecast_parameters_csv))
+        print(f'Calibration made {modified_date}')
+        if modified_date < pd.to_datetime('2025-07-22'):
             continue
 
         if not os.path.isfile(station_prepped_input) or overwrite_:
@@ -173,23 +191,6 @@ if __name__ == '__main__':
         config.calibrate = False
         config.forecast = True
 
-        if use_new_params:
-            config.forecast_parameters_csv = os.path.join(target_dir, f'{site_}.3.par.csv')
-            config.spinup = os.path.join(target_dir, f'spinup_{site_}.json')
-        else:
-            config.forecast_parameters_csv = os.path.join(output_, f'{site_}.3.par.csv')
-            config.spinup = os.path.join(output_, f'spinup_{site_}.json')
-
-        if not os.path.exists(config.spinup):
-            print(f'file {config.spinup} not found')
-            continue
-        if not os.path.exists(config.forecast_parameters_csv):
-            continue
-
-        modified_date = datetime.fromtimestamp(os.path.getmtime(config.forecast_parameters_csv))
-        print(f'Calibration made {modified_date}')
-        if modified_date < pd.to_datetime('2025-07-09'):
-            continue
         config.read_forecast_parameters()
 
         try:
