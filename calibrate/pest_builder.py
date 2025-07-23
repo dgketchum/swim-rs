@@ -99,8 +99,12 @@ class PestBuilder:
 
                 if 'aw_' in k:
                     aw_ = aw[i] * 1000.
-                    if np.isnan(aw_) or aw_ < pars[k]['lower_bound']:
+                    if np.isnan(aw_):
                         aw_ = 150.0
+
+                    pars[k]['lower_bound'] = aw_ * 0.5
+                    pars[k]['upper_bound'] = aw_ * 1.5
+
                     params.append((k, aw_, 'p_{}_0_constant.csv'.format(k)))
 
                 elif 'ke_max_' in k:
@@ -283,7 +287,7 @@ class PestBuilder:
             # 'aw' and zr are applied by Tracker.load_soils and load_root_depth
 
             'aw': {'file': self.params_file,
-                   'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 400.0,
+                   'initial_value': None, 'lower_bound': None, 'upper_bound': None,
                    'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'rew': {'file': self.params_file,
