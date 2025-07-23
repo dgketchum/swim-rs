@@ -154,8 +154,13 @@ if __name__ == '__main__':
 
     results_dir = os.path.join(config.project_ws, 'ptjpl_test')
 
+    crop_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=True,
+                                     return_df=True, western_only=western_only, header=1)
+    run_pest_sequence(config, results_dir, select_stations=crop_sites, overwrite=True)
+
+
     sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
                                 return_df=True, western_only=western_only, header=1)
-
-    run_pest_sequence(config, results_dir, select_stations=sites, overwrite=True)
+    non_crop_sites = [s for s in sites if s not in crop_sites]
+    run_pest_sequence(config, results_dir, select_stations=non_crop_sites, overwrite=True)
 # ========================= EOF ============================================================================
