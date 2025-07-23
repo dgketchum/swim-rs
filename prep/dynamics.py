@@ -424,9 +424,6 @@ class SamplePlotDynamics:
                         end_day += pd.Timedelta(days=1)
                         ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
 
-                elif ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi'] < 0.5:
-                    continue
-
                 end_day = (end_day + pd.Timedelta(days=1))
                 doys = [i.dayofyear for i in pd.date_range(start_day, end_day) if i.year == yr]
                 irr_doys.extend(doys)
