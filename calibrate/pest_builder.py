@@ -191,7 +191,7 @@ class PestBuilder:
 
     def build_localizer(self):
 
-        et_params = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad']
+        et_params = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad', 'kr_alpha', 'ks_alpha']
         snow_params = ['swe_alpha', 'swe_beta']
 
         par_relation = {'etf': et_params, 'swe': snow_params}
