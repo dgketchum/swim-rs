@@ -416,11 +416,11 @@ class SamplePlotDynamics:
 
                 prev_day_ndvi = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
 
-                if prev_day_ndvi > 0.3:
+                if prev_day_ndvi > 0.6:
 
                     ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
 
-                    while ndvi_doy > 0.3 and end_day in ydf.index:
+                    while ndvi_doy > 0.6 and end_day in ydf.index:
                         end_day += pd.Timedelta(days=1)
                         ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
 
