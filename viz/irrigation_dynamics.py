@@ -14,7 +14,7 @@ from prep.prep_plots import prep_fields_json
 
 def irrigation_timeseries(field_data, feature, out_dir=None):
 
-    for year in range(1987, 2023):
+    for year in range(2006, 2023):
         field = field_data.input['irr_data'][f'{feature}'][str(year)]
 
         column, desc, color = f'ndvi_irr', f'Irrigated NDVI (Smoothed) - {feature}', 'green'
@@ -25,9 +25,7 @@ def irrigation_timeseries(field_data, feature, out_dir=None):
         df_year.index = pd.to_datetime(df_year.index)
         df_year['doy'] = [i.dayofyear for i in df_year.index]
 
-        df_year[column + '_rolling'] = df_year[column].rolling(window=7, center=True).mean()
-
-        scatter_data = df_year[column].copy()
+        df_year[column + '_rolling'] = df_year[column].rolling(window=32, center=True).mean()
 
         irr_dates = [pd.to_datetime(f'{year}-01-01') + pd.Timedelta(days=doy - 1) for doy in field['irr_doys']
                      if doy in df_year['doy'].tolist()]
@@ -39,10 +37,7 @@ def irrigation_timeseries(field_data, feature, out_dir=None):
         fig = make_subplots()
 
         fig.add_trace(go.Scatter(x=df_year.index, y=df_year[column + '_rolling'], mode='lines',
-                                 name=desc + ' 7-day Mean', line=dict(color=color)))
-
-        fig.add_trace(go.Scatter(x=scatter_data.index, y=scatter_data, mode='markers',
-                                 name='Capture Date Retrieval', marker=dict(size=8, color=color)))
+                                 name=desc + ' 32-day Mean', line=dict(color=color)))
 
         fig.add_trace(go.Scatter(x=irr_dates, y=irr_values, mode='markers',
                                  name='Potential Irrigation Day',
@@ -72,8 +67,8 @@ def irrigation_timeseries(field_data, feature, out_dir=None):
 if __name__ == '__main__':
 
     """"""
-    project = '4_Flux_Network'
-    # project = '5_Flux_Ensemble'
+    # project = '4_Flux_Network'
+    project = '5_Flux_Ensemble'
 
     home = os.path.expanduser('~')
     config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
@@ -83,10 +78,10 @@ if __name__ == '__main__':
 
     if project == '5_Flux_Ensemble':
         western_only = True
-        run_const = os.path.join(config.project_ws, 'results', 'verify')
+        run_const = os.path.join(config.project_ws, 'results', 'tight')
 
     else:
-        run_const = os.path.join(config.project_ws, 'results', 'verify')
+        run_const = os.path.join(config.project_ws, 'results', 'tight')
         western_only = False
 
     sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
@@ -98,8 +93,6 @@ if __name__ == '__main__':
     overwrite_ = False
     use_new_input = True
 
-
-
     for ee, site_ in enumerate(sites):
 
         lulc = sdf.at[site_, 'General classification']
@@ -110,14 +103,14 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['ALARC2_Smith6']:
+        if site_ not in ['S2']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
         output_ = os.path.join(run_const, site_)
 
-        for branch in ['main', 'ptjpl']:
+        for branch in ['ptjpl']:
 
             if branch == 'ptjpl':
                 target_dir = os.path.join(config.project_ws, 'ptjpl_test', site_)
@@ -126,8 +119,11 @@ if __name__ == '__main__':
                 if config.etf_ensemble_members is not None:
                     models += config.etf_ensemble_members
 
+                # dynamics = '/data/ssd2/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_dynamics.json'
+                dynamics = config.dynamics_data_json
+
                 rs_params_ = get_ensemble_parameters(include=models)
-                prep_fields_json(config.properties_json, config.plot_timeseries, config.dynamics_data_json,
+                prep_fields_json(config.properties_json, config.plot_timeseries, dynamics,
                                  station_prepped_input, target_plots=[site_], rs_params=rs_params_,
                                  interp_params=('ndvi',))
 
