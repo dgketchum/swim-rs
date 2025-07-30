@@ -246,7 +246,7 @@ class SamplePlotDynamics:
         if check.shape[1] > 1:
             # multiple instruments
             if len(check.columns.levels[1]) > 1:
-                check = check.loc[:, idx[:, ['landsat'], ['etf'], :, [self.model], :]]
+                check = check.loc[:, idx[:, ['landsat'], ['etf'], :, [self.model], :]].max(axis=1)
 
         check = check[check > 0.0].dropna(axis=0)
         etf_years = check.index.year.unique().to_list()
@@ -416,13 +416,16 @@ class SamplePlotDynamics:
 
                 prev_day_ndvi = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
 
-                if prev_day_ndvi > 0.6:
+                if prev_day_ndvi > 0.3:
 
                     ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
 
-                    while ndvi_doy > 0.6 and end_day in ydf.index:
+                    while ndvi_doy > 0.3 and end_day in ydf.index:
                         end_day += pd.Timedelta(days=1)
                         ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
+
+                if group + 1 in groups.to_list() and (ydf[ydf['groups'] == group + 1]['ndvi']).values.min() > 0.3:
+                    end_day = ydf[ydf['groups'] == group + 1].index[-1]
 
                 end_day = (end_day + pd.Timedelta(days=1))
                 doys = [i.dayofyear for i in pd.date_range(start_day, end_day) if i.year == yr]
@@ -468,27 +471,19 @@ class SamplePlotDynamics:
 
         t_index = [i for i in df.index if i.year in years]
 
-        etf_ = df.loc[t_index, idx[:, :, ['etf'], :, [self.model], :, :]]
-        ndvi_ = df.loc[t_index, idx[:, :, ['ndvi'], :, :, :]]
+        etf_ = df.loc[t_index, idx[:, :, ['etf'], :, [self.model], :, :]].max(axis=1)
+        ndvi_ = df.loc[t_index, idx[:, :, ['ndvi'], :, :, :]].max(axis=1)
 
-        try:
-            ydf = pd.DataFrame(data=np.array([etf_, ndvi_]).T[0], index=t_index,
-                               columns=['etf', 'ndvi'])
-        except ValueError:
-            ndvi_ = df.loc[t_index, idx[:, :, ['ndvi'], :, :, 'irr']]
-            ydf = pd.DataFrame(data=np.array([etf_, ndvi_]).T[0], index=t_index,
-                               columns=['etf', 'ndvi'])
+        adf = pd.concat([etf_, ndvi_], axis=1)
+        adf.columns = ['etf', 'ndvi']
+        adf = adf.loc[[i for i in adf.index if i.year in years]]
+        adf = adf.interpolate()
+        adf = adf.bfill().ffill()
 
-        ydf['etf'] = ydf['etf'].interpolate()
-        ydf['etf'] = ydf['etf'].bfill().ffill()
+        adf['doy'] = [i.dayofyear for i in adf.index]
 
-        ydf['ndvi'] = ydf['ndvi'].interpolate()
-        ydf['ndvi'] = ydf['ndvi'].bfill().ffill()
-
-        ydf['doy'] = [i.dayofyear for i in ydf.index]
-
-        all_etf = ydf['etf'].values.flatten()
-        all_ndvi = ydf['ndvi'].values.flatten()
+        all_etf = adf['etf'].values.flatten()
+        all_ndvi = adf['ndvi'].values.flatten()
 
         nan_mask = np.isnan(all_etf)
         all_etf = all_etf[~nan_mask]
