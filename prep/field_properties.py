@@ -37,7 +37,7 @@ def write_field_properties(shp, out_js, lulc, irr=None, soils=None, cdl=None, fl
             if k in dct:
                 val = v[elc_key]
                 if val == 10 and dct[k]['lulc_code'] != 12:
-                    print(f'override {k} with crop code from {elc_key}')
+                    print(f'{k}: Override MODIS non-crop code {dct[k]["lulc_code"]} with crop code from {elc_key}')
                     dct[k] = {
                         'root_depth': RZ.get(str(12), {}).get('rooting_depth', np.nan),
                         'zr_mult': RZ.get(str(12), {}).get('zr_multiplier', np.nan),
@@ -55,7 +55,7 @@ def write_field_properties(shp, out_js, lulc, irr=None, soils=None, cdl=None, fl
                 vals = {int(kk.split('_')[1]): vv for kk, vv in v.items()}
                 irr_val = np.array([v for v in vals.values()]).mean()
                 if irr_val > 0.3 and dct[k]['lulc_code'] != 12:
-                    print(f'override {k} with crop code from irrigation')
+                    print(f'{k}: Override MODIS non-crop code {dct[k]["lulc_code"]} with crop code from irrigation mask')
                     dct[k] = {
                         'root_depth': RZ.get(str(12), {}).get('rooting_depth', np.nan),
                         'zr_mult': RZ.get(str(12), {}).get('zr_multiplier', np.nan),
