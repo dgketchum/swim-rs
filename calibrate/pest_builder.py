@@ -1,5 +1,5 @@
-import os
 import json
+import os
 import shutil
 from collections import OrderedDict
 
@@ -9,11 +9,8 @@ from pyemu import Pst, Matrix, ObservationEnsemble
 from pyemu.utils import PstFrom
 from pyemu.utils.os_utils import run_ossystem, run_sp
 
-from swim.config import ProjectConfig
-from swim.sampleplots import SamplePlots
 from model import obs_field_cycle
-
-from calibrate.run_pest import run_pst
+from swim.sampleplots import SamplePlots
 
 
 class PestBuilder:
@@ -284,7 +281,7 @@ class PestBuilder:
 
         p = OrderedDict({
 
-            # 'aw' and zr are applied by Tracker.load_soils and load_root_depth
+            # 'aw' and 'zr' are applied by Tracker.load_soils and load_root_depth
 
             'aw': {'file': self.params_file,
                    'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 400.0,
@@ -304,15 +301,15 @@ class PestBuilder:
             #            'pargp': 'kc_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ks_alpha': {'file': self.params_file,
-                         'initial_value': 0.1, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'initial_value': 0.15, 'lower_bound': 0.01, 'upper_bound': 0.3,
                          'pargp': 'ks_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'kr_alpha': {'file': self.params_file,
-                         'initial_value': 0.15, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'initial_value': 0.25, 'lower_bound': 0.01, 'upper_bound': 0.45,
                          'pargp': 'kr_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_k': {'file': self.params_file,
-                       'initial_value': 6.0, 'lower_bound': 4, 'upper_bound': 10,
+                       'initial_value': 7.0, 'lower_bound': 4.0, 'upper_bound': 10.0,
                        'pargp': 'ndvi_k', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_0': {'file': self.params_file,
@@ -480,7 +477,7 @@ class PestBuilder:
                 etf_std['std'] = multimodel_dt_std
                 etf_std['ct'] = multimodel_dt_count
                 etf_std['mean'] = multimodel_dt_mean
-                self.etf_std = etf_std.copy()
+                self.etf_std[fid] = etf_std.copy()
 
             total_valid_obs = sum(len(c) for c in all_captures)
 
@@ -492,7 +489,7 @@ class PestBuilder:
             d['weight'] = 0.0
 
             if not captures_for_this_df.empty and total_valid_obs > 0:
-                d.loc[captures_for_this_df, 'weight'] = 1.0
+                d.loc[captures_for_this_df, 'weight'] = d['obsval'] * 2
 
             d.loc[d['obsval'].isna(), 'obsval'] = -99.0
             d.loc[d['weight'].isna(), 'weight'] = 0.0
@@ -520,9 +517,11 @@ class PestBuilder:
 
         if self.etf_std is not None:
 
-            assert len(obs.loc[etf_idx, 'standard_deviation']) == len(self.etf_std)
+            etf_std_vals = []
 
-            obs.loc[etf_idx, 'standard_deviation'] = self.etf_std['std'].values
+            [etf_std_vals.extend(self.etf_std[k]['std'].values) for k in self.pest_args['targets']]
+
+            obs.loc[etf_idx, 'standard_deviation'] = np.array(etf_std_vals) * 2
 
         else:
             obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.33
