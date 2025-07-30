@@ -33,12 +33,16 @@ def run_flux_sites(fid, config, plot_data, outfile):
 
 def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='ssebop',
                    return_comparison=False, gap_tolerance=5):
+
     openet_daily = os.path.join(openet_dir, 'daily_data', f'{fid}.csv')
     openet_monthly = os.path.join(openet_dir, 'monthly_data', f'{fid}.csv')
     irr_ = plot_data_.input['irr_data'][fid]
     daily, overpass, monthly = compare_etf_estimates(model_output, flux_file, openet_daily_path=openet_daily,
-                                                     openet_monthly_path=openet_monthly, irr=irr_, model=model,
+                                                     openet_monthly_path=openet_monthly, irr=irr_, target_model=model,
                                                      gap_tolerance=gap_tolerance)
+
+    if monthly is None:
+        return None
 
     # print('\nOverpass\n')
     # pprint(overpass)
@@ -50,7 +54,7 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
         return None
 
     rmse_values = {k.split('_')[1]: v for k, v in agg_comp.items() if k.startswith('rmse_')
-                   if 'swim' in k or 'openet' in k}
+                   if 'swim' in k or model in k}
 
     if len(rmse_values) == 0:
         return None
@@ -69,13 +73,25 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
             return None
 
         try:
-            print(f"Flux Mean: {agg_comp['mean_flux']}")
-            print(f"SWIM Mean: {agg_comp['mean_swim']}")
-            print(f"{lowest_rmse_model} Mean: {agg_comp[f'mean_{lowest_rmse_model}']}")
-            print(f"OpenET Mean: {agg_comp['mean_openet']}")
-            print(f"SWIM RMSE: {agg_comp['rmse_swim']}")
-            print(f"{lowest_rmse_model} RMSE: {agg_comp[f'rmse_{lowest_rmse_model}']}")
-            print(f"OpenET RMSE: {agg_comp['rmse_openet']}")
+
+            if model == 'openet':
+                print(f"Flux Mean: {agg_comp['mean_flux']}")
+                print(f"SWIM Mean: {agg_comp['mean_swim']}")
+                print(f"{lowest_rmse_model} Mean: {agg_comp[f'mean_{lowest_rmse_model}']}")
+                print(f"OpenET Mean: {agg_comp['mean_openet']}")
+                print(f"SWIM RMSE: {agg_comp['rmse_swim']}")
+                print(f"{lowest_rmse_model} RMSE: {agg_comp[f'rmse_{lowest_rmse_model}']}")
+                print(f"OpenET RMSE: {agg_comp['rmse_openet']}")
+
+            elif model == 'ssebop':
+                print(f"Flux Mean: {agg_comp['mean_flux']}")
+                print(f"SWIM Mean: {agg_comp['mean_swim']}")
+                # print(f"{lowest_rmse_model} Mean: {agg_comp[f'mean_{lowest_rmse_model}']}")
+                print(f"SSEBop NHM Mean: {agg_comp['mean_ssebop']}")
+                print(f"SWIM RMSE: {agg_comp['rmse_swim']}")
+                print(f"{lowest_rmse_model} RMSE: {agg_comp[f'rmse_{lowest_rmse_model}']}")
+                print(f"SSEBop NHM RMSE: {agg_comp['rmse_ssebop']}")
+
             return lowest_rmse_model
 
         except KeyError as exc:
@@ -100,10 +116,12 @@ if __name__ == '__main__':
     if project == '5_Flux_Ensemble':
         western_only = True
         run_const = os.path.join(config.project_ws, 'results', 'tight')
+        model_ = 'openet'
 
     else:
         run_const = os.path.join(config.project_ws, 'results', 'tight')
         western_only = False
+        model_ = 'ssebop'
 
     open_et_ = os.path.join(config.data_dir, 'openet_flux')
     flux_dir = os.path.join(config.data_dir, 'daily_flux_files')
@@ -114,7 +132,7 @@ if __name__ == '__main__':
     print(f'{len(sites)} sites to evalutate in {project}')
     incomplete, complete, results = [], [], []
 
-    overwrite_ = True
+    overwrite_ = False
     use_new_params = True
     only_finished = True
 
@@ -125,7 +143,7 @@ if __name__ == '__main__':
         if lulc != 'Croplands':
             continue
 
-        if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
+        if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114', 'MB_Pch']:
             continue
 
         # if site_ not in ['B_01']:
@@ -159,8 +177,9 @@ if __name__ == '__main__':
 
         modified_date = datetime.fromtimestamp(os.path.getmtime(config.forecast_parameters_csv))
         print(f'Calibration made {modified_date}')
-        if modified_date < pd.to_datetime('2025-07-22'):
-            continue
+        print(f'{config.forecast_parameters_csv}')
+        # if modified_date < pd.to_datetime('2025-07-23'):
+        #     continue
 
         if not os.path.isfile(station_prepped_input) or overwrite_:
 
@@ -209,7 +228,7 @@ if __name__ == '__main__':
         complete.append(site_)
 
         # out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'model_output', 'png')
-        #
+
         # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model=model,
         #                     members=['ssebop', 'disalexi', 'geesebal', 'eemetric', 'ptjpl', 'sims'])
 
