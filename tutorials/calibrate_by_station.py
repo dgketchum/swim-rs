@@ -156,11 +156,20 @@ if __name__ == '__main__':
 
     crop_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=True,
                                      return_df=True, western_only=western_only, header=1)
-    run_pest_sequence(config, results_dir, select_stations=crop_sites, overwrite=True)
 
-
-    sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
+    all_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
                                 return_df=True, western_only=western_only, header=1)
-    non_crop_sites = [s for s in sites if s not in crop_sites]
-    run_pest_sequence(config, results_dir, select_stations=non_crop_sites, overwrite=True)
+
+    non_crop_sites = [s for s in all_sites if s not in crop_sites]
+
+    sites_ordered = crop_sites + non_crop_sites
+    sites_ordered = ['B_01']
+
+    for site in sites_ordered:
+        try:
+            run_pest_sequence(config, results_dir, select_stations=[site], overwrite=True)
+        except Exception as exc:
+            print(f'\n\n\n Failure on site {site}: {exc} \n\n\n')
+            continue
+
 # ========================= EOF ============================================================================
