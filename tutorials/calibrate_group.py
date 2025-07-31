@@ -132,33 +132,34 @@ if __name__ == '__main__':
     """"""
     # project = '5_Flux_Ensemble'
     project = '4_Flux_Network'
-    western_only = True
 
     # if project == '5_Flux_Ensemble':
     #     western_only = True
     # else:
     #     western_only = False
 
-    home = os.path.expanduser('~')
-    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
+    for project in ['4_Flux_Network', '5_Flux_Ensemble']:
 
-    config = ProjectConfig()
-    config.read_config(config_file)
+        western_only = True
 
-    results_dir = os.path.join(config.project_ws, 'multi_test')
+        home = os.path.expanduser('~')
+        config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
 
-    crop_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=True,
-                                     return_df=True, western_only=western_only, header=1)
+        config = ProjectConfig()
+        config.read_config(config_file)
 
-    all_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
-                                    return_df=True, western_only=western_only, header=1)
+        results_dir = os.path.join(config.project_ws, 'multi_test')
 
-    non_crop_sites = [s for s in all_sites if s not in crop_sites]
+        crop_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=True,
+                                         return_df=True, western_only=western_only, header=1)
 
-    sites_ordered = crop_sites + non_crop_sites
+        all_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
+                                        return_df=True, western_only=western_only, header=1)
 
-    crop_sites = ['B_01']
-    run_pest_sequence(config, results_dir, select_stations=crop_sites, overwrite=True)
+        non_crop_sites = [s for s in all_sites if s not in crop_sites]
 
+        sites_ordered = crop_sites + non_crop_sites
+
+        run_pest_sequence(config, results_dir, select_stations=crop_sites, overwrite=True)
 
 # ========================= EOF ============================================================================
