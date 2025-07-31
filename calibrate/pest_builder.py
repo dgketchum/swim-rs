@@ -489,7 +489,7 @@ class PestBuilder:
             d['weight'] = 0.0
 
             if not captures_for_this_df.empty and total_valid_obs > 0:
-                d.loc[captures_for_this_df, 'weight'] = d['obsval'] * 2
+                d.loc[captures_for_this_df, 'weight'] = d['obsval']
 
             d.loc[d['obsval'].isna(), 'obsval'] = -99.0
             d.loc[d['weight'].isna(), 'weight'] = 0.0
@@ -521,7 +521,7 @@ class PestBuilder:
 
             [etf_std_vals.extend(self.etf_std[k]['std'].values) for k in self.pest_args['targets']]
 
-            obs.loc[etf_idx, 'standard_deviation'] = np.array(etf_std_vals) * 2
+            obs.loc[etf_idx, 'standard_deviation'] = np.array(etf_std_vals)
 
         else:
             obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.33
