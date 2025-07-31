@@ -137,10 +137,12 @@ if __name__ == '__main__':
         if lulc != 'Croplands':
             continue
 
+        # unresolved data problems
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114', 'MB_Pch']:
             continue
 
-        if site_ not in ['B_01']:
+        # testing sites
+        if site_ in ['B_01', 'ALARC2_Smith6', 'S2', 'MR', 'US-FPe']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
