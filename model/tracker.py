@@ -9,7 +9,6 @@ from model import TRACKER_PARAMS
 de_initial = 10.0
 
 TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta',
-                  # 'kc_max',  # kc_max is used for SSEBop but not OpenET
                   'ks_alpha', 'kr_alpha']
 
 # params not included here (e.g., 'tew') are taken from soils data

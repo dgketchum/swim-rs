@@ -1,15 +1,15 @@
 import os
+import subprocess
 import sys
 import time
-import subprocess
 
 import ee
 import geopandas as gpd
 import pandas as pd
+import utm
 from tqdm import tqdm
 
 from data_extraction.ee.ee_utils import get_lanid
-from data_extraction.ee.ee_utils import is_authorized
 
 EE = '/home/dgketchum/miniconda3/envs/swim/bin/earthengine'
 GSUTIL = '/home/dgketchum/google-cloud-sdk/bin/gsutil'
@@ -26,6 +26,18 @@ EC_POINTS = 'users/dgketchum/fields/flux'
 STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
 WEST_STATES = 'users/dgketchum/boundaries/western_11_union'
 EAST_STATES = 'users/dgketchum/boundaries/eastern_38_dissolved'
+
+def get_utm_epsg(latitude, longitude):
+    _, _, zone_number, zone_letter = utm.from_latlon(latitude, longitude)
+
+    if zone_letter >= 'N':
+        epsg_code = 32600 + zone_number
+        zone_hemisphere = f"{zone_number}N"
+    else:
+        epsg_code = 32700 + zone_number
+        zone_hemisphere = f"{zone_number}S"
+
+    return epsg_code, zone_hemisphere
 
 
 def get_flynn():
@@ -84,11 +96,15 @@ def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_ty
 
 def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, grid_spec=None,
                       feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3',
-                      model='ssebop'):
+                      model='ssebop', usgs_nhm=False, source=None, scale=None):
+
     df = gpd.read_file(shapefile)
     df.index = df[feature_id]
 
-    assert df.crs.srs == 'EPSG:5071'
+    try:
+        assert df.crs.srs == 'EPSG:5071'
+    except AssertionError:
+        assert df.crs.name == 'Europe_Albers_Equal_Area_Conic'
 
     df = df.to_crs(epsg=4326)
 
@@ -109,12 +125,18 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
                'sims',
                'ssebop']
 
-    if model in members:
-        source = f'projects/openet/assets/{model}/conus/gridmet/landsat/c02'
-    elif model == 'ssebop':
+    if source:
+        pass
+
+    elif model == 'ssebop' and usgs_nhm:
         source = 'projects/usgs-gee-nhm-ssebop/assets/ssebop/landsat/c02'
+
+    elif source is None and model in members:
+        source = f'projects/openet/assets/{model}/conus/gridmet/landsat/c02'
+
     elif model == 'disalexi':
         source = 'projects/openet/assets/disalexi/landsat/c02'
+
     elif model == 'openet':
         source = 'projects/openet/assets/ensemble/conus/gridmet/landsat/c02'
 
@@ -129,38 +151,41 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
                 continue
 
             site = row[feature_id]
-            grid_sz = row['grid_size']
 
-            if grid_spec is not None and grid_sz != grid_spec:
-                continue
+            if grid_spec is not None:
+                grid_sz = row['grid_size']
+                desc = 'etf_{}_p{}_{}_{}'.format(site, grid_sz, mask_type, year)
+                if grid_sz != grid_spec:
+                    continue
 
-            desc = '{}_etf_{}_p{}_{}_{}'.format(model, site, grid_sz, mask_type, year)
+            else:
+                desc = 'etf_{}_{}_{}'.format(site, mask_type, year)
+
             if check_dir:
                 f = os.path.join(check_dir, '{}.csv'.format(desc))
                 if os.path.exists(f):
                     skipped += 1
                     continue
 
-            if row[state_col] in STATES:
-                irr = irr_coll.filterDate('{}-01-01'.format(year),
-                                          '{}-12-31'.format(year)).select('classification').mosaic()
-                irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
+            if mask_type in ['irr', 'inv_irr']:
+                if row[state_col] in STATES:
+                    irr = irr_coll.filterDate('{}-01-01'.format(year),
+                                              '{}-12-31'.format(year)).select('classification').mosaic()
+                    irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
 
+                else:
+                    irr_mask = lanid.select(f'irr_{year}').clip(east)
+                    irr = ee.Image(1).subtract(irr_mask)
             else:
-                irr_mask = lanid.select(f'irr_{year}').clip(east)
-                irr = ee.Image(1).subtract(irr_mask)
+                irr, irr_mask = None, None
 
-            try:
-                polygon = ee.Geometry.Polygon([[c[0], c[1]] for c in row['geometry'].exterior.coords])
-                fc = ee.FeatureCollection(ee.Feature(polygon, {feature_id: site}))
+            polygon = ee.Geometry.Polygon([[c[0], c[1]] for c in row['geometry'].exterior.coords])
+            fc = ee.FeatureCollection(ee.Feature(polygon, {feature_id: site}))
 
-                etf_coll = ee.ImageCollection(source).filterDate('{}-01-01'.format(year),
-                                                                 '{}-12-31'.format(year))
-                etf_coll = etf_coll.filterBounds(polygon)
-                etf_scenes = etf_coll.aggregate_histogram('system:index').getInfo()
-
-            except Exception as exc:
-                continue
+            etf_coll = ee.ImageCollection(source).filterDate('{}-01-01'.format(year),
+                                                             '{}-12-31'.format(year))
+            etf_coll = etf_coll.filterBounds(polygon)
+            etf_scenes = etf_coll.aggregate_histogram('system:index').getInfo()
 
             first, bands = True, None
             selectors = [site]
@@ -175,7 +200,10 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
                 etf_img = ee.Image(os.path.join(source, img_id))
 
-                if model == 'openet':
+                if source is not None and scale is not None:
+                    etf_img = etf_img.select('et_fraction')
+                    etf_img = etf_img.divide(scale)
+                elif model == 'openet':
                     etf_img = etf_img.select('et_ensemble_mad')
                     etf_img = etf_img.divide(10000)
                 elif model in ['sims', 'eemetric', 'ssebop']:
@@ -206,12 +234,9 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
                     data = etf_img.sample(fc, 30).getInfo()
                     print(data['features'])
 
-            try:
-                data = bands.reduceRegions(collection=fc,
-                                           reducer=ee.Reducer.mean(),
-                                           scale=30)
-            except AttributeError as exc:
-                continue
+            data = bands.reduceRegions(collection=fc,
+                                       reducer=ee.Reducer.mean(),
+                                       scale=30)
 
             task = ee.batch.Export.table.toCloudStorage(
                 data,
@@ -397,17 +422,5 @@ def export_to_cloud(images_txt, bucket, pathrows=None):
 
 
 if __name__ == '__main__':
-
-    d = '/media/research/IrrigationGIS/swim'
-    if not os.path.exists(d):
-        d = '/home/dgketchum/data/IrrigationGIS/swim'
-
-    is_authorized()
-
-    bucket_ = 'ssebop026'
-    txt = '/home/dgketchum/Downloads/ssebop_list.txt'
-
-    prs_ = '/media/research/IrrigationGIS/swim/ssebop/wrs2_flux_volk.csv'
-
-    # export_to_cloud(txt, bucket_, prs_)
+    pass
 # ========================= EOF ====================================================================

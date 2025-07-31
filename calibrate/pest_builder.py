@@ -1,5 +1,5 @@
-import os
 import json
+import os
 import shutil
 from collections import OrderedDict
 
@@ -9,22 +9,22 @@ from pyemu import Pst, Matrix, ObservationEnsemble
 from pyemu.utils import PstFrom
 from pyemu.utils.os_utils import run_ossystem, run_sp
 
-from swim.config import ProjectConfig
-from swim.sampleplots import SamplePlots
 from model import obs_field_cycle
-
-from calibrate.run_pest import run_pst
+from swim.sampleplots import SamplePlots
 
 
 class PestBuilder:
 
-    def __init__(self, config_file, project_ws, use_existing=False, python_script=None, prior_constraint=None,
+    def __init__(self, config, use_existing=False, python_script=None, prior_constraint=None,
                  conflicted_obs=None):
 
-        self.project_ws = project_ws
 
-        self.config = ProjectConfig()
-        self.config.read_config(config_file, project_ws)
+        self.config = config
+        self.project_ws = config.project_ws
+        self.pest_run_dir = config.pest_run_dir
+
+        if not os.path.isdir(self.pest_run_dir):
+            os.mkdir(self.pest_run_dir)
 
         self.plots = SamplePlots()
         self.plots.initialize_plot_data(self.config)
@@ -33,23 +33,22 @@ class PestBuilder:
         self.plot_properties = self.plots.input['props']
         self.plot_time_series = self.plots.input['time_series']
 
-        self.params_file = None
+        self.masks = ['inv_irr', 'irr', 'no_mask']
+
         self.pest = None
         self.etf_std = None
+
+        self.params_file = os.path.join(self.pest_run_dir, 'params.csv')
 
         self.prior_contstraint = prior_constraint
 
         self.conflicted_obs = conflicted_obs
 
-        if prior_constraint:
-            self.pest_dir = os.path.join(project_ws, f'{prior_constraint}_pest')
-            self.master_dir = os.path.join(project_ws, f'{prior_constraint}_master')
-        else:
-            self.pest_dir = os.path.join(project_ws, 'pest')
-            self.master_dir = os.path.join(project_ws, 'master')
+        self.pest_dir = os.path.join(config.pest_run_dir, 'pest')
+        self.master_dir = os.path.join(config.pest_run_dir, 'master')
 
-        self.workers_dir = os.path.join(project_ws, 'workers')
-        self.obs_dir = os.path.join(project_ws, 'obs')
+        self.workers_dir = os.path.join(config.pest_run_dir, 'workers')
+        self.obs_dir = os.path.join(config.pest_run_dir, 'obs')
 
         self.pst_file = os.path.join(self.pest_dir, f'{self.config.project_name}.pst')
         self.obs_idx_file = os.path.join(self.pest_dir, f'{self.config.project_name}.idx.csv')
@@ -76,11 +75,11 @@ class PestBuilder:
         ke_max = [self.plots.input['ke_max'][t] for t in targets]
         kc_max = [self.plots.input['kc_max'][t] for t in targets]
 
-        input_csv = [os.path.join(self.config.plot_timeseries, '{}_daily.csv'.format(fid)) for fid in targets]
+        input_csv = [os.path.join(self.config.plot_timeseries, '{}.parquet'.format(fid)) for fid in targets]
 
         et_ins = ['etf_{}.ins'.format(fid) for fid in targets]
         swe_ins = ['swe_{}.ins'.format(fid) for fid in targets]
-        self.params_file = os.path.join(self.project_ws, 'params.csv')
+
 
         pars = self.initial_parameter_dict()
         p_list = list(pars.keys())
@@ -99,6 +98,10 @@ class PestBuilder:
                     aw_ = aw[i] * 1000.
                     if np.isnan(aw_) or aw_ < pars[k]['lower_bound']:
                         aw_ = 150.0
+
+                    if aw_ > pars[k]['upper_bound']:
+                        aw_ = pars[k]['upper_bound'] * 0.8
+
                     params.append((k, aw_, 'p_{}_0_constant.csv'.format(k)))
 
                 elif 'ke_max_' in k:
@@ -161,13 +164,13 @@ class PestBuilder:
             raise NotImplementedError('Use of exising Pest++ project was specified, '
                                       'running "build_pest" will overwrite it.')
 
-        self.pest = PstFrom(self.project_ws, self.pest_dir, remove_existing=True)
+        self.pest = PstFrom(self.pest_run_dir, self.pest_dir, remove_existing=True)
 
         self._write_params()
 
         i = self._write_etf_obs(target_etf, members)
         count = i + 1
-        self._write_swe_obs(count, i)
+        self._write_swe_obs(count)
 
         ofiles = [str(x).replace('obs', 'pred') for x in self.pest.output_filenames]
         self.pest.output_filenames = ofiles
@@ -177,7 +180,7 @@ class PestBuilder:
         self.pest.py_run_file = 'custom_forward_run.py'
         self.pest.mod_command = 'python custom_forward_run.py'
 
-        self.pest.build_pst(version=2)
+        self.pest.build_pst(filename=self.pst_file, version=2)
 
         auto_gen = os.path.join(self.pest_dir, self.pest.py_run_file)
         runner = self.pest_args['python_script']
@@ -189,7 +192,7 @@ class PestBuilder:
 
     def build_localizer(self):
 
-        et_params = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad']
+        et_params = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad', 'kr_alpha', 'ks_alpha']
         snow_params = ['swe_alpha', 'swe_beta']
 
         par_relation = {'etf': et_params, 'swe': snow_params}
@@ -278,7 +281,7 @@ class PestBuilder:
 
         p = OrderedDict({
 
-            # 'aw' and zr are applied by Tracker.load_soils and load_root_depth
+            # 'aw' and 'zr' are applied by Tracker.load_soils and load_root_depth
 
             'aw': {'file': self.params_file,
                    'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 400.0,
@@ -298,15 +301,15 @@ class PestBuilder:
             #            'pargp': 'kc_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ks_alpha': {'file': self.params_file,
-                         'initial_value': 0.1, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'initial_value': 0.15, 'lower_bound': 0.01, 'upper_bound': 0.3,
                          'pargp': 'ks_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'kr_alpha': {'file': self.params_file,
-                         'initial_value': 0.15, 'lower_bound': 0.01, 'upper_bound': 1.0,
+                         'initial_value': 0.25, 'lower_bound': 0.01, 'upper_bound': 0.45,
                          'pargp': 'kr_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_k': {'file': self.params_file,
-                       'initial_value': 6.0, 'lower_bound': 4, 'upper_bound': 10,
+                       'initial_value': 7.0, 'lower_bound': 4.0, 'upper_bound': 10.0,
                        'pargp': 'ndvi_k', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_0': {'file': self.params_file,
@@ -368,22 +371,21 @@ class PestBuilder:
                 transform = 'log'
             self.pest.add_parameters(_file, 'constant', transform=transform, alt_inst_str='{}_'.format(k), **v)
 
-    def _write_swe_obs(self, count, i):
+    def _write_swe_obs(self, count):
         obsnme_str = 'oname:obs_swe_{}_otype:arr_i:{}_j:0'
 
         for j, fid in enumerate(self.pest_args['targets']):
 
             # only weight swe Nov - Apr
-            swe_df = pd.read_csv(self.pest_args['inputs'][i], index_col=0, parse_dates=True)
-            if 'start' in self.pest_args.keys():
-                swe_df = swe_df.loc[self.config.start_dt: self.config.end_dt]
-                swe_df.to_csv(self.pest_args['inputs'][i])
+            swe_df = pd.read_parquet(self.pest_args['inputs'][j])
+            swe_df = swe_df[[c for c in swe_df.columns if 'swe' in c[2]]]
+            swe_df.columns = ['swe']
 
             self.pest.add_observations(self.pest_args['swe_obs']['file'][j],
                                        insfile=self.pest_args['swe_obs']['insfile'][j])
 
-            swe_df['obs_id'] = [obsnme_str.format(fid, j) for j in range(swe_df.shape[0])]
-            valid = [ix for ix, r in swe_df.iterrows() if np.isfinite(r['obs_swe']) and r['obs_swe'] > 0.0]
+            swe_df['obs_id'] = [obsnme_str.format(fid, k) for k in range(swe_df.shape[0])]
+            valid = [ix for ix, r in swe_df.iterrows() if np.isfinite(r['swe']) and r['swe'] > 0.0]
             valid = swe_df['obs_id'].loc[valid]
 
             d = self.pest.obs_dfs[j + count].copy()
@@ -411,28 +413,25 @@ class PestBuilder:
         if members is not None:
             self.etf_std = {fid: None for fid in self.pest_args['targets']}
 
+        all_captures = []
         for i, fid in enumerate(self.pest_args['targets']):
-
-            # only weight etf on capture dates
-            etf = pd.read_csv(self.pest_args['inputs'][i], index_col=0, parse_dates=True)
-            etf = etf[[c for c in etf.columns if 'etf' in c]]
-
-            if 'start' in self.pest_args.keys():
-                etf = etf.loc[self.config.start_dt: self.config.end_dt]
-                etf.to_csv(self.pest_args['inputs'][i])
+            etf = pd.read_parquet(self.pest_args['inputs'][i])
+            etf = etf[[c for c in etf.columns if 'etf' in c[2]]]
+            etf.columns = [f'{c[-2]}_etf_{c[-1]}' for c in etf.columns]
 
             self.pest.add_observations(self.pest_args['etf_obs']['file'][i],
                                        insfile=self.pest_args['etf_obs']['insfile'][i])
 
             etf['obs_id'] = [obsnme_str.format(fid, j).lower() for j in range(etf.shape[0])]
-            idx = etf['obs_id']
-            idx.to_csv(self.obs_idx_file)
+            etf['obs_id'].to_csv(self.obs_idx_file, mode='a', header=(i == 0), index=False)
 
-            captures = [ix for ix, r in etf.iterrows()
-                        if r[f'{target}_etf_irr_ct']
-                        or r[f'{target}_etf_inv_irr_ct']]
+            captures_for_this_target = []
+            for ix, r in etf.iterrows():
+                for mask in self.masks:
+                    if f'{target}_etf_{mask}' in r and not np.isnan(r[f'{target}_etf_{mask}']):
+                        captures_for_this_target.append(etf.loc[ix, 'obs_id'])
 
-            captures = etf['obs_id'].loc[captures]
+            all_captures.append(captures_for_this_target)
 
             if members is not None:
                 etf_std = pd.DataFrame()
@@ -444,17 +443,23 @@ class PestBuilder:
                 members_and_target = members + [target]
 
                 for member in members_and_target:
-                    inv_irr_col, inv_irr_ct_col = f'{member}_etf_inv_irr', f'{member}_etf_inv_irr_ct'
-                    irr_col, irr_ct_col = f'{member}_etf_irr', f'{member}_etf_irr_ct'
 
-                    if inv_irr_col in etf.columns and inv_irr_ct_col in etf.columns:
-                        etf_std[member] = etf[inv_irr_col]
-                        etf_std[f'{member}_ct'] = etf[inv_irr_ct_col]
-                        if irr_col in etf.columns and irr_ct_col in etf.columns and irr_index:
-                            etf_std.loc[irr_index, member] = etf.loc[irr_index, irr_col]
-                            etf_std.loc[irr_index, f'{member}_ct'] = etf.loc[irr_index, irr_ct_col]
+                    mask_cols = []
 
-                valid_members = [m for m in members_and_target if m in etf_std.columns and f'{m}_ct' in etf_std.columns]
+                    for mask in self.masks:
+
+                        col = f'{member}_etf_{mask}'
+
+                        if col in etf.columns:
+
+                           mask_cols.append(col)
+
+                    etf_std[member] = pd.DataFrame(etf[mask_cols].mean(axis=1))
+
+                    if irr_index:
+                        etf_std.loc[irr_index, member] = etf.loc[irr_index, f'{member}_etf_irr']
+
+                valid_members = [m for m in members_and_target if m in etf_std.columns]
 
                 multimodel_dt_mean = pd.Series(index=etf_std.index, dtype=float)
                 multimodel_dt_std = pd.Series(index=etf_std.index, dtype=float)
@@ -462,8 +467,7 @@ class PestBuilder:
 
                 if valid_members:
                     data_subset = etf_std[valid_members]
-                    ct_subset = etf_std[[f'{m}_ct' for m in valid_members]]
-                    capture_mask = ct_subset.fillna(0).astype(bool)
+                    capture_mask = etf_std.replace(np.nan, 0.0).astype(bool)
                     capture_mask.columns = valid_members
                     multimodel_dt_count = capture_mask.sum(axis=1)
                     masked_data = data_subset.where(capture_mask)
@@ -473,23 +477,25 @@ class PestBuilder:
                 etf_std['std'] = multimodel_dt_std
                 etf_std['ct'] = multimodel_dt_count
                 etf_std['mean'] = multimodel_dt_mean
-                self.etf_std = etf_std.copy()
+                self.etf_std[fid] = etf_std.copy()
 
+            total_valid_obs = sum(len(c) for c in all_captures)
+
+        for i, fid in enumerate(self.pest_args['targets']):
             d = self.pest.obs_dfs[i].copy()
+            d.index = d.index.str.lower()
+            captures_for_this_df = d.index.intersection(all_captures[i])
+
             d['weight'] = 0.0
 
-            try:
-                d.loc[captures, 'weight'] = 2.0 * d.loc[captures, 'obsval']
-            except KeyError:
-                captures = [v.lower() for v in captures.values]
-                d.loc[captures, 'weight'] = 2.0 * d.loc[captures, 'obsval']
+            if not captures_for_this_df.empty and total_valid_obs > 0:
+                d.loc[captures_for_this_df, 'weight'] = d['obsval']
 
-            d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
-            d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
+            d.loc[d['obsval'].isna(), 'obsval'] = -99.0
+            d.loc[d['weight'].isna(), 'weight'] = 0.0
 
             d['idx'] = d.index.map(lambda i: int(i.split(':')[3].split('_')[0]))
-            d = d.sort_values(by='idx')
-            d.drop(columns=['idx'], inplace=True)
+            d = d.sort_values(by='idx').drop(columns=['idx'])
 
             self.pest.obs_dfs[i] = d
 
@@ -499,6 +505,10 @@ class PestBuilder:
         return i
 
     def _finalize_obs(self):
+        """
+        We *should* be able to write std to the observations dataframes, in the etf and swe writers, but they are
+        lost in the pest build call, so are written here.
+        """
         pst = Pst(self.pst_file)
         obs = pst.observation_data
 
@@ -507,9 +517,11 @@ class PestBuilder:
 
         if self.etf_std is not None:
 
-            assert len(obs.loc[etf_idx, 'standard_deviation']) == len(self.etf_std)
+            etf_std_vals = []
 
-            obs.loc[etf_idx, 'standard_deviation'] = self.etf_std['std'].values
+            [etf_std_vals.extend(self.etf_std[k]['std'].values) for k in self.pest_args['targets']]
+
+            obs.loc[etf_idx, 'standard_deviation'] = np.array(etf_std_vals)
 
         else:
             obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.33

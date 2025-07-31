@@ -33,6 +33,7 @@ def sample_snodas_swe(feature_coll, bucket=None, debug=False, check_dir=None, ov
             swe_img = coll.filterMetadata(
                 'system:index', 'equals', img_id).first().rename(img_id)
 
+            # this is in meters, conversion to mm is in the snodas.py processing script
             swe_img = swe_img.clip(feature_coll.geometry())
 
             if first:

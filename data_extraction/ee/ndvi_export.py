@@ -8,7 +8,6 @@ import geopandas as gpd
 
 from data_extraction.ee.ee_utils import get_lanid
 from data_extraction.ee.ee_utils import landsat_masked, sentinel2_masked, is_authorized
-from prep import get_flux_sites
 
 sys.path.insert(0, os.path.abspath('../..'))
 sys.setrecursionlimit(5000)
@@ -85,9 +84,8 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
     df = gpd.read_file(shapefile)
     df.index = df[feature_id]
 
-    assert df.crs.srs == 'EPSG:5071'
-
-    df = df.to_crs(epsg=4326)
+    if not df.crs.srs == 'EPSG:4326':
+        df = df.to_crs(epsg=4326)
 
     s, e = '1987-01-01', '2024-12-31'
     irr_coll = ee.ImageCollection(IRR)
@@ -108,34 +106,43 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
                 continue
 
             site = row[feature_id]
-            grid_sz = row['grid_size']
 
-            if grid_spec is not None and grid_sz != grid_spec:
-                continue
+            if grid_spec is not None:
+                grid_sz = row['grid_size']
+                desc = 'ndvi_{}_p{}_{}_{}_{}'.format(site, grid_sz, satellite, mask_type, year)
+                if grid_sz != grid_spec:
+                    continue
 
-            desc = 'ndvi_{}_p{}_{}_{}'.format(site, grid_sz, mask_type, year)
+            else:
+                desc = 'ndvi_{}_{}_{}_{}'.format(site, satellite, mask_type, year)
+
             if check_dir:
                 f = os.path.join(check_dir, '{}.csv'.format(desc))
                 if os.path.exists(f):
                     skipped += 1
                     continue
 
-            if row[state_col] in STATES:
-                irr = irr_coll.filterDate('{}-01-01'.format(year),
-                                          '{}-12-31'.format(year)).select('classification').mosaic()
-                irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
+            if mask_type in ['irr', 'inv_irr']:
+                if row[state_col] in STATES:
+                    irr = irr_coll.filterDate('{}-01-01'.format(year),
+                                              '{}-12-31'.format(year)).select('classification').mosaic()
+                    irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
 
+                else:
+                    irr_mask = lanid.select(f'irr_{year}').clip(east)
+                    irr = ee.Image(1).subtract(irr_mask)
             else:
-                irr_mask = lanid.select(f'irr_{year}').clip(east)
-                irr = ee.Image(1).subtract(irr_mask)
+                irr, irr_mask = None, None
 
             polygon = ee.Geometry.Polygon([[c[0], c[1]] for c in row['geometry'].exterior.coords])
             fc = ee.FeatureCollection(ee.Feature(polygon, {feature_id: site}))
 
             if satellite == 'landsat':
                 coll = landsat_masked(year, fc).map(lambda x: x.normalizedDifference(['B5', 'B4']))
-            elif satellite == 'semtinel':
+            elif satellite == 'sentinel':
                 coll = sentinel2_masked(year, fc).map(lambda x: x.normalizedDifference(['B5', 'B4']))
+            else:
+                raise ValueError('Must choose a satellite from landsat or sentinel')
 
             ndvi_scenes = coll.aggregate_histogram('system:index').getInfo()
 
@@ -161,15 +168,23 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
                     bands = nd_img
                     first = False
                 else:
-                    bands = bands.addBands([nd_img])
+                    if nd_img is not None:
+                        bands = bands.addBands([nd_img])
+                    else:
+                        print(f'{fid} image data for {_name} is None, skipping')
+                        continue
 
                 if debug:
                     data = nd_img.sample(fc, 30).getInfo()
                     print(data['features'])
 
-            data = bands.reduceRegions(collection=fc,
+            try:
+                data = bands.reduceRegions(collection=fc,
                                        reducer=ee.Reducer.mean(),
                                        scale=30)
+            except AttributeError:
+                print(f'{fid} image data for {year} is None, skipping')
+                continue
 
             task = ee.batch.Export.table.toCloudStorage(
                 data,
@@ -185,19 +200,20 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
                 print('{}, waiting on '.format(e), desc, '......')
                 time.sleep(600)
                 task.start()
+
             exported += 1
 
     print(f'NDVI: Exported {exported}, skipped {skipped} files found in {check_dir}')
 
 
 def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None,
-                          start_yr=2004, end_yr=2023, feature_id='FID'):
+                          start_yr=2004, end_yr=2023, feature_id='FID', satellite='landsat'):
     feature_coll = ee.FeatureCollection(feature_coll)
 
     s, e = '1987-01-01', '2021-12-31'
     irr_coll = ee.ImageCollection(IRR)
-    coll = irr_coll.filterDate(s, e).select('classification')
-    remap = coll.map(lambda img: img.lt(1))
+    irr_coll = irr_coll.filterDate(s, e).select('classification')
+    remap = irr_coll.map(lambda img: img.lt(1))
     irr_min_yr_mask = remap.sum().gte(5)
 
     for year in range(start_yr, end_yr + 1):
@@ -209,7 +225,7 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
         first, bands = True, None
         selectors = [feature_id]
 
-        desc = 'ndvi_{}_{}'.format(mask_type, year)
+        desc = 'ndvi_{}_{}'.format(year, mask_type)
 
         if check_dir:
             f = os.path.join(check_dir, '{}.csv'.format(desc))
@@ -217,7 +233,13 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
                 print(desc, 'exists, skipping')
                 continue
 
-        coll = landsat_masked(year, feature_coll).map(lambda x: x.normalizedDifference(['B5', 'B4']))
+        if satellite == 'landsat':
+            coll = landsat_masked(year, feature_coll).map(lambda x: x.normalizedDifference(['B5', 'B4']))
+        elif satellite == 'sentinel':
+            coll = sentinel2_masked(year, feature_coll).map(lambda x: x.normalizedDifference(['B8', 'B4']))
+        else:
+            raise ValueError('Must choose a satellite from landsat or sentinel')
+
         ndvi_scenes = coll.aggregate_histogram('system:index').getInfo()
 
         for img_id in ndvi_scenes:
@@ -226,9 +248,6 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
             _name = '_'.join(splt[-3:])
 
             selectors.append(_name)
-
-            # if splt[-1] not in ['20000514', '20000515']:
-            #     continue
 
             nd_img = coll.filterMetadata('system:index', 'equals', img_id).first().rename(_name)
 
@@ -252,10 +271,13 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
                                        scale=30).getInfo()
             print(data['features'])
 
-        # TODO extract pixel count to filter data
-        data = bands.reduceRegions(collection=feature_coll,
-                                   reducer=ee.Reducer.mean(),
-                                   scale=30)
+        try:
+            data = bands.reduceRegions(collection=feature_coll,
+                                       reducer=ee.Reducer.mean(),
+                                       scale=30)
+        except AttributeError as exc:
+            print(f'{desc} raised {exc}')
+            continue
 
         task = ee.batch.Export.table.toCloudStorage(
             data,
@@ -271,51 +293,17 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
 
 if __name__ == '__main__':
 
+    d = '/media/research/IrrigationGIS/swim'
+    if not os.path.exists(d):
+        d = '/home/dgketchum/data/IrrigationGIS/swim'
+
     is_authorized()
-
-    bucket = 'wudr'
-
-    home = os.path.expanduser('~')
-    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
-    shapefile_path = os.path.join(root, 'footprints', 'flux_static_footprints.shp')
-
-    data = os.path.join(root, 'tutorials', '4_Flux_Network', 'data')
-    landsat_dst = os.path.join(data, 'landsat')
-
-    fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
-
-    fdf = gpd.read_file(fields_gridmet)
-    target_states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
-    state_idx = [i for i, r in fdf.iterrows() if r['field_3'] in target_states]
-    fdf = fdf.loc[state_idx]
-    sites_ = list(set(fdf['field_1'].to_list()))
-    sites_.sort()
-
-    # Volk static footprints
-    FEATURE_ID = 'site_id'
-    state_col = 'state'
-
-    from etf_export import sparse_sample_etf
-
-    for src in ['etf', 'ndvi']:
-        for mask in ['irr', 'inv_irr']:
-
-            if src == 'ndvi':
-                print(src, mask)
-                dst = os.path.join(landsat_dst, 'extracts', src, mask)
-
-                sparse_sample_ndvi(shapefile_path, bucket=bucket, debug=False, grid_spec=3,
-                                   mask_type=mask, check_dir=dst, start_yr=2016, end_yr=2024, feature_id=FEATURE_ID,
-                                   state_col=state_col, select=None)
-
-            if src == 'etf':
-                for model in ['disalexi', 'geesebal', 'ptjpl']:
-                    dst = os.path.join(landsat_dst, 'extracts', f'{model}_{src}', mask)
-
-                    print(src, mask, model)
-
-                    sparse_sample_etf(shapefile_path, bucket=bucket, debug=False, grid_spec=3,
-                                      mask_type=mask, check_dir=None, start_yr=2016, end_yr=2024, feature_id=FEATURE_ID,
-                                      state_col=state_col, select=None, model=model)
+    bucket_ = 'wudr'
+    fields = 'users/dgketchum/fields/tongue_9MAY2023'
+    sat = 'sentinel'
+    for mask in ['inv_irr', 'irr']:
+        chk = os.path.join(d, 'examples/tongue/{}/extracts/ndvi/{}'.format(sat, mask))
+        clustered_sample_ndvi(fields, bucket_, debug=False, mask_type=mask, check_dir=chk,
+                              start_yr=2017, end_yr=2024, satellite=sat)
 
 # ========================= EOF =======================================================================================

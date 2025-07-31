@@ -1,166 +1,104 @@
-import os
 import json
+import os
+import warnings
 
-from tqdm import tqdm
+import geopandas as gpd
 import numpy as np
 import pandas as pd
-import geopandas as gpd
+from tqdm import tqdm
 
-from prep import get_ensemble_parameters, get_flux_sites
-from data_extraction.gridmet.gridmet import find_gridmet_points, download_gridmet
-
-import warnings
+from prep import COLUMN_MULTIINDEX
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
-def join_daily_timeseries(fields, gridmet_dir, landsat_table, snow, dst_dir, overwrite=False,
+def join_daily_timeseries(fields, met_dir, rs_dir, dst_dir, snow=None, overwrite=False,
                           start_date=None, end_date=None, feature_id='FID', **kwargs):
-    with open(snow, 'r') as f:
-        snow = json.load(f)
+    """"""
 
-    lst = pd.read_csv(landsat_table, parse_dates=True, index_col=0)
-    lst = lst.sort_index(axis=1)
-    lst_start, lst_end = lst.index[0], lst.index[-1]
-
-    remote_sensing_coverage = ((pd.to_datetime(start_date) >= lst_start) &
-                               (pd.to_datetime(end_date) <= lst_end))
-
-    if not remote_sensing_coverage:
-        raise ValueError('Remote sensing data does not cover requested time period')
-
-    lst = lst.loc[start_date: end_date]
-
-    if 'params' not in kwargs.keys():
-        params = set(['_'.join(x.split('_')[1:]) for x in lst.columns])
-        models = set(['_'.join(x.split('_')[0]) for x in lst.columns if 'ndvi' not in x])
-    else:
-        params = kwargs['params']
-        models = list(set([m.split('_')[0] for m in kwargs['params'] if 'ndvi' not in m]))
+    met_map_key, met_map_dir = None, None
 
     field_df = gpd.read_file(fields)
     field_df.index = field_df[feature_id]
 
     out_plots, bad, time_covered = [], None, False
 
-    for f, row in tqdm(field_df.iterrows(), total=field_df.shape[0]):
+    if snow is not None:
+        with open(snow, 'r') as fp:
+            snow_dct = json.load(fp)
 
-        if 'target_fields' in kwargs.keys():
-            if str(f) not in kwargs['target_fields']:
+    for fid, row in tqdm(field_df.iterrows(), total=field_df.shape[0],  desc="Processing Time Series files"):
+
+        if 'target_fields' in kwargs:
+            if str(fid) not in kwargs['target_fields']:
                 continue
 
-        if pd.isna(row['GFID']):
-            print(row[feature_id], 'was not assigned a Gridmet point')
+        if 'met_mapping' in kwargs:
+            met_map_key = kwargs['met_mapping']
+
+        rs_file = os.path.join(rs_dir, f'{fid}.parquet')
+        if not os.path.exists(rs_file):
+            print(f'{rs_file} not found')
             continue
 
-        _file = os.path.join(dst_dir, '{}_daily.csv'.format(f))
+        rsdf = pd.read_parquet(rs_file)
+        rsdf = rsdf.sort_index(axis=1)
+        rs_start, rs_end = rsdf.index[0], rsdf.index[-1]
 
-        gridmet_file = os.path.join(gridmet_dir, 'gridmet_{}.csv'.format(int(row['GFID'])))
+        rs_temporal_coverage = ((pd.to_datetime(start_date) >= rs_start) &
+                                (pd.to_datetime(end_date) <= rs_end))
 
-        if os.path.exists(gridmet_file):
-            gridmet = pd.read_csv(gridmet_file, index_col='date', parse_dates=True)
-            gridmet.index = pd.DatetimeIndex(gridmet.index)
-            missing_gridmet = False
-            time_covered = ((pd.to_datetime(start_date) >= gridmet.index[0]) &
-                            (pd.to_datetime(end_date) <= gridmet.index[-1]))
+        if not rs_temporal_coverage:
+            raise ValueError('Remote sensing data does not cover requested time period')
+
+        rsdf = rsdf.loc[start_date: end_date]
+
+        out_file = os.path.join(dst_dir, '{}.parquet'.format(fid))
+        if os.path.exists(out_file) and not overwrite and time_covered:
+            continue
+
+        if met_map_key is not None:
+            target = row[met_map_key]
+            met_file = os.path.join(met_dir, '{}.parquet'.format(target))
         else:
-            missing_gridmet = True
+            met_file = os.path.join(met_dir, '{}.parquet'.format(fid))
 
-        if os.path.exists(_file) and not overwrite and time_covered:
+        if not os.path.exists(met_file):
+            print(f'{met_file} not found')
             continue
 
-        if not time_covered or missing_gridmet:
-            bias_factors = fields.replace('.shp', '.json')
-            gridmet = download_gridmet(fields, bias_factors, gridmet_dir, start_date, end_date, return_df=True,
-                                       overwrite=False, append=True, target_fields=[f], feature_id=feature_id)
-            gridmet = gridmet.loc[start_date: end_date]
+        df = pd.read_parquet(met_file).loc[start_date: end_date]
+        df.index = pd.DatetimeIndex(df.index)
+        time_covered = ((pd.to_datetime(start_date) >= df.index[0]) &
+                        (pd.to_datetime(end_date) <= df.index[-1]))
 
-        drop_cols = [c for c in gridmet.columns if '.' in c]
+        drop_cols = [c for c in df.columns if '.' in c]
         if drop_cols:
-            gridmet.drop(columns=drop_cols, inplace=True)
+            df.drop(columns=drop_cols, inplace=True)
 
-        swe_data = [(pd.to_datetime(d['date']), d['value']) for d in snow[f]]
-        swe = pd.Series(index=[x[0] for x in swe_data], data=[x[1] for x in swe_data])
-        swe = swe.sort_index()
+        if snow is not None:
+            swe = pd.DataFrame.from_dict(snow_dct[fid])
+            swe.index = pd.DatetimeIndex(swe['date'])
+            swe = swe.sort_index()
+            match_idx = [i for i in df.index if i in swe.index]
+            df[(fid, 'none', 'swe', 'mm', 'snodas', 'no_mask')] = np.nan
+            df.loc[match_idx, (fid, 'none', 'swe', 'mm', 'snodas', 'no_mask')] = swe['value']
 
-        match_idx = [i for i in gridmet.index if i in swe.index]
-        gridmet.loc[match_idx, 'obs_swe'] = swe
-
-        for p in params:
-            try:
-                gridmet.loc[lst.index, p] = lst['{}_{}'.format(f, p)]
-            except KeyError as exc:
-                print(f'{exc}: {f} is missing {p}')
-                exit()
+        df = pd.concat([df, rsdf], axis=1, ignore_index=False)
+        cols = pd.MultiIndex.from_tuples(df.columns, names=COLUMN_MULTIINDEX)
+        df.columns = cols
 
         if start_date:
-            gridmet = gridmet.loc[start_date:]
+            df = df.loc[start_date:]
         if end_date:
-            gridmet = gridmet.loc[:end_date]
+            df = df.loc[:end_date]
 
-        accept, bad = True, 0
-
-        chkdf = gridmet.resample('A').sum()
-        for i in chkdf.index:
-            for m in models:
-                chck_irr, chck_inv_irr = chkdf.loc[i, f'{m}_etf_irr'], chkdf.loc[i, f'{m}_etf_inv_irr']
-                if np.isnan(chck_irr) and np.isnan(chck_inv_irr):
-                    print('{} in {} has only nan in etf_irr and etf_inv_irr'.format(f, i.year))
-                    accept = False
-                    bad += 1
-                    break
-
-            chck_irr, chck_inv_irr = chkdf.loc[i, 'ndvi_irr'], chkdf.loc[i, 'ndvi_inv_irr']
-            if np.isnan(chck_irr) and np.isnan(chck_inv_irr):
-                print('{} in {} has only nan in ndvi_irr and ndvi_inv_irr'.format(f, i.year))
-                accept = False
-                bad += 1
-                break
-
-        if accept:
-            gridmet.to_csv(_file)
-            out_plots.append(f)
+        df.to_parquet(out_file)
+        out_plots.append(fid)
 
     print(f'{len(out_plots)} fields were successfully processed')
-    print(f'{bad} fields were dropped due to missing data')
 
 
 if __name__ == '__main__':
-
-    project = '5_Flux_Ensemble'
-
-    root = '/data/ssd2/swim'
-    data = os.path.join(root, project, 'data')
-    if not os.path.isdir(root):
-        root = '/home/dgketchum/PycharmProjects/swim-rs'
-        data = os.path.join(root, 'tutorials', project, 'data')
-
-    landsat = os.path.join(data, 'landsat')
-    remote_sensing_file = os.path.join(landsat, 'remote_sensing.csv')
-
-    FEATURE_ID = 'field_1'
-
-    fields_gridmet = os.path.join(data, 'gis', 'flux_fields_gfid.shp')
-    met = os.path.join(data, 'met_timeseries')
-
-    joined_timeseries = os.path.join(data, 'plot_timeseries')
-    snow = os.path.join(data, 'snodas', 'snodas.json')
-
-    station_file = os.path.join(data, 'station_metadata.csv')
-    sites_ = get_flux_sites(station_file, western_only=True)
-
-    remote_sensing_parameters = get_ensemble_parameters(skip=None)
-
-    join_daily_timeseries(fields=fields_gridmet,
-                          gridmet_dir=met,
-                          landsat_table=remote_sensing_file,
-                          snow=snow,
-                          dst_dir=joined_timeseries,
-                          overwrite=True,
-                          start_date='1987-01-01',
-                          end_date='2024-12-31',
-                          feature_id=FEATURE_ID,
-                          **{'params': remote_sensing_parameters,
-                             'target_fields': sites_})
-
+    pass
 # ========================= EOF ====================================================================

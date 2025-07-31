@@ -14,23 +14,6 @@ from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 
 
-def run_flux_sites(fid, config, plot_data, outfile):
-    start_time = time.time()
-
-    df_dct = obs_field_cycle.field_day_loop(config, plot_data, debug_flag=True)
-
-    end_time = time.time()
-    print('\nExecution time: {:.2f} seconds\n'.format(end_time - start_time))
-
-    df = df_dct[fid].copy()
-    in_df = plot_data.input_to_dataframe(fid)
-    df = pd.concat([df, in_df], axis=1, ignore_index=False)
-
-    df = df.loc[config.start_dt:config.end_dt]
-
-    df.to_csv(outfile)
-
-
 def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='ssebop',
                    return_comparison=False, gap_tolerance=5):
 
@@ -115,13 +98,16 @@ if __name__ == '__main__':
 
     if project == '5_Flux_Ensemble':
         western_only = True
-        run_const = os.path.join(config.project_ws, 'results', 'tight')
         model_ = 'openet'
 
     else:
-        run_const = os.path.join(config.project_ws, 'results', 'tight')
         western_only = False
         model_ = 'ssebop'
+
+    target_dir = os.path.join(config.project_ws, 'multi_test')
+    config.forecast_parameters_csv = os.path.join(target_dir, f'{project}.3.par.csv')
+    config.spinup = os.path.join(target_dir, f'spinup_{project}.json')
+    station_prepped_input = os.path.join(target_dir, f'prepped_input.json')
 
     open_et_ = os.path.join(config.data_dir, 'openet_flux')
     flux_dir = os.path.join(config.data_dir, 'daily_flux_files')
@@ -129,12 +115,20 @@ if __name__ == '__main__':
     sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
                                 return_df=True, western_only=western_only, header=1)
 
-    print(f'{len(sites)} sites to evalutate in {project}')
     incomplete, complete, results = [], [], []
 
-    overwrite_ = False
-    use_new_params = True
-    only_finished = True
+    plots_ = SamplePlots()
+    plots_.initialize_plot_data(config)
+
+    config.calibrate = False
+    config.forecast = True
+    config.read_forecast_parameters()
+
+    df_dct = obs_field_cycle.field_day_loop(config, plots_, debug_flag=True)
+
+    sites = [k for k, v in df_dct.items() if k in sites]
+
+    print(f'{len(sites)} sites to evalutate in {project}')
 
     for ee, site_ in enumerate(sites):
 
@@ -143,81 +137,29 @@ if __name__ == '__main__':
         if lulc != 'Croplands':
             continue
 
+        # unresolved data problems
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114', 'MB_Pch']:
             continue
 
-        # if site_ not in ['B_01']:
-        #     continue
+        # testing sites
+        if site_ in ['B_01', 'ALARC2_Smith6', 'S2', 'MR', 'US-FPe']:
+            continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
-        output_ = os.path.join(run_const, site_)
-
         flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
-
-        target_dir = os.path.join(config.project_ws, 'ptjpl_test', site_)
-        station_prepped_input = os.path.join(target_dir, f'prepped_input_{site_}.json')
-
-        if not os.path.isfile(station_prepped_input) and only_finished:
-            print(f'{target_dir} not finished')
-            continue
-
-        if use_new_params:
-            config.forecast_parameters_csv = os.path.join(target_dir, f'{site_}.3.par.csv')
-            config.spinup = os.path.join(target_dir, f'spinup_{site_}.json')
-        else:
-            config.forecast_parameters_csv = os.path.join(output_, f'{site_}.3.par.csv')
-            config.spinup = os.path.join(output_, f'spinup_{site_}.json')
-
-        if not os.path.exists(config.spinup):
-            print(f'file {config.spinup} not found')
-            continue
-        if not os.path.exists(config.forecast_parameters_csv):
-            continue
-
-        modified_date = datetime.fromtimestamp(os.path.getmtime(config.forecast_parameters_csv))
-        print(f'Calibration made {modified_date}')
-        print(f'{config.forecast_parameters_csv}')
-        # if modified_date < pd.to_datetime('2025-07-23'):
-        #     continue
-
-        if not os.path.isfile(station_prepped_input) or overwrite_:
-
-            if not os.path.isdir(target_dir):
-                os.makedirs(target_dir)
-
-            models = [config.etf_target_model]
-            if config.etf_ensemble_members is not None:
-                models += config.etf_ensemble_members
-
-            rs_params_ = get_ensemble_parameters(include=models)
-            prep_fields_json(config.properties_json, config.plot_timeseries, config.dynamics_data_json,
-                             out_js=station_prepped_input, target_plots=[site_], rs_params=rs_params_,
-                             interp_params=('ndvi',))
 
         config.input_data = station_prepped_input
 
         out_csv = os.path.join(target_dir, f'{site_}.csv')
 
-        try:
-            plots_ = SamplePlots()
-            plots_.initialize_plot_data(config)
-        except FileNotFoundError:
-            print(f'file {config.input_data} not found')
-            continue
+        df = df_dct[site_].copy()
+        in_df = plots_.input_to_dataframe(site_)
+        df = pd.concat([df, in_df], axis=1, ignore_index=False)
 
-        # bring in forecast from previous work
-        config.calibrate = False
-        config.forecast = True
+        df = df.loc[config.start_dt:config.end_dt]
 
-        config.read_forecast_parameters()
-
-        try:
-            if not os.path.exists(out_csv) or overwrite_:
-                run_flux_sites(site_, config, plots_, out_csv)
-        except (ValueError, KeyError) as exc:
-            print(f'{site_} error: {exc}')
-            continue
+        df.to_csv(out_csv)
 
         result = compare_openet(site_, flux_data, out_csv, open_et_, plots_,
                                 model=config.etf_target_model, return_comparison=True, gap_tolerance=5)
@@ -226,11 +168,6 @@ if __name__ == '__main__':
             results.append((result, lulc))
 
         complete.append(site_)
-
-        # out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'model_output', 'png')
-
-        # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model=model,
-        #                     members=['ssebop', 'disalexi', 'geesebal', 'eemetric', 'ptjpl', 'sims'])
 
     pprint({s: [t[0] for t in results].count(s) for s in set(t[0] for t in results)})
     pprint(

@@ -39,11 +39,13 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
     flux_meta_df = pd.read_csv(flux_meta_csv, header=1, skip_blank_lines=True, index_col='Site ID')
     sites = sorted(flux_meta_df.index.to_list())
 
-    for fid in sites:
+    for i, fid in enumerate(sites, start=1):
+
+        print(f'{fid}: {i} of {len(sites)} stations')
 
         prepped_data, prepped_input = False, None
 
-        if fid in ['US-Bi2', 'US-Dk1', 'MB_Pch']:
+        if fid in ['US-Bi1', 'US-Bi2', 'US-Dk1', 'MB_Pch', 'US-SP4']:
             continue
 
         if select_stations and fid not in select_stations:
@@ -51,7 +53,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
 
         for prior_constraint in ['tight']:
 
-            target_dir = os.path.join(project_ws, 'results', 'verify', fid)
+            target_dir = os.path.join(project_ws, 'results', prior_constraint, fid)
 
             if not os.path.isdir(target_dir):
                 os.mkdir(target_dir)
@@ -66,7 +68,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
             if not prepped_data:
                 prepped_input = os.path.join(data_dir, 'prepped_input.json')
 
-                rs_params_ = get_ensemble_parameters()
+                rs_params_ = get_ensemble_parameters(include=['ssebop'])
                 prep_fields_json(properties_json, joined_timeseries, dynamics_data,
                                  prepped_input, target_plots=[fid], rs_params=rs_params_)
 
@@ -74,13 +76,9 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
                 if not os.path.isdir(obs_dir):
                     os.makedirs(obs_dir, exist_ok=True)
 
-                proc_success = preproc(conf_path, project_ws, etf_target_model=target_)
+                preproc(conf_path, project_ws, etf_target_model=target)
 
-                if proc_success:
-                    prepped_data = True
-                else:
-                    print(f'{fid} processing observtions failed due to all nan in data, skipping\n')
-                    continue
+                prepped_data = True
 
             py_script = os.path.join(project_ws, 'custom_forward_run.py')
 
@@ -103,7 +101,7 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
             if not os.path.isdir(r_dir):
                 os.mkdir(r_dir)
 
-            station_results = os.path.join(r_dir, 'verify', fid)
+            station_results = os.path.join(r_dir, prior_constraint, fid)
             if not os.path.exists(station_results):
                 os.mkdir(station_results)
 
@@ -189,53 +187,5 @@ def run_pest_sequence(conf_path, project_ws, workers, realizations, target, memb
 
 
 if __name__ == '__main__':
-
-    # project_ = '5_Flux_Ensemble'
-    project_ = '4_Flux_Network'
-
-    root = '/data/ssd2/swim'
-    data = os.path.join(root, project_, 'data')
-    workers, realizations = 20, 200
-    project_ws_ = os.path.join(root, project_)
-    config_file = os.path.join(project_ws_, 'config.toml')
-
-    if not os.path.isdir(root):
-        root = '/home/dgketchum/PycharmProjects/swim-rs'
-        data = os.path.join(root, 'tutorials', project_, 'data')
-        workers, realizations = 2, 10
-        project_ws_ = os.path.join(root, 'tutorials', project_)
-        config_file = os.path.join(project_ws_, 'config.toml')
-
-    station_file = os.path.join(data, 'station_metadata.csv')
-
-    sites_ = get_flux_sites(station_file, crop_only=False, western_only=False)
-    print(f'{len(sites_)} sites total')
-
-    results = os.path.join(project_ws_, 'results', 'verify')
-
-    incomplete = []
-    for site in sites_:
-
-        fcst_params = os.path.join(results, site, f'{site}.3.par.csv')
-        if not os.path.exists(fcst_params):
-            print(f'{site} has no parameters')
-            incomplete.append(site)
-            continue
-
-        modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
-
-        if modified_date > pd.to_datetime('2025-07-01'):
-            print(f'remove {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
-        else:
-            print(f'keep {site} calibrated {datetime.strftime(modified_date, "%Y-%m-%d")}')
-            incomplete.append(site)
-
-    print(f'{len(incomplete)} sites not yet calibrated')
-
-    target_ = 'ssebop'
-    # members_ = ['eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']
-
-    run_pest_sequence(config_file, project_ws_, workers=workers, target=target_, members=None,
-                      realizations=realizations, select_stations=incomplete, pdc_remove=True, overwrite=True)
-
+    pass
 # ========================= EOF ============================================================================

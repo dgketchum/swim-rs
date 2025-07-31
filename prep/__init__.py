@@ -1,6 +1,29 @@
 import pandas as pd
 import geopandas as gpd
 
+COLUMN_MULTIINDEX = ['site', 'instrument', 'parameter', 'units', 'algorithm', 'mask']
+
+ACCEPTED_UNITS_MAP = {'elev': 'm',
+                      'tmin': 'c',
+                      'tmax': 'c',
+                      'etr': 'mm',
+                      'etr_corr': 'mm',
+                      'eto': 'mm',
+                      'eto_corr': 'mm',
+                      'prcp': 'mm',
+                      'srad': 'wm2',
+                      'u2': 'ms',
+                      'ea': 'kpa',
+                      'et_fraction': 'unitless',
+                      'nld_ppt_d': 'mm',
+                      'centroid_lat': 'degrees',
+                      'centroid_lon': 'degrees',
+                      'swe': 'mm',
+                      }
+
+[ACCEPTED_UNITS_MAP.update({v: 'mm'}) for v in
+ ['prcp_hr_{}'.format(str(e).rjust(2, '0')) for e in range(0, 24)]]
+
 # Global estimation of effective plant rooting depth: Implications for hydrological modeling
 # https://doi.org/10.1002/2016WR019392
 # mapped to Land Cover Type 1: Annual International Geosphere-Biosphere Programme (IGBP) classification
@@ -73,7 +96,7 @@ MAX_EFFECTIVE_ROOTING_DEPTH = {
 
 
 def get_flux_sites(sites, crop_only=False, return_df=False, western_only=False,
-                   index_col=0, header=None):
+                   index_col=None, header=None):
     """"""
 
     if sites.endswith('.shp'):
@@ -81,7 +104,7 @@ def get_flux_sites(sites, crop_only=False, return_df=False, western_only=False,
         sdf.index = sdf[index_col]
 
     else:
-        sdf = pd.read_csv(sites, index_col=index_col, header=header)
+        sdf = pd.read_csv(sites, index_col=0, header=header)
 
     if crop_only:
         sdf = sdf[sdf['General classification'] == 'Croplands']
@@ -112,14 +135,10 @@ def get_ensemble_parameters(skip=None, include=None):
                 continue
             if include and model not in include:
                 continue
-            if include and model not in include:
-                continue
 
-            ensemble_params.append(f'{model}_etf_{mask}')
-            ensemble_params.append(f'{model}_etf_{mask}_ct')
+            ensemble_params.append((f'{model}', 'etf', f'{mask}'))
 
-        ensemble_params.append(f'ndvi_{mask}')
-        ensemble_params.append(f'ndvi_{mask}_ct')
+        ensemble_params.append(('none', 'ndvi', f'{mask}'))
 
     return ensemble_params
 

@@ -15,9 +15,9 @@ def run():
 
     model_script = os.path.join(root, 'calibrate', 'run_mp.py')
 
-    project_ws = os.path.join(root, 'tutorials', '4_Flux_Network')
+    project_ws = os.path.join(root, 'tutorials', '5_Flux_Ensemble')
 
-    conf_file = os.path.join(project_ws, '4_Flux_Network.toml')
+    conf_file = os.path.join(project_ws, '5_Flux_Ensemble.toml')
 
     cwd = os.getcwd()
 

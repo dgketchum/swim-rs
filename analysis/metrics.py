@@ -6,7 +6,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 
 
 def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_path=None, openet_monthly_path=None,
-                          irr=None, model='ssebop', gap_tolerance=5):
+                          irr=None, target_model='ssebop', gap_tolerance=5):
     flux_data = pd.read_csv(flux_data_path, index_col='date', parse_dates=True)
 
     if isinstance(combined_output_path, pd.DataFrame):
@@ -24,39 +24,57 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
                  and v['f_irr'] >= irr_threshold]
     irr_index = [i for i in output.index if i.year in irr_years]
 
-    try:
-        output['etf'] = output['etf_inv_irr']
-        output.loc[irr_index, 'etf'] = output.loc[irr_index, 'etf_irr']
-        output['capture'] = output['etf_inv_irr_ct']
-        output.loc[irr_index, 'capture'] = output.loc[irr_index, 'etf_irr_ct']
+    output['etf'] = output[f'{target_model}_etf_inv_irr']
+    output.loc[irr_index, 'etf'] = output.loc[irr_index, f'{target_model}_etf_irr']
+    output['capture'] = ~np.isnan(output[f'{target_model}_etf_inv_irr'].values)
+    output.loc[irr_index, 'capture'] = ~np.isnan(output.loc[irr_index, f'{target_model}_etf_irr'].values)
 
-    except KeyError:
-        output['etf'] = output[f'{model}_etf_inv_irr']
-        output.loc[irr_index, 'etf'] = output.loc[irr_index, f'{model}_etf_irr']
-        output['capture'] = output[f'{model}_etf_inv_irr_ct']
-        output.loc[irr_index, 'capture'] = output.loc[irr_index, f'{model}_etf_irr_ct']
+    if len(irr_years) > 0:
+        eto_source = 'eto_corr'
+    else:
+        eto_source = 'eto'
 
     df = pd.DataFrame({'kc_act': output['kc_act'], 'ET_corr': flux_data['ET_corr'],
-                       'etf': output['etf'], 'capture': output['capture'], 'eto': output['eto_mm']})
+                       'etf': output['etf'], 'capture': output['capture'], 'eto': output[eto_source]})
+
+    if target_model == 'ssebop':
+        output['etf'] = output['etf'].interpolate()
+        output['etf'] = output['etf'].bfill().ffill()
+        df['ssebop'] = output['etf'] * output['eto_corr']
 
     df['flux'] = flux_data['ET']
     df['flux_fill'] = flux_data['ET_fill']
     df.loc[np.isnan(df['flux']), 'flux'] = df.loc[np.isnan(df['flux']), 'flux_fill']
     df['flux_gapfill'] = flux_data['ET_gap'].astype(int)
 
-    df['swim'] = df['eto'] * df['kc_act']
+    df['swim'] = output['et_act']
 
     df_monthly = df.copy()
 
-    openet_rename = {'GEESEBAL_3x3': 'geesebal', 'PTJPL_3x3': 'ptjpl', 'SSEBOP_3x3': 'ssebop', 'SIMS_3x3': 'sims',
-                     'EEMETRIC_3x3': 'eemetric', 'DISALEXI_3x3': 'disalexi', 'ensemble_mean_3x3': 'openet'}
+    if target_model == 'openet':
+        openet_rename = {'GEESEBAL_3x3': 'geesebal', 'PTJPL_3x3': 'ptjpl', 'SSEBOP_3x3': 'ssebop', 'SIMS_3x3': 'sims',
+                         'EEMETRIC_3x3': 'eemetric', 'DISALEXI_3x3': 'disalexi', 'ensemble_mean_3x3': 'openet'}
 
-    openet_models = [v for k, v in openet_rename.items()]
+    elif target_model == 'ssebop':
+        openet_rename = {'ensemble_mean_3x3': 'openet'}
+
+    else:
+        raise ValueError
+
+    openet_models = list(openet_rename.values())
 
     if openet_daily_path:
         try:
             openet_daily = pd.read_csv(openet_daily_path, index_col='DATE', parse_dates=True)
             openet_daily = openet_daily.rename(columns=openet_rename)
+
+            try:
+                present_models = [m for m in openet_daily.columns if m in openet_models]
+                openet_daily = openet_daily[present_models]
+            except KeyError:
+                print(f'KeyError on OpenET model selection')
+                return None, None, None
+
             for model in openet_models:
                 if model in openet_daily.columns:
                     df[model] = openet_daily[model]
@@ -74,6 +92,14 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
         try:
             openet_monthly = pd.read_csv(openet_monthly_path, index_col='DATE', parse_dates=True)
             openet_monthly = openet_monthly.rename(columns=openet_rename)
+
+            try:
+                present_models =  [m for m in openet_monthly.columns if m in openet_models]
+                openet_monthly = openet_monthly[present_models]
+            except KeyError:
+                print(f'KeyError on OpenET model selection')
+                return None, None, None
+
             idx = pd.to_datetime([d.replace(day=pd.Timestamp(d).days_in_month) for d in openet_monthly.index])
             openet_monthly.index = idx
         except FileNotFoundError:
@@ -86,6 +112,8 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
     results_daily = {}
     all_models = ['swim']
     all_models += openet_models
+    if target_model == 'ssebop':
+        all_models += ['ssebop']
 
     for model in all_models:
         if model not in df_daily.columns:
@@ -154,6 +182,10 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
     df_monthly = df_monthly.replace(0.0, np.nan)
     df_monthly = df_monthly.replace([float('inf'), float('-inf')], np.nan)
     df_monthly = df_monthly.dropna(axis=1, how='any')
+
+    etd = pd.read_csv('/home/dgketchum/Downloads/NV_20975.csv', parse_dates=True, index_col=0).resample('ME').first()
+    etd = etd.loc[[i for i in etd.index if i in df_monthly.index]]
+    df_monthly['etd'] = etd['et']
 
     results_monthly = {}
     if df_monthly.shape[0] >= 2:

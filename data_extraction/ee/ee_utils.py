@@ -16,9 +16,8 @@ def sentinel2_sr(input_img):
     scl_band = 'SCL'
     all_bands = optical_bands + [scl_band]
 
-    prep_image = input_img.select(all_bands) \
-        .multiply([0.0001] * len(optical_bands) + [1]) \
-        .copyProperties(input_img, ['system:time_start'])
+    mult = [0.0001] * len(optical_bands) + [1]
+    prep_image = input_img.select(all_bands).multiply(mult)
 
     def _cloud_mask(i):
         scl = i.select('SCL')
@@ -30,6 +29,7 @@ def sentinel2_sr(input_img):
     mask = _cloud_mask(prep_image)
 
     image = prep_image.select(optical_bands).updateMask(mask)
+    image = image.copyProperties(input_img, ['system:time_start'])
 
     return image
 

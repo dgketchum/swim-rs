@@ -15,51 +15,54 @@ import pynldas2 as nld
 from rasterstats import zonal_stats
 
 from data_extraction.gridmet.thredds import GridMet
+from prep import COLUMN_MULTIINDEX, ACCEPTED_UNITS_MAP
 
 CLIMATE_COLS = {
     'etr': {
         'nc': 'agg_met_etr_1979_CurrentYear_CONUS',
         'var': 'daily_mean_reference_evapotranspiration_alfalfa',
-        'col': 'etr_mm'},
+        'col': 'etr'},
     'pet': {
         'nc': 'agg_met_pet_1979_CurrentYear_CONUS',
         'var': 'daily_mean_reference_evapotranspiration_grass',
-        'col': 'eto_mm'},
+        'col': 'eto'},
     'pr': {
         'nc': 'agg_met_pr_1979_CurrentYear_CONUS',
         'var': 'precipitation_amount',
-        'col': 'prcp_mm'},
+        'col': 'prcp'},
     'srad': {
         'nc': 'agg_met_srad_1979_CurrentYear_CONUS',
         'var': 'daily_mean_shortwave_radiation_at_surface',
-        'col': 'srad_wm2'},
+        'col': 'srad'},
     'tmmx': {
         'nc': 'agg_met_tmmx_1979_CurrentYear_CONUS',
         'var': 'daily_maximum_temperature',
-        'col': 'tmax_k'},
+        'col': 'tmax'},
     'tmmn': {
         'nc': 'agg_met_tmmn_1979_CurrentYear_CONUS',
         'var': 'daily_minimum_temperature',
-        'col': 'tmin_k'},
+        'col': 'tmin'},
     'vs': {
         'nc': 'agg_met_tmmn_1979_CurrentYear_CONUS',
         'var': 'daily_minimum_temperature',
-        'col': 'u2_ms'},
+        'col': 'u2'},
     'sph': {
         'nc': 'agg_met_tmmn_1979_CurrentYear_CONUS',
         'var': 'daily_minimum_temperature',
         'col': 'q'},
 }
 
-GRIDMET_GET = ['elev_m',
-               'tmin_c',
-               'tmax_c',
-               'etr_mm',
-               'eto_mm',
-               'prcp_mm',
-               'srad_wm2',
-               'u2_ms',
-               'ea_kpa',
+GRIDMET_GET = ['elev',
+               'tmin',
+               'tmax',
+               'etr',
+               'etr_corr',
+               'eto',
+               'eto_corr',
+               'prcp',
+               'srad',
+               'u2',
+               'ea',
                ]
 
 BASIC_REQ = ['date', 'year', 'month', 'day', 'centroid_lat', 'centroid_lon']
@@ -220,7 +223,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
     hr_cols = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
 
-    downloaded = {}
+    downloaded, skipped_exists = {}, []
 
     for k, v in tqdm(fields.iterrows(), desc='Downloading GridMET', total=len(fields)):
 
@@ -236,19 +239,20 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
         if g_fid in downloaded.keys():
             downloaded[g_fid].append(k)
 
-        _file = os.path.join(gridmet_csv_dir, 'gridmet_{}.csv'.format(g_fid))
+        _file = os.path.join(gridmet_csv_dir, '{}.parquet'.format(g_fid))
         if os.path.exists(_file) and not overwrite and not append:
+            skipped_exists.append(_file)
             continue
 
         if os.path.exists(_file) and append:
-            existing = pd.read_csv(_file)
-            existing.index = pd.DatetimeIndex(existing['date'])
+            existing = pd.read_parquet(_file)
             target_dates = pd.date_range(start, end, freq='D')
             missing_dates = [i for i in target_dates if i not in existing.index]
 
-            if len(missing_dates) == 0:
+            if len(missing_dates) == 0 and not return_df:
+                continue
+            elif len(missing_dates) == 0 and return_df:
                 return df
-
             else:
                 start, end = missing_dates[0].strftime('%Y-%m-%d'), missing_dates[-1].strftime('%Y-%m-%d')
 
@@ -278,7 +282,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
                 df['centroid_lon'] = [lon for _ in range(df.shape[0])]
                 g = GridMet('elev', lat=lat, lon=lon)
                 elev = g.get_point_elevation()
-                df['elev_m'] = [elev for _ in range(df.shape[0])]
+                df['elev'] = [elev for _ in range(df.shape[0])]
                 first = False
 
             if thredds_var == 'pr':
@@ -304,32 +308,47 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
                 df['nld_ppt_d'] = df[hr_cols].sum(axis=1)
 
-        p_air = air_pressure(df['elev_m'])
+        p_air = air_pressure(df['elev'])
         ea_kpa = actual_vapor_pressure(df['q'], p_air)
-        df['ea_kpa'] = ea_kpa.copy()
+        df['ea'] = ea_kpa.copy()
 
-        for _var in ['etr', 'eto']:
-            variable = '{}_mm'.format(_var)
-            out_cols.append('{}_uncorr'.format(variable))
+        for variable in ['etr', 'eto']:
             for month in range(1, 13):
-                corr_factor = gridmet_factors[g_fid][str(month)][_var]
+                corr_factor = gridmet_factors[g_fid][str(month)][variable]
                 idx = [i for i in df.index if i.month == month]
-                df.loc[idx, '{}_uncorr'.format(variable)] = df.loc[idx, variable]
-                df.loc[idx, variable] = df.loc[idx, '{}_uncorr'.format(variable)] * corr_factor
+                df.loc[idx, variable] = df.loc[idx, variable]
+                df.loc[idx, '{}_corr'.format(variable)] = df.loc[idx, variable] * corr_factor
 
-        df['tmax_c'] = df.tmax_k - 273.15
-        df['tmin_c'] = df.tmin_k - 273.15
+        df['tmax'] = df.tmax - 273.15
+        df['tmin'] = df.tmin - 273.15
 
         df = df[out_cols]
+        # ['site', 'instrument', 'parameter', 'units', 'algorithm', 'mask']
+        target_cols = []
+        for c in df.columns:
+            vals = [k, 'none', c, ACCEPTED_UNITS_MAP.get(c, 'none'), None, 'no_mask']
+            if 'prcp_hr' in c or 'nld_ppt' in c:
+                vals[4] = 'nldas2'
+            else:
+                vals[4] = 'gridmet'
+
+            target_cols.append(tuple(vals))
+
+        target_cols = pd.MultiIndex.from_tuples(target_cols, names=COLUMN_MULTIINDEX)
+        df.columns = target_cols
+
         if existing is not None and not overwrite and append:
             df = pd.concat([df, existing], axis=0, ignore_index=False)
             df = df.sort_index()
 
-        df.to_csv(_file, index=False)
+        df.to_parquet(_file)
         downloaded[g_fid] = [k]
 
         if return_df:
             return df
+
+    print(f'downloaded {len(downloaded)} files')
+    print(f'skipped {len(skipped_exists)} existing files')
 
 
 # from CGMorton's RefET (github.com/WSWUP/RefET)

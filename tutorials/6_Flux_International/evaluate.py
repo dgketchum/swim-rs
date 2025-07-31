@@ -6,27 +6,27 @@ from pprint import pprint
 import pandas as pd
 
 from analysis.metrics import compare_etf_estimates
-from initialize import initialize_data
+from model.initialize import initialize_data
 from model import obs_field_cycle
-from viz.swim_timeseries import flux_pdc_timeseries
 from prep import get_flux_sites
+from run import run_flux_sites
 
+project = '5_Flux_Ensemble'
+model = 'openet'
 
-def run_flux_sites(fid, config, plot_data, outfile):
-    start_time = time.time()
+root = '/data/ssd2/swim'
+data = os.path.join(root, project, 'data')
+project_ws_ = os.path.join(root, project)
+if not os.path.isdir(root):
+    root = '/home/dgketchum/PycharmProjects/swim-rs'
+    project_ws_ = os.path.join(root, 'tutorials', project)
+    data = os.path.join(project_ws_, 'data')
 
-    df_dct = obs_field_cycle.field_day_loop(config, plot_data, debug_flag=True)
+config_file = os.path.join(project_ws_, 'config.toml')
 
-    end_time = time.time()
-    print('\nExecution time: {:.2f} seconds\n'.format(end_time - start_time))
+open_et_ = os.path.join(project_ws_, 'openet_flux')
 
-    df = df_dct[fid].copy()
-    in_df = plot_data.input_to_dataframe(fid)
-    df = pd.concat([df, in_df], axis=1, ignore_index=False)
-
-    df = df.loc[config.start_dt:config.end_dt]
-
-    df.to_csv(outfile)
+station_file = os.path.join(data, 'station_metadata.csv')
 
 
 def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='ssebop',
@@ -83,58 +83,25 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
     # print('\n')
 
 
-if __name__ == '__main__':
-
-    # project = '4_Flux_Network'
-    # model = 'ssebop'
-
-    project = '5_Flux_Ensemble'
-    model = 'openet'
-
-    root = '/data/ssd2/swim'
-    data = os.path.join(root, project, 'data')
-    project_ws_ = os.path.join(root, project)
-    if not os.path.isdir(root):
-        root = '/home/dgketchum/PycharmProjects/swim-rs'
-        project_ws_ = os.path.join(root, 'tutorials', project)
-        data = os.path.join(project_ws_, 'data')
-
-    if project == '5_Flux_Ensemble':
-        western = True
-        run_const = os.path.join(project_ws_, 'results', 'tight')
-        model_ = 'openet'
-    else:
-        run_const = os.path.join(project_ws_, 'results', 'tight')
-        model_ = 'ssebop'
-        western = False
-
-    config_file = os.path.join(project_ws_, 'config.toml')
-
-    open_et_ = os.path.join(project_ws_, 'openet_flux')
-    station_file = os.path.join(data, 'station_metadata.csv')
+def evaluate():
     sites, sdf = get_flux_sites(station_file, crop_only=False, return_df=True)
 
     incomplete, complete, results = [], [], []
 
     overwrite_ = False
 
+    cal_results = os.path.join(project_ws_, 'results')
+
     for ee, site_ in enumerate(sites):
 
         lulc = sdf.at[site_, 'General classification']
 
-        # if lulc != 'Croplands':
-        #     continue
-
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        # if site_ not in ['US-Ro4']:
-        #     continue
-
         print(f'\n{ee} {site_}: {lulc}')
 
-        run_const = os.path.join(project_ws_, 'results', 'verify')
-        output_ = os.path.join(run_const, site_)
+        output_ = os.path.join(cal_results, site_)
 
         prepped_input = os.path.join(output_, f'prepped_input.json')
         spinup_ = os.path.join(output_, f'spinup.json')
@@ -152,7 +119,7 @@ if __name__ == '__main__':
 
         modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
         print(f'Calibration made {modified_date}')
-        if modified_date < pd.to_datetime('2025-07-01'):
+        if modified_date < pd.to_datetime('2025-04-20'):
             continue
 
         cal = os.path.join(project_ws_, f'tight_pest', 'mult')
@@ -170,7 +137,7 @@ if __name__ == '__main__':
             continue
 
         result = compare_openet(site_, flux_data, out_csv, open_et_, fields_,
-                                model=model_, return_comparison=True, gap_tolerance=5)
+                                model=model, return_comparison=True, gap_tolerance=5)
 
         if result:
             results.append((result, lulc))
@@ -179,8 +146,8 @@ if __name__ == '__main__':
 
         out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'model_output', 'png')
 
-        # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model='openet',
-        #                     members=['ssebop', 'disalexi', 'geesebal', 'eemetric', 'ptjpl', 'sims'])
+        flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model=model,
+                            members=['ssebop', 'disalexi', 'geesebal', 'eemetric', 'ptjpl', 'sims'])
 
     pprint({s: [t[0] for t in results].count(s) for s in set(t[0] for t in results)})
     pprint(
@@ -189,4 +156,8 @@ if __name__ == '__main__':
          category in set(t[1] for t in results)})
     print(f'complete: {complete}')
     print(f'incomplete: {incomplete}')
+
+
+if __name__ == '__main__':
+    pass
 # ========================= EOF ====================================================================
