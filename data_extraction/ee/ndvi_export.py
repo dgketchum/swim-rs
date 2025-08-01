@@ -78,7 +78,7 @@ def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_t
 
 
 def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, grid_spec=None,
-                       feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3',
+                       feature_id='FID', select=None, start_yr=1987, end_yr=2024, state_col='field_3',
                        satellite='landsat'):
     """"""
     df = gpd.read_file(shapefile)
@@ -87,7 +87,7 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
     if not df.crs.srs == 'EPSG:4326':
         df = df.to_crs(epsg=4326)
 
-    s, e = '1987-01-01', '2024-12-31'
+    s, e = f'{start_yr}-01-01', f'{end_yr}-12-31'
     irr_coll = ee.ImageCollection(IRR)
     coll = irr_coll.filterDate(s, e).select('classification')
     remap = coll.map(lambda img: img.lt(1))
@@ -207,10 +207,10 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
 
 def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None,
-                          start_yr=2004, end_yr=2023, feature_id='FID', satellite='landsat'):
+                          start_yr=1987, end_yr=2025, feature_id='FID', satellite='landsat'):
     feature_coll = ee.FeatureCollection(feature_coll)
 
-    s, e = '1987-01-01', '2021-12-31'
+    s, e = f'{start_yr}-01-01', f'{end_yr}-12-31'
     irr_coll = ee.ImageCollection(IRR)
     irr_coll = irr_coll.filterDate(s, e).select('classification')
     remap = irr_coll.map(lambda img: img.lt(1))

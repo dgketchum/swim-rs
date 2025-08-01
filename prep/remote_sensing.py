@@ -155,6 +155,115 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, feature_id='FID', instru
         print(f'No data processed for {out_pqt}')
 
 
+def clustered_time_series(in_shp, csv_dir, years, out_pqt, feature_id='FID', instrument='landsat',
+                          parameter='ndvi', algorithm='none', mask='no_mask', select=None):
+    gdf = gpd.read_file(in_shp)
+    gdf.index = gdf[feature_id]
+
+    if select:
+        select = [s for s in select if s in gdf.index]
+        gdf = gdf.loc[select]
+
+    all_yearly_dfs = []
+
+    try:
+        file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir)
+                     if x.endswith('.csv') and parameter in x and mask in x]
+        rs_years = [int(f.split('.')[0][-4:]) for f in file_list]
+        years_files = sorted(list(zip(rs_years, file_list)), key=lambda x: x[0])
+        assert np.all([rs_years.count(y) == 1 for y in rs_years])
+
+    except (IndexError, ValueError):
+        return
+
+    empty_yrs = [y for y in years if y not in rs_years]
+    if empty_yrs:
+        target_columns = pd.MultiIndex.from_tuples(
+            [(sid, instrument, parameter, 'unitless', algorithm, mask) for sid in gdf.index],
+            names=COLUMN_MULTIINDEX
+        )
+        empty_dt_index = pd.date_range(f'{min(empty_yrs)}-01-01', f'{max(empty_yrs)}-12-31', freq='D')
+        empty_df = pd.DataFrame(np.nan, index=empty_dt_index, columns=target_columns)
+        all_yearly_dfs.append(empty_df)
+
+    for year, file_path in tqdm(years_files, desc='Processing Annual Data'):
+        if not os.path.exists(file_path):
+            continue
+
+        raw_df = pd.read_csv(file_path)
+        raw_df = raw_df.drop(columns=['system:index', '.geo'], errors='ignore')
+        if feature_id not in raw_df.columns:
+            continue
+
+        raw_df = raw_df[raw_df[feature_id].isin(gdf.index)]
+        if raw_df.empty:
+            continue
+
+        id_vars = [feature_id]
+        value_vars = [col for col in raw_df.columns if col not in id_vars]
+        long_df = raw_df.melt(id_vars=id_vars, value_vars=value_vars, var_name='scene', value_name=parameter)
+        long_df = long_df.dropna(subset=[parameter])
+
+        if instrument == 'landsat':
+            long_df['date'] = pd.to_datetime(long_df['scene'].str.split('_').str[-1])
+        elif instrument == 'sentinel':
+            long_df['date'] = pd.to_datetime(long_df['scene'].str[:8])
+        else:
+            raise ValueError("Instrument must be 'landsat' or 'sentinel'")
+
+        ts_df = long_df.pivot_table(index='date', columns=feature_id, values=parameter)
+
+        cleaned_series_list = []
+        for sid in ts_df.columns:
+            field = ts_df[[sid]].copy().dropna()
+            field = field.replace(0.0, np.nan).dropna()
+
+            if field.index.duplicated().any():
+                field = field.resample('D').max()
+
+            field = field.sort_index()
+
+            valid_indices = field.dropna().index
+            diffs = valid_indices.to_series().diff().dt.days
+            consecutive_days = diffs[diffs == 1].index
+            for day in consecutive_days:
+                prev_day = day - pd.Timedelta(days=1)
+                if prev_day in field.index:
+                    if field.loc[prev_day, sid] > field.loc[day, sid]:
+                        field.loc[day, sid] = np.nan
+                    else:
+                        field.loc[prev_day, sid] = np.nan
+
+            field = field.sort_index()
+            field[field[sid] < 0.05] = np.nan
+            cleaned_series_list.append(field)
+
+        if not cleaned_series_list:
+            continue
+
+        year_df = pd.concat(cleaned_series_list, axis=1)
+        dt_index = pd.date_range(f'{year}-01-01', f'{year}-12-31', freq='D')
+        year_df = year_df.reindex(dt_index)
+
+        year_df.columns = pd.MultiIndex.from_tuples(
+            [(sid, instrument, parameter, 'unitless', algorithm, mask) for sid in year_df.columns],
+            names=COLUMN_MULTIINDEX
+        )
+        all_yearly_dfs.append(year_df)
+
+    if all_yearly_dfs:
+        final_df = pd.concat(all_yearly_dfs).sort_index()
+        if 'empty_df' in locals():
+            final_df = final_df.reindex(columns=empty_df.columns)
+        final_df = final_df.dropna(how='all', axis=1)
+
+        os.makedirs(os.path.dirname(out_pqt), exist_ok=True)
+        final_df.to_parquet(out_pqt, engine='pyarrow')
+        print(f'Wrote {out_pqt} with {final_df.shape[1]} columns from {final_df.index.min()} to {final_df.index.max()}')
+    else:
+        print(f'No data was processed. Output file {out_pqt} not created.')
+
+
 def join_remote_sensing(files, dst, station_selection='exclusive'):
     """"""
     dfs = [pd.read_parquet(f) for f in files]

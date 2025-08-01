@@ -25,6 +25,8 @@ def analyze_crop_consistency(stations_path, points_base_path, cdl_base_path, out
         if states is not None and state_abbr not in states:
             continue
 
+        print(f'Processing {state_abbr}')
+
         points_shp_path = os.path.join(points_base_path, f"{state_abbr}.shp")
         cdl_csv_path = os.path.join(cdl_base_path, f"{state_abbr}.csv")
 
@@ -80,6 +82,7 @@ def analyze_crop_consistency(stations_path, points_base_path, cdl_base_path, out
             )
 
             all_top_fields_gdfs.append(top_fields_for_station_gdf)
+            print(f'Added {len(top_fields_for_station_gdf)} points from {station_id} in {state_abbr}')
 
     if all_top_fields_gdfs:
         final_gdf = pd.concat(all_top_fields_gdfs, ignore_index=True)
@@ -122,6 +125,6 @@ if __name__ == '__main__':
                              buffer_distance_meters,
                              target_crs_,
                              target_class='Croplands',
-                             states=['NV'])
+                             states=None)
 
 # ========================= EOF ====================================================================

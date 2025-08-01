@@ -8,7 +8,7 @@ def sample_snodas_swe(feature_coll, bucket=None, debug=False, check_dir=None, ov
     snodas = ee.ImageCollection('projects/earthengine-legacy/assets/projects/climate-engine/snodas/daily')
     skipped, exported = 0, 0
     dtimes = [(y, m) for y in range(start_yr, end_yr + 1) for m in range(1, 13)]
-    for year, month in tqdm(dtimes, desc='Extracting SNODAS', total=len(dtimes)):
+    for year, month in tqdm(dtimes, desc=f'Extracting SNODAS over {len(dtimes)} months', total=len(dtimes)):
 
         first, bands = True, None
         selectors = [feature_id]
