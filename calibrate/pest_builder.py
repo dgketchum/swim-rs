@@ -5,7 +5,7 @@ from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
-from pyemu import Pst, Matrix, ObservationEnsemble
+from pyemu import Pst, Matrix, ObservationEnsemble, Cov, geostats
 from pyemu.utils import PstFrom
 from pyemu.utils.os_utils import run_ossystem, run_sp
 
@@ -17,7 +17,6 @@ class PestBuilder:
 
     def __init__(self, config, use_existing=False, python_script=None, prior_constraint=None,
                  conflicted_obs=None):
-
 
         self.config = config
         self.project_ws = config.project_ws
@@ -79,7 +78,6 @@ class PestBuilder:
 
         et_ins = ['etf_{}.ins'.format(fid) for fid in targets]
         swe_ins = ['swe_{}.ins'.format(fid) for fid in targets]
-
 
         pars = self.initial_parameter_dict()
         p_list = list(pars.keys())
@@ -451,8 +449,7 @@ class PestBuilder:
                         col = f'{member}_etf_{mask}'
 
                         if col in etf.columns:
-
-                           mask_cols.append(col)
+                            mask_cols.append(col)
 
                     etf_std[member] = pd.DataFrame(etf[mask_cols].mean(axis=1))
 
@@ -548,6 +545,68 @@ class PestBuilder:
         print(f'Removed {int(removed)} conflicted obs from etf, leaving {int(end_weight)}')
 
         self.pest.build_pst(version=2)
+
+    def _get_spatial_data_df(self, pst):
+
+        par_data = pst.parameter_data
+
+        spatial_par_groups = ['aw', 'rew', 'tew', 'ks_alpha', 'kr_alpha', 'ndvi_k', 'ndvi_0']
+
+        records = []
+        for par_name in par_data.parnme:
+            pargp = par_data.loc[par_name, "pargp"]
+            if pargp in spatial_par_groups:
+                site_id = '_'.join(par_name.split('_')[1:])
+
+                if site_id in self.plot_properties:
+                    x = self.plot_properties[site_id]['x_coord']
+                    y = self.plot_properties[site_id]['y_coord']
+                    records.append({"parnme": par_name, "x_coord": x, "y_coord": y, "pargp": pargp})
+
+        if not records:
+            raise ValueError("Could not create spatial data. Check site_ids and plot_properties.")
+
+        return pd.DataFrame(records)
+
+    def apply_geostatistical_regularization(self, correlation_range=3000.0, cov_filename="prior.cov"):
+
+        print("Applying geostatistical regularization...")
+
+        pst = Pst(self.pst_file)
+
+        try:
+            spatial_df = self._get_spatial_data_df(pst)
+        except Exception as e:
+            print(f"Could not generate spatial dataframe for regularization: {e}")
+            print("Skipping geostatistical regularization.")
+            return
+
+        v = geostats.ExpVario(contribution=1.0, a=correlation_range)
+        gs = geostats.GeoStruct(nugget=0.0, variograms=[v])
+
+        cov = Cov(x=pst.par_names, isdiagonal=True)  # Start with a diagonal matrix
+
+        for pargp in spatial_df.pargp.unique():
+            print(f"  Building covariance for parameter group: {pargp}")
+
+            df_grp = spatial_df[spatial_df.pargp == pargp]
+
+            par_info = pst.parameter_data.loc[df_grp.parnme.iloc]
+            variance = ((par_info.parubnd - par_info.parlbnd) / 4.0) ** 2
+
+            gs.variograms.contribution = variance
+            cov_grp = gs.covariance_matrix(x=df_grp.x_coord, y=df_grp.y_coord, names=df_grp.parnme)
+
+            cov.add(cov_grp)
+
+        cov_filepath = os.path.join(self.pest_dir, cov_filename)
+        cov.to_binary(cov_filepath)
+        print(f"Prior covariance matrix saved to {cov_filepath}")
+
+        pst.pestpp_options["ies_prior_cov"] = cov_filename
+
+        pst.write(self.pst_file, version=2)
+        print("PEST++ configured to use prior covariance matrix for IES.")
 
 
 if __name__ == '__main__':
