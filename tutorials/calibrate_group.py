@@ -148,7 +148,7 @@ if __name__ == '__main__':
         config = ProjectConfig()
         config.read_config(config_file)
 
-        results_dir = os.path.join(config.project_ws, 'multi_test')
+        results_dir = os.path.join(config.project_ws, 'reg')
 
         crop_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=True,
                                          return_df=True, western_only=western_only, header=1)
