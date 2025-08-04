@@ -35,7 +35,7 @@ def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_t
     irr_coll = ee.ImageCollection(IRR)
     coll = irr_coll.filterDate(s, e).select('classification')
     remap = coll.map(lambda img: img.lt(1))
-    irr_min_yr_mask = remap.sum().gte(5)
+    irr_min_yr_mask = remap.sum().gte(1)
     irr = irr_coll.filterDate('{}-01-01'.format(year),
                               '{}-12-31'.format(year)).select('classification').mosaic()
     irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
@@ -91,7 +91,7 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
     irr_coll = ee.ImageCollection(IRR)
     coll = irr_coll.filterDate(s, e).select('classification')
     remap = coll.map(lambda img: img.lt(1))
-    irr_min_yr_mask = remap.sum().gte(5)
+    irr_min_yr_mask = remap.sum().gte(1)
 
     lanid = get_lanid()
     east = ee.FeatureCollection(EAST_STATES)
@@ -210,11 +210,12 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
                           start_yr=1987, end_yr=2025, feature_id='FID', satellite='landsat'):
     feature_coll = ee.FeatureCollection(feature_coll)
 
-    s, e = f'{start_yr}-01-01', f'{end_yr}-12-31'
+    # get the entire IrrMapper record regardless of retrieval period
+    s, e = f'1987-01-01', f'2024-12-31'
     irr_coll = ee.ImageCollection(IRR)
     irr_coll = irr_coll.filterDate(s, e).select('classification')
     remap = irr_coll.map(lambda img: img.lt(1))
-    irr_min_yr_mask = remap.sum().gte(5)
+    irr_min_yr_mask = remap.sum().gte(1)
 
     for year in range(start_yr, end_yr + 1):
 
@@ -252,11 +253,11 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
             nd_img = coll.filterMetadata('system:index', 'equals', img_id).first().rename(_name)
 
             if mask_type == 'no_mask':
-                nd_img = nd_img.clip(feature_coll.geometry())
+                pass
             elif mask_type == 'irr':
-                nd_img = nd_img.clip(feature_coll.geometry()).mask(irr_mask)
+                nd_img = nd_img.mask(irr_mask)
             elif mask_type == 'inv_irr':
-                nd_img = nd_img.clip(feature_coll.geometry()).mask(irr.gt(0))
+                nd_img = nd_img.mask(irr.gt(0))
 
             if first:
                 bands = nd_img
@@ -265,7 +266,7 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
                 bands = bands.addBands([nd_img])
 
         if debug:
-            fc = ee.FeatureCollection([feature_coll.filterMetadata(feature_id, 'equals', 2).first()])
+            fc = ee.FeatureCollection([feature_coll.filterMetadata(feature_id, 'equals', 'NV_16954').first()])
             data = bands.reduceRegions(collection=fc,
                                        reducer=ee.Reducer.mean(),
                                        scale=30).getInfo()
@@ -293,17 +294,6 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
 
 if __name__ == '__main__':
 
-    d = '/media/research/IrrigationGIS/swim'
-    if not os.path.exists(d):
-        d = '/home/dgketchum/data/IrrigationGIS/swim'
-
-    is_authorized()
-    bucket_ = 'wudr'
-    fields = 'users/dgketchum/fields/tongue_9MAY2023'
-    sat = 'sentinel'
-    for mask in ['inv_irr', 'irr']:
-        chk = os.path.join(d, 'examples/tongue/{}/extracts/ndvi/{}'.format(sat, mask))
-        clustered_sample_ndvi(fields, bucket_, debug=False, mask_type=mask, check_dir=chk,
-                              start_yr=2017, end_yr=2024, satellite=sat)
+    pass
 
 # ========================= EOF =======================================================================================

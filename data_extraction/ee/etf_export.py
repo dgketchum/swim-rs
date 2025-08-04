@@ -54,7 +54,7 @@ def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_ty
     irr_coll = ee.ImageCollection(IRR)
     coll = irr_coll.filterDate(s, e).select('classification')
     remap = coll.map(lambda img: img.lt(1))
-    irr_min_yr_mask = remap.sum().gte(5)
+    irr_min_yr_mask = remap.sum().gte(1)
     irr = irr_coll.filterDate('{}-01-01'.format(year),
                               '{}-12-31'.format(year)).select('classification').mosaic()
     irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
@@ -112,7 +112,7 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
     irr_coll = ee.ImageCollection(IRR)
     coll = irr_coll.filterDate(s, e).select('classification')
     remap = coll.map(lambda img: img.lt(1))
-    irr_min_yr_mask = remap.sum().gte(5)
+    irr_min_yr_mask = remap.sum().gte(1)
 
     lanid = get_lanid()
     east = ee.FeatureCollection(EAST_STATES)
@@ -265,7 +265,7 @@ def clustered_sample_etf(feature_coll, bucket=None, debug=False, mask_type='irr'
     irr_coll = ee.ImageCollection(IRR)
     coll = irr_coll.filterDate(s, e).select('classification')
     remap = coll.map(lambda img: img.lt(1))
-    irr_min_yr_mask = remap.sum().gte(5)
+    irr_min_yr_mask = remap.sum().gte(1)
 
     for year in range(start_yr, end_yr + 1):
 
