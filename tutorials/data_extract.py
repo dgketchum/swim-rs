@@ -64,15 +64,12 @@ def extract_remote_sensing(conf, sites):
 
 
 def extract_gridmet(conf, sites):
-    from data_extraction.gridmet.gridmet import get_gridmet_corrections
+    from data_extraction.gridmet.gridmet import find_gridmet_corrections_sparse_plots
     from data_extraction.gridmet.gridmet import download_gridmet
 
-    get_gridmet_corrections(fields=conf.gridmet_mapping_shp,
-                            gridmet_ras=conf.correction_tifs,
-                            fields_join=conf.gridmet_mapping_shp,
-                            factors_js=conf.gridmet_factors,
-                            feature_id='field_1',
-                            field_select=sites)
+    find_gridmet_corrections_sparse_plots(fields=conf.gridmet_mapping_shp, gridmet_ras=conf.correction_tifs,
+                                          fields_join=conf.gridmet_mapping_shp, factors_js=conf.gridmet_factors,
+                                          field_select=sites, feature_id='field_1')
 
     download_gridmet(conf.gridmet_mapping_shp, conf.gridmet_factors, conf.met_dir, start='1987-01-01', end='2024-12-31',
                      overwrite=False, append=False,

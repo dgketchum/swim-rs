@@ -7,8 +7,8 @@ from swim.config import ProjectConfig
 def prep_earthengine_extracts(conf, sites=None, overwrite=False):
     from prep.remote_sensing import join_remote_sensing, clustered_time_series
 
-    types_ = ['irr']
-    sensing_params = ['ndvi']
+    types_ = ['irr', 'inv_irr']
+    sensing_params = ['ndvi', 'etf']
 
     rs_files = []
     models = [conf.etf_target_model]
@@ -60,7 +60,7 @@ def prep_field_properties(conf, sites=None):
                            lulc_key='modis_lc',
                            soils=conf.ssurgo_csv,
                            index_col=conf.feature_id_col,
-                           flux_meta=conf.station_metadata_csv,
+                           flux_meta=None,
                            select=sites,
                            **{'extra_lulc_key': 'glc10_lc'}
                            )
@@ -83,7 +83,7 @@ def prep_timeseries(conf, sites=None):
                           overwrite=True,
                           start_date=conf.start_dt,
                           end_date=conf.end_dt,
-                          feature_id=conf.gridmet_mapping_index_col,
+                          feature_id=conf.feature_id_col,
                           **{'met_mapping': 'GFID'})
 
 
@@ -131,11 +131,11 @@ if __name__ == '__main__':
     config = ProjectConfig()
     config.read_config(config_file)
 
-    prep_earthengine_extracts(config, overwrite=True)
-    prep_field_properties(config)
-    prep_snow(config)
-    prep_timeseries(config)
-    prep_dynamics(config)
+    # prep_earthengine_extracts(config, overwrite=True)
+    # prep_field_properties(config)
+    # prep_snow(config)
+    # prep_timeseries(config)
+    # prep_dynamics(config)
     prep_input_json(config)
 
 # ========================= EOF ====================================================================

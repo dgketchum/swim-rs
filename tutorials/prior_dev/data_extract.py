@@ -40,15 +40,16 @@ def extract_remote_sensing(conf, sites):
     models = get_ensemble_parameters(skip='ndvi')
 
     for src in ['ndvi', 'etf']:
-        for mask in ['irr']:
+        for mask in ['irr', 'inv_irr']:
 
             if src == 'ndvi':
                 print(src, mask)
                 dst = os.path.join(conf.landsat_dir, 'extracts', src, mask)
 
                 clustered_sample_ndvi(conf.ee_fields, bucket=conf.ee_bucket, debug=False,
-                                   mask_type=mask, check_dir=dst, start_yr=conf.start_dt.year, end_yr=conf.end_dt.year,
-                                   feature_id=conf.feature_id_col)
+                                      mask_type=mask, check_dir=dst, start_yr=conf.start_dt.year,
+                                      end_yr=conf.end_dt.year,
+                                      feature_id=conf.feature_id_col)
 
             if src == 'etf':
                 for model in models:
@@ -57,21 +58,19 @@ def extract_remote_sensing(conf, sites):
                     print(src, mask, model)
 
                     clustered_sample_etf(conf.ee_fields, bucket=conf.ee_bucket, debug=False,
-                                      mask_type=mask, check_dir=dst, start_yr=conf.start_dt.year,
-                                      end_yr=conf.end_dt.year,
-                                      feature_id=conf.feature_id_col)
+                                         mask_type=mask, check_dir=dst, start_yr=conf.start_dt.year,
+                                         # last year of the SSEBop collection
+                                         end_yr=2023,
+                                         feature_id=conf.feature_id_col)
 
 
 def extract_gridmet(conf, sites):
-    from data_extraction.gridmet.gridmet import get_gridmet_corrections
+    from data_extraction.gridmet.gridmet import find_gridmet_corrections_clustered_plots
     from data_extraction.gridmet.gridmet import download_gridmet
 
-    get_gridmet_corrections(fields=conf.gridmet_mapping_shp,
-                            gridmet_ras=conf.correction_tifs,
-                            fields_join=conf.gridmet_mapping_shp,
-                            factors_js=conf.gridmet_factors,
-                            feature_id='field_1',
-                            field_select=sites)
+    find_gridmet_corrections_clustered_plots(fields=conf.gridmet_mapping_shp, gridmet_ras=conf.correction_tifs,
+                                             factors_js=conf.gridmet_factors, field_select=sites,
+                                             feature_id='OPENET_ID')
 
     download_gridmet(conf.gridmet_mapping_shp, conf.gridmet_factors, conf.met_dir, start='1987-01-01', end='2024-12-31',
                      overwrite=False, append=False,
@@ -79,7 +78,6 @@ def extract_gridmet(conf, sites):
 
 
 if __name__ == '__main__':
-
     project = 'prior_dev'
 
     home = os.path.expanduser('~')
