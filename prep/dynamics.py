@@ -506,33 +506,7 @@ class SamplePlotDynamics:
 
 
 if __name__ == '__main__':
-    project = '5_Flux_Ensemble'
 
-    root = '/data/ssd2/swim'
-    data = os.path.join(root, project, 'data')
-    if not os.path.isdir(root):
-        root = '/home/dgketchum/PycharmProjects/swim-rs'
-        data = os.path.join(root, 'tutorials', project, 'data')
-
-    station_file = os.path.join(data, 'station_metadata.csv')
-
-    irr = os.path.join(data, 'properties', 'calibration_irr.csv')
-
-    landsat = os.path.join(data, 'landsat')
-
-    joined_timeseries = os.path.join(data, 'plot_timeseries')
-
-    FEATURE_ID = 'field_1'
-
-    cuttings_json = os.path.join(landsat, 'calibration_dynamics.json')
-
-    sites_ = get_flux_sites(station_file)
-
-    dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3, etf_target='openet',
-                                  out_json_file=cuttings_json, select=sites_)
-    dynamics.analyze_groundwater_subsidy()
-    dynamics.analyze_irrigation(lookback=5)
-    dynamics.analyze_k_parameters()
-    dynamics.save_json()
+    pass
 
 # ========================= EOF ====================================================================

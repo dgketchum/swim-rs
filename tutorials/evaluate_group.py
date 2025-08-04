@@ -127,6 +127,7 @@ if __name__ == '__main__':
     df_dct = obs_field_cycle.field_day_loop(config, plots_, debug_flag=True)
 
     sites = [k for k, v in df_dct.items() if k in sites]
+    sites.sort()
 
     print(f'{len(sites)} sites to evalutate in {project}')
 
@@ -142,7 +143,7 @@ if __name__ == '__main__':
             continue
 
         # testing sites
-        if site_ in ['B_01', 'ALARC2_Smith6', 'S2', 'MR', 'US-FPe']:
+        # if site_ in ['B_01', 'ALARC2_Smith6', 'S2', 'MR', 'US-FPe']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
