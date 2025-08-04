@@ -13,7 +13,7 @@ import geopandas as gpd
 import pyproj
 import pynldas2 as nld
 from rasterstats import zonal_stats
-
+import rasterio
 from data_extraction.gridmet.thredds import GridMet
 from prep import COLUMN_MULTIINDEX, ACCEPTED_UNITS_MAP
 
@@ -70,12 +70,19 @@ BASIC_REQ = ['date', 'year', 'month', 'day', 'centroid_lat', 'centroid_lon']
 COLUMN_ORDER = BASIC_REQ + GRIDMET_GET
 
 
-def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
-                        factors_js, field_select=None, feature_id='FID'):
-    """This depends on running 'Raster Pixels to Points' on a WGS Gridmet raster,
+def find_gridmet_corrections_clustered_plots(fields, gridmet_ras, factors_js, gridmet_points=None, fields_join=None,
+                                             field_select=None, feature_id='FID'):
+    """
+    This function is to map nearest gridmet centoids to fields, so if there are dense clusters of fields, you only
+    need to download a gridmet dataset once that may serve several fields.
+
+    One can extract 'GFID' from a Gridmet centoids file (along with lat/lon) in a GIS and this function will detect it.
+    Otherwise, a Gridmet centroids shapefile with 'GFID' must be provided.
+
+    This depends on running 'Raster Pixels to Points' on a WGS Gridmet raster,
      attributing GFID, lat, and lon in the attribute table, and saving to project crs: 5071.
      GFID is an arbitrary identifier e.g., @row_number. It further depends on projecting the
-     rasters to EPSG:5071, usng the project.sh bash script
+     rasters to EPSG:5071, usng the project.sh bash script.
 
      The reason we're not just doing a zonal stat on correction surface for every object is that
      there may be many fields that only need data from one gridmet cell. This prevents us from downloading
@@ -87,8 +94,12 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
     convert_to_wgs84 = lambda x, y: pyproj.Transformer.from_crs('EPSG:5071', 'EPSG:4326').transform(x, y)
 
     fields = gpd.read_file(fields)
-    gridmet_pts = gpd.read_file(gridmet_points)
-    gridmet_pts.index = gridmet_pts['GFID']
+
+    if gridmet_points:
+        gridmet_pts = gpd.read_file(gridmet_points)
+        gridmet_pts.index = gridmet_pts['GFID']
+    else:
+        gridmet_pts = None
 
     rasters = []
 
@@ -104,44 +115,63 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
                 continue
 
         min_distance = 1e13
-        closest_fid = None
-
+        closest_geo = None
         xx, yy = field['geometry'].centroid.x, field['geometry'].centroid.y
         lat, lon = convert_to_wgs84(xx, yy)
+
         fields.at[i, 'LAT'] = lat
         fields.at[i, 'LON'] = lon
 
-        for j, g_point in gridmet_pts.iterrows():
-            distance = field['geometry'].centroid.distance(g_point['geometry'])
+        if 'GFID' in field.keys():
+            closest_fid = field['GFID']
+            closest_geo = field['geometry']
 
-            if distance < min_distance:
-                min_distance = distance
-                closest_fid = j
-                closest_geo = g_point['geometry']
+        else:
+            if gridmet_points is None:
+                raise ValueError('Must provide a fields shapefile with "GFID" already assigned, or a GridMET shp')
 
-        fields.at[i, 'GFID'] = closest_fid
-        fields.at[i, 'STATION_ID'] = closest_fid
+            closest_fid = None
 
-        if first:
-            print('Matched {} to {}'.format(field[feature_id], closest_fid))
-            first = False
+            for j, g_point in gridmet_pts.iterrows():
+                distance = field['geometry'].centroid.distance(g_point['geometry'])
+
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_fid = j
+                    closest_geo = g_point['geometry']
+
+            fields.at[i, 'GFID'] = closest_fid
+            fields.at[i, 'STATION_ID'] = closest_fid
+
+            if first:
+                print('Matched {} to {}'.format(field[feature_id], closest_fid))
+                first = False
 
         if closest_fid not in gridmet_targets.keys():
             gridmet_targets[closest_fid] = {str(m): {} for m in range(1, 13)}
-            gdf = gpd.GeoDataFrame({'geometry': [closest_geo]})
-            gridmet_targets[closest_fid]['lat'] = gridmet_pts.loc[closest_fid]['lat']
-            gridmet_targets[closest_fid]['lon'] = gridmet_pts.loc[closest_fid]['lon']
+            gdf = gpd.GeoDataFrame({'geometry': [closest_geo]}, crs=fields.crs)
+            point_geom = gdf.geometry.iloc[0].centroid
+
+            if gridmet_points:
+                gridmet_targets[closest_fid]['lat'] = gridmet_pts.loc[closest_fid]['lat']
+                gridmet_targets[closest_fid]['lon'] = gridmet_pts.loc[closest_fid]['lon']
+            else:
+                gridmet_targets[closest_fid]['lat'] = lat
+                gridmet_targets[closest_fid]['lon'] = lon
+
             for r in rasters:
                 splt = r.split('_')
                 _var, month = splt[-2], splt[-1].replace('.tif', '')
-                stats = zonal_stats(gdf, r, stats=['mean'])[0]['mean']
+                stats = zonal_stats(gdf, r, stats=['mean'], all_touched=True)[0]['mean']
                 gridmet_targets[closest_fid][month].update({_var: stats})
 
-        g = GridMet('elev', lat=fields.at[i, 'LAT'], lon=fields.at[i, 'LON'])
-        elev = g.get_point_elevation()
-        fields.at[i, 'ELEV'] = elev
+        if fields_join:
+            g = GridMet('elev', lat=fields.at[i, 'LAT'], lon=fields.at[i, 'LON'])
+            elev = g.get_point_elevation()
+            fields.at[i, 'ELEV'] = elev
 
-    fields.to_file(fields_join, crs='EPSG:5071', engine='fiona')
+    if fields_join:
+        fields.to_file(fields_join, crs='EPSG:5071', engine='fiona')
 
     len_ = len(gridmet_targets.keys())
     print('Get gridmet for {} target points'.format(len_))
@@ -150,8 +180,22 @@ def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
         json.dump(gridmet_targets, fp, indent=4)
 
 
-def get_gridmet_corrections(fields, gridmet_ras, fields_join,
-                            factors_js, field_select=None, feature_id='FID'):
+def find_gridmet_corrections_sparse_plots(fields, gridmet_ras, fields_join,
+                                          factors_js, field_select=None, feature_id='FID'):
+    """
+    This function works for dispersed sets of points, where there is no savings by mapping the gridmet data by
+    gridmet centroid, as ther dispersal of the points will lead to a 1:1 fields-to-gridmet cetroid ratio.
+    Use 'find_gridmet_points' if you have a cluster of fields, so that if a gridmet cells' centroid is closest to
+    several fields, you only download the data once.
+
+    :param fields:
+    :param gridmet_ras:
+    :param fields_join:
+    :param factors_js:
+    :param field_select:
+    :param feature_id:
+    :return:
+    """
     print('Find field-gridmet joins')
 
     convert_to_wgs84 = lambda x, y: pyproj.Transformer.from_crs('EPSG:5071', 'EPSG:4326').transform(x, y)
@@ -218,26 +262,26 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
     fields = gpd.read_file(fields)
     fields.index = fields[feature_id]
 
+    # Filter fields based on target_fields before identifying unique GFIDs
+    if target_fields:
+        fields = fields[fields.index.astype(str).isin(target_fields)]
+
+    unique_gfids = fields['GFID'].unique()
+
     with open(gridmet_factors, 'r') as f:
         gridmet_factors = json.load(f)
 
     hr_cols = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
 
-    downloaded, skipped_exists = {}, []
+    downloaded_files, skipped_exists = [], []
 
-    for k, v in tqdm(fields.iterrows(), desc='Downloading GridMET', total=len(fields)):
+    for gfid in tqdm(unique_gfids, desc='Downloading GridMET', total=len(unique_gfids)):
 
         elev, existing = None, None
         out_cols = COLUMN_ORDER.copy() + ['nld_ppt_d'] + hr_cols
         df, first = pd.DataFrame(), True
 
-        if target_fields and str(k) not in target_fields:
-            continue
-
-        g_fid = str(int(v['GFID']))
-
-        if g_fid in downloaded.keys():
-            downloaded[g_fid].append(k)
+        g_fid = str(int(gfid))
 
         _file = os.path.join(gridmet_csv_dir, '{}.parquet'.format(g_fid))
         if os.path.exists(_file) and not overwrite and not append:
@@ -269,7 +313,8 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
                 g = GridMet(thredds_var, start=start, end=end, lat=lat, lon=lon)
                 s = g.get_point_timeseries()
             except OSError as e:
-                print('Error on {}, {}'.format(k, e))
+                print('Error on GFID {}, {}'.format(g_fid, e))
+                continue
 
             df[variable] = s[thredds_var]
 
@@ -293,7 +338,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
                 nldas = nld.get_bycoords((lon, lat), start_date=s, end_date=e, variables=['prcp'], source='netcdf')
                 if nldas.size == 0:
-                    raise ValueError(f'Failed to download NLDAS-2 for {k} on GFID {g_fid}')
+                    raise ValueError(f'Failed to download NLDAS-2 for GFID {g_fid}')
 
                 central = pytz.timezone('US/Central')
                 nldas = nldas.tz_convert(central)
@@ -326,7 +371,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
         # ['site', 'instrument', 'parameter', 'units', 'algorithm', 'mask']
         target_cols = []
         for c in df.columns:
-            vals = [k, 'none', c, ACCEPTED_UNITS_MAP.get(c, 'none'), None, 'no_mask']
+            vals = [g_fid, 'none', c, ACCEPTED_UNITS_MAP.get(c, 'none'), None, 'no_mask']
             if 'prcp_hr' in c or 'nld_ppt' in c:
                 vals[4] = 'nldas2'
             else:
@@ -342,12 +387,12 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
             df = df.sort_index()
 
         df.to_parquet(_file)
-        downloaded[g_fid] = [k]
+        downloaded_files.append(_file)
 
         if return_df:
             return df
 
-    print(f'downloaded {len(downloaded)} files')
+    print(f'downloaded {len(downloaded_files)} files')
     print(f'skipped {len(skipped_exists)} existing files')
 
 
@@ -460,6 +505,5 @@ def gridmet_elevation(shp_in, shp_out):
 
 
 if __name__ == '__main__':
-
     pass
 # ========================= EOF ====================================================================
