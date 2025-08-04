@@ -568,6 +568,46 @@ class PestBuilder:
 
         return pd.DataFrame(records)
 
+    def add_regularization(self, aws_prior_std=30.0, spatial_reg_groups=None):
+        """
+        Adds prior information equations to the Pst object for regularization.
+        """
+        pst = Pst(self.pst_file)
+
+        # 1. Add Tikhonov Regularization for AWS
+        # ----------------------------------------
+        print("Adding Tikhonov regularization for AWS parameters...")
+        aws_pars = pst.parameter_data.loc[pst.parameter_data.pargp == "aw", "parnme"]
+
+        # Get the prior values you stored during setup
+        # You might need to adjust this logic to match your data structures
+        prior_info = []
+        for par_name in aws_pars:
+            fid = '_'.join(par_name.split('_')[1:])  # Assumes format 'aw_FIELD_ID'
+            try:
+                prior_val = self.plot_properties[fid]['awc'] * 1000.0  # convert m to mm
+                if np.isnan(prior_val):
+                    continue
+                # Create a prior information equation for this parameter
+                # The weight is 1 / (std_dev**2)
+                pi = (par_name, prior_val, 1.0 / (aws_prior_std ** 2))
+                prior_info.append(pi)
+            except KeyError:
+                print(f"Warning: Could not find prior AWS for field {fid}. Skipping regularization.")
+
+        if prior_info:
+            df = pd.DataFrame(prior_info, columns=["parnme", "prior_val", "weight"])
+            # Use pyEMU's helper to add these as PI equations
+            pst.add_prior_information_from_df(df, obs_group_name="pi_aws")
+            print(f"Added {len(prior_info)} prior information equations for AWS.")
+
+        # 2. Add Geostatistical Regularization (see next section)
+        # --------------------------------------------------------
+        if spatial_reg_groups:
+            self._add_geostatistical_regularization(pst, spatial_reg_groups)
+
+        pst.write(self.pst_file, version=2)
+
     def apply_geostatistical_regularization(self, correlation_range=3000.0, cov_filename="prior.cov"):
 
         print("Applying geostatistical regularization...")
