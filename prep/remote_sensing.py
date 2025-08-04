@@ -169,11 +169,16 @@ def clustered_time_series(in_shp, csv_dir, years, out_pqt, feature_id='FID', ins
     try:
         file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir)
                      if x.endswith('.csv') and parameter in x and mask in x]
-        rs_years = [int(f.split('.')[0][-4:]) for f in file_list]
+
+        if parameter == 'ndvi':
+            rs_years = [int(os.path.basename(f).split('.')[0].split('_')[1]) for f in file_list]
+        else:
+            rs_years = [int(f.split('.')[0][-4:]) for f in file_list]
+
         years_files = sorted(list(zip(rs_years, file_list)), key=lambda x: x[0])
         assert np.all([rs_years.count(y) == 1 for y in rs_years])
 
-    except (IndexError, ValueError):
+    except (IndexError, ValueError, AssertionError):
         return
 
     empty_yrs = [y for y in years if y not in rs_years]
@@ -187,6 +192,7 @@ def clustered_time_series(in_shp, csv_dir, years, out_pqt, feature_id='FID', ins
         all_yearly_dfs.append(empty_df)
 
     for year, file_path in tqdm(years_files, desc='Processing Annual Data'):
+
         if not os.path.exists(file_path):
             continue
 
