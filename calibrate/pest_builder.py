@@ -36,6 +36,7 @@ class PestBuilder:
 
         self.pest = None
         self.etf_std = None
+        self.etf_capture_indexes = []
 
         self.params_file = os.path.join(self.pest_run_dir, 'params.csv')
 
@@ -269,6 +270,9 @@ class PestBuilder:
         pst.pestpp_options["ies_localizer"] = "loc.mat"
         pst.pestpp_options["ies_num_reals"] = reals
         pst.pestpp_options["ies_drop_conflicts"] = 'true'
+        pst.pestpp_options["ies_reg_factor"] = 0.5
+        pst.pestpp_options["ies_use_approx"] = 'true'
+
         pst.control_data.noptmax = noptmax
         oe = ObservationEnsemble.from_gaussian_draw(pst=pst, num_reals=reals)
         oe.to_csv(self.pst_file.replace('.pst', '.oe.csv'))
@@ -411,7 +415,7 @@ class PestBuilder:
         if members is not None:
             self.etf_std = {fid: None for fid in self.pest_args['targets']}
 
-        all_captures = []
+        total_valid_obs = 0
         for i, fid in enumerate(self.pest_args['targets']):
             etf = pd.read_parquet(self.pest_args['inputs'][i])
             etf = etf[[c for c in etf.columns if 'etf' in c[2]]]
@@ -429,7 +433,7 @@ class PestBuilder:
                     if f'{target}_etf_{mask}' in r and not np.isnan(r[f'{target}_etf_{mask}']):
                         captures_for_this_target.append(etf.loc[ix, 'obs_id'])
 
-            all_captures.append(captures_for_this_target)
+            self.etf_capture_indexes.append(captures_for_this_target)
 
             if members is not None:
                 etf_std = pd.DataFrame()
@@ -476,17 +480,20 @@ class PestBuilder:
                 etf_std['mean'] = multimodel_dt_mean
                 self.etf_std[fid] = etf_std.copy()
 
-            total_valid_obs = sum(len(c) for c in all_captures)
+            total_valid_obs = sum(len(c) for c in self.etf_capture_indexes)
 
         for i, fid in enumerate(self.pest_args['targets']):
             d = self.pest.obs_dfs[i].copy()
             d.index = d.index.str.lower()
-            captures_for_this_df = d.index.intersection(all_captures[i])
+            captures_for_this_df = d.index.intersection(self.etf_capture_indexes[i])
 
             d['weight'] = 0.0
 
             if not captures_for_this_df.empty and total_valid_obs > 0:
-                d.loc[captures_for_this_df, 'weight'] = d['obsval']
+                if self.etf_std:
+                    d.loc[captures_for_this_df, 'weight'] = 1 / np.array(self.etf_std[fid])
+                else:
+                    d.loc[captures_for_this_df, 'weight'] = 1 / 0.33
 
             d.loc[d['obsval'].isna(), 'obsval'] = -99.0
             d.loc[d['weight'].isna(), 'weight'] = 0.0
@@ -530,6 +537,31 @@ class PestBuilder:
         obs['time'] = [float(i.split(':')[3].split('_')[0]) for i in obs.index]
 
         pst.write(pst.filename, version=2)
+
+    def add_regularization(self, aw_prior_std=50.0):
+        pst = Pst(self.pst_file)
+        aws_pars = pst.parameter_data.loc[pst.parameter_data.pargp == "aw"].copy()
+        is_log = aws_pars["partrans"].iloc[0] == "log"
+
+        for par_name, row in aws_pars.iterrows():
+            fid = par_name.split(':')[1].replace(f'{row["pname"]}_{row["pargp"]}_', '')
+            fid = fid[:-1]
+            prior_val = row['parval1']
+            rhs = np.log10(prior_val) if is_log else prior_val
+            weight = 1.0 / (aw_prior_std ** 2)
+
+            pst.add_pi_equation(
+                par_names=[par_name],
+                pilbl=f"pi_aw_{fid}",
+                rhs=rhs,
+                weight=weight,
+                obs_group="pi_aw"
+            )
+
+        pst.reg_data.phimlim = sum(len(c) for c in self.etf_capture_indexes)
+        pst.reg_data.phimaccept = 1.1 * pst.reg_data.phimlim
+
+        pst.write(self.pst_file, version=2)
 
     def _drop_conflicts(self, i, fid):
 
