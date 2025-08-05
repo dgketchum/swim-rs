@@ -56,6 +56,7 @@ def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrit
                           conflicted_obs=None)
     builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
     builder.build_localizer()
+    builder.add_regularization()
 
     # short run sets up base realization and checks for prior-data conflict
     if pdc_remove:
@@ -85,6 +86,7 @@ def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrit
                                   conflicted_obs=temp_pdc)
             builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
             builder.build_localizer()
+            builder.add_regularization()
             builder.write_control_settings(noptmax=0)
             builder.dry_run(exe_)
 
@@ -130,17 +132,13 @@ def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrit
 
 if __name__ == '__main__':
     """"""
-    # project = '5_Flux_Ensemble'
-    project = '4_Flux_Network'
-
-    # if project == '5_Flux_Ensemble':
-    #     western_only = True
-    # else:
-    #     western_only = False
 
     for project in ['4_Flux_Network', '5_Flux_Ensemble']:
 
-        western_only = True
+        if project == '5_Flux_Ensemble':
+            western_only = True
+        else:
+            western_only = False
 
         home = os.path.expanduser('~')
         config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
@@ -148,7 +146,7 @@ if __name__ == '__main__':
         config = ProjectConfig()
         config.read_config(config_file)
 
-        results_dir = os.path.join(config.project_ws, 'reg')
+        results_dir = os.path.join(config.project_ws, 'multi_test')
 
         crop_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=True,
                                          return_df=True, western_only=western_only, header=1)
@@ -160,6 +158,7 @@ if __name__ == '__main__':
 
         sites_ordered = crop_sites + non_crop_sites
 
+        crop_sites = ['B_01', 'ALARC2_Smith6', 'S2']
         run_pest_sequence(config, results_dir, select_stations=crop_sites, overwrite=True)
 
 # ========================= EOF ============================================================================
