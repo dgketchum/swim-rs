@@ -215,6 +215,9 @@ class SampleTracker:
             ct = 0
             for k, v in self.conf.forecast_parameters.items():
 
+                if 'parent' in k:
+                    continue
+
                 param_found = False
 
                 while not param_found:

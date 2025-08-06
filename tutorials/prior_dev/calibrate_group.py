@@ -57,6 +57,7 @@ def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrit
                           conflicted_obs=None)
     builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
     builder.build_localizer()
+    builder.add_regularization()
 
     # short run sets up base realization and checks for prior-data conflict
     if pdc_remove:
@@ -86,6 +87,7 @@ def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrit
                                   conflicted_obs=temp_pdc)
             builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
             builder.build_localizer()
+            builder.add_regularization()
             builder.write_control_settings(noptmax=0)
             builder.dry_run(exe_)
 
@@ -143,9 +145,16 @@ if __name__ == '__main__':
 
     fields_shp = '/data/ssd2/swim/prior_dev/data/gis/prior_targets_fields_50_B_01.shp'
     fields_df = gpd.read_file(fields_shp)
-    fields_df = fields_df[fields_df['Basin'] == '105_CarsonValley']
-    fields_df = fields_df[fields_df['CROP_major'] == 176.0]
+    fields_df = fields_df[fields_df['Basin'] == '108_MasonValley']
+    fields_df = fields_df[fields_df['CROP_major'] == 36.0]
 
-    run_pest_sequence(config, results_dir, overwrite=True, select_stations=None)
+    sites = fields_df['OPENET_ID'].to_list()[:50]
+
+    if 'NV_20436' not in sites:
+        sites.append('NV_20436')
+
+    print(f'Calibrating {len(sites)} sites')
+
+    run_pest_sequence(config, results_dir, overwrite=True, select_stations=sites)
 
 # ========================= EOF ============================================================================

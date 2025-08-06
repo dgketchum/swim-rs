@@ -80,11 +80,11 @@ class PestBuilder:
         et_ins = ['etf_{}.ins'.format(fid) for fid in targets]
         swe_ins = ['swe_{}.ins'.format(fid) for fid in targets]
 
-        pars = self.initial_parameter_dict()
-        p_list = list(pars.keys())
-        pars = OrderedDict({'{}_{}'.format(k, fid): v.copy() for k, v in pars.items() for fid in targets})
+        initial_pars = self.initial_parameter_dict()
+        p_list = list(initial_pars.keys())
+        pars = OrderedDict({'{}_{}'.format(k, fid): v.copy() for k, v in initial_pars.items() for fid in targets})
 
-        params = []
+        params, first = [], True
 
         # Prior information from pre-processing
         for i, fid in enumerate(targets):
@@ -119,6 +119,18 @@ class PestBuilder:
                         params.append((k, 0.6, 'p_{}_0_constant.csv'.format(k)))
 
                 else:
+
+                    if first and 'ndvi' in k:
+                        params.append(('ndvi_k_parent', initial_pars['ndvi_k']['initial_value'],
+                                       'p_ndvi_k_0_constant.csv'))
+                        pars['ndvi_k_parent'] = initial_pars['ndvi_k'].copy()
+
+                        params.append(('ndvi_0_parent', initial_pars['ndvi_0']['initial_value'],
+                                       'p_ndvi_0_0_constant.csv'))
+                        pars['ndvi_0_parent'] = initial_pars['ndvi_0'].copy()
+
+                        first = False
+
                     params.append((k, pars[k]['initial_value'], 'p_{}_0_constant.csv'.format(k)))
 
         idx, vals, _names = [x[0] for x in params], [x[1] for x in params], [x[2] for x in params]
@@ -191,7 +203,7 @@ class PestBuilder:
 
     def build_localizer(self):
 
-        et_params = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad', 'kr_alpha', 'ks_alpha']
+        et_params = ['aw', 'rew', 'tew', 'mad', 'kr_alpha', 'ks_alpha']
         snow_params = ['swe_alpha', 'swe_beta']
 
         par_relation = {'etf': et_params, 'swe': snow_params}
@@ -205,13 +217,17 @@ class PestBuilder:
             else:
                 pdict[r['pargp']].append(r['parnme'])
 
-        pnames = pst.parameter_data['parnme'].values
+        pnames = []
+        for pn in pst.parameter_data['parnme'].values:
+            if 'ndvi' in pn and 'parent' not in pn:
+                continue
+            else:
+                pnames.append(pn)
 
         df = Matrix.from_names(pst.nnz_obs_names, pnames).to_dataframe()
 
         localizer = df.copy()
 
-        # TODO: fix this
         # most brittle lines of code ever written
         sites = list(set(['_'.join(i.split('_')[2:-3]) for i in df.index]))
 
@@ -220,6 +236,7 @@ class PestBuilder:
         dt = [pd.to_datetime(k) for k, v in self.plot_time_series.items()]
         years = list(range(self.config.start_dt.year, self.config.end_dt.year + 1))
 
+        # This loop now correctly handles only the site-specific parameters
         for s in sites:
 
             for ob_type, params in par_relation.items():
@@ -241,6 +258,11 @@ class PestBuilder:
                     cols = list(np.array([[c for c in df.columns if '{}_{}'.format(p, s) in c]
                                           for p in params]).flatten())
                     localizer.loc[idx, cols] = 1.0
+
+        all_etf_obs_idx = [i for i in df.index if 'etf_' in i]
+        parent_pars = [p for p in pst.parameter_data.parnme if '_parent' in p]
+        if parent_pars:
+            localizer.loc[all_etf_obs_idx, parent_pars] = 1.0
 
         vals = localizer.values
         vals[np.isnan(vals)] = 0.0
@@ -362,16 +384,24 @@ class PestBuilder:
             print('SPINUP exists, skipping')
 
     def _write_params(self):
+
         _file = None
 
         for k, v in self.pest_args['pars'].items():
             if 'file' in v.keys():
                 _file = v.pop('file')
+
             if v['lower_bound'] <= 0.0:
                 transform = 'none'
             else:
                 transform = 'log'
-            self.pest.add_parameters(_file, 'constant', transform=transform, alt_inst_str='{}_'.format(k), **v)
+            self.pest.add_parameters(
+                filenames=_file,
+                par_type='constant',
+                transform=transform,
+                alt_inst_str=f'{k}_',
+                **v)
+
 
     def _write_swe_obs(self, count):
         obsnme_str = 'oname:obs_swe_{}_otype:arr_i:{}_j:0'
@@ -395,10 +425,10 @@ class PestBuilder:
 
             # TODO: adjust as needed for phi visibility of etf vs. swe
             try:
-                d.loc[valid, 'weight'] = 0.005
+                d.loc[valid, 'weight'] = 1 / 5.0
             except KeyError:
                 valid = [v.lower() for v in valid.values]
-                d.loc[valid, 'weight'] = 0.005
+                d.loc[valid, 'weight'] = 1 / 5.0
 
             d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
             d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
@@ -531,7 +561,7 @@ class PestBuilder:
             obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.33
 
         swe_idx = [i for i, r in obs.iterrows() if 'swe' in i and r['obsval'] > 0.0]
-        obs.loc[swe_idx, 'standard_deviation'] = obs['obsval'] * 0.33
+        obs.loc[swe_idx, 'standard_deviation'] = 5.0
 
         # add time information
         obs['time'] = [float(i.split(':')[3].split('_')[0]) for i in obs.index]
@@ -561,6 +591,20 @@ class PestBuilder:
         pst.reg_data.phimlim = sum(len(c) for c in self.etf_capture_indexes)
         pst.reg_data.phimaccept = 1.1 * pst.reg_data.phimlim
 
+        for pargp in ["ndvi_k", "ndvi_0"]:
+            pargp_pars_indices = pst.parameter_data.index[pst.parameter_data.pargp == pargp]
+            if pargp_pars_indices.empty:
+                continue
+
+            parent_par_name = [p for p in pargp_pars_indices if 'parent' in p][0]
+            child_pars = [p for p in pargp_pars_indices if 'parent' not in p]
+
+            for child in child_pars:
+                pst.parameter_data.loc[child, 'partrans'] = 'tied'
+                pst.parameter_data.loc[child, 'partied'] = parent_par_name
+
+            pst.parameter_data.loc[parent_par_name, 'partrans'] = 'log'
+
         pst.write(self.pst_file, version=2)
 
     def _drop_conflicts(self, i, fid):
@@ -582,7 +626,7 @@ class PestBuilder:
 
         par_data = pst.parameter_data
 
-        spatial_par_groups = ['aw', 'rew', 'tew', 'ks_alpha', 'kr_alpha', 'ndvi_k', 'ndvi_0']
+        spatial_par_groups = ['aw', 'rew', 'tew', 'ks_alpha', 'kr_alpha']
 
         records = []
         for par_name in par_data.parnme:
@@ -599,46 +643,6 @@ class PestBuilder:
             raise ValueError("Could not create spatial data. Check site_ids and plot_properties.")
 
         return pd.DataFrame(records)
-
-    def add_regularization(self, aws_prior_std=30.0, spatial_reg_groups=None):
-        """
-        Adds prior information equations to the Pst object for regularization.
-        """
-        pst = Pst(self.pst_file)
-
-        # 1. Add Tikhonov Regularization for AWS
-        # ----------------------------------------
-        print("Adding Tikhonov regularization for AWS parameters...")
-        aws_pars = pst.parameter_data.loc[pst.parameter_data.pargp == "aw", "parnme"]
-
-        # Get the prior values you stored during setup
-        # You might need to adjust this logic to match your data structures
-        prior_info = []
-        for par_name in aws_pars:
-            fid = '_'.join(par_name.split('_')[1:])  # Assumes format 'aw_FIELD_ID'
-            try:
-                prior_val = self.plot_properties[fid]['awc'] * 1000.0  # convert m to mm
-                if np.isnan(prior_val):
-                    continue
-                # Create a prior information equation for this parameter
-                # The weight is 1 / (std_dev**2)
-                pi = (par_name, prior_val, 1.0 / (aws_prior_std ** 2))
-                prior_info.append(pi)
-            except KeyError:
-                print(f"Warning: Could not find prior AWS for field {fid}. Skipping regularization.")
-
-        if prior_info:
-            df = pd.DataFrame(prior_info, columns=["parnme", "prior_val", "weight"])
-            # Use pyEMU's helper to add these as PI equations
-            pst.add_prior_information_from_df(df, obs_group_name="pi_aws")
-            print(f"Added {len(prior_info)} prior information equations for AWS.")
-
-        # 2. Add Geostatistical Regularization (see next section)
-        # --------------------------------------------------------
-        if spatial_reg_groups:
-            self._add_geostatistical_regularization(pst, spatial_reg_groups)
-
-        pst.write(self.pst_file, version=2)
 
     def apply_geostatistical_regularization(self, correlation_range=3000.0, cov_filename="prior.cov"):
 
