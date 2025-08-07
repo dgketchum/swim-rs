@@ -32,6 +32,8 @@ class PestBuilder:
         self.plot_properties = self.plots.input['props']
         self.plot_time_series = self.plots.input['time_series']
 
+        self.observation_index = {}
+
         self.masks = ['inv_irr', 'irr', 'no_mask']
 
         self.pest = None
@@ -427,6 +429,9 @@ class PestBuilder:
             etf['obs_id'] = [obsnme_str.format(fid, j).lower() for j in range(etf.shape[0])]
             etf['obs_id'].to_csv(self.obs_idx_file, mode='a', header=(i == 0), index=False)
 
+            self.observation_index[fid] = pd.DataFrame(data=etf['obs_id'].index, index=etf['obs_id'],
+                                                       columns=['obs_idx']).copy()
+
             captures_for_this_target = []
             for ix, r in etf.iterrows():
                 for mask in self.masks:
@@ -486,12 +491,13 @@ class PestBuilder:
             d = self.pest.obs_dfs[i].copy()
             d.index = d.index.str.lower()
             captures_for_this_df = d.index.intersection(self.etf_capture_indexes[i])
+            capture_dates = self.observation_index[fid].loc[captures_for_this_df,  'obs_idx'].to_list()
 
             d['weight'] = 0.0
 
             if not captures_for_this_df.empty and total_valid_obs > 0:
                 if self.etf_std:
-                    d.loc[captures_for_this_df, 'weight'] = 1 / np.array(self.etf_std[fid])
+                    d.loc[captures_for_this_df, 'weight'] = 1 / (self.etf_std[fid].loc[capture_dates, 'std'] + 0.1)
                 else:
                     d.loc[captures_for_this_df, 'weight'] = 1 / 0.33
 
