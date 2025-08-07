@@ -395,10 +395,10 @@ class PestBuilder:
 
             # TODO: adjust as needed for phi visibility of etf vs. swe
             try:
-                d.loc[valid, 'weight'] = 0.005
+                d.loc[valid, 'weight'] = 1 / 5.0
             except KeyError:
                 valid = [v.lower() for v in valid.values]
-                d.loc[valid, 'weight'] = 0.005
+                d.loc[valid, 'weight'] = 1 / 5.0
 
             d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
             d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
@@ -531,7 +531,7 @@ class PestBuilder:
             obs.loc[etf_idx, 'standard_deviation'] = obs['obsval'] * 0.33
 
         swe_idx = [i for i, r in obs.iterrows() if 'swe' in i and r['obsval'] > 0.0]
-        obs.loc[swe_idx, 'standard_deviation'] = obs['obsval'] * 0.33
+        obs.loc[swe_idx, 'standard_deviation'] = 5.0
 
         # add time information
         obs['time'] = [float(i.split(':')[3].split('_')[0]) for i in obs.index]
