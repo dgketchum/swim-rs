@@ -64,8 +64,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
     # only set kc/ke max if they were not calibrated
     tracker.set_ke_max()
-    # tracker.__setattr__('ndvi_k', np.array([[6.63]]))
-    # tracker.__setattr__('ndvi_0', np.array([[0.28]]))
+    # tracker.__setattr__('ke_max', np.array([[0.45]]))
 
     if debug_flag:
         tunable_state = {k: tracker.__getattribute__(k) for k in TUNABLE_PARAMS}
@@ -73,7 +72,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
             tunable_state = {k: f'{v[0, 0]:.2f}' for k, v in tunable_state.items()}
         else:
             tunable_state = {k: [f'{vv:.2f}' for vv in v.flatten()] for k, v in tunable_state.items()}
-        pprint(dict(sorted(tunable_state.items())))
+        # pprint(dict(sorted(tunable_state.items())))
 
     targets = plots.input['order']
 
