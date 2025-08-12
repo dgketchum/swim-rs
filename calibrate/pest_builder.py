@@ -397,10 +397,10 @@ class PestBuilder:
 
             # TODO: adjust as needed for phi visibility of etf vs. swe
             try:
-                d.loc[valid, 'weight'] = 1 / 5.0
+                d.loc[valid, 'weight'] = 1 / 1000.0
             except KeyError:
                 valid = [v.lower() for v in valid.values]
-                d.loc[valid, 'weight'] = 1 / 5.0
+                d.loc[valid, 'weight'] = 1 / 1000.0
 
             d.loc[np.isnan(d['obsval']), 'weight'] = 0.0
             d.loc[np.isnan(d['obsval']), 'obsval'] = -99.0
@@ -417,7 +417,7 @@ class PestBuilder:
         if members is not None:
             self.etf_std = {fid: None for fid in self.pest_args['targets']}
 
-        total_valid_obs = 0
+        all_captures = []
         for i, fid in enumerate(self.pest_args['targets']):
             etf = pd.read_parquet(self.pest_args['inputs'][i])
             etf = etf[[c for c in etf.columns if 'etf' in c[2]]]
@@ -429,16 +429,13 @@ class PestBuilder:
             etf['obs_id'] = [obsnme_str.format(fid, j).lower() for j in range(etf.shape[0])]
             etf['obs_id'].to_csv(self.obs_idx_file, mode='a', header=(i == 0), index=False)
 
-            self.observation_index[fid] = pd.DataFrame(data=etf['obs_id'].index, index=etf['obs_id'],
-                                                       columns=['obs_idx']).copy()
-
             captures_for_this_target = []
             for ix, r in etf.iterrows():
                 for mask in self.masks:
                     if f'{target}_etf_{mask}' in r and not np.isnan(r[f'{target}_etf_{mask}']):
                         captures_for_this_target.append(etf.loc[ix, 'obs_id'])
 
-            self.etf_capture_indexes.append(captures_for_this_target)
+            all_captures.append(captures_for_this_target)
 
             if members is not None:
                 etf_std = pd.DataFrame()
@@ -458,7 +455,8 @@ class PestBuilder:
                         col = f'{member}_etf_{mask}'
 
                         if col in etf.columns:
-                            mask_cols.append(col)
+
+                           mask_cols.append(col)
 
                     etf_std[member] = pd.DataFrame(etf[mask_cols].mean(axis=1))
 
