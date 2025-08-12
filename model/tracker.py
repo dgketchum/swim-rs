@@ -192,7 +192,7 @@ class SampleTracker:
                             fid = k.replace(f'{group}_', '')
                             param_found = True
                     if ct > 1000:
-                        raise ValueError('Parameter Match Not Found')
+                        raise ValueError(f'Calibration Parameter Match Not Found\n Parameter {k} not in {f}')
 
                 idx = self.plots.input['order'].index(fid)
 
@@ -225,7 +225,7 @@ class SampleTracker:
                             fid = k.replace(f'{group}_', '')
                             param_found = True
                     if ct > 1000:
-                        raise ValueError('Parameter Match Not Found')
+                        raise ValueError(f'Forecast Parameter Match Not Found\n Parameter {k} not in {v}')
 
                 # PEST++ has lower-cased the FIDs
                 l = [x.lower() for x in self.plots.input['order']]
