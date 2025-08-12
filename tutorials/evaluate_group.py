@@ -87,8 +87,8 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 if __name__ == '__main__':
 
     """"""
-    project = '4_Flux_Network'
-    # project = '5_Flux_Ensemble'
+    # project = '4_Flux_Network'
+    project = '5_Flux_Ensemble'
 
     home = os.path.expanduser('~')
     config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
@@ -112,8 +112,8 @@ if __name__ == '__main__':
     open_et_ = os.path.join(config.data_dir, 'openet_flux')
     flux_dir = os.path.join(config.data_dir, 'daily_flux_files')
 
-    sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
-                                return_df=True, western_only=western_only, header=1)
+    ec_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
+                                return_df=True, western_only=True, header=1)
 
     incomplete, complete, results = [], [], []
 
@@ -126,7 +126,7 @@ if __name__ == '__main__':
 
     df_dct = obs_field_cycle.field_day_loop(config, plots_, debug_flag=True)
 
-    sites = [k for k, v in df_dct.items() if k in sites]
+    sites = [k for k, v in df_dct.items() if k in ec_sites]
 
     print(f'{len(sites)} sites to evalutate in {project}')
 
@@ -137,13 +137,16 @@ if __name__ == '__main__':
         if lulc != 'Croplands':
             continue
 
+        if site_ not in ec_sites:
+            continue
+
         # unresolved data problems
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114', 'MB_Pch']:
             continue
 
         # testing sites
-        if site_ in ['B_01', 'ALARC2_Smith6', 'S2', 'MR', 'US-FPe']:
-            continue
+        # if site_ in ['B_01', 'ALARC2_Smith6', 'S2', 'MR', 'US-FPe']:
+        #     continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
