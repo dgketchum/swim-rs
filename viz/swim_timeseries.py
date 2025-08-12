@@ -154,7 +154,7 @@ def plot_swim_timeseries(df, parameters, model, irr_index=None, members=None, st
 
 
 def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None, spec='flux-pdc',
-                        model='ssebop', members=None):
+                        model='ssebop', members=None, get_pdc=False):
     for fid in fids:
 
         csv = os.path.join(csv_dir, fid, f'{fid}.csv')
@@ -199,7 +199,7 @@ def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None, spec='fl
             print(
                 f"Warning: Could not find primary ETF columns for model '{model}' or default 'etf_inv_irr'/'etf_irr' in {csv}")
 
-        if os.path.exists(pdc_file):
+        if os.path.exists(pdc_file) and get_pdc:
             pdc = pd.read_csv(pdc_file, index_col=0)
             idx_file = pdc_file.replace('.pdc', '.idx')
             if os.path.exists(idx_file):
