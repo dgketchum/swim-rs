@@ -65,10 +65,12 @@ def prep_field_properties(conf, sites):
                            )
 
 
-def prep_snow(conf):
+def prep_snow(conf, index_col=None):
     from data_extraction.snodas.snodas import create_timeseries_json
 
-    create_timeseries_json(conf.snodas_in_dir, conf.snodas_out_json, feature_id=conf.feature_id_col)
+    if not index_col:
+        index_col = conf.feature_id_col
+    create_timeseries_json(conf.snodas_in_dir, conf.snodas_out_json, feature_id=index_col)
 
 
 def prep_timeseries(conf, sites):
@@ -123,26 +125,33 @@ def prep_input_json(conf, sites):
 
 if __name__ == '__main__':
     """"""
-    project = '4_Flux_Network'
-    western_only = False
+    western_only = None
+    snodas_indexer = None
 
-    # project = '5_Flux_Ensemble'
-    # western_only = True
+    for project in ['4_Flux_Network', '5_Flux_Ensemble']:
 
-    home = os.path.expanduser('~')
-    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
+        if project == '4_Flux_Network':
+            western_only = False
+            snodas_indexer = None
 
-    config = ProjectConfig()
-    config.read_config(config_file)
+        if project == '5_Flux_Ensemble':
+            western_only = True
+            snodas_indexer = 'field_1'
 
-    select_sites = get_flux_sites(config.station_metadata_csv, crop_only=False, western_only=western_only, header=1,
-                                  index_col=0)
+        home = os.path.expanduser('~')
+        config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
 
-    prep_earthengine_extracts(config, select_sites, overwrite=True)
-    prep_field_properties(config, select_sites)
-    prep_snow(config)
-    prep_timeseries(config, select_sites)
-    prep_dynamics(config, select_sites)
-    prep_input_json(config, select_sites)
+        config = ProjectConfig()
+        config.read_config(config_file)
+
+        select_sites = get_flux_sites(config.station_metadata_csv, crop_only=True, western_only=western_only, header=1,
+                                      index_col=0)
+
+        # prep_earthengine_extracts(config, select_sites, overwrite=True)
+        # prep_field_properties(config, select_sites)
+        # prep_snow(config, snodas_indexer)
+        # prep_timeseries(config, select_sites)
+        # prep_dynamics(config, select_sites)
+        prep_input_json(config, select_sites)
 
 # ========================= EOF ====================================================================
