@@ -12,6 +12,7 @@ from prep import get_flux_sites, get_ensemble_parameters
 from prep.prep_plots import prep_fields_json
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
+from viz.swim_timeseries import flux_pdc_timeseries
 
 
 def run_flux_sites(fid, config, plot_data, outfile):
@@ -104,8 +105,8 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 if __name__ == '__main__':
 
     """"""
-    project = '4_Flux_Network'
-    # project = '5_Flux_Ensemble'
+    # project = '4_Flux_Network'
+    project = '5_Flux_Ensemble'
 
     home = os.path.expanduser('~')
     config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
@@ -132,7 +133,7 @@ if __name__ == '__main__':
     print(f'{len(sites)} sites to evalutate in {project}')
     incomplete, complete, results = [], [], []
 
-    overwrite_ = False
+    overwrite_ = True
     use_new_params = True
     only_finished = True
 
@@ -146,8 +147,8 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114', 'MB_Pch']:
             continue
 
-        # if site_ not in ['B_01']:
-        #     continue
+        if site_ not in ['B_01']:
+            continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
@@ -155,7 +156,8 @@ if __name__ == '__main__':
 
         flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
 
-        target_dir = os.path.join(config.project_ws, 'ptjpl_test', site_)
+        run_ptjpl = os.path.join(config.project_ws, 'ptjpl_test')
+        target_dir = os.path.join(run_ptjpl, site_)
         station_prepped_input = os.path.join(target_dir, f'prepped_input_{site_}.json')
 
         if not os.path.isfile(station_prepped_input) and only_finished:
@@ -227,10 +229,10 @@ if __name__ == '__main__':
 
         complete.append(site_)
 
-        # out_fig_dir_ = os.path.join(root, 'tutorials', project, 'figures', 'model_output', 'png')
+        out_fig_dir_ = os.path.join(home, 'Downloads', project, 'figures', 'model_output', 'png')
 
-        # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model=model,
-        #                     members=['ssebop', 'disalexi', 'geesebal', 'eemetric', 'ptjpl', 'sims'])
+        flux_pdc_timeseries(run_ptjpl, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model=model_,
+                            members=['ssebop', 'disalexi', 'geesebal', 'eemetric', 'ptjpl', 'sims'])
 
     pprint({s: [t[0] for t in results].count(s) for s in set(t[0] for t in results)})
     pprint(
