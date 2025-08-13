@@ -87,8 +87,8 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
 if __name__ == '__main__':
 
     """"""
-    # project = '4_Flux_Network'
-    project = '5_Flux_Ensemble'
+    project = '4_Flux_Network'
+    # project = '5_Flux_Ensemble'
 
     home = os.path.expanduser('~')
     config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
@@ -113,7 +113,7 @@ if __name__ == '__main__':
     flux_dir = os.path.join(config.data_dir, 'daily_flux_files')
 
     ec_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
-                                return_df=True, western_only=True, header=1)
+                                return_df=True, western_only=western_only, header=1)
 
     incomplete, complete, results = [], [], []
 

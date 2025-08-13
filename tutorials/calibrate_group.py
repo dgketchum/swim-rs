@@ -133,7 +133,7 @@ def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrit
 if __name__ == '__main__':
     """"""
 
-    for project in ['4_Flux_Network', '5_Flux_Ensemble']:
+    for project in ['5_Flux_Ensemble']:
 
         if project == '5_Flux_Ensemble':
             western_only = True
@@ -141,6 +141,7 @@ if __name__ == '__main__':
             western_only = False
 
         home = os.path.expanduser('~')
+
         config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
 
         config = ProjectConfig()
@@ -158,7 +159,6 @@ if __name__ == '__main__':
 
         sites_ordered = crop_sites + non_crop_sites
 
-        crop_sites = ['B_01', 'ALARC2_Smith6', 'S2']
         run_pest_sequence(config, results_dir, select_stations=crop_sites, overwrite=True)
 
 # ========================= EOF ============================================================================
