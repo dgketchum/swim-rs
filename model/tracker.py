@@ -8,8 +8,7 @@ from model import TRACKER_PARAMS
 
 de_initial = 10.0
 
-TUNABLE_PARAMS = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta',
-                  'ks_alpha', 'kr_alpha']
+TUNABLE_PARAMS = ['aw', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta', 'ks_alpha', 'kr_alpha']
 
 # params not included here (e.g., 'tew') are taken from soils data
 TUNABLE_DEFAULTS = {'aw': 177.56,
@@ -94,8 +93,8 @@ class SampleTracker:
         self.p_eft = 0.
         self.ppt_inf = 0.
         self.ppt_inf_prev = 0.
-        self.rew = 0.
-        self.tew = 0.
+        self.rew = 3.0
+        self.tew = 18.0
         self.sro = 0.
         self.swe = 0.
 

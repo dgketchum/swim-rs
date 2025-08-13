@@ -3,6 +3,8 @@ import os
 
 TRACKER_PARAMS = ['taw',
                   'taw3',
+                  'rew',
+                  'tew',
                   'melt',
                   'rain',
                   'snow_fall',

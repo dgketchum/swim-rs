@@ -82,9 +82,9 @@ class PestBuilder:
         et_ins = ['etf_{}.ins'.format(fid) for fid in targets]
         swe_ins = ['swe_{}.ins'.format(fid) for fid in targets]
 
-        pars = self.initial_parameter_dict()
-        p_list = list(pars.keys())
-        pars = OrderedDict({'{}_{}'.format(k, fid): v.copy() for k, v in pars.items() for fid in targets})
+        init_pars = self.initial_parameter_dict()
+        p_list = list(init_pars.keys())
+        pars = OrderedDict({'{}_{}'.format(k, fid): v.copy() for k, v in init_pars.items() for fid in targets})
 
         params = []
 
@@ -116,7 +116,7 @@ class PestBuilder:
                 elif 'mad_' in k:
                     irr = np.nanmean([self.plot_properties[fid]['irr'][str(yr)] for yr in range(1987, 2023)])
                     if irr > 0.2:
-                        params.append((k, 0.01, 'p_{}_0_constant.csv'.format(k)))
+                        params.append((k, 0.02, 'p_{}_0_constant.csv'.format(k)))
                     else:
                         params.append((k, 0.6, 'p_{}_0_constant.csv'.format(k)))
 
@@ -193,7 +193,7 @@ class PestBuilder:
 
     def build_localizer(self):
 
-        et_params = ['aw', 'rew', 'tew', 'ndvi_k', 'ndvi_0', 'mad', 'kr_alpha', 'ks_alpha']
+        et_params = ['aw', 'ndvi_k', 'ndvi_0', 'mad', 'kr_alpha', 'ks_alpha']
         snow_params = ['swe_alpha', 'swe_beta']
 
         par_relation = {'etf': et_params, 'swe': snow_params}
@@ -272,7 +272,7 @@ class PestBuilder:
         pst.pestpp_options["ies_localizer"] = "loc.mat"
         pst.pestpp_options["ies_num_reals"] = reals
         pst.pestpp_options["ies_drop_conflicts"] = 'true'
-        pst.pestpp_options["ies_reg_factor"] = 0.5
+        pst.pestpp_options["ies_reg_factor"] = 0.25
         pst.pestpp_options["ies_use_approx"] = 'true'
 
         pst.control_data.noptmax = noptmax
@@ -287,48 +287,35 @@ class PestBuilder:
 
             # 'aw' and 'zr' are applied by Tracker.load_soils and load_root_depth
 
-            'aw': {'file': self.params_file,
+            'aw': {'file': self.params_file, 'std': 50.0,
                    'initial_value': None, 'lower_bound': 100.0, 'upper_bound': 400.0,
                    'pargp': 'aw', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'rew': {'file': self.params_file,
-                    'initial_value': 3.0, 'lower_bound': 2.0, 'upper_bound': 6.0,
-                    'pargp': 'rew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
-
-            'tew': {'file': self.params_file,
-                    'initial_value': 18.0, 'lower_bound': 6.0, 'upper_bound': 29.0,
-                    'pargp': 'tew', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
-
-            # kc_max should only be applied for long period targets
-            # 'kc_max': {'file': self.params_file,
-            #            'initial_value': None, 'lower_bound': 0.8, 'upper_bound': 1.3,
-            #            'pargp': 'kc_max', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
-
-            'ks_alpha': {'file': self.params_file,
-                         'initial_value': 0.15, 'lower_bound': 0.01, 'upper_bound': 0.3,
+            'ks_alpha': {'file': self.params_file, 'std': 0.05,
+                         'initial_value': 0.16, 'lower_bound': 0.01, 'upper_bound': 0.3,
                          'pargp': 'ks_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'kr_alpha': {'file': self.params_file,
-                         'initial_value': 0.25, 'lower_bound': 0.01, 'upper_bound': 0.45,
+            'kr_alpha': {'file': self.params_file, 'std': 0.05,
+                         'initial_value': 0.26, 'lower_bound': 0.01, 'upper_bound': 0.45,
                          'pargp': 'kr_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'ndvi_k': {'file': self.params_file,
-                       'initial_value': 7.0, 'lower_bound': 4.0, 'upper_bound': 10.0,
+            'ndvi_k': {'file': self.params_file, 'std': 0.75,
+                       'initial_value': 7.25, 'lower_bound': 4.0, 'upper_bound': 10.0,
                        'pargp': 'ndvi_k', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'ndvi_0': {'file': self.params_file,
-                       'initial_value': 0.25, 'lower_bound': 0.1, 'upper_bound': 0.7,
+            'ndvi_0': {'file': self.params_file, 'std': 0.25,
+                       'initial_value': 0.3, 'lower_bound': 0.1, 'upper_bound': 0.7,
                        'pargp': 'ndvi_0', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'mad': {'file': self.params_file,
+            'mad': {'file': self.params_file, 'std': 0.1,
                     'initial_value': None, 'lower_bound': 0.01, 'upper_bound': 0.9,
                     'pargp': 'mad', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'swe_alpha': {'file': self.params_file,
-                          'initial_value': 0.15, 'lower_bound': -0.5, 'upper_bound': 1.,
+            'swe_alpha': {'file': self.params_file, 'std': 0.05,
+                          'initial_value': 0.18, 'lower_bound': -0.5, 'upper_bound': 1.,
                           'pargp': 'swe_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'swe_beta': {'file': self.params_file,
+            'swe_beta': {'file': self.params_file, 'std': 0.05,
                          'initial_value': 1.5, 'lower_bound': 0.5, 'upper_bound': 2.5,
                          'pargp': 'swe_beta', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
@@ -367,6 +354,8 @@ class PestBuilder:
         _file = None
 
         for k, v in self.pest_args['pars'].items():
+            # pop out unneeded 'std' keyword
+            _ = v.pop('std')
             if 'file' in v.keys():
                 _file = v.pop('file')
             if v['lower_bound'] <= 0.0:
@@ -417,7 +406,7 @@ class PestBuilder:
         if members is not None:
             self.etf_std = {fid: None for fid in self.pest_args['targets']}
 
-        all_captures = []
+        total_valid_obs = 0
         for i, fid in enumerate(self.pest_args['targets']):
             etf = pd.read_parquet(self.pest_args['inputs'][i])
             etf = etf[[c for c in etf.columns if 'etf' in c[2]]]
@@ -429,13 +418,16 @@ class PestBuilder:
             etf['obs_id'] = [obsnme_str.format(fid, j).lower() for j in range(etf.shape[0])]
             etf['obs_id'].to_csv(self.obs_idx_file, mode='a', header=(i == 0), index=False)
 
+            self.observation_index[fid] = pd.DataFrame(data=etf['obs_id'].index, index=etf['obs_id'],
+                                                       columns=['obs_idx']).copy()
+
             captures_for_this_target = []
             for ix, r in etf.iterrows():
                 for mask in self.masks:
                     if f'{target}_etf_{mask}' in r and not np.isnan(r[f'{target}_etf_{mask}']):
                         captures_for_this_target.append(etf.loc[ix, 'obs_id'])
 
-            all_captures.append(captures_for_this_target)
+            self.etf_capture_indexes.append(captures_for_this_target)
 
             if members is not None:
                 etf_std = pd.DataFrame()
@@ -455,8 +447,7 @@ class PestBuilder:
                         col = f'{member}_etf_{mask}'
 
                         if col in etf.columns:
-
-                           mask_cols.append(col)
+                            mask_cols.append(col)
 
                     etf_std[member] = pd.DataFrame(etf[mask_cols].mean(axis=1))
 
@@ -486,6 +477,7 @@ class PestBuilder:
             total_valid_obs = sum(len(c) for c in self.etf_capture_indexes)
 
         for i, fid in enumerate(self.pest_args['targets']):
+
             d = self.pest.obs_dfs[i].copy()
             d.index = d.index.str.lower()
             captures_for_this_df = d.index.intersection(self.etf_capture_indexes[i])
@@ -495,7 +487,7 @@ class PestBuilder:
 
             if not captures_for_this_df.empty and total_valid_obs > 0:
                 if self.etf_std:
-                    d.loc[captures_for_this_df, 'weight'] = 1 / (self.etf_std[fid].loc[capture_dates, 'std'] + 0.1)
+                    d.loc[captures_for_this_df, 'weight'] = 1 / (self.etf_std[fid].loc[capture_dates, 'std'].values + 0.1)
                 else:
                     d.loc[captures_for_this_df, 'weight'] = 1 / 0.33
 
@@ -542,25 +534,30 @@ class PestBuilder:
 
         pst.write(pst.filename, version=2)
 
-    def add_regularization(self, aw_prior_std=50.0):
+    def add_regularization(self):
         pst = Pst(self.pst_file)
-        aws_pars = pst.parameter_data.loc[pst.parameter_data.pargp == "aw"].copy()
-        is_log = aws_pars["partrans"].iloc[0] == "log"
 
-        for par_name, row in aws_pars.iterrows():
-            fid = par_name.split(':')[1].replace(f'{row["pname"]}_{row["pargp"]}_', '')
-            fid = fid[:-1]
-            prior_val = row['parval1']
-            rhs = np.log10(prior_val) if is_log else prior_val
-            weight = 1.0 / (aw_prior_std ** 2)
+        for pargp, values in self.initial_parameter_dict().items():
 
-            pst.add_pi_equation(
-                par_names=[par_name],
-                pilbl=f"pi_aw_{fid}",
-                rhs=rhs,
-                weight=weight,
-                obs_group="pi_aw"
-            )
+            target_params = pst.parameter_data.loc[pst.parameter_data.pargp == pargp].copy()
+            is_log = target_params["partrans"].iloc[0] == "log"
+            prior_std = values['std']
+
+            for par_name, row in target_params.iterrows():
+
+                fid = par_name.split(':')[1].replace(f'{row["pname"]}_{row["pargp"]}_', '')
+                fid = fid[:-1]
+                prior_val = row['parval1']
+                rhs = np.log10(prior_val) if is_log else prior_val
+                weight = 1.0 / (prior_std ** 2)
+
+                pst.add_pi_equation(
+                    par_names=[par_name],
+                    pilbl=f"pi_{pargp}_{fid}",
+                    rhs=rhs,
+                    weight=weight,
+                    obs_group=f"pi_{pargp}"
+                )
 
         pst.reg_data.phimlim = sum(len(c) for c in self.etf_capture_indexes)
         pst.reg_data.phimaccept = 1.1 * pst.reg_data.phimlim
