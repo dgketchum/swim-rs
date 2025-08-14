@@ -32,29 +32,38 @@ def extract_properties(conf):
     get_landcover(conf.ee_fields_flux, description, debug=False, selector=conf.feature_id_col, out_fmt='CSV')
 
 
-def extract_remote_sensing(conf, sites):
+def extract_remote_sensing(conf, sites, get_sentinel=False, selected_models=None):
     from data_extraction.ee.etf_export import sparse_sample_etf
     from data_extraction.ee.ndvi_export import sparse_sample_ndvi
     is_authorized()
 
     models = get_ensemble_parameters(skip='ndvi')
-
+    models = list(set([m[0] for m in models]))
     for src in ['ndvi', 'etf']:
         for mask in ['irr', 'inv_irr']:
 
             if src == 'ndvi':
                 print(src, mask)
                 dst = os.path.join(conf.landsat_dir, 'extracts', src, mask)
-
                 sparse_sample_ndvi(conf.footprint_shapefile_shp, bucket=conf.ee_bucket, debug=False, grid_spec=3,
-                                   mask_type=mask, check_dir=dst, start_yr=2016, end_yr=2024,
-                                   feature_id=conf.feature_id_col,
+                                   mask_type=mask, check_dir=dst, start_yr=1987, end_yr=2024,
+                                   feature_id=conf.feature_id_col, satellite='landsat',
                                    state_col=conf.state_col, select=sites)
+
+                if get_sentinel:
+                    dst = os.path.join(conf.sentinel_dir, 'extracts', src, mask)
+                    sparse_sample_ndvi(conf.footprint_shapefile_shp, bucket=conf.ee_bucket, debug=False, grid_spec=3,
+                                       mask_type=mask, check_dir=dst, start_yr=2018, end_yr=2024,
+                                       feature_id=conf.feature_id_col, satellite='sentinel',
+                                       state_col=conf.state_col, select=sites)
 
             if src == 'etf':
                 for model in models:
-                    dst = os.path.join(conf.landsat_dir, 'extracts', f'{model}_{src}', mask)
 
+                    if selected_models is not None and model not in selected_models:
+                        continue
+
+                    dst = os.path.join(conf.landsat_dir, 'extracts', f'{model}_{src}', mask)
                     print(src, mask, model)
 
                     sparse_sample_etf(conf.footprint_shapefile_shp, bucket=conf.ee_bucket, debug=False, grid_spec=3,
@@ -81,24 +90,28 @@ def extract_gridmet(conf, sites):
 
 if __name__ == '__main__':
 
-    project = '4_Flux_Network'
-    western_only = False
+    for project in ['4_Flux_Network']:
 
-    # project = '5_Flux_Ensemble'
-    # western_only = True
+        if project == '5_Flux_Ensemble':
+            western_only = True
+            models_select = None
 
-    home = os.path.expanduser('~')
-    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
+        else:
+            western_only = True
+            models_select = ['ssebop']
 
-    config = ProjectConfig()
-    config.read_config(config_file)
+        home = os.path.expanduser('~')
+        config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
 
-    select_sites = get_flux_sites(config.station_metadata_csv, crop_only=False, western_only=western_only, header=1,
-                                  index_col=0)
+        config = ProjectConfig()
+        config.read_config(config_file)
 
-    extract_snodas(config)
-    extract_properties(config)
-    extract_remote_sensing(config, select_sites)
-    extract_gridmet(config, select_sites)
+        select_sites = get_flux_sites(config.station_metadata_csv, crop_only=False, western_only=False, header=1,
+                                      index_col=0)
+
+        extract_snodas(config)
+        extract_properties(config)
+        extract_remote_sensing(config, select_sites)
+        extract_gridmet(config, select_sites)
 
 # ========================= EOF ====================================================================

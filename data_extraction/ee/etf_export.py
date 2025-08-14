@@ -154,12 +154,12 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
             if grid_spec is not None:
                 grid_sz = row['grid_size']
-                desc = 'etf_{}_p{}_{}_{}'.format(site, grid_sz, mask_type, year)
+                desc = '{}_etf_{}_p{}_{}_{}'.format(model, site, grid_sz, mask_type, year)
                 if grid_sz != grid_spec:
                     continue
 
             else:
-                desc = 'etf_{}_{}_{}'.format(site, mask_type, year)
+                desc = '{}_etf_{}_{}_{}'.format(model, site, mask_type, year)
 
             if check_dir:
                 f = os.path.join(check_dir, '{}.csv'.format(desc))

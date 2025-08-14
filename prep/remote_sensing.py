@@ -179,6 +179,9 @@ def join_remote_sensing(files, dst, station_selection='exclusive'):
     success_ct = 0
     for sid in common_sids:
 
+        if sid == 'S2':
+            b = 1
+
         target_cols = [col for df in dfs for col in df.columns if col[0] == sid]
         target_cols = pd.MultiIndex.from_tuples(target_cols, names=COLUMN_MULTIINDEX)
         target_series = [df[col].values for df in dfs for col in df.columns if col[0] == sid]

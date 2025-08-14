@@ -98,7 +98,7 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
     skipped, exported = 0, 0
 
-    for fid, row in tqdm(df.iterrows(), desc='Extracting NDVI', total=df.shape[0]):
+    for fid, row in tqdm(df.iterrows(), desc=f'Extracting {satellite} NDVI', total=df.shape[0]):
 
         for year in range(start_yr, end_yr + 1):
 
@@ -109,14 +109,17 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
             if grid_spec is not None:
                 grid_sz = row['grid_size']
-                desc = 'ndvi_{}_p{}_{}_{}_{}'.format(site, grid_sz, satellite, mask_type, year)
+                desc = 'ndvi_{}_p{}_{}_{}'.format(site, grid_sz, mask_type, year)
                 if grid_sz != grid_spec:
                     continue
 
             else:
-                desc = 'ndvi_{}_{}_{}_{}'.format(site, satellite, mask_type, year)
+                desc = 'ndvi_{}_{}_{}'.format(site, mask_type, year)
 
             if check_dir:
+                if not os.path.isdir(check_dir):
+                    raise ValueError(f'File checking on but directory does not exist: {check_dir}')
+
                 f = os.path.join(check_dir, '{}.csv'.format(desc))
                 if os.path.exists(f):
                     skipped += 1
@@ -188,9 +191,9 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
             task = ee.batch.Export.table.toCloudStorage(
                 data,
-                description=desc,
+                description=f'{satellite}_{desc}',
                 bucket=bucket,
-                fileNamePrefix=desc,
+                fileNamePrefix=f'{satellite}/{desc}',
                 fileFormat='CSV',
                 selectors=selectors)
 
@@ -292,18 +295,5 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
 
 
 if __name__ == '__main__':
-
-    d = '/media/research/IrrigationGIS/swim'
-    if not os.path.exists(d):
-        d = '/home/dgketchum/data/IrrigationGIS/swim'
-
-    is_authorized()
-    bucket_ = 'wudr'
-    fields = 'users/dgketchum/fields/tongue_9MAY2023'
-    sat = 'sentinel'
-    for mask in ['inv_irr', 'irr']:
-        chk = os.path.join(d, 'examples/tongue/{}/extracts/ndvi/{}'.format(sat, mask))
-        clustered_sample_ndvi(fields, bucket_, debug=False, mask_type=mask, check_dir=chk,
-                              start_yr=2017, end_yr=2024, satellite=sat)
-
+    pass
 # ========================= EOF =======================================================================================

@@ -5,7 +5,7 @@ from swim.config import ProjectConfig
 from prep import get_flux_sites, get_ensemble_parameters
 
 
-def prep_earthengine_extracts(conf, sites, overwrite=False):
+def prep_earthengine_extracts(conf, sites, overwrite=False, add_sentinel=False):
     from prep.remote_sensing import sparse_time_series, join_remote_sensing
 
     types_ = ['irr', 'inv_irr']
@@ -37,16 +37,29 @@ def prep_earthengine_extracts(conf, sites, overwrite=False):
                                            instrument='landsat', parameter=sensing_param, algorithm=model,
                                            mask=mask_type, select=sites, footprint_spec=3)
 
-            else:
+            elif sensing_param == 'ndvi':
+
                 ee_data = os.path.join(conf.landsat_dir, 'extracts', sensing_param, mask_type)
                 src = os.path.join(conf.landsat_tables_dir, '{}_{}.parquet'.format(sensing_param, mask_type))
                 rs_files.extend([src])
                 if os.path.exists(src) and not overwrite:
-                    continue
+                    pass
                 else:
                     sparse_time_series(conf.footprint_shapefile_shp, ee_data, yrs, src, feature_id=conf.feature_id_col,
                                        instrument='landsat', parameter=sensing_param, algorithm='none', mask=mask_type,
                                        select=sites, footprint_spec=3)
+
+                if add_sentinel:
+                    ee_data = os.path.join(conf.sentinel_dir, 'extracts', sensing_param, mask_type)
+                    src = os.path.join(conf.sentinel_tables_dir, '{}_{}.parquet'.format(sensing_param, mask_type))
+                    rs_files.extend([src])
+                    if os.path.exists(src) and not overwrite:
+                        pass
+                    else:
+                        sparse_time_series(conf.footprint_shapefile_shp, ee_data, yrs, src,
+                                           feature_id=conf.feature_id_col, instrument='sentinel',
+                                           parameter=sensing_param, algorithm='none', mask=mask_type,
+                                           select=sites, footprint_spec=3)
 
     join_remote_sensing(rs_files, conf.remote_sensing_tables_dir, station_selection='inclusive')
 
@@ -89,10 +102,15 @@ def prep_timeseries(conf, sites):
                              'target_fields': sites})
 
 
-def prep_dynamics(conf, sites):
+def prep_dynamics(conf, sites, sentinel=False):
     from prep.dynamics import SamplePlotDynamics
 
     # sites = ['Almond_High']
+    if sentinel:
+        sensors = ('landsat', 'sentinel')
+    else:
+        sensors = ('landsat',)
+
     dynamics = SamplePlotDynamics(conf.joined_timeseries_dir,
                                   conf.properties_json,
                                   irr_threshold=conf.irrigation_threshold,
@@ -102,7 +120,7 @@ def prep_dynamics(conf, sites):
                                   use_lulc=False,
                                   use_mask=True,
                                   masks=('irr', 'inv_irr'),
-                                  instruments=('landsat',))
+                                  instruments=sensors)
 
     dynamics.analyze_irrigation(lookback=5)
     dynamics.analyze_k_parameters()
@@ -128,10 +146,10 @@ if __name__ == '__main__':
     western_only = None
     snodas_indexer = None
 
-    for project in ['4_Flux_Network', '5_Flux_Ensemble']:
+    for project in ['4_Flux_Network']:
 
         if project == '4_Flux_Network':
-            western_only = False
+            western_only = True
             snodas_indexer = None
 
         if project == '5_Flux_Ensemble':
@@ -147,7 +165,7 @@ if __name__ == '__main__':
         select_sites = get_flux_sites(config.station_metadata_csv, crop_only=True, western_only=western_only, header=1,
                                       index_col=0)
 
-        # prep_earthengine_extracts(config, select_sites, overwrite=True)
+        # prep_earthengine_extracts(config, select_sites, overwrite=False, add_sentinel=True)
         # prep_field_properties(config, select_sites)
         # prep_snow(config, snodas_indexer)
         # prep_timeseries(config, select_sites)

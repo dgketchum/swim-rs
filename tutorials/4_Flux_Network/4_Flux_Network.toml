@@ -9,6 +9,10 @@ landsat = "{data}/landsat"
 landsat_ee_data = "{landsat}/extracts"
 landsat_tables = "{landsat}/tables"
 
+sentinel = "{data}/sentinel"
+sentinel_ee_data = "{sentinel}/extracts"
+sentinel_tables = "{sentinel}/tables"
+
 met = "{data}/met_timeseries/gridmet"
 
 gis = "{data}/gis"

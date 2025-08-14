@@ -133,12 +133,12 @@ def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrit
 if __name__ == '__main__':
     """"""
 
-    for project in ['5_Flux_Ensemble']:
+    for project in ['4_Flux_Network', '5_Flux_Ensemble']:
 
         if project == '5_Flux_Ensemble':
             western_only = True
         else:
-            western_only = False
+            western_only = True
 
         home = os.path.expanduser('~')
 
@@ -147,7 +147,10 @@ if __name__ == '__main__':
         config = ProjectConfig()
         config.read_config(config_file)
 
-        results_dir = os.path.join(config.project_ws, 'multi_test')
+        results_dir = os.path.join(config.project_ws, 'sentinel_test')
+
+        if not os.path.isdir(results_dir):
+            os.makedirs(results_dir, exist_ok=True)
 
         crop_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=True,
                                          return_df=True, western_only=western_only, header=1)
