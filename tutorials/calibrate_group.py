@@ -1,17 +1,12 @@
 import os
 import shutil
 import tempfile
-from datetime import datetime
-
-import pandas as pd
 
 from calibrate.pest_builder import PestBuilder
 from calibrate.run_pest import run_pst
+from prep import get_flux_sites, get_ensemble_parameters
 from prep.prep_plots import prep_fields_json, preproc
 from swim.config import ProjectConfig
-from swim.sampleplots import SamplePlots
-from prep import get_flux_sites, get_ensemble_parameters
-from calibrate.run_mp import optimize_fields
 
 
 def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrite=False):

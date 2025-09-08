@@ -351,8 +351,18 @@ class SamplePlotDynamics:
                         idx_ = [i for i in df.index if i.year == y_]
                         nd_check = df.loc[idx_, idx[:, [instrument], ['ndvi'], :, :, mask]]
                         if np.all(np.isnan(nd_check.values)):
-                            inv_irr = df.loc[idx_, idx[:, [instrument], ['ndvi'], :, :, 'inv_irr']].copy()
-                            ndvi_.loc[idx_, idx[:, [instrument], ['ndvi'], :, :, 'irr']] = inv_irr.values
+                            if instrument == 'landsat':
+                                inv_irr = df.loc[idx_, idx[:, [instrument], ['ndvi'], :, :, 'inv_irr']].copy()
+                                ndvi_.loc[idx_, idx[:, [instrument], ['ndvi'], :, :, 'irr']] = inv_irr.values
+                            else:
+                                try:
+                                    inv_irr = df.loc[idx_, idx[:, [instrument], ['ndvi'], :, :, 'inv_irr']].copy()
+                                except KeyError:
+                                    continue
+                                try:
+                                    ndvi_.loc[idx_, idx[:, [instrument], ['ndvi'], :, :, 'irr']] = inv_irr.values
+                                except ValueError:
+                                    ndvi_.loc[idx_, idx[:, [instrument], ['ndvi'], :, ['quantile_adj_to_landsat'], 'irr']] = inv_irr.values
 
             if ndvi_.shape[1] > 1:
 

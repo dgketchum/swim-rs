@@ -228,10 +228,11 @@ class SampleTracker:
 
                 # PEST++ has lower-cased the FIDs
                 l = [x.lower() for x in self.plots.input['order']]
-                idx = l.index(fid)
 
                 if fid not in l:
                     continue
+
+                idx = l.index(fid)
 
                 if params:
                     value = params[k]

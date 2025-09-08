@@ -101,7 +101,7 @@ if __name__ == '__main__':
         model_ = 'openet'
 
     else:
-        western_only = False
+        western_only = True
         model_ = 'ssebop'
 
     target_dir = os.path.join(config.project_ws, 'multi_test')

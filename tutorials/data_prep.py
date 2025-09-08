@@ -146,7 +146,7 @@ if __name__ == '__main__':
     western_only = None
     snodas_indexer = None
 
-    for project in ['4_Flux_Network']:
+    for project in ['5_Flux_Ensemble']:
 
         if project == '4_Flux_Network':
             western_only = True
@@ -165,11 +165,11 @@ if __name__ == '__main__':
         select_sites = get_flux_sites(config.station_metadata_csv, crop_only=True, western_only=western_only, header=1,
                                       index_col=0)
 
-        # prep_earthengine_extracts(config, select_sites, overwrite=False, add_sentinel=True)
-        # prep_field_properties(config, select_sites)
-        # prep_snow(config, snodas_indexer)
-        # prep_timeseries(config, select_sites)
-        # prep_dynamics(config, select_sites)
+        prep_earthengine_extracts(config, select_sites, overwrite=True, add_sentinel=True)
+        prep_field_properties(config, select_sites)
+        prep_snow(config, snodas_indexer)
+        prep_timeseries(config, select_sites)
+        prep_dynamics(config, select_sites, sentinel=True)
         prep_input_json(config, select_sites)
 
 # ========================= EOF ====================================================================
