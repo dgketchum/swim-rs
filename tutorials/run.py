@@ -13,7 +13,8 @@ from prep import get_flux_sites, get_ensemble_parameters
 from swim.sampleplots import SamplePlots
 
 
-def run_flux_sites(fid, config, overwrite_input=False):
+def run_flux_sites(fid, config, target_dir,
+                   station_prepped_input, overwrite_input=False):
     start_time = time.time()
 
     models = [config.etf_target_model]
@@ -74,5 +75,9 @@ if __name__ == '__main__':
     config = ProjectConfig()
     config.read_config(config_file)
 
-    run_flux_sites('S2', config, overwrite_input=True)
+    target_dir_ = os.path.join(config.project_ws, 'pestrun')
+    station_prepped_input_ = os.path.join(target_dir_, f'prepped_input.json')
+
+    run_flux_sites('S2', config, target_dir=target_dir_,
+                   station_prepped_input=station_prepped_input_, overwrite_input=True)
 # ========================= EOF ====================================================================

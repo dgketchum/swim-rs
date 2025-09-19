@@ -183,8 +183,8 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
             try:
                 data = bands.reduceRegions(collection=fc,
-                                       reducer=ee.Reducer.mean(),
-                                       scale=30)
+                                           reducer=ee.Reducer.mean(),
+                                           scale=30)
             except AttributeError:
                 print(f'{fid} image data for {year} is None, skipping')
                 continue
