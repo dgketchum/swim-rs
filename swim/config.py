@@ -216,6 +216,7 @@ class ProjectConfig:
         self.state_col = ids_conf.get('state_col')
         self.field_index = self.feature_id_col
         self.irrigation_threshold = misc_conf.get('irrigation_threshold')
+        self.swb_mode = misc_conf.get('swb_mode')  # e.g., 'cn' to enable Curve Number runoff
 
         self.etf_target_model = calib_toml_conf.get('etf_target_model')
         self.etf_ensemble_members = calib_toml_conf.get('etf_ensemble_members')

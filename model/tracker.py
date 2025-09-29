@@ -97,6 +97,11 @@ class SampleTracker:
         self.tew = 18.0
         self.sro = 0.
         self.swe = 0.
+        self.s = 0.
+        self.s1 = 0.
+        self.s2 = 0.
+        self.s3 = 0.
+        self.s4 = 0.
 
         self.isnan = []
 

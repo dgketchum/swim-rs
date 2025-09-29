@@ -29,8 +29,14 @@ def compute_field_et(swb, day_data):
 
         compute_snow.calculate_snow(swb, day_data)
 
-        # runoff.runoff_curve_number(foo, foo_day, debug_flag)
-        runoff.runoff_infiltration_excess(swb, day_data)
+        # alias surface depletion for CN logic
+        swb.depl_surface = swb.depl_ze
+
+        # Choose runoff method: 'cn' for Curve Number, else infiltration-excess
+        if getattr(swb.conf, 'swb_mode', None) == 'cn':
+            runoff.runoff_curve_number(swb, day_data)
+        else:
+            runoff.runoff_infiltration_excess(swb, day_data)
 
         swb.ppt_inf = (swb.melt + swb.rain) - swb.sro
 
