@@ -1,8 +1,10 @@
 import os
+import json
 from datetime import datetime
 
 from swim.config import ProjectConfig
 from prep import get_flux_sites, get_ensemble_parameters
+from utils.rs_diagnostics import summarize_observation_counts, merge_counts_dict
 
 
 def prep_earthengine_extracts(conf, sites, overwrite=False, add_sentinel=False):
@@ -12,54 +14,103 @@ def prep_earthengine_extracts(conf, sites, overwrite=False, add_sentinel=False):
     sensing_params = ['etf', 'ndvi']
 
     rs_files = []
+    counts_files = []
     models = [conf.etf_target_model]
     if conf.etf_ensemble_members is not None:
         models += conf.etf_ensemble_members
 
-    for mask_type in types_:
-
-        for sensing_param in sensing_params:
-
-            yrs = [x for x in range(conf.start_dt.year, conf.end_dt.year + 1)]
-
-            if sensing_param == 'etf':
-
-                for model in models:
-                    ee_data = os.path.join(conf.landsat_dir, 'extracts', f'{model}_{sensing_param}', mask_type)
-                    src = os.path.join(conf.landsat_tables_dir,
-                                       '{}_{}_{}.parquet'.format(model, sensing_param, mask_type))
-                    rs_files.extend([src])
-                    if os.path.exists(src) and not overwrite:
-                        continue
-                    else:
-                        sparse_time_series(conf.footprint_shapefile_shp, ee_data, yrs, src,
-                                           feature_id=conf.feature_id_col,
-                                           instrument='landsat', parameter=sensing_param, algorithm=model,
-                                           mask=mask_type, select=sites, footprint_spec=3)
-
-            elif sensing_param == 'ndvi':
-
-                ee_data = os.path.join(conf.landsat_dir, 'extracts', sensing_param, mask_type)
-                src = os.path.join(conf.landsat_tables_dir, '{}_{}.parquet'.format(sensing_param, mask_type))
+    # Process ETF first: outer loop over models, inner loop over irrigation masks
+    if 'etf' in sensing_params:
+        for model in models:
+            for mask_type in types_:
+                yrs = [x for x in range(conf.start_dt.year, conf.end_dt.year + 1)]
+                sensing_param = 'etf'
+                ee_data = os.path.join(conf.landsat_dir, 'extracts', f'{model}_{sensing_param}', mask_type)
+                src = os.path.join(conf.landsat_tables_dir, f'{model}_{sensing_param}_{mask_type}.parquet')
                 rs_files.extend([src])
                 if os.path.exists(src) and not overwrite:
                     pass
-                else:
-                    sparse_time_series(conf.footprint_shapefile_shp, ee_data, yrs, src, feature_id=conf.feature_id_col,
-                                       instrument='landsat', parameter=sensing_param, algorithm='none', mask=mask_type,
-                                       select=sites, footprint_spec=3)
+                counts = sparse_time_series(conf.footprint_shapefile_shp, ee_data, yrs, src,
+                                            feature_id=conf.feature_id_col,
+                                            instrument='landsat', parameter=sensing_param, algorithm=model,
+                                            mask=mask_type, select=sites)
+                if isinstance(counts, tuple) and len(counts) == 2:
+                    _, counts_json_path = counts
+                    if counts_json_path and os.path.exists(counts_json_path):
+                        counts_files.append(counts_json_path)
 
-                if add_sentinel:
-                    ee_data = os.path.join(conf.sentinel_dir, 'extracts', sensing_param, mask_type)
-                    src = os.path.join(conf.sentinel_tables_dir, '{}_{}.parquet'.format(sensing_param, mask_type))
-                    rs_files.extend([src])
-                    if os.path.exists(src) and not overwrite:
-                        pass
-                    else:
-                        sparse_time_series(conf.footprint_shapefile_shp, ee_data, yrs, src,
-                                           feature_id=conf.feature_id_col, instrument='sentinel',
-                                           parameter=sensing_param, algorithm='none', mask=mask_type,
-                                           select=sites, footprint_spec=3)
+    # Then process NDVI once per mask (no model dimension)
+    if 'ndvi' in sensing_params:
+        for mask_type in types_:
+            yrs = [x for x in range(conf.start_dt.year, conf.end_dt.year + 1)]
+            sensing_param = 'ndvi'
+
+            ee_data = os.path.join(conf.landsat_dir, 'extracts', sensing_param, mask_type)
+            src = os.path.join(conf.landsat_tables_dir, f'{sensing_param}_{mask_type}.parquet')
+            rs_files.extend([src])
+            if os.path.exists(src) and not overwrite:
+                pass
+            counts = sparse_time_series(conf.footprint_shapefile_shp, ee_data, yrs, src,
+                                        feature_id=conf.feature_id_col,
+                                        instrument='landsat', parameter=sensing_param, algorithm='none',
+                                        mask=mask_type, select=sites)
+            if isinstance(counts, tuple) and len(counts) == 2:
+                _, counts_json_path = counts
+                if counts_json_path and os.path.exists(counts_json_path):
+                    counts_files.append(counts_json_path)
+
+            if add_sentinel:
+                ee_data = os.path.join(conf.sentinel_dir, 'extracts', sensing_param, mask_type)
+                src = os.path.join(conf.sentinel_tables_dir, f'{sensing_param}_{mask_type}.parquet')
+                rs_files.extend([src])
+                if os.path.exists(src) and not overwrite:
+                    pass
+                counts = sparse_time_series(conf.footprint_shapefile_shp, ee_data, yrs, src,
+                                            feature_id=conf.feature_id_col, instrument='sentinel',
+                                            parameter=sensing_param, algorithm='none', mask=mask_type,
+                                            select=sites)
+
+                if isinstance(counts, tuple) and len(counts) == 2:
+                    _, counts_json_path = counts
+                    if counts_json_path and os.path.exists(counts_json_path):
+                        counts_files.append(counts_json_path)
+
+    if counts_files:
+        try:
+            merged_counts = os.path.join(conf.remote_sensing_tables_dir, 'observation_counts_merged.json')
+            merge_counts_dict(counts_files, merged_counts)
+            print(f"Wrote merged observation counts: {merged_counts}")
+        except Exception as e:
+            print(f"Failed to merge observation counts: {e}")
+
+        # Build and write a compact diagnostic summary (CSV + dense JSON)
+        try:
+            summary_csv = os.path.join(conf.remote_sensing_tables_dir, 'observation_summary.csv')
+            summary_json = os.path.join(conf.remote_sensing_tables_dir, 'observation_summary_dense.json')
+            yrs = list(range(conf.start_dt.year, conf.end_dt.year + 1))
+
+            summary_df, instrument_summary = summarize_observation_counts(
+                json_paths=[merged_counts],
+                select_stations=select_sites,
+                min_obs_per_year=8,
+                all_years=yrs,
+                model_whitelist=None,
+                mask_whitelist=['irr', 'inv_irr'],
+                station_whitelist=None,
+                output_csv=summary_csv,
+                output_json=summary_json,
+            )
+            for site, data in instrument_summary.items():
+                for instrument, algs in data.items():
+                    for alg, stats in algs.items():
+                        print(
+                            f"{site}: {instrument}:{alg} Mean Obs/Year: "
+                            f"{stats['mean_obs']}; Missing {stats['years_w_zero_obs']}")
+                print('')
+            print(f"Wrote observation summaries: {summary_csv}, {summary_json}")
+
+        except Exception as e:
+            print(f"Failed to create observation summaries: {e}")
 
     join_remote_sensing(rs_files, conf.remote_sensing_tables_dir, station_selection='inclusive')
 
@@ -99,7 +150,7 @@ def prep_timeseries(conf, sites):
                           end_date=conf.end_dt,
                           feature_id=conf.gridmet_mapping_index_col,
                           **{'met_mapping': 'GFID',
-                             'target_fields': sites})
+                             'target_fields': None})
 
 
 def prep_dynamics(conf, sites, sentinel=False):
@@ -149,12 +200,10 @@ if __name__ == '__main__':
     for project in ['5_Flux_Ensemble']:
 
         if project == '4_Flux_Network':
-            western_only = True
-            snodas_indexer = None
+            sentinel = True
 
         if project == '5_Flux_Ensemble':
-            western_only = True
-            snodas_indexer = 'field_1'
+            sentinel = True
 
         home = os.path.expanduser('~')
         config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
@@ -162,14 +211,15 @@ if __name__ == '__main__':
         config = ProjectConfig()
         config.read_config(config_file)
 
-        select_sites = get_flux_sites(config.station_metadata_csv, crop_only=True, western_only=western_only, header=1,
-                                      index_col=0)
+        # select_sites = get_flux_sites(config.station_metadata_csv, crop_only=True, western_only=western_only, header=1,
+        #                               index_col=0)
+        select_sites = ['ALARC2_Smith6', 'US-FPe']
 
         prep_earthengine_extracts(config, select_sites, overwrite=True, add_sentinel=True)
-        prep_field_properties(config, select_sites)
-        prep_snow(config, snodas_indexer)
-        prep_timeseries(config, select_sites)
-        prep_dynamics(config, select_sites, sentinel=True)
-        prep_input_json(config, select_sites)
+        # prep_field_properties(config, select_sites)
+        # prep_snow(config, snodas_indexer)
+        # prep_timeseries(config, select_sites)
+        # prep_dynamics(config, select_sites, sentinel=True)
+        # prep_input_json(config, select_sites)
 
 # ========================= EOF ====================================================================

@@ -37,28 +37,32 @@ def extract_remote_sensing(conf, sites, get_sentinel=False, selected_models=None
     from data_extraction.ee.ndvi_export import sparse_sample_ndvi
     is_authorized()
 
-    models = get_ensemble_parameters(skip='ndvi')
-    models = list(set([m[0] for m in models]))
-    for src in ['ndvi', 'etf']:
+    models = [conf.etf_target_model] + conf.etf_ensemble_members
+    for src in ['ndvi']:
         for mask in ['irr', 'inv_irr']:
 
             if src == 'ndvi':
                 print(src, mask)
                 dst = os.path.join(conf.landsat_dir, 'extracts', src, mask)
-                sparse_sample_ndvi(conf.footprint_shapefile_shp, bucket=conf.ee_bucket, debug=False, grid_spec=3,
+                sparse_sample_ndvi(conf.footprint_shapefile_shp, bucket=conf.ee_bucket, debug=False,
                                    mask_type=mask, check_dir=dst, start_yr=1987, end_yr=2024,
                                    feature_id=conf.feature_id_col, satellite='landsat',
                                    state_col=conf.state_col, select=sites)
 
                 if get_sentinel:
                     dst = os.path.join(conf.sentinel_dir, 'extracts', src, mask)
-                    sparse_sample_ndvi(conf.footprint_shapefile_shp, bucket=conf.ee_bucket, debug=False, grid_spec=3,
-                                       mask_type=mask, check_dir=dst, start_yr=2018, end_yr=2024,
+                    sparse_sample_ndvi(conf.footprint_shapefile_shp, bucket=conf.ee_bucket, debug=False,
+                                       mask_type=mask, check_dir=dst, start_yr=2017, end_yr=2024,
                                        feature_id=conf.feature_id_col, satellite='sentinel',
                                        state_col=conf.state_col, select=sites)
 
             if src == 'etf':
+                # TODO: refactor ptjpl and sims model code into this code block
                 for model in models:
+
+                    if model in ['ptjpl', 'sims']:
+                        print(f'These were build with OpenET software')
+                        continue
 
                     if selected_models is not None and model not in selected_models:
                         continue
@@ -66,38 +70,38 @@ def extract_remote_sensing(conf, sites, get_sentinel=False, selected_models=None
                     dst = os.path.join(conf.landsat_dir, 'extracts', f'{model}_{src}', mask)
                     print(src, mask, model)
 
-                    sparse_sample_etf(conf.footprint_shapefile_shp, bucket=conf.ee_bucket, debug=False, grid_spec=3,
+                    sparse_sample_etf(conf.footprint_shapefile_shp, bucket=conf.ee_bucket, debug=False,
                                       mask_type=mask, check_dir=dst, start_yr=2016, end_yr=2024,
                                       feature_id=conf.feature_id_col,
                                       state_col=conf.state_col, select=sites, model=model)
 
 
 def extract_gridmet(conf, sites):
-    from data_extraction.gridmet.gridmet import get_gridmet_corrections
+    from data_extraction.gridmet.gridmet import assign_gridmet_and_corrections
     from data_extraction.gridmet.gridmet import download_gridmet
 
-    get_gridmet_corrections(fields=conf.gridmet_mapping_shp,
-                            gridmet_ras=conf.correction_tifs,
-                            fields_join=conf.gridmet_mapping_shp,
-                            factors_js=conf.gridmet_factors,
-                            feature_id='field_1',
-                            field_select=sites)
+    # infer hourly NLDAS need from runoff mode only at download callsite
+    nldas_needed = (conf.swb_mode == 'ier')
+
+    assign_gridmet_and_corrections(fields=conf.gridmet_mapping_shp,
+                                   gridmet_ras=conf.correction_tifs,
+                                   fields_join=conf.gridmet_mapping_shp,
+                                   factors_js=conf.gridmet_factors,
+                                   feature_id='site_id',
+                                   field_select=sites)
 
     download_gridmet(conf.gridmet_mapping_shp, conf.gridmet_factors, conf.met_dir, start='1987-01-01', end='2024-12-31',
-                     overwrite=False, append=False,
+                     overwrite=False, append=True, use_nldas=nldas_needed,
                      feature_id=conf.gridmet_mapping_index_col, target_fields=sites)
 
 
 if __name__ == '__main__':
 
-    for project in ['4_Flux_Network']:
+    for project in ['5_Flux_Ensemble', '4_Flux_Network']:
 
         if project == '5_Flux_Ensemble':
-            western_only = True
             models_select = None
-
         else:
-            western_only = True
             models_select = ['ssebop']
 
         home = os.path.expanduser('~')
@@ -106,12 +110,13 @@ if __name__ == '__main__':
         config = ProjectConfig()
         config.read_config(config_file)
 
-        select_sites = get_flux_sites(config.station_metadata_csv, crop_only=False, western_only=False, header=1,
-                                      index_col=0)
+        # select_sites = get_flux_sites(config.station_metadata_csv, crop_only=False, western_only=False, header=1,
+        #                               index_col=0)
+        select_sites = None
 
-        extract_snodas(config)
-        extract_properties(config)
-        extract_remote_sensing(config, select_sites)
-        extract_gridmet(config, select_sites)
+        # extract_snodas(config)
+        # extract_properties(config)
+        extract_remote_sensing(config, select_sites, get_sentinel=True)
+        # extract_gridmet(config, select_sites)
 
 # ========================= EOF ====================================================================
