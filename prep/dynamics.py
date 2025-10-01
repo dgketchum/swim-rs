@@ -4,6 +4,7 @@ import os
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from concurrent.futures import ProcessPoolExecutor
 
 from prep.ndvi_regression import sentinel_adjust_quantile_mapping
 
@@ -11,7 +12,7 @@ from prep.ndvi_regression import sentinel_adjust_quantile_mapping
 class SamplePlotDynamics:
     def __init__(self, plot_timeseries, properties_json, out_json_file, etf_target='ssebop',
                  irr_threshold=0.1, select=None, masks=('no_mask',), instruments=('landsat',),
-                 use_mask=False, use_lulc=False):
+                 use_mask=False, use_lulc=False, num_workers=12):
 
         self.time_series = plot_timeseries
 
@@ -24,6 +25,7 @@ class SamplePlotDynamics:
         self.masks = masks
         self.target_fid = None
         self.instruments = list(instruments)
+        self.num_workers = num_workers
 
         self.use_mask = use_mask
         self.use_lulc = use_lulc
@@ -57,6 +59,15 @@ class SamplePlotDynamics:
             if field_data is not None:
                 self.fields['irr'][fid] = field_data
 
+    def analyze_irrigation_field(self, fid, lookback=10):
+        _file = os.path.join(self.time_series, f'{fid}.parquet')
+        try:
+            field_time_series = pd.read_parquet(_file)
+        except FileNotFoundError:
+            return None
+        self.years = [int(y) for y in field_time_series.index.year.unique()]
+        return self._analyze_field_irrigation(fid, field_time_series, lookback)
+
     def analyze_groundwater_subsidy(self):
 
         for fid, data in tqdm(self.properties.items(), desc='Analyzing Groundwater Subsidy',
@@ -78,6 +89,15 @@ class SamplePlotDynamics:
             if field_data is not None:
                 self.fields['gwsub'][fid] = field_data
 
+    def analyze_groundwater_subsidy_field(self, fid):
+        _file = os.path.join(self.time_series, f'{fid}.parquet')
+        try:
+            field_time_series = pd.read_parquet(_file)
+        except FileNotFoundError:
+            return None
+        self.years = [int(y) for y in field_time_series.index.year.unique()]
+        return self._analyze_field_groundwater_subsidy(fid, field_time_series)
+
     def analyze_k_parameters(self):
         for fid, data in tqdm(self.properties.items(), desc='Calculating K Parameters', total=len(self.properties)):
 
@@ -94,6 +114,18 @@ class SamplePlotDynamics:
                 continue
 
             self._find_field_k_parameters(fid, field_time_series)
+
+    def analyze_k_parameters_field(self, fid):
+        _file = os.path.join(self.time_series, f'{fid}.parquet')
+        try:
+            field_time_series = pd.read_parquet(_file)
+        except FileNotFoundError:
+            return None, None
+        self._find_field_k_parameters(fid, field_time_series)
+        try:
+            return self.fields['ke_max'][fid], self.fields['kc_max'][fid]
+        except KeyError:
+            return None, None
 
     def save_json(self):
         with open(self.out_json_file, 'w') as fp:
@@ -259,43 +291,20 @@ class SamplePlotDynamics:
         else:
             cropped = lulc_code in [12, 13, 14]
 
-        for yr in self.years:
+        # build fused NDVI once per field near the start
+        if self.use_mask:
+            masks_to_build = ['irr', 'inv_irr']
+        else:
+            masks_to_build = ['no_mask']
+        df = self._ensure_combined_ndvi(field, df, masks_to_build)
 
-            if yr == self.years[0]:
-                extended_years = [yr, yr + 1]
-            elif yr == self.years[-1]:
-                extended_years = [yr - 1, yr]
-            else:
-                extended_years = [yr - 1, yr, yr + 1]
+        for yr in self.years:
+            t_index, ext_index, extended_years = self._resolve_year_context(df.index, yr, self.years)
 
             if yr not in etf_years and self.use_lulc and backfill_irr:
                 irr_fill.append(yr)
 
-            t_index = [i for i in df.index if i.year == yr]
-            ext_index = [i for i in df.index if i.year in extended_years]
-
-            ppt_ = df.loc[ext_index, idx[:, :, ['prcp'], :, :, ['no_mask']]]
-            eto_ = df.loc[ext_index, idx[:, :, ['eto'], :, :, ['no_mask']]]
-
-            etf_ = df.loc[ext_index, idx[:, :, ['etf'], :, [self.model], :]]
-            if etf_.shape[1] > 1:
-                # mutliple mask options
-                if len(etf_.columns.levels[5]) > 1 and etf_.shape[1] > 1:
-                    etf_ = df.loc[ext_index, idx[:, :, ['etf'], :, [self.model], 'irr']]
-
-                # multiple instruments
-                if len(etf_.columns.levels[1]) > 1 and etf_.shape[1] > 1:
-                    etf_ = etf_.loc[ext_index, idx[:, self.instruments,
-                                               ['etf'], :, [self.model], :]].mean(axis=1).values.reshape((-1, 1))
-
-            ydf = pd.DataFrame(data=np.array([etf_, ppt_, eto_]).T[0], index=ext_index,
-                               columns=['etf', 'ppt', 'eto'])
-
-            ydf['etf'] = ydf['etf'].interpolate()
-            ydf['etf'] = ydf['etf'].bfill().ffill()
-            ydf['eta'] = ydf['etf'] * ydf['eto']
-
-            ydf['doy'] = [i.dayofyear for i in ydf.index]
+            ydf = self._build_et_frame(df, ext_index)
 
             irr_doys, periods = [], 0
 
@@ -333,116 +342,11 @@ class SamplePlotDynamics:
                 print(f'{field} in {yr} is empty')
                 return None
 
-            ydf['doy'] = [i.dayofyear for i in ydf.index]
-
-            if self.use_mask:
-                mask = 'irr'
-            else:
-                mask = 'no_mask'
-
-            ndvi_ = df.loc[ext_index, idx[:, :, ['ndvi'], :, :, mask]]
-
-            # too-complex check for pre- and post- year-of-interest unirrigated
-            if mask == 'irr':
-                for y_ in extended_years:
-                    if y_ == yr:
-                        continue
-                    for instrument in self.instruments:
-                        idx_ = [i for i in df.index if i.year == y_]
-                        nd_check = df.loc[idx_, idx[:, [instrument], ['ndvi'], :, :, mask]]
-                        if np.all(np.isnan(nd_check.values)):
-                            if instrument == 'landsat':
-                                inv_irr = df.loc[idx_, idx[:, [instrument], ['ndvi'], :, :, 'inv_irr']].copy()
-                                ndvi_.loc[idx_, idx[:, [instrument], ['ndvi'], :, :, 'irr']] = inv_irr.values
-                            else:
-                                try:
-                                    inv_irr = df.loc[idx_, idx[:, [instrument], ['ndvi'], :, :, 'inv_irr']].copy()
-                                except KeyError:
-                                    continue
-                                try:
-                                    ndvi_.loc[idx_, idx[:, [instrument], ['ndvi'], :, :, 'irr']] = inv_irr.values
-                                except ValueError:
-                                    ndvi_.loc[idx_, idx[:, [instrument], ['ndvi'], :, ['quantile_adj_to_landsat'], 'irr']] = inv_irr.values
-
-            if ndvi_.shape[1] > 1:
-
-                lndvi = df.loc[ext_index, idx[:, ['landsat'], ['ndvi'], :, :, mask]]
-                sndvi = df.loc[ext_index, idx[:, ['sentinel'], ['ndvi'], :, :, mask]]
-
-                if np.isnan(sndvi.loc[t_index].values).sum() == sndvi.loc[t_index].shape[0]:
-                    ndvi_ = lndvi.values.flatten()
-
-                else:
-                    ndvi_alg_cols = [c[4] for c in df.columns if 'ndvi' in c[2]]
-                    adj_col_name = 'quantile_adj_to_landsat'
-
-                    if adj_col_name not in ndvi_alg_cols:
-                        lndvi = df.loc[:, idx[:, ['landsat'], ['ndvi'], :, :, mask]]
-                        sndvi = df.loc[:, idx[:, ['sentinel'], ['ndvi'], :, :, mask]]
-                        sent_adj_ndvi = sentinel_adjust_quantile_mapping(sentinel_ndvi_df=sndvi, landsat_ndvi_df=lndvi,
-                                                                         min_pairs=20, window_days=1)
-                        df[field, 'sentinel', 'ndvi', 'none', adj_col_name, mask] = sent_adj_ndvi
-
-                    sndvi = df.loc[ext_index, idx[:, ['sentinel'], ['ndvi'], :, adj_col_name, mask]].copy()
-                    lndvi = df.loc[ext_index, idx[:, ['landsat'], ['ndvi'], :, :, mask]].copy()
-
-                    ndvi_ = pd.concat([lndvi, sndvi], ignore_index=False, axis=1).mean(axis=1)
+            mask = self._select_mask()
+            ndvi_ = self._compose_ndvi(field, df, ext_index, t_index, mask, extended_years)
 
             ydf['ndvi'] = ndvi_
-
-            ydf['ndvi'] = ydf['ndvi'].interpolate()
-            ydf['ndvi'] = ydf['ndvi'].bfill().ffill()
-
-            ydf['ndvi'] = ydf['ndvi'].rolling(window=32, center=True).mean()
-
-            ydf['ndvi'] = ydf['ndvi'].bfill().ffill()
-
-            ydf['diff'] = ydf['ndvi'].diff()
-
-            nan_ct = np.count_nonzero(np.isnan(ydf['ndvi'].values))
-            if nan_ct > 200:
-                fallow.append(yr)
-                continue
-
-            local_min_indices = ydf[(ydf['diff'] > 0) & (ydf['diff'].shift(1) < 0)].index
-
-            positive_slope = (ydf['diff'] > 0)
-            groups = (positive_slope != positive_slope.shift()).cumsum()
-            ydf['groups'] = groups
-            group_counts = positive_slope.groupby(groups).sum()
-            long_positive_slope_groups = group_counts[group_counts >= 10].index
-
-            for group in long_positive_slope_groups:
-                group_indices = positive_slope[groups == group].index
-                start_index = group_indices[0]
-                end_index = group_indices[-1]
-
-                if start_index in local_min_indices:
-                    start_day = (start_index - pd.Timedelta(days=lookback))
-                else:
-                    start_day = start_index
-
-                end_day = (end_index + pd.Timedelta(days=2))
-
-                prev_day_ndvi = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
-
-                if prev_day_ndvi > 0.3:
-
-                    ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
-
-                    while ndvi_doy > 0.3 and end_day in ydf.index:
-                        end_day += pd.Timedelta(days=1)
-                        ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
-
-                if group + 1 in groups.to_list() and (ydf[ydf['groups'] == group + 1]['ndvi']).values.min() > 0.3:
-                    end_day = ydf[ydf['groups'] == group + 1].index[-1]
-
-                end_day = (end_day + pd.Timedelta(days=1))
-                doys = [i.dayofyear for i in pd.date_range(start_day, end_day) if i.year == yr]
-                irr_doys.extend(doys)
-                periods += 1
-
-            irr_doys = sorted(list(set(irr_doys)))
+            irr_doys = self._detect_irrigation_windows(ydf['ndvi'], lookback, year=yr)
 
             if len(irr_doys) == 0:
                 if backfill_irr:
@@ -453,15 +357,8 @@ class SamplePlotDynamics:
                               'irrigated': int(irrigated),
                               'f_irr': f_irr}
 
-        for yr in irr_fill:
-            candidates = [y for y in field_data if 'f_irr' in field_data[y] and field_data[y]['f_irr'] > 0]
-            if not candidates:
-                continue
-
-            diffs = [abs(yr - y) for y in candidates]
-            min_idx = diffs.index(min(diffs))
-            best_match = candidates[min_idx]
-            field_data[yr]['irr_doys'] = field_data[best_match]['irr_doys']
+        if backfill_irr and irr_fill:  # likely bug: irr_fill can be None when backfill_irr=False
+            field_data = self._backfill_irrigation_days(field_data, irr_fill)
 
         field_data['fallow_years'] = fallow
         return field_data
@@ -515,34 +412,223 @@ class SamplePlotDynamics:
         self.fields['kc_max'][fid] = float(kc_max)
 
 
+    def _resolve_year_context(self, index, yr, years):
+        if yr == years[0]:
+            extended_years = [yr, yr + 1]
+        elif yr == years[-1]:
+            extended_years = [yr - 1, yr]
+        else:
+            extended_years = [yr - 1, yr, yr + 1]
+        t_index = [i for i in index if i.year == yr]
+        ext_index = [i for i in index if i.year in extended_years]
+        return t_index, ext_index, extended_years
+
+    def _select_mask(self):
+        if self.use_mask:
+            return 'irr'
+        return 'no_mask'
+
+    def _build_et_frame(self, df, ext_index):
+        idx = pd.IndexSlice
+        ppt_ = df.loc[ext_index, idx[:, :, ['prcp'], :, :, ['no_mask']]]
+        eto_ = df.loc[ext_index, idx[:, :, ['eto'], :, :, ['no_mask']]]
+        etf_ = df.loc[ext_index, idx[:, :, ['etf'], :, [self.model], :]]
+        if etf_.shape[1] > 1:
+            # mutliple mask options
+            if len(etf_.columns.levels[5]) > 1 and etf_.shape[1] > 1:  # brittle: relies on MultiIndex level positions
+                etf_ = df.loc[ext_index, idx[:, :, ['etf'], :, [self.model], 'irr']]
+            # multiple instruments
+            if len(etf_.columns.levels[1]) > 1 and etf_.shape[1] > 1:  # brittle: relies on MultiIndex level positions
+                etf_ = etf_.loc[ext_index, idx[:, self.instruments, ['etf'], :, [self.model], :]].mean(
+                    axis=1).values.reshape((-1, 1))
+
+        def _first_col(x):
+            try:
+                return x.iloc[:, 0]
+            except Exception:
+                return x
+
+        s_etf = _first_col(etf_)
+        s_ppt = _first_col(ppt_)
+        s_eto = _first_col(eto_)
+        ydf = pd.concat([s_etf.rename('etf'), s_ppt.rename('ppt'), s_eto.rename('eto')], axis=1)
+        ydf['etf'] = ydf['etf'].interpolate()
+        ydf['etf'] = ydf['etf'].bfill().ffill()
+        ydf['eta'] = ydf['etf'] * ydf['eto']
+        ydf['doy'] = [i.dayofyear for i in ydf.index]
+        return ydf
+
+    def _compose_ndvi(self, field, df, ext_index, t_index, mask, extended_years):
+        idx = pd.IndexSlice
+        # assume fused NDVI exists under instrument 'combined'
+        ndvi_ = df.loc[ext_index, idx[:, ['combined'], ['ndvi'], :, :, mask]].copy()
+
+        # maintain extended-year inv_irr infill when 'irr' has all NaN
+        if mask == 'irr':
+            for y_ in extended_years:
+                if t_index and y_ == pd.DatetimeIndex(t_index)[0].year:
+                    continue
+                idx_ = [i for i in df.index if i.year == y_]
+                try:
+                    nd_check = df.loc[idx_, idx[:, ['combined'], ['ndvi'], :, :, 'irr']]
+                except KeyError:
+                    nd_check = df.loc[idx_, idx[:, ['combined'], ['ndvi'], :, :, 'inv_irr']] * np.nan
+                if np.all(np.isnan(nd_check.values)):
+                    try:
+                        inv_irr = df.loc[idx_, idx[:, ['combined'], ['ndvi'], :, :, 'inv_irr']].copy()
+                    except KeyError:
+                        continue
+                    ndvi_.loc[idx_, idx[:, ['combined'], ['ndvi'], :, :, 'irr']] = inv_irr.values
+
+        ndvi_series = ndvi_.T.squeeze()
+        return ndvi_series
+
+    def _ensure_combined_ndvi(self, field, df, masks_to_build):
+        idx = pd.IndexSlice
+        for m in masks_to_build:
+            try:
+                existing = df.loc[:, idx[:, ['combined'], ['ndvi'], :, :, m]]
+                if existing.shape[1] >= 1:
+                    continue
+            except KeyError:
+                pass
+
+            try:
+                lndvi_df = df.loc[:, idx[:, ['landsat'], ['ndvi'], :, :, m]]
+            except KeyError:
+                lndvi_df = None
+            try:
+                sndvi_df = df.loc[:, idx[:, ['sentinel'], ['ndvi'], :, :, m]]
+            except KeyError:
+                sndvi_df = None
+
+            if lndvi_df is None and sndvi_df is None:
+                continue
+
+            if lndvi_df is not None and sndvi_df is not None:
+                sent_adj = sentinel_adjust_quantile_mapping(sentinel_ndvi_df=sndvi_df, landsat_ndvi_df=lndvi_df,
+                                                            min_pairs=20, window_days=1)
+                l_series = lndvi_df.mean(axis=1)
+                s_series = sent_adj
+                combined = pd.concat([l_series, s_series], axis=1).mean(axis=1)
+            elif lndvi_df is not None:
+                combined = lndvi_df.mean(axis=1)
+            else:
+                combined = sndvi_df.mean(axis=1)
+
+            df[field, 'combined', 'ndvi', 'none', 'none', m] = combined
+        return df
+
+    def _detect_irrigation_windows(self, ndvi_series, lookback, ndvi_threshold=0.3, min_pos_days=10, year=None):
+        ydf = pd.DataFrame({'ndvi': ndvi_series})
+        ydf['ndvi'] = ydf['ndvi'].interpolate()
+        ydf['ndvi'] = ydf['ndvi'].bfill().ffill()
+        ydf['ndvi'] = ydf['ndvi'].rolling(window=32, center=True).mean()
+        ydf['ndvi'] = ydf['ndvi'].bfill().ffill()
+        ydf['diff'] = ydf['ndvi'].diff()
+        if np.count_nonzero(np.isnan(ydf['ndvi'].values)) > 200:
+            return []
+        local_min_indices = ydf[(ydf['diff'] > 0) & (ydf['diff'].shift(1) < 0)].index
+        positive_slope = (ydf['diff'] > 0)
+        groups = (positive_slope != positive_slope.shift()).cumsum()
+        ydf['groups'] = groups
+        group_counts = positive_slope.groupby(groups).sum()
+        long_positive_slope_groups = group_counts[group_counts >= min_pos_days].index
+        irr_doys = []
+        for group in long_positive_slope_groups:
+            group_indices = positive_slope[groups == group].index
+            start_index = group_indices[0]
+            end_index = group_indices[-1]
+            if start_index in local_min_indices:
+                start_day = (start_index - pd.Timedelta(days=lookback))
+            else:
+                start_day = start_index
+            end_day = (end_index + pd.Timedelta(days=2))
+            prev_day_ndvi = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
+            if prev_day_ndvi > ndvi_threshold:
+                ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
+                while ndvi_doy > ndvi_threshold and end_day in ydf.index:
+                    end_day += pd.Timedelta(days=1)
+                    ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1)]['ndvi']
+            if group + 1 in groups.to_list() and (
+            ydf[ydf['groups'] == group + 1]['ndvi']).values.min() > ndvi_threshold:
+                end_day = ydf[ydf['groups'] == group + 1].index[-1]
+            end_day = (end_day + pd.Timedelta(days=1))
+            if year is not None:
+                doys = [i.dayofyear for i in pd.date_range(start_day, end_day) if i.year == year]
+            else:
+                doys = [i.dayofyear for i in pd.date_range(start_day, end_day)]
+            irr_doys.extend(doys)
+        irr_doys = sorted(list(set(irr_doys)))
+        return irr_doys
+
+    def _backfill_irrigation_days(self, field_data, irr_fill):
+        for yr in irr_fill:
+            candidates = [y for y in field_data if 'f_irr' in field_data[y] and field_data[y]['f_irr'] > 0]
+            if not candidates:
+                continue
+            diffs = [abs(yr - y) for y in candidates]
+            min_idx = diffs.index(min(diffs))
+            best_match = candidates[min_idx]
+            field_data[yr]['irr_doys'] = field_data[best_match]['irr_doys']
+        return field_data
+
+
+def _process_single_field(args):
+    (plot_timeseries, properties_json, out_json_file, etf_target, irr_threshold,
+     select, masks, instruments, use_mask, use_lulc, fid, lookback) = args
+
+    d = SamplePlotDynamics(plot_timeseries, properties_json, out_json_file,
+                           etf_target=etf_target, irr_threshold=irr_threshold,
+                           select=[fid], masks=masks, instruments=instruments,
+                           use_mask=use_mask, use_lulc=use_lulc)
+    irr = d.analyze_irrigation_field(fid, lookback)
+    gw = d.analyze_groundwater_subsidy_field(fid)
+    ke, kc = d.analyze_k_parameters_field(fid)
+    return fid, irr, gw, ke, kc
+
+
+def process_dynamics_batch(plot_timeseries, properties_json, out_json_file, etf_target='ssebop',
+                           irr_threshold=0.1, select=None, masks=('no_mask',), instruments=('landsat',),
+                           use_mask=False, use_lulc=False, lookback=10, num_workers=12):
+    with open(properties_json, 'r') as fp:
+        props = json.load(fp)
+
+    fids = [fid for fid in props if not select or fid in select]
+
+    results = {'irr': {}, 'gwsub': {}, 'ke_max': {}, 'kc_max': {}}
+
+    args = [(plot_timeseries, properties_json, out_json_file, etf_target, irr_threshold,
+             select, masks, instruments, use_mask, use_lulc, fid, lookback)
+            for fid in fids]
+
+    if num_workers == 1:
+        for a in tqdm(args, desc='Dynamics (serial)', total=len(args)):
+            fid, irr, gw, ke, kc = _process_single_field(a)
+            if irr is not None:
+                results['irr'][fid] = irr
+            if gw is not None:
+                results['gwsub'][fid] = gw
+            if ke is not None and kc is not None:
+                results['ke_max'][fid] = float(ke)
+                results['kc_max'][fid] = float(kc)
+    else:
+        with ProcessPoolExecutor(max_workers=num_workers) as ex:
+            for fid, irr, gw, ke, kc in tqdm(ex.map(_process_single_field, args),
+                                             desc='Dynamics (parallel)', total=len(args)):
+                if irr is not None:
+                    results['irr'][fid] = irr
+                if gw is not None:
+                    results['gwsub'][fid] = gw
+                if ke is not None and kc is not None:
+                    results['ke_max'][fid] = float(ke)
+                    results['kc_max'][fid] = float(kc)
+
+    with open(out_json_file, 'w') as fp:
+        json.dump(results, fp, indent=4)
+        print(f'wrote {out_json_file}')
+
 if __name__ == '__main__':
-    project = '5_Flux_Ensemble'
-
-    root = '/data/ssd2/swim'
-    data = os.path.join(root, project, 'data')
-    if not os.path.isdir(root):
-        root = '/home/dgketchum/PycharmProjects/swim-rs'
-        data = os.path.join(root, 'tutorials', project, 'data')
-
-    station_file = os.path.join(data, 'station_metadata.csv')
-
-    irr = os.path.join(data, 'properties', 'calibration_irr.csv')
-
-    landsat = os.path.join(data, 'landsat')
-
-    joined_timeseries = os.path.join(data, 'plot_timeseries')
-
-    FEATURE_ID = 'field_1'
-
-    cuttings_json = os.path.join(landsat, 'calibration_dynamics.json')
-
-    sites_ = get_flux_sites(station_file)
-
-    dynamics = SamplePlotDynamics(joined_timeseries, irr, irr_threshold=0.3, etf_target='openet',
-                                  out_json_file=cuttings_json, select=sites_)
-    dynamics.analyze_groundwater_subsidy()
-    dynamics.analyze_irrigation(lookback=5)
-    dynamics.analyze_k_parameters()
-    dynamics.save_json()
+    pass
 
 # ========================= EOF ====================================================================

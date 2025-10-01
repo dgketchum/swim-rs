@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+import json
 
 import geopandas as gpd
 import numpy as np
@@ -10,31 +11,23 @@ from prep import COLUMN_MULTIINDEX
 
 
 def sparse_time_series(in_shp, csv_dir, years, out_pqt, feature_id='FID', instrument='landsat', parameter='ndvi',
-                       algorithm='none', mask='no_mask', select=None, footprint_spec=None):
+                       algorithm='none', mask='no_mask', select=None, counts_json_path=None):
     """"""
     gdf = gpd.read_file(in_shp)
     gdf.index = gdf[feature_id]
-
-    if select:
-        dummy = select.copy()
-        select = [s for s in dummy if s in gdf.index]
-        dropped = [s for s in dummy if s not in select]
-        print(f'dropping {dropped} not found in index')
-        gdf = gdf.loc[select]
-
-    if footprint_spec:
-        gdf = gdf[gdf['grid_size'] == footprint_spec]
 
     print(csv_dir)
 
     adf, ctdf, first, prev_df = None, None, True, None
 
-    if footprint_spec is None:
-        file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
-                     x.endswith('.csv')]
-    else:
-        file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
-                     x.endswith('.csv') and f'_p{footprint_spec}' in x]
+    # Collect per-station, per-model, per-mask yearly non-NaN observation counts
+    # Structure: {station_id: {algorithm: {mask: {year: count}}}}
+    obs_counts = {sid: {} for sid in gdf.index}
+
+    file_list = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if
+                 x.endswith('.csv')]
+    if len(file_list) == 0:
+        raise FileNotFoundError(f'no files found in {csv_dir}')
 
     rs_years = set([os.path.basename(f).split('.')[0].split('_')[-1] for f in file_list])
     rs_years = sorted([int(y) for y in rs_years])
@@ -48,7 +41,12 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, feature_id='FID', instru
     target_columns = pd.MultiIndex.from_tuples(target_columns,
                                                names=COLUMN_MULTIINDEX)
 
+    # Initialize zero counts for years with no remote sensing data
     if len(empty_yrs) > 0:
+        for sid in gdf.index:
+            obs_counts.setdefault(sid, {}).setdefault(algorithm, {}).setdefault(mask, {})
+            for y in empty_yrs:
+                obs_counts[sid][algorithm][mask][y] = 0
         print(f'{len(empty_yrs)} years without remote sensing data, {empty_yrs[0]} to {empty_yrs[-1]}')
         dt_index = pd.date_range('{}-01-01'.format(empty_yrs[0]), '{}-12-31'.format(empty_yrs[-1]), freq='D')
         adf = pd.DataFrame(data=np.zeros((len(dt_index), len(gdf.index))) * np.nan,
@@ -63,15 +61,16 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, feature_id='FID', instru
 
         data_series_list_for_year = []
 
-        if footprint_spec is None:
-            yr_files = [f for f in file_list if f'_{yr}' in f]
-        else:
-            yr_files = [f for f in file_list if f'_{yr}' in f and f'_p{footprint_spec}' in f]
+        yr_files = [f for f in file_list if f'_{yr}.csv' in f]
 
         if len(yr_files) > 0:
             for f in yr_files:
                 field_data_csv = pd.read_csv(f)
-                sid = field_data_csv.columns[0]
+
+                try:
+                    sid = field_data_csv.iloc[0][feature_id]
+                except KeyError:
+                    sid = field_data_csv.columns[0]
 
                 if sid not in gdf.index:
                     continue
@@ -137,6 +136,16 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, feature_id='FID', instru
         else:
             df = pd.DataFrame(np.nan, index=dt_index, columns=target_columns)
 
+        # Update yearly non-NaN counts per station for this model and mask
+        for sid in gdf.index:
+            col = (sid, instrument, parameter, 'unitless', algorithm, mask)
+            obs_counts.setdefault(sid, {}).setdefault(algorithm, {}).setdefault(mask, {})
+            try:
+                count_val = int(df[col].notna().sum())
+            except KeyError:
+                count_val = 0
+            obs_counts[sid][algorithm][mask][yr] = count_val
+
         if first:
             adf = df.copy()
             first = False
@@ -149,10 +158,48 @@ def sparse_time_series(in_shp, csv_dir, years, out_pqt, feature_id='FID', instru
     if adf is not None:
         adf = adf.sort_index()
         adf = adf.dropna(how='all', axis=1)
+        if np.any([s ==0 for s in adf.shape]):
+            raise ValueError(f'Dataframe is empty!: {adf.shape}')
         adf.to_parquet(out_pqt, engine='pyarrow')
         print(f'wrote {out_pqt} with {adf.shape[1]} columns from {adf.index[0]} to {adf.index[-1]}')
     else:
         print(f'No data processed for {out_pqt}')
+
+    # Provide a concise summary to aid debugging
+    try:
+        stations_with_data = {}
+        for sid, algs in obs_counts.items():
+            stations_with_data[sid] = 0
+            for alg, masks in algs.items():
+                if mask in masks:
+                    stations_with_data[sid] += sum(1 for y, c in masks[mask].items() if c > 0)
+        nonzero_counts = sum(1 for v in stations_with_data.values() if v > 0)
+        print(f"Model '{algorithm}', mask '{mask}': {nonzero_counts}/{len(stations_with_data)} stations with any observations.")
+    except Exception:
+        pass
+
+    # Optionally write counts to JSON for downstream aggregation
+    try:
+        if counts_json_path is None:
+            base, _ = os.path.splitext(out_pqt)
+            counts_json_path = f"{base}_obs_counts.json"
+
+        # Ensure serializable: convert numpy types and year keys to str
+        serializable = {}
+        for sid, alg_dict in obs_counts.items():
+            serializable[str(sid)] = {}
+            for alg, mask_dict in alg_dict.items():
+                serializable[str(sid)][str(alg)] = {}
+                for msk, year_dict in mask_dict.items():
+                    serializable[str(sid)][str(alg)][str(msk)] = {str(int(y)): int(c) for y, c in year_dict.items()}
+
+        with open(counts_json_path, 'w') as fp:
+            json.dump(serializable, fp, indent=2)
+        print(f"Wrote observation counts JSON: {counts_json_path}")
+    except Exception as e:
+        print(f"Failed writing counts JSON: {e}")
+
+    return obs_counts, counts_json_path
 
 
 def join_remote_sensing(files, dst, station_selection='exclusive'):

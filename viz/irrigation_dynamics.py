@@ -13,8 +13,7 @@ from prep.prep_plots import prep_fields_json
 
 
 def irrigation_timeseries(field_data, feature, out_dir=None):
-
-    for year in range(2006, 2023):
+    for year in range(1987, 2023):
         field = field_data.input['irr_data'][f'{feature}'][str(year)]
 
         column, desc, color = f'ndvi_irr', f'Irrigated NDVI (Smoothed) - {feature}', 'green'
@@ -103,49 +102,39 @@ if __name__ == '__main__':
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
 
-        if site_ not in ['S2']:
+        if site_ not in ['ALARC2_Smith6']:
             continue
 
         print(f'\n{ee} {site_}: {lulc}')
 
         output_ = os.path.join(run_const, site_)
 
-        for branch in ['ptjpl']:
+        target_dir = os.path.join(config.project_ws, 'ptjpl_test', site_)
+        station_prepped_input = os.path.join(target_dir, f'prepped_input_{site_}.json')
+        models = [config.etf_target_model]
+        if config.etf_ensemble_members is not None:
+            models += config.etf_ensemble_members
 
-            if branch == 'ptjpl':
-                target_dir = os.path.join(config.project_ws, 'ptjpl_test', site_)
-                station_prepped_input = os.path.join(target_dir, f'prepped_input_{site_}.json')
-                models = [config.etf_target_model]
-                if config.etf_ensemble_members is not None:
-                    models += config.etf_ensemble_members
+        dynamics = '/data/ssd2/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_dynamics.json'
+        # dynamics = config.dynamics_data_json
 
-                # dynamics = '/data/ssd2/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_dynamics.json'
-                dynamics = config.dynamics_data_json
+        rs_params_ = get_ensemble_parameters(include=models)
+        prep_fields_json(config.properties_json, config.plot_timeseries, dynamics,
+                         station_prepped_input, target_plots=[site_], rs_params=rs_params_,
+                         interp_params=('ndvi',))
 
-                rs_params_ = get_ensemble_parameters(include=models)
-                prep_fields_json(config.properties_json, config.plot_timeseries, dynamics,
-                                 station_prepped_input, target_plots=[site_], rs_params=rs_params_,
-                                 interp_params=('ndvi',))
+        config.input_data = station_prepped_input
 
+        out_fig_dir_ = os.path.join(os.path.expanduser('~'), 'Downloads', 'figures', 'irrigation', 'reorg')
 
-            elif branch == 'main':
-                station_prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
+        plots_ = SamplePlots()
 
-            else:
-                raise ValueError
+        config.input_data = station_prepped_input
 
-            config.input_data = station_prepped_input
+        plots_.initialize_plot_data(config)
 
-            out_fig_dir_ = os.path.join(os.path.expanduser('~'), 'Downloads', 'figures', 'irrigation', f'{branch}')
+        # months = [i for sl in [plots_.input['gwsub_data'][site_][str(yr)]['months'] for yr in range(1987, 2025)] for i in sl]
+        # print(f'{branch}: {len(months)} months of gw subsidy')
 
-            plots_ = SamplePlots()
-
-            config.input_data = station_prepped_input
-
-            plots_.initialize_plot_data(config)
-
-            # months = [i for sl in [plots_.input['gwsub_data'][site_][str(yr)]['months'] for yr in range(1987, 2025)] for i in sl]
-            # print(f'{branch}: {len(months)} months of gw subsidy')
-
-            irrigation_timeseries(plots_, site_, out_dir=out_fig_dir_)
+        irrigation_timeseries(plots_, site_, out_dir=out_fig_dir_)
 # ========================= EOF ====================================================================

@@ -36,8 +36,7 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
     if len(agg_comp) < 3:
         return None
 
-    rmse_values = {k.split('_')[1]: v for k, v in agg_comp.items() if k.startswith('rmse_')
-                   if 'swim' in k or model in k}
+    rmse_values = {k.split('_')[1]: v for k, v in agg_comp.items() if k.startswith('rmse_')}
 
     if len(rmse_values) == 0:
         return None

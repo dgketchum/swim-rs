@@ -30,7 +30,9 @@ def join_daily_timeseries(fields, met_dir, rs_dir, dst_dir, snow=None, overwrite
     for fid, row in tqdm(field_df.iterrows(), total=field_df.shape[0],  desc="Processing Time Series files"):
 
         if 'target_fields' in kwargs:
-            if str(fid) not in kwargs['target_fields']:
+            if kwargs['target_fields'] is None:
+                pass
+            elif str(fid) not in kwargs['target_fields']:
                 continue
 
         if 'met_mapping' in kwargs:

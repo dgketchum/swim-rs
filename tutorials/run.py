@@ -72,12 +72,12 @@ if __name__ == '__main__':
     home = os.path.expanduser('~')
     config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{config_filename}.toml')
 
-    config = ProjectConfig()
-    config.read_config(config_file)
+    config_ = ProjectConfig()
+    config_.read_config(config_file)
 
-    target_dir_ = os.path.join(config.project_ws, 'pestrun')
+    target_dir_ = os.path.join(config_.project_ws, 'pestrun')
     station_prepped_input_ = os.path.join(target_dir_, f'prepped_input.json')
 
-    run_flux_sites('S2', config, target_dir=target_dir_,
+    run_flux_sites('S2', config_, target_dir=target_dir_,
                    station_prepped_input=station_prepped_input_, overwrite_input=True)
 # ========================= EOF ====================================================================

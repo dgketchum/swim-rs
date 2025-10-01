@@ -81,7 +81,8 @@ def extract_gridmet(conf, sites):
     from data_extraction.gridmet.gridmet import download_gridmet
 
     # infer hourly NLDAS need from runoff mode only at download callsite
-    nldas_needed = (conf.swb_mode == 'ier')
+    # nldas_needed = (conf.swb_mode == 'ier')
+    nldas_needed = True
 
     assign_gridmet_and_corrections(fields=conf.gridmet_mapping_shp,
                                    gridmet_ras=conf.correction_tifs,
@@ -97,7 +98,7 @@ def extract_gridmet(conf, sites):
 
 if __name__ == '__main__':
 
-    for project in ['5_Flux_Ensemble', '4_Flux_Network']:
+    for project in ['5_Flux_Ensemble']:
 
         if project == '5_Flux_Ensemble':
             models_select = None
@@ -114,9 +115,9 @@ if __name__ == '__main__':
         #                               index_col=0)
         select_sites = None
 
-        # extract_snodas(config)
-        # extract_properties(config)
+        extract_snodas(config)
+        extract_properties(config)
         extract_remote_sensing(config, select_sites, get_sentinel=True)
-        # extract_gridmet(config, select_sites)
+        extract_gridmet(config, select_sites)
 
 # ========================= EOF ====================================================================

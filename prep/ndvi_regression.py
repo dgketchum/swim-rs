@@ -4,10 +4,10 @@ from scipy.stats import percentileofscore
 
 
 def sentinel_adjust_quantile_mapping(
-    landsat_ndvi_df,
-    sentinel_ndvi_df,
-    window_days=5,
-    min_pairs=20
+        landsat_ndvi_df,
+        sentinel_ndvi_df,
+        window_days=5,
+        min_pairs=20
 ):
     landsat_ndvi = landsat_ndvi_df.iloc[:, 0]
     sentinel_ndvi = sentinel_ndvi_df.iloc[:, 0]
@@ -71,13 +71,15 @@ def sentinel_adjust_quantile_mapping(
 
     adjusted_sentinel_series_nonan = pd.Series(
         adjusted_values_list,
-        index=original_sentinel_to_adjust.index,
-        name=series_name
+    index = original_sentinel_to_adjust.index,
+    name = series_name
     )
 
     final_adjusted_series = adjusted_sentinel_series_nonan.reindex(sentinel_ndvi.index)
 
     return final_adjusted_series
+
+
 if __name__ == '__main__':
     pass
 # ========================= EOF ====================================================================

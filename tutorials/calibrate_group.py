@@ -31,6 +31,7 @@ def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrit
             models += conf.etf_ensemble_members
 
         rs_params_ = get_ensemble_parameters(include=models)
+        rs_params_ = [p for p in rs_params_ if p[0] in ['none', 'ptjpl', 'sims', 'ssebop']]
         prep_fields_json(config.properties_json, conf.plot_timeseries, conf.dynamics_data_json,
                          conf.input_data, target_plots=select_stations, rs_params=rs_params_,
                          interp_params=('ndvi',))
@@ -128,12 +129,12 @@ def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrit
 if __name__ == '__main__':
     """"""
 
-    for project in ['4_Flux_Network', '5_Flux_Ensemble']:
+    for project in ['5_Flux_Ensemble']:
 
         if project == '5_Flux_Ensemble':
-            western_only = True
+            western_only = False
         else:
-            western_only = True
+            western_only = False
 
         home = os.path.expanduser('~')
 
@@ -142,7 +143,7 @@ if __name__ == '__main__':
         config = ProjectConfig()
         config.read_config(config_file)
 
-        results_dir = os.path.join(config.project_ws, 'sentinel_test')
+        results_dir = os.path.join(config.project_ws, 'diy_ensemble')
 
         if not os.path.isdir(results_dir):
             os.makedirs(results_dir, exist_ok=True)
@@ -157,6 +158,11 @@ if __name__ == '__main__':
 
         sites_ordered = crop_sites + non_crop_sites
 
-        run_pest_sequence(config, results_dir, select_stations=crop_sites, overwrite=True)
+        sites = ['ALARC2_Smith6', 'JPL1_Smith5', 'UA1_JV187', 'UA1_KN18', 'UA2_JV330', 'UA2_KN20', 'UA3_JV108',
+                 'UA3_KN15', 'UA1_HartFarm', 'US-Bi1', 'US-Tw2', 'US-Tw3', 'US-Twt', 'BAR012', 'RIP760', 'SLM001',
+                 'Almond_High', 'Almond_Low', 'Almond_Med', 'US-xSL', 'US-MC1', 'US-Mj1', 'US-Mj2', 'B_01', 'B_11',
+                 'ET_8', 'S2']
+
+        run_pest_sequence(config, results_dir, select_stations=sites, overwrite=True)
 
 # ========================= EOF ============================================================================

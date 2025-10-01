@@ -16,6 +16,7 @@ from rasterstats import zonal_stats
 
 from data_extraction.gridmet.thredds import GridMet
 from prep import COLUMN_MULTIINDEX, ACCEPTED_UNITS_MAP
+from swim.config import ProjectConfig
 
 CLIMATE_COLS = {
     'etr': {
@@ -70,138 +71,125 @@ BASIC_REQ = ['date', 'year', 'month', 'day', 'centroid_lat', 'centroid_lon']
 COLUMN_ORDER = BASIC_REQ + GRIDMET_GET
 
 
-def find_gridmet_points(fields, gridmet_points, gridmet_ras, fields_join,
-                        factors_js, field_select=None, feature_id='FID'):
-    """This depends on running 'Raster Pixels to Points' on a WGS Gridmet raster,
-     attributing GFID, lat, and lon in the attribute table, and saving to project crs: 5071.
-     GFID is an arbitrary identifier e.g., @row_number. It further depends on projecting the
-     rasters to EPSG:5071, usng the project.sh bash script
+def _build_raster_list(gridmet_ras):
+    rasters = []
+    for v in ['eto', 'etr']:
+        [rasters.append(os.path.join(gridmet_ras, f'gridmet_corrected_{v}_{m}.tif')) for m in range(1, 13)]
+    return rasters
 
-     The reason we're not just doing a zonal stat on correction surface for every object is that
-     there may be many fields that only need data from one gridmet cell. This prevents us from downloading
-     many redundant data sets.
+
+def _compute_lat_lon_from_centroids(gdf_5071):
+    centroids = gdf_5071.geometry.centroid
+    wgs84 = centroids.to_crs('EPSG:4326')
+    return wgs84.y.values, wgs84.x.values
+
+
+def assign_gridmet_and_corrections(fields,
+                                   gridmet_ras,
+                                   fields_join,
+                                   factors_js,
+                                   gridmet_points=None,
+                                   field_select=None,
+                                   feature_id='FID',
+                                   gridmet_id_col='GFID'):
+    """Map fields to GridMET and write correction factors.
+
+    - If `gridmet_points` provided, assigns the nearest GridMET centroid via spatial join.
+    - Otherwise, assigns a unique GFID per field and samples at field centroids.
+
+    Outputs:
+    - Writes `fields_join` with GFID, LAT, LON, ELEV.
+    - Writes `factors_js` JSON keyed by GFID with monthly 'etr'/'eto' factors and lat/lon.
     """
-
     print('Find field-gridmet joins')
 
-    convert_to_wgs84 = lambda x, y: pyproj.Transformer.from_crs('EPSG:5071', 'EPSG:4326').transform(x, y)
-
     fields = gpd.read_file(fields)
-    gridmet_pts = gpd.read_file(gridmet_points)
-    gridmet_pts.index = gridmet_pts['GFID']
+    if fields.crs is None:
+        fields.set_crs('EPSG:5071', inplace=True)
 
-    rasters = []
+    rasters = _build_raster_list(gridmet_ras)
 
-    for v in ['eto', 'etr']:
-        [rasters.append(os.path.join(gridmet_ras, 'gridmet_corrected_{}_{}.tif'.format(v, m))) for m in range(1, 13)]
+    fields_cent = fields.copy()
+    fields_cent['geometry'] = fields_cent.geometry.centroid
+    lat_vals, lon_vals = _compute_lat_lon_from_centroids(fields_cent)
+    fields['LAT'] = lat_vals
+    fields['LON'] = lon_vals
 
-    gridmet_targets = {}
-    first = True
-    for i, field in tqdm(fields.iterrows(), desc='Finding Nearest GridMET Neighbors', total=fields.shape[0]):
-
-        if field_select:
-            if str(field[feature_id]) not in field_select:
-                continue
-
-        min_distance = 1e13
-        closest_fid = None
-
-        xx, yy = field['geometry'].centroid.x, field['geometry'].centroid.y
-        lat, lon = convert_to_wgs84(xx, yy)
-        fields.at[i, 'LAT'] = lat
-        fields.at[i, 'LON'] = lon
-
-        for j, g_point in gridmet_pts.iterrows():
-            distance = field['geometry'].centroid.distance(g_point['geometry'])
-
-            if distance < min_distance:
-                min_distance = distance
-                closest_fid = j
-                closest_geo = g_point['geometry']
-
-        fields.at[i, 'GFID'] = closest_fid
-        fields.at[i, 'STATION_ID'] = closest_fid
-
-        if first:
-            print('Matched {} to {}'.format(field[feature_id], closest_fid))
-            first = False
-
-        if closest_fid not in gridmet_targets.keys():
-            gridmet_targets[closest_fid] = {str(m): {} for m in range(1, 13)}
-            gdf = gpd.GeoDataFrame({'geometry': [closest_geo]})
-            gridmet_targets[closest_fid]['lat'] = gridmet_pts.loc[closest_fid]['lat']
-            gridmet_targets[closest_fid]['lon'] = gridmet_pts.loc[closest_fid]['lon']
-            for r in rasters:
-                splt = r.split('_')
-                _var, month = splt[-2], splt[-1].replace('.tif', '')
-                stats = zonal_stats(gdf, r, stats=['mean'])[0]['mean']
-                gridmet_targets[closest_fid][month].update({_var: stats})
-
-        g = GridMet('elev', lat=fields.at[i, 'LAT'], lon=fields.at[i, 'LON'])
-        elev = g.get_point_elevation()
-        fields.at[i, 'ELEV'] = elev
-
-    fields.to_file(fields_join, crs='EPSG:5071', engine='fiona')
-
-    len_ = len(gridmet_targets.keys())
-    print('Get gridmet for {} target points'.format(len_))
-
-    with open(factors_js, 'w') as fp:
-        json.dump(gridmet_targets, fp, indent=4)
-
-
-def get_gridmet_corrections(fields, gridmet_ras, fields_join,
-                            factors_js, field_select=None, feature_id='FID'):
-    print('Find field-gridmet joins')
-
-    convert_to_wgs84 = lambda x, y: pyproj.Transformer.from_crs('EPSG:5071', 'EPSG:4326').transform(x, y)
-
-    fields = gpd.read_file(fields)
-
-    oshape = fields.shape[0]
-
-    rasters = []
-    for v in ['eto', 'etr']:
-        [rasters.append(os.path.join(gridmet_ras, 'gridmet_corrected_{}_{}.tif'.format(v, m))) for m in range(1, 13)]
+    if field_select is not None:
+        mask = fields[feature_id].astype(str).isin(set(field_select))
+        fields = fields.loc[mask].copy()
+        fields_cent = fields_cent.loc[mask].copy()
 
     gridmet_targets = {}
 
-    for j, (i, field) in enumerate(tqdm(fields.iterrows(), desc='Assigning GridMET IDs', total=fields.shape[0])):
+    if gridmet_points is not None:
+        pts = gpd.read_file(gridmet_points)
+        if pts.crs != fields_cent.crs:
+            pts = pts.to_crs(fields_cent.crs)
 
-        if field_select:
-            if str(field[feature_id]) not in field_select:
+        keep_cols = [c for c in [gridmet_id_col, 'lat', 'lon', 'geometry'] if c in pts.columns]
+        pts = pts[keep_cols]
+
+        joined = gpd.sjoin_nearest(fields_cent[[feature_id, 'geometry']],
+                                   pts,
+                                   how='left',
+                                   distance_col='dist')
+
+        fields[gridmet_id_col] = joined[gridmet_id_col].values
+        fields['STATION_ID'] = fields[gridmet_id_col]
+
+        unique_ids = pd.unique(fields[gridmet_id_col].values)
+        pts_indexed = pts.set_index(gridmet_id_col)
+
+        for gfid in unique_ids:
+            if pd.isna(gfid):
                 continue
+            gfid_int = int(gfid)
+            geom = pts_indexed.loc[gfid_int, 'geometry']
+            gdf = gpd.GeoDataFrame({'geometry': [geom]}, crs=fields_cent.crs)
+            gridmet_targets[gfid_int] = {str(m): {} for m in range(1, 13)}
+            if 'lat' in pts_indexed.columns and 'lon' in pts_indexed.columns:
+                plat = float(pts_indexed.loc[gfid_int, 'lat'])
+                plon = float(pts_indexed.loc[gfid_int, 'lon'])
+            else:
+                wgs_pt = gpd.GeoSeries([geom], crs=fields_cent.crs).to_crs('EPSG:4326')
+                plat, plon = wgs_pt.iloc[0].y, wgs_pt.iloc[0].x
 
-        xx, yy = field['geometry'].centroid.x, field['geometry'].centroid.y
-        lat, lon = convert_to_wgs84(xx, yy)
-        fields.at[i, 'LAT'] = lat
-        fields.at[i, 'LON'] = lon
+            gridmet_targets[gfid_int]['lat'] = plat
+            gridmet_targets[gfid_int]['lon'] = plon
 
-        closest_fid = j
-
-        fields.at[i, 'GFID'] = closest_fid
-
-        if closest_fid not in gridmet_targets.keys():
-            gridmet_targets[closest_fid] = {str(m): {} for m in range(1, 13)}
-            gdf = gpd.GeoDataFrame({'geometry': [field['geometry'].centroid]})
-            gridmet_targets[closest_fid]['lat'] = lat
-            gridmet_targets[closest_fid]['lon'] = lon
             for r in rasters:
                 splt = r.split('_')
                 _var, month = splt[-2], splt[-1].replace('.tif', '')
                 stats = zonal_stats(gdf, r, stats=['mean'], nodata=np.nan)[0]['mean']
-                # TODO: raise so tif/shp mismatch doesn't pass silent
-                gridmet_targets[closest_fid][month].update({_var: stats})
+                gridmet_targets[gfid_int][month].update({_var: stats})
+    else:
+        fields[gridmet_id_col] = range(len(fields))
+        for i, field in tqdm(fields.iterrows(), desc='Assigning GridMET IDs', total=fields.shape[0]):
+            gfid_int = int(fields.at[i, gridmet_id_col])
+            geom = fields_cent.at[i, 'geometry']
+            gdf = gpd.GeoDataFrame({'geometry': [geom]}, crs=fields_cent.crs)
+            plat, plon = fields.at[i, 'LAT'], fields.at[i, 'LON']
 
+            gridmet_targets[gfid_int] = {str(m): {} for m in range(1, 13)}
+            gridmet_targets[gfid_int]['lat'] = plat
+            gridmet_targets[gfid_int]['lon'] = plon
+            for r in rasters:
+                splt = r.split('_')
+                _var, month = splt[-2], splt[-1].replace('.tif', '')
+                stats = zonal_stats(gdf, r, stats=['mean'], nodata=np.nan)[0]['mean']
+                gridmet_targets[gfid_int][month].update({_var: stats})
+
+    for i, field in tqdm(fields.iterrows(), desc='Fetching elevations', total=fields.shape[0]):
         g = GridMet('elev', lat=fields.at[i, 'LAT'], lon=fields.at[i, 'LON'])
         elev = g.get_point_elevation()
         fields.at[i, 'ELEV'] = elev
 
-    fields = fields[~np.isnan(fields['GFID'])]
+    oshape = fields.shape[0]
+    fields = fields[~pd.isna(fields[gridmet_id_col])]
     print(f'Writing {fields.shape[0]} of {oshape} input features')
-    fields['GFID'] = fields['GFID'].fillna(-1).astype(int)
-
-    fields.to_file(fields_join, crs='EPSG:5071', engine='fiona')
+    fields[gridmet_id_col] = fields[gridmet_id_col].fillna(-1).astype(int)
+    fields.to_file(fields_join, crs=fields.crs or 'EPSG:5071', engine='fiona')
 
     with open(factors_js, 'w') as fp:
         json.dump(gridmet_targets, fp, indent=4)
@@ -209,7 +197,14 @@ def get_gridmet_corrections(fields, gridmet_ras, fields_join,
 
 
 def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None, overwrite=False,
-                     append=False, target_fields=None, feature_id='FID', return_df=False):
+                     append=False, target_fields=None, feature_id='FID', return_df=False,
+                     use_nldas=False):
+    """Download GridMET time series and optionally NLDAS-2 hourly precipitation.
+
+    Set ``use_nldas=True`` to append hourly precipitation fields derived from
+    NLDAS-2 via pynldas2. When False, hourly precip fields are omitted from
+    outputs and downstream code will derive them from daily precip if needed.
+    """
     if not start:
         start = '1987-01-01'
     if not end:
@@ -217,6 +212,7 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
     fields = gpd.read_file(fields)
     fields.index = fields[feature_id]
+    fields = fields.sample(frac=1)
 
     with open(gridmet_factors, 'r') as f:
         gridmet_factors = json.load(f)
@@ -224,128 +220,138 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
     hr_cols = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
 
     downloaded, skipped_exists = {}, []
+    _file = None
 
     for k, v in tqdm(fields.iterrows(), desc='Downloading GridMET', total=len(fields)):
 
-        elev, existing = None, None
-        out_cols = COLUMN_ORDER.copy() + ['nld_ppt_d'] + hr_cols
-        df, first = pd.DataFrame(), True
+        try:
+            elev, existing = None, None
+            out_cols = COLUMN_ORDER.copy()
+            if use_nldas:
+                out_cols += ['nld_ppt_d'] + hr_cols
+            df, first = pd.DataFrame(), True
 
-        if target_fields and str(k) not in target_fields:
-            continue
-
-        g_fid = str(int(v['GFID']))
-
-        if g_fid in downloaded.keys():
-            downloaded[g_fid].append(k)
-
-        _file = os.path.join(gridmet_csv_dir, '{}.parquet'.format(g_fid))
-        if os.path.exists(_file) and not overwrite and not append:
-            skipped_exists.append(_file)
-            continue
-
-        if os.path.exists(_file) and append:
-            existing = pd.read_parquet(_file)
-            target_dates = pd.date_range(start, end, freq='D')
-            missing_dates = [i for i in target_dates if i not in existing.index]
-
-            if len(missing_dates) == 0 and not return_df:
+            if target_fields and str(k) not in target_fields:
                 continue
-            elif len(missing_dates) == 0 and return_df:
+
+            g_fid = str(int(v['GFID']))
+
+            if g_fid in downloaded.keys():
+                downloaded[g_fid].append(k)
+
+            _file = os.path.join(gridmet_csv_dir, '{}.parquet'.format(g_fid))
+            if os.path.exists(_file) and not overwrite and not append:
+                skipped_exists.append(_file)
+                continue
+
+            if os.path.exists(_file) and append:
+                existing = pd.read_parquet(_file)
+                target_dates = pd.date_range(start, end, freq='D')
+                missing_dates = [i for i in target_dates if i not in existing.index]
+
+                if len(missing_dates) == 0 and not return_df:
+                    continue
+                elif len(missing_dates) == 0 and return_df:
+                    return df
+                else:
+                    start, end = missing_dates[0].strftime('%Y-%m-%d'), missing_dates[-1].strftime('%Y-%m-%d')
+
+            r = gridmet_factors[g_fid]
+            lat, lon = r['lat'], r['lon']
+
+            for thredds_var, cols in CLIMATE_COLS.items():
+                variable = cols['col']
+
+                if not thredds_var:
+                    continue
+
+                try:
+                    g = GridMet(thredds_var, start=start, end=end, lat=lat, lon=lon)
+                    s = g.get_point_timeseries()
+                except OSError as e:
+                    print('Error on {}, {}'.format(k, e))
+
+                df[variable] = s[thredds_var]
+
+                if first:
+                    df['date'] = [i.strftime('%Y-%m-%d') for i in df.index]
+                    df['year'] = [i.year for i in df.index]
+                    df['month'] = [i.month for i in df.index]
+                    df['day'] = [i.day for i in df.index]
+                    df['centroid_lat'] = [lat for _ in range(df.shape[0])]
+                    df['centroid_lon'] = [lon for _ in range(df.shape[0])]
+                    g = GridMet('elev', lat=lat, lon=lon)
+                    elev = g.get_point_elevation()
+                    df['elev'] = [elev for _ in range(df.shape[0])]
+                    first = False
+
+                if thredds_var == 'pr' and use_nldas:
+                    # gridmet is utc-6, US/Central, NLDAS is UTC-0
+                    # shifting NLDAS to UTC-6 is the most straightforward alignment
+                    s = pd.to_datetime(start) - timedelta(days=1)
+                    s = s.strftime('%Y-%m-%d')
+                    e = pd.to_datetime(end) + timedelta(days=2)
+                    e = e.strftime('%Y-%m-%d')
+                    nldas = nld.get_bycoords((lon, lat), start_date=s, end_date=e, variables=['prcp'])
+                    if nldas.size == 0:
+                        raise ValueError(f'Failed to download NLDAS-2 for {k} on GFID {g_fid}')
+
+                    central = pytz.timezone('US/Central')
+                    nldas = nldas.tz_convert(central)
+                    hourly_ppt = nldas.pivot_table(columns=nldas.index.hour, index=nldas.index.date, values='prcp')
+                    df[hr_cols] = hourly_ppt.loc[df.index]
+
+                    nan_ct = np.sum(np.isnan(df[hr_cols].values), axis=0)
+                    if sum(nan_ct) > 100:
+                        raise ValueError('Too many NaN in NLDAS data')
+                    if np.any(nan_ct):
+                        df[hr_cols] = df[hr_cols].fillna(0.)
+
+                    df['nld_ppt_d'] = df[hr_cols].sum(axis=1)
+
+            p_air = air_pressure(df['elev'])
+            ea_kpa = actual_vapor_pressure(df['q'], p_air)
+            df['ea'] = ea_kpa.copy()
+
+            for variable in ['etr', 'eto']:
+                for month in range(1, 13):
+                    corr_factor = gridmet_factors[g_fid][str(month)][variable]
+                    idx = [i for i in df.index if i.month == month]
+                    df.loc[idx, variable] = df.loc[idx, variable]
+                    df.loc[idx, '{}_corr'.format(variable)] = df.loc[idx, variable] * corr_factor
+
+            df['tmax'] = df.tmax - 273.15
+            df['tmin'] = df.tmin - 273.15
+
+            df = df[out_cols]
+            # ['site', 'instrument', 'parameter', 'units', 'algorithm', 'mask']
+            target_cols = []
+            for c in df.columns:
+                vals = [k, 'none', c, ACCEPTED_UNITS_MAP.get(c, 'none'), None, 'no_mask']
+                if 'prcp_hr' in c or 'nld_ppt' in c:
+                    vals[4] = 'nldas2'
+                else:
+                    vals[4] = 'gridmet'
+
+                target_cols.append(tuple(vals))
+
+            target_cols = pd.MultiIndex.from_tuples(target_cols, names=COLUMN_MULTIINDEX)
+            df.columns = target_cols
+
+            if existing is not None and not overwrite and append:
+                df = pd.concat([df, existing], axis=0, ignore_index=False)
+                df = df.sort_index()
+
+            df.to_parquet(_file)
+            print(f'wrote {_file}')
+            downloaded[g_fid] = [k]
+
+            if return_df:
                 return df
-            else:
-                start, end = missing_dates[0].strftime('%Y-%m-%d'), missing_dates[-1].strftime('%Y-%m-%d')
 
-        r = gridmet_factors[g_fid]
-        lat, lon = r['lat'], r['lon']
-
-        for thredds_var, cols in CLIMATE_COLS.items():
-            variable = cols['col']
-
-            if not thredds_var:
-                continue
-
-            try:
-                g = GridMet(thredds_var, start=start, end=end, lat=lat, lon=lon)
-                s = g.get_point_timeseries()
-            except OSError as e:
-                print('Error on {}, {}'.format(k, e))
-
-            df[variable] = s[thredds_var]
-
-            if first:
-                df['date'] = [i.strftime('%Y-%m-%d') for i in df.index]
-                df['year'] = [i.year for i in df.index]
-                df['month'] = [i.month for i in df.index]
-                df['day'] = [i.day for i in df.index]
-                df['centroid_lat'] = [lat for _ in range(df.shape[0])]
-                df['centroid_lon'] = [lon for _ in range(df.shape[0])]
-                g = GridMet('elev', lat=lat, lon=lon)
-                elev = g.get_point_elevation()
-                df['elev'] = [elev for _ in range(df.shape[0])]
-                first = False
-
-            if thredds_var == 'pr':
-                # gridmet is utc-6, US/Central, NLDAS is UTC-0
-                # shifting NLDAS to UTC-6 is the most straightforward alignment
-                s = pd.to_datetime(start) - timedelta(days=1)
-                e = pd.to_datetime(end) + timedelta(days=2)
-
-                nldas = nld.get_bycoords((lon, lat), start_date=s, end_date=e, variables=['prcp'], source='netcdf')
-                if nldas.size == 0:
-                    raise ValueError(f'Failed to download NLDAS-2 for {k} on GFID {g_fid}')
-
-                central = pytz.timezone('US/Central')
-                nldas = nldas.tz_convert(central)
-                hourly_ppt = nldas.pivot_table(columns=nldas.index.hour, index=nldas.index.date, values='prcp')
-                df[hr_cols] = hourly_ppt.loc[df.index]
-
-                nan_ct = np.sum(np.isnan(df[hr_cols].values), axis=0)
-                if sum(nan_ct) > 100:
-                    raise ValueError('Too many NaN in NLDAS data')
-                if np.any(nan_ct):
-                    df[hr_cols] = df[hr_cols].fillna(0.)
-
-                df['nld_ppt_d'] = df[hr_cols].sum(axis=1)
-
-        p_air = air_pressure(df['elev'])
-        ea_kpa = actual_vapor_pressure(df['q'], p_air)
-        df['ea'] = ea_kpa.copy()
-
-        for variable in ['etr', 'eto']:
-            for month in range(1, 13):
-                corr_factor = gridmet_factors[g_fid][str(month)][variable]
-                idx = [i for i in df.index if i.month == month]
-                df.loc[idx, variable] = df.loc[idx, variable]
-                df.loc[idx, '{}_corr'.format(variable)] = df.loc[idx, variable] * corr_factor
-
-        df['tmax'] = df.tmax - 273.15
-        df['tmin'] = df.tmin - 273.15
-
-        df = df[out_cols]
-        # ['site', 'instrument', 'parameter', 'units', 'algorithm', 'mask']
-        target_cols = []
-        for c in df.columns:
-            vals = [k, 'none', c, ACCEPTED_UNITS_MAP.get(c, 'none'), None, 'no_mask']
-            if 'prcp_hr' in c or 'nld_ppt' in c:
-                vals[4] = 'nldas2'
-            else:
-                vals[4] = 'gridmet'
-
-            target_cols.append(tuple(vals))
-
-        target_cols = pd.MultiIndex.from_tuples(target_cols, names=COLUMN_MULTIINDEX)
-        df.columns = target_cols
-
-        if existing is not None and not overwrite and append:
-            df = pd.concat([df, existing], axis=0, ignore_index=False)
-            df = df.sort_index()
-
-        df.to_parquet(_file)
-        downloaded[g_fid] = [k]
-
-        if return_df:
-            return df
+        except Exception as exc:
+            print(f'Error on {_file}: {exc}')
+            continue
 
     print(f'downloaded {len(downloaded)} files')
     print(f'skipped {len(skipped_exists)} existing files')
@@ -460,6 +466,5 @@ def gridmet_elevation(shp_in, shp_out):
 
 
 if __name__ == '__main__':
-
-    pass
+        pass
 # ========================= EOF ====================================================================

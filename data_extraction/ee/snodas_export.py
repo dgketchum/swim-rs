@@ -44,7 +44,7 @@ def sample_snodas_swe(feature_coll, bucket=None, debug=False, check_dir=None, ov
 
         if debug:
             # the below 'FID_1' value ('043_000160') was taken from the tutorial dataset
-            fc = ee.FeatureCollection([feature_coll.filterMetadata(feature_id, 'equals', '043_000160').first()])
+            fc = ee.FeatureCollection([feature_coll.filterMetadata(feature_id, 'equals', 'MB_Pch').first()])
             data = bands.reduceRegions(collection=fc,
                                        reducer=ee.Reducer.mean(),
                                        scale=30).getInfo()
@@ -58,7 +58,7 @@ def sample_snodas_swe(feature_coll, bucket=None, debug=False, check_dir=None, ov
             data,
             description=desc,
             bucket=bucket,
-            fileNamePrefix=desc,
+            fileNamePrefix=f'snodas/{desc}',
             fileFormat='CSV',
             selectors=selectors)
 
@@ -68,20 +68,5 @@ def sample_snodas_swe(feature_coll, bucket=None, debug=False, check_dir=None, ov
     print(f'SNODAS exported {exported}, skipped {skipped} existing files')
 
 if __name__ == '__main__':
-    ee.Initialize()
-
-    d = '/media/research/IrrigationGIS/swim'
-    if not os.path.exists(d):
-        d = '/home/dgketchum/data/IrrigationGIS/swim'
-
-    bucket_ = 'wudr'
-    # fields = 'users/dgketchum/fields/tongue_annex_20OCT2023'
-    fields = 'projects/ee-dgketchum/assets/swim/mt_sid_boulder'
-
-    # chk = os.path.join(d, 'examples/tongue/landsat/extracts/swe')
-    chk = os.path.join(d, 'examples/tutorial/landsat/extracts/swe')
-
-    FEATURE_ID = 'FID_1'
-    sample_snodas_swe(fields, bucket_, debug=False, check_dir=None, feature_id=FEATURE_ID)
-
+    pass
 # ========================= EOF ====================================================================

@@ -154,7 +154,7 @@ def prep_timeseries(conf, sites):
 
 
 def prep_dynamics(conf, sites, sentinel=False):
-    from prep.dynamics import SamplePlotDynamics
+    from prep.dynamics import process_dynamics_batch
 
     # sites = ['Almond_High']
     if sentinel:
@@ -162,27 +162,25 @@ def prep_dynamics(conf, sites, sentinel=False):
     else:
         sensors = ('landsat',)
 
-    dynamics = SamplePlotDynamics(conf.joined_timeseries_dir,
-                                  conf.properties_json,
-                                  irr_threshold=conf.irrigation_threshold,
-                                  etf_target=conf.etf_target_model,
-                                  out_json_file=conf.dynamics_data_json,
-                                  select=sites,
-                                  use_lulc=False,
-                                  use_mask=True,
-                                  masks=('irr', 'inv_irr'),
-                                  instruments=sensors)
-
-    dynamics.analyze_irrigation(lookback=5)
-    dynamics.analyze_k_parameters()
-    dynamics.analyze_groundwater_subsidy()
-    dynamics.save_json()
+    process_dynamics_batch(conf.joined_timeseries_dir,
+                           conf.properties_json,
+                           conf.dynamics_data_json,
+                           etf_target=conf.etf_target_model,
+                           irr_threshold=conf.irrigation_threshold,
+                           select=sites,
+                           masks=('irr', 'inv_irr'),
+                           instruments=sensors,
+                           use_lulc=False,
+                           use_mask=True,
+                           lookback=5,
+                           num_workers=12)
 
 
 def prep_input_json(conf, sites):
     from prep.prep_plots import prep_fields_json
 
     params = get_ensemble_parameters()
+    params = [p for p in params if p[0] in ['none', 'ptjpl', 'sims', 'ssebop']]
     prep_fields_json(conf.properties_json,
                      conf.joined_timeseries_dir,
                      conf.dynamics_data_json,
@@ -213,13 +211,13 @@ if __name__ == '__main__':
 
         # select_sites = get_flux_sites(config.station_metadata_csv, crop_only=True, western_only=western_only, header=1,
         #                               index_col=0)
-        select_sites = ['ALARC2_Smith6', 'US-FPe']
+        select_sites = None # ['ALARC2_Smith6']
 
         prep_earthengine_extracts(config, select_sites, overwrite=True, add_sentinel=True)
-        # prep_field_properties(config, select_sites)
-        # prep_snow(config, snodas_indexer)
-        # prep_timeseries(config, select_sites)
-        # prep_dynamics(config, select_sites, sentinel=True)
-        # prep_input_json(config, select_sites)
+        prep_field_properties(config, select_sites)
+        prep_snow(config, snodas_indexer)
+        prep_timeseries(config, select_sites)
+        prep_dynamics(config, select_sites, sentinel=True)
+        prep_input_json(config, select_sites)
 
 # ========================= EOF ====================================================================

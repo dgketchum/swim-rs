@@ -45,7 +45,7 @@ def get_cdl(fields, desc, selector='FID'):
         modes,
         description=out_,
         bucket='wudr',
-        fileNamePrefix=out_,
+        fileNamePrefix=f'swim/properties/{out_}',
         fileFormat='CSV',
         selectors=_selectors)
 
@@ -100,7 +100,7 @@ def get_irrigation(fields, desc, debug=False, selector='FID', lanid=False):
         means,
         description=desc,
         bucket='wudr',
-        fileNamePrefix=desc,
+        fileNamePrefix=f'swim/properties/{desc}',
         fileFormat='CSV',
         selectors=_selectors)
 
@@ -138,7 +138,7 @@ def get_ssurgo(fields, desc, debug=False, selector='FID'):
         means,
         description=desc,
         bucket='wudr',
-        fileNamePrefix=desc,
+        fileNamePrefix=f'swim/properties/{desc}',
         fileFormat='CSV',
         selectors=_selectors)
 
@@ -170,7 +170,7 @@ def get_hwsd(fields, desc, debug=False, selector='FID', out_fmt='CSV', local_fil
 
         export_kwargs = dict(description=desc,
                              bucket='wudr',
-                             fileNamePrefix=desc,
+                             fileNamePrefix=f'swim/properties/{desc}',
                              fileFormat=out_fmt)
 
         if out_fmt == 'CSV':
@@ -206,7 +206,7 @@ def get_landcover(fields, desc, debug=False, selector='FID', out_fmt='CSV', loca
 
         export_kwargs = dict(description=desc,
                              bucket='wudr',
-                             fileNamePrefix=desc,
+                             fileNamePrefix=f'swim/properties/{desc}',
                              fileFormat=out_fmt)
 
         if out_fmt == 'CSV':

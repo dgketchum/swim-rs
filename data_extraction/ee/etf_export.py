@@ -94,7 +94,7 @@ def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_ty
         print(_name)
 
 
-def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None, grid_spec=None,
+def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None,
                       feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3',
                       model='ssebop', usgs_nhm=False, source=None, scale=None):
 
@@ -152,14 +152,7 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
             site = row[feature_id]
 
-            if grid_spec is not None:
-                grid_sz = row['grid_size']
-                desc = '{}_etf_{}_p{}_{}_{}'.format(model, site, grid_sz, mask_type, year)
-                if grid_sz != grid_spec:
-                    continue
-
-            else:
-                desc = '{}_etf_{}_{}_{}'.format(model, site, mask_type, year)
+            desc = '{}_etf_{}_{}_{}'.format(model, site, mask_type, year)
 
             if check_dir:
                 f = os.path.join(check_dir, '{}.csv'.format(desc))

@@ -16,7 +16,7 @@ sentinel_tables = "{sentinel}/tables"
 met = "{data}/met_timeseries/gridmet"
 
 gis = "{data}/gis"
-footprint_shapefile = "{gis}/flux_footprints_3p.shp"
+footprint_shapefile = "{gis}/flux_footprints_3p_clean.shp"
 gridmet_mapping = "{gis}/flux_fields_gfid.shp"
 
 correction_tifs = "{data}/bias_correction_tif"
@@ -39,13 +39,12 @@ station_file = "{data}/station_metadata.csv"
 prepped_input = "{data}/prepped_input.json"
 
 [earth_engine]
-fields_flux3p = "projects/ee-dgketchum/assets/swim/flux_footprints_3p"
-fields_flux = "users/dgketchum/fields/flux"
+fields_flux = "projects/ee-dgketchum/assets/swim/flux_footprints_3p_clean"
 bucket = "wudr"
 
 [ids]
 feature_id = "site_id"
-gridmet_mapping_index = "field_1"
+gridmet_mapping_index = "site_id"
 state_col = "state"
 
 [misc]
