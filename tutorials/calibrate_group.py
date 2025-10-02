@@ -52,6 +52,8 @@ def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrit
                           conflicted_obs=None)
     builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
     builder.build_localizer()
+
+    # doesn't really help accuracy with longer period ensemble
     # builder.add_regularization()
 
     # short run sets up base realization and checks for prior-data conflict
@@ -82,7 +84,10 @@ def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrit
                                   conflicted_obs=temp_pdc)
             builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
             builder.build_localizer()
+
+            # doesn't really help accuracy with longer period ensemble
             # builder.add_regularization()
+
             builder.write_control_settings(noptmax=0)
             builder.dry_run(exe_)
 
@@ -158,11 +163,6 @@ if __name__ == '__main__':
 
         sites_ordered = crop_sites + non_crop_sites
 
-        sites = ['ALARC2_Smith6', 'JPL1_Smith5', 'UA1_JV187', 'UA1_KN18', 'UA2_JV330', 'UA2_KN20', 'UA3_JV108',
-                 'UA3_KN15', 'UA1_HartFarm', 'US-Bi1', 'US-Tw2', 'US-Tw3', 'US-Twt', 'BAR012', 'RIP760', 'SLM001',
-                 'Almond_High', 'Almond_Low', 'Almond_Med', 'US-xSL', 'US-MC1', 'US-Mj1', 'US-Mj2', 'B_01', 'B_11',
-                 'ET_8', 'S2']
-
-        run_pest_sequence(config, results_dir, select_stations=sites, overwrite=True)
+        run_pest_sequence(config, results_dir, select_stations=crop_sites, overwrite=True)
 
 # ========================= EOF ============================================================================
