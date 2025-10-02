@@ -1,3 +1,8 @@
+"""Model package constants and parameter lists used by the tracker.
+
+`TRACKER_PARAMS` enumerates the state/parameter fields that are array-shaped
+and managed by `SampleTracker` for vectorized, per-field simulation.
+"""
 import os
 
 

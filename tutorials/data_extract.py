@@ -81,8 +81,7 @@ def extract_gridmet(conf, sites):
     from data_extraction.gridmet.gridmet import download_gridmet
 
     # infer hourly NLDAS need from runoff mode only at download callsite
-    # nldas_needed = (conf.swb_mode == 'ier')
-    nldas_needed = True
+    nldas_needed = (conf.swb_mode == 'ier')
 
     assign_gridmet_and_corrections(fields=conf.gridmet_mapping_shp,
                                    gridmet_ras=conf.correction_tifs,

@@ -1,6 +1,8 @@
-"""runoff.py
-called by compute_crop_et.py
+"""Runoff formulations for the daily water balance.
 
+Includes two alternatives:
+- Infiltration-excess runoff using hourly precipitation vs. infiltration rate.
+- SCS Curve Number method with dynamic antecedent moisture condition.
 """
 import numpy as np
 
@@ -10,11 +12,22 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 def runoff_infiltration_excess(foo, foo_day):
+    """Compute runoff as the sum over hours of (ppt - infiltration capacity).
+
+    Parameters
+    - foo: SampleTracker with `ksat_hourly` infiltration capacity (mm/h).
+    - foo_day: DayData with `hr_precip` 24xN hourly precipitation (mm/h).
+    """
     foo.sro = np.maximum(foo_day.hr_precip - foo.ksat_hourly,
                          np.zeros_like(foo_day.hr_precip)).sum(axis=0).reshape(1, -1)
 
 
 def runoff_curve_number(foo, foo_day):
+    """Compute daily runoff with SCS Curve Number (CN) method.
+
+    Adjusts CN for antecedent moisture using surface depletion and smooths the
+    potential maximum retention S over recent days when irrigated.
+    """
     # CNII from crop/soil combination
     CNII = np.minimum(np.maximum(foo.cn2, 10.0), 100.0)
 

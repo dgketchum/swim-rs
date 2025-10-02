@@ -27,6 +27,12 @@ TUNABLE_DEFAULTS = {'aw': 177.56,
 
 
 class SampleTracker:
+    """Holds field-scale state and parameters for the SWB simulation.
+
+    All numerical attributes are shaped to 1xN numpy arrays for vectorized
+    updates over fields. Methods support loading spinup states, applying
+    calibrated/initial parameters, and exporting debug dataframes.
+    """
 
     def __init__(self, config, plots, size):
 
@@ -131,6 +137,12 @@ class SampleTracker:
                 print(p, e)
 
     def load_root_depth(self):
+        """Initialize root depth parameters from per-field properties.
+
+        Uses landcover codes to distinguish perennial vs crop behavior, sets
+        `zr_max`, `zr_min`, current `zr`, and `perennial` flags. Root depths are
+        adjusted by `zr_adj` and per-field `zr_mult` from properties.
+        """
 
         fields = self.plots.input['order']
 
@@ -156,6 +168,12 @@ class SampleTracker:
         self.perennial = np.array([1 if cd in perennials else 0 for cd in codes]).reshape(1, -1)
 
     def load_soils(self):
+        """Initialize soil parameters and derived rates from properties.
+
+        Sets available water (`aw`) when not in calibrate/forecast modes, the
+        saturated hydraulic conductivity (`ksat`) in mm/day and hourly form,
+        and initializes `daw3` and initial root-zone depletion.
+        """
 
         fields = self.plots.input['order']
 
@@ -172,10 +190,25 @@ class SampleTracker:
         self.depl_root = self.aw * self.zr * 0.2
 
     def setup_dataframe(self, targets):
+        """Prepare the debug data container keyed by field ID.
+
+        Parameters
+        - targets: list[str] of field IDs in simulation order.
+        """
 
         self.crop_df = {target: {} for target in targets}
 
     def apply_parameters(self, params=None):
+        """Apply tunable parameters from calibration, forecast, or defaults.
+
+        In calibration mode, reads multipliers from `config.calibration_files`.
+        In forecast mode, uses `config.forecast_parameters` (means or sets).
+        Otherwise, assigns `TUNABLE_DEFAULTS` uniformly across fields.
+
+        Parameters
+        - params: optional dict[str, float] to override values by name during
+          runtime (e.g., forward runs in PEST workers).
+        """
         size = len(self.plots.input['order'])
 
         if self.conf.calibrate:
@@ -257,6 +290,12 @@ class SampleTracker:
                 self.__setattr__(k, arr)
 
     def apply_initial_conditions(self):
+        """Load spinup water balance state if configured and map to fields.
+
+        Reads the spinup JSON keyed by field IDs and sets matching tracker
+        state variables, preserving array shapes (1xN). Prints a message when
+        spinup is applied.
+        """
         order = self.plots.input['order']
         size = len(order)
         tracker_array = None
@@ -286,6 +325,11 @@ class SampleTracker:
                 self.__setattr__(k, v)
 
     def update_dataframe(self, targets, day_data, step_dt):
+        """Append per-field daily diagnostics into `crop_df` (debug mode).
+
+        Records ET components, water balance terms, storage changes, and key
+        meteorological inputs for later analysis/plotting.
+        """
         for i, fid in enumerate(targets):
             self.crop_df[fid][step_dt] = {}
             sample_idx = 0, i
@@ -370,9 +414,11 @@ class SampleTracker:
                 # raise WaterBalanceError('Check November water balance')
 
     def set_kc_max(self):
+        """Set per-field Kc,max from `plots.input['kc_max']` mapping."""
         fields = self.plots.input['order']
         self.kc_max = np.array([self.plots.input['kc_max'][f] for f in fields]).reshape(1, -1)
 
     def set_ke_max(self):
+        """Set per-field Ke,max from `plots.input['ke_max']` mapping."""
         fields = self.plots.input['order']
         self.ke_max = np.array([self.plots.input['ke_max'][f] for f in fields]).reshape(1, -1)

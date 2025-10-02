@@ -6,6 +6,20 @@ from model import compute_snow
 from model import k_dynamics as kd
 
 def compute_field_et(swb, day_data):
+    """Advance the soil water balance one day and compute ET components.
+
+    This updates surface and root-zone water states using snow/rain inputs,
+    infiltration and runoff (Curve Number or infiltration-excess), evaporation
+    and transpiration coefficients (Ke/Ks), irrigation/groundwater subsidies,
+    deep percolation, layer-3 storage, and root growth coupling.
+
+    Parameters
+    - swb: SampleTracker instance (field-scale state/parameters as 1xN arrays).
+    - day_data: DayData instance containing the current day’s forcing/flags.
+
+    Returns
+    - None; updates fields on `swb` in-place (e.g., kc_act, etc_act, swe, dperc).
+    """
 
     if day_data.dt_string == '2003-02-03':
         a = 1

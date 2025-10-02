@@ -7,6 +7,24 @@ from openet.refetgee import Daily
 
 def sample_era5_land_variables_daily(feature_coll_asset_id, bucket=None, debug=False, check_dir=None,
                                      overwrite=False, start_yr=2004, end_yr=2023, feature_id_col='FID'):
+    """Export daily ERA5-Land variables reduced over features, by month.
+
+    For each month in the year range, builds an ee.Image with per-day bands for
+    SWE (mm), ETo (alfalfa, via refetgee), Tmean/Tmin/Tmax (°C), precip (mm), and
+    shortwave radiation (W/m^2), then reduces to feature means and exports to GCS.
+
+    Parameters
+    - feature_coll_asset_id: str EE asset path for the FeatureCollection.
+    - bucket: str GCS bucket for outputs.
+    - debug: bool; if True, prints sample reduction for a feature.
+    - check_dir: local directory to skip existing month CSVs.
+    - overwrite: bool; if True, re-export even if file present.
+    - start_yr, end_yr: int year range inclusive.
+    - feature_id_col: property name to include as ID.
+
+    Side Effects
+    - Starts ee.batch table exports, one per month, to the `bucket`.
+    """
     fc = ee.FeatureCollection(feature_coll_asset_id)
     era5_land_hourly = ee.ImageCollection('ECMWF/ERA5_LAND/HOURLY')
 

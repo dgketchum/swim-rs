@@ -2,6 +2,11 @@ import numpy as np
 
 
 def ke_damper(swb):
+    """Compute the soil evaporation coefficient Ke with a damping scheme.
+
+    Damps day-to-day changes in the surface soil evaporation reduction factor
+    (Kr) using `kr_alpha`, then caps Ke by `few * kc_max` and `ke_max`.
+    """
     kr_current = np.clip((swb.tew - swb.depl_ze) / (swb.tew - swb.rew + 1e-6), 0.0, 1.0)
 
     if not hasattr(swb, 'kr_prev'):
@@ -17,6 +22,7 @@ def ke_damper(swb):
 
 
 def ke_momentum(swb):
+    """Compute Ke using a momentum-based update of the Kr term."""
     kr_current = np.clip((swb.tew - swb.depl_ze) / (swb.tew - swb.rew + 1e-6), 0.0, 1.0)
 
     if not hasattr(swb, 'kr_prev_delta'):
@@ -35,6 +41,7 @@ def ke_momentum(swb):
 
 
 def ke_exponential(swb):
+    """Compute Ke using asymmetric exponential rise/decay parameters."""
     kr_current = np.clip((swb.tew - swb.depl_ze) / (swb.tew - swb.rew + 1e-6), 0.0, 1.0)
 
     if kr_current < swb.kr_prev:
@@ -52,6 +59,11 @@ def ke_exponential(swb):
 
 
 def ks_damper(swb):
+    """Compute root-zone stress coefficient Ks with damping on changes.
+
+    Applies a linear damping factor `ks_alpha` to transitions in Ks, with Ks
+    defined as a function of depletion (`depl_root`), TAW, and RAW.
+    """
     ks_current = np.where(swb.depl_root > swb.raw,
                           np.clip((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0.0, 1.0), 1)
 
@@ -65,6 +77,7 @@ def ks_damper(swb):
 
 
 def ks_momentum(swb):
+    """Compute Ks using a momentum-based update of prior-day changes."""
     ks_current = np.where(swb.depl_root > swb.raw,
                           np.clip((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0.0, 1.0), 1)
 
@@ -80,6 +93,7 @@ def ks_momentum(swb):
 
 
 def ks_exponential(swb):
+    """Compute Ks with an exponential decay relative to prior state."""
     ks_current = np.where(swb.depl_root > swb.raw,
                           np.clip((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0.0, 1.0), 1)
 

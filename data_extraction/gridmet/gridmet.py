@@ -72,6 +72,14 @@ COLUMN_ORDER = BASIC_REQ + GRIDMET_GET
 
 
 def _build_raster_list(gridmet_ras):
+    """Return list of monthly correction raster paths for ETo/ETr.
+
+    Parameters
+    - gridmet_ras: directory containing `gridmet_corrected_<var>_<month>.tif`.
+
+    Returns
+    - list[str] of absolute paths for 12 months and both variables.
+    """
     rasters = []
     for v in ['eto', 'etr']:
         [rasters.append(os.path.join(gridmet_ras, f'gridmet_corrected_{v}_{m}.tif')) for m in range(1, 13)]
@@ -79,6 +87,10 @@ def _build_raster_list(gridmet_ras):
 
 
 def _compute_lat_lon_from_centroids(gdf_5071):
+    """Compute centroid latitude/longitude from a 5071-projected GeoDataFrame.
+
+    Returns two numpy arrays of latitude and longitude in EPSG:4326.
+    """
     centroids = gdf_5071.geometry.centroid
     wgs84 = centroids.to_crs('EPSG:4326')
     return wgs84.y.values, wgs84.x.values
@@ -453,6 +465,12 @@ def wind_height_adjust(uz, zw):
 
 
 def gridmet_elevation(shp_in, shp_out):
+    """Append elevation to point shapefile using GridMET point elevation service.
+
+    Parameters
+    - shp_in: input shapefile path with `lat`/`lon` fields.
+    - shp_out: output shapefile path with new `ELEV_M` column.
+    """
     df = gpd.read_file(shp_in)
     l = []
     for i, r in df.iterrows():

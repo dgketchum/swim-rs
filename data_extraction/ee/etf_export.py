@@ -28,6 +28,14 @@ WEST_STATES = 'users/dgketchum/boundaries/western_11_union'
 EAST_STATES = 'users/dgketchum/boundaries/eastern_38_dissolved'
 
 def get_utm_epsg(latitude, longitude):
+    """Return UTM EPSG code and zone string for a lat/lon.
+
+    Parameters
+    - latitude, longitude: float degrees.
+
+    Returns
+    - (epsg_code: int, zone_str: str) like (32612, '12N').
+    """
     _, _, zone_number, zone_letter = utm.from_latlon(latitude, longitude)
 
     if zone_letter >= 'N':
@@ -41,6 +49,7 @@ def get_utm_epsg(latitude, longitude):
 
 
 def get_flynn():
+    """Return a sample polygon FeatureCollection for quick tests."""
     return ee.FeatureCollection(ee.Feature(ee.Geometry.Polygon([[-106.63372199162623, 46.235698473362476],
                                                                 [-106.49124304875514, 46.235698473362476],
                                                                 [-106.49124304875514, 46.31472036075997],
@@ -50,6 +59,18 @@ def get_flynn():
 
 
 def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_type='irr'):
+    """Export per-scene ET fraction images masked by irrigation to GCS.
+
+    Parameters
+    - feature_coll: ee.FeatureCollection region to clip.
+    - year: int year.
+    - bucket: str GCS bucket.
+    - debug: bool; if True, prints sampled pixel values.
+    - mask_type: {'irr','inv_irr','no_mask'}.
+
+    Side Effects
+    - Starts ee.batch image exports to `bucket` for each scene.
+    """
     s, e = '1987-01-01', '2021-12-31'
     irr_coll = ee.ImageCollection(IRR)
     coll = irr_coll.filterDate(s, e).select('classification')
@@ -97,6 +118,26 @@ def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_ty
 def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None,
                       feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3',
                       model='ssebop', usgs_nhm=False, source=None, scale=None):
+    """Export per-field ET fraction (one CSV per field-year) from OpenET/USGS sources.
+
+    Parameters
+    - shapefile: polygon features (expected 5071 or compatible CRS; reprojected to 4326).
+    - bucket: str GCS bucket.
+    - debug: bool; if True, prints sampled values.
+    - mask_type: {'irr','inv_irr','no_mask'}.
+    - check_dir: local dir to skip if CSV exists.
+    - feature_id: feature identifier column.
+    - select: optional subset of feature IDs.
+    - start_yr, end_yr: int year range.
+    - state_col: state code column for mask fallback.
+    - model: one of OpenET members or 'openet'/'disalexi'/'ssebop'.
+    - usgs_nhm: bool; if True and model='ssebop', use USGS NHM asset.
+    - source: override image collection path.
+    - scale: optional divisor for value scaling when `source` provided.
+
+    Side Effects
+    - Starts ee.batch table exports to `bucket`.
+    """
 
     df = gpd.read_file(shapefile)
     df.index = df[feature_id]
@@ -252,6 +293,20 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
 
 def clustered_sample_etf(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None,
                          start_yr=2000, end_yr=2024, feature_id='FID'):
+    """Export ET fraction for all features in a collection per year.
+
+    Parameters
+    - feature_coll: ee.FeatureCollection with `feature_id` properties.
+    - bucket: str GCS bucket.
+    - debug: bool; prints samples if True.
+    - mask_type: {'irr','inv_irr','no_mask'}.
+    - check_dir: local check directory to skip existing outputs.
+    - start_yr, end_yr: int range.
+    - feature_id: property name to include in CSV selectors.
+
+    Side Effects
+    - Starts ee.batch table export per year to `bucket`.
+    """
     feature_coll = ee.FeatureCollection(feature_coll)
 
     s, e = '1987-01-01', '2021-12-31'
@@ -330,6 +385,16 @@ def clustered_sample_etf(feature_coll, bucket=None, debug=False, mask_type='irr'
 
 
 def export_to_cloud(images_txt, bucket, pathrows=None):
+    """Export imagery by ID list to Cloud Storage as GeoTIFF + metadata.
+
+    Parameters
+    - images_txt: path to text file with one ee.Image ID per line.
+    - bucket: str GCS bucket.
+    - pathrows: optional CSV with `PR` column to filter Path/Row.
+
+    Side Effects
+    - Starts ee.batch image and table exports to `bucket/geotiff/` and `/metadata/`.
+    """
     with open(images_txt, 'r') as fp:
         images = [line.strip() for line in fp.readlines()]
 

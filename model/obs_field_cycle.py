@@ -48,11 +48,27 @@ OUTPUT_FMT = ['aw',
 
 
 class WaterBalanceError(Exception):
-    pass
+    """Raised when daily water balance residuals exceed tolerance."""
 
 
 def field_day_loop(config, plots, debug_flag=False, params=None):
-    """"""
+    """Run the daily model loop over the configured date range and fields.
+
+    Orchestrates tracker initialization (initial conditions, parameters, soils,
+    root depth, Ke/Kc caps), then iterates days building DayData, selecting
+    the appropriate NDVI/refET by irrigation status, computing Kcb, and advancing
+    the water balance. Returns either detailed per-field dataframes (debug) or
+    ETf/SWE arrays for calibration/forward runs.
+
+    Parameters
+    - config: ProjectConfig with paths, dates, model options.
+    - plots: SamplePlots containing the prepped input JSON.
+    - debug_flag: if True, returns dict of per-field DataFrames with many terms.
+    - params: optional dict of calibrated parameter overrides.
+
+    Returns
+    - If debug_flag: dict[fid -> pd.DataFrame]. Else: (etf_arr, swe_arr) ndarrays.
+    """
     etf, swe = None, None
     size = len(plots.input['order'])
 

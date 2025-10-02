@@ -2,7 +2,16 @@ import numpy as np
 
 
 def grow_root(tracker, day_data):
-    """"""
+    """Update effective root depth and re-partition soil water between layers.
+
+    Root depth is tied to basal crop coefficient (NDVI-based) and capped by
+    `zr_max`. The routine conserves mass between the active root zone and the
+    deeper layer (daw3/taw3) as roots grow or recede.
+
+    Parameters
+    - tracker: SampleTracker with state arrays (zr, daw3, taw3, aw, depl_root).
+    - day_data: DayData (unused except for error reporting on rare failures).
+    """
 
     zr_prev = tracker.zr.copy()
 

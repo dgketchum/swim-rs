@@ -6,6 +6,16 @@ from tqdm import tqdm
 
 
 def create_timeseries_json(directory, json_out, feature_id='FID'):
+    """Aggregate SNODAS CSVs into per-feature daily SWE JSON.
+
+    Expects CSV files where rows are features and columns are dates. Values are
+    assumed to be SWE in meters and are converted to millimeters.
+
+    Parameters
+    - directory: folder containing SNODAS CSVs.
+    - json_out: output JSON path to write nested dict {feature: [{date, value}, ...]}.
+    - feature_id: column name used as index/feature ID in CSVs.
+    """
     all_files = glob.glob(directory + "/*.csv")
     timeseries = {}
     for filename in tqdm(all_files, desc="Processing CSV SNODAS files"):

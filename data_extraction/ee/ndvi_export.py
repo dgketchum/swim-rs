@@ -22,6 +22,13 @@ EAST_STATES = 'users/dgketchum/boundaries/eastern_38_dissolved'
 
 
 def get_flynn():
+    """Return a small example polygon FeatureCollection.
+
+    Useful for quick debugging of exports in a known area.
+
+    Returns
+    - ee.FeatureCollection with one polygon feature.
+    """
     return ee.FeatureCollection(ee.Feature(ee.Geometry.Polygon([[-106.63372199162623, 46.235698473362476],
                                                                 [-106.49124304875514, 46.235698473362476],
                                                                 [-106.49124304875514, 46.31472036075997],
@@ -31,6 +38,18 @@ def get_flynn():
 
 
 def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_type='irr'):
+    """Export per-scene NDVI images to Cloud Storage for a feature collection.
+
+    Parameters
+    - feature_coll: ee.FeatureCollection defining the region to clip.
+    - year: int target year.
+    - bucket: str GCS bucket name.
+    - debug: bool; if True, sample pixel values for inspection.
+    - mask_type: {'irr','inv_irr','no_mask'} mask behavior using IrrMapper.
+
+    Side Effects
+    - Starts ee.batch export tasks to the provided `bucket`.
+    """
     s, e = '1987-01-01', '2021-12-31'
     irr_coll = ee.ImageCollection(IRR)
     coll = irr_coll.filterDate(s, e).select('classification')
@@ -80,7 +99,25 @@ def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_t
 def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None,
                        feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3',
                        satellite='landsat'):
-    """"""
+    """Export per-field NDVI timeseries (one CSV per field-year) to GCS.
+
+    Parameters
+    - shapefile: path to polygon features (CRS will be reprojected to EPSG:4326).
+    - bucket: GCS bucket for output (folder structure includes satellite/mask).
+    - debug: bool; if True, prints sampled values.
+    - mask_type: {'irr','inv_irr','no_mask'} NDVI masking using IrrMapper or LANID (east).
+    - check_dir: optional local directory; skip exports when CSV exists.
+    - feature_id: attribute name for feature identifier in shapefile.
+    - select: optional iterable of feature IDs to include.
+    - start_yr, end_yr: export year range inclusive.
+    - state_col: column indicating US state for LANID fallback east of WEST_STATES.
+    - satellite: {'landsat','sentinel'} source collection.
+
+    Side Effects
+    - Starts ee.batch table export tasks to the provided `bucket`.
+    Returns
+    - None; prints exported/skipped counts.
+    """
     df = gpd.read_file(shapefile)
     df.index = df[feature_id]
 
@@ -204,6 +241,21 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
 
 def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None,
                           start_yr=2004, end_yr=2023, feature_id='FID', satellite='landsat'):
+    """Export NDVI for all features in a collection, grouped per-year.
+
+    Parameters
+    - feature_coll: ee.FeatureCollection of polygons with `feature_id` property.
+    - bucket: str GCS bucket name.
+    - debug: bool; if True, prints sampled values.
+    - mask_type: {'irr','inv_irr','no_mask'} mask selection.
+    - check_dir: optional local dir; skip if year CSV exists.
+    - start_yr, end_yr: year range.
+    - feature_id: property name used as the ID in outputs.
+    - satellite: {'landsat','sentinel'}.
+
+    Side Effects
+    - Starts an ee.batch table export per year to the `bucket`.
+    """
     feature_coll = ee.FeatureCollection(feature_coll)
 
     s, e = '1987-01-01', '2021-12-31'

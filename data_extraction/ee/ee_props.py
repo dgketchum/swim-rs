@@ -18,6 +18,16 @@ EAST_STATES = 'users/dgketchum/boundaries/eastern_38_dissolved'
 
 
 def get_cdl(fields, desc, selector='FID'):
+    """Export per-feature CDL crop class mode by year to GCS.
+
+    Parameters
+    - fields: ee.FeatureCollection asset path or object.
+    - desc: export description/prefix.
+    - selector: property to include as ID in selectors (default 'FID').
+
+    Side Effects
+    - Starts ee.batch table export of yearly modes for 2008–2022 to `wudr`.
+    """
     plots = ee.FeatureCollection(fields)
     crops, first = None, True
     cdl_years = [x for x in range(2008, 2023)]
@@ -54,7 +64,18 @@ def get_cdl(fields, desc, selector='FID'):
 
 
 def get_irrigation(fields, desc, debug=False, selector='FID', lanid=False):
-    """"""
+    """Export annual irrigation fraction per feature using IrrMapper (and LANID).
+
+    Parameters
+    - fields: ee.FeatureCollection asset path or object.
+    - desc: export description/prefix.
+    - debug: bool; if True, prints a sample feature.
+    - selector: feature ID property to include.
+    - lanid: bool; if True, mosaics LANID east of WEST/EAST boundary for years.
+
+    Side Effects
+    - Starts ee.batch table export to `wudr` with mean of yearly `irr_<year>`.
+    """
     east, west = None, None
     plots = ee.FeatureCollection(fields)
 
@@ -109,6 +130,17 @@ def get_irrigation(fields, desc, debug=False, selector='FID', lanid=False):
 
 
 def get_ssurgo(fields, desc, debug=False, selector='FID'):
+    """Export SSURGO-derived soil attributes averaged per feature.
+
+    Parameters
+    - fields: ee.FeatureCollection asset path or object.
+    - desc: export description/prefix.
+    - debug: bool; if True, prints a sample feature.
+    - selector: feature ID property to include.
+
+    Side Effects
+    - Starts ee.batch table export (columns: awc, ksat, clay, sand) to `wudr`.
+    """
     # OpenET AWC is in cm/cm
     awc_asset = 'projects/openet/soil/ssurgo_AWC_WTA_0to152cm_composite'
     # OpenET KSAT is in micrometers/sec
@@ -147,6 +179,16 @@ def get_ssurgo(fields, desc, debug=False, selector='FID'):
 
 
 def get_hwsd(fields, desc, debug=False, selector='FID', out_fmt='CSV', local_file=None):
+    """Export or save HWSD v2 soil property (AWC) per feature.
+
+    Parameters
+    - fields: ee.FeatureCollection asset path or object.
+    - desc: export description/prefix.
+    - debug: bool; if True, prints a sample feature.
+    - selector: feature ID property to include.
+    - out_fmt: 'CSV' or other formats supported by EE table export.
+    - local_file: if provided, writes a local CSV instead of GCS export.
+    """
     plots = ee.FeatureCollection(fields)
 
     stype = ee.Image('projects/sat-io/open-datasets/FAO/HWSD_V2_SMU').select('AWC').rename('awc')
@@ -183,6 +225,16 @@ def get_hwsd(fields, desc, debug=False, selector='FID', out_fmt='CSV', local_fil
         print(desc)
 
 def get_landcover(fields, desc, debug=False, selector='FID', out_fmt='CSV', local_file=None):
+    """Export dominant landcover from MODIS and FROM-GLC10 per feature.
+
+    Parameters
+    - fields: ee.FeatureCollection asset path or object.
+    - desc: export description/prefix.
+    - debug: bool; if True, prints a sample feature.
+    - selector: feature ID property to include.
+    - out_fmt: 'CSV' or other formats supported by EE table export.
+    - local_file: if provided, writes a local CSV instead of GCS export.
+    """
     plots = ee.FeatureCollection(fields)
 
     vtype = ee.ImageCollection('MODIS/061/MCD12Q1').select('LC_Type1').first().rename('modis_lc')

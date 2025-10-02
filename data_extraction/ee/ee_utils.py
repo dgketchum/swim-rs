@@ -12,6 +12,14 @@ import ee
 
 
 def sentinel2_sr(input_img):
+    """Prepare Sentinel-2 SR image with basic scaling and cloud mask.
+
+    Parameters
+    - input_img: ee.Image, raw Sentinel-2 SR image (HARMONIZED).
+
+    Returns
+    - ee.Image with optical bands scaled to reflectance and cloudy pixels masked.
+    """
     optical_bands = ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B11', 'B12']
     scl_band = 'SCL'
     all_bands = optical_bands + [scl_band]
@@ -35,6 +43,15 @@ def sentinel2_sr(input_img):
 
 
 def sentinel2_masked(yr, roi):
+    """Return a masked Sentinel-2 SR ImageCollection for a year and ROI.
+
+    Parameters
+    - yr: int, year of interest.
+    - roi: ee.Geometry or ee.FeatureCollection bounds.
+
+    Returns
+    - ee.ImageCollection of cloud-masked, reflectance-scaled optical bands.
+    """
     start = f'{yr}-01-01'
     end_date = f'{yr + 1}-01-01'
 
@@ -47,6 +64,15 @@ def sentinel2_masked(yr, roi):
 
 
 def landsat_c2_sr(input_img):
+    """Prepare Landsat Collection 2 SR image with scaling and cloud/saturation mask.
+
+    Parameters
+    - input_img: ee.Image with SPACECRAFT_ID and Collection 2 SR bands.
+
+    Returns
+    - ee.Image with renamed bands, scaled surface reflectance, temperature band,
+      and cloud/saturation mask applied; preserves time property.
+    """
     # credit: cgmorton; https://github.com/Open-ET/openet-core-beta/blob/master/openet/core/common.py
 
     INPUT_BANDS = ee.Dictionary({
@@ -94,6 +120,15 @@ def landsat_c2_sr(input_img):
 
 
 def landsat_masked(yr, roi):
+    """Return cloud-masked Landsat C2 SR ImageCollection merged across sensors.
+
+    Parameters
+    - yr: int, year of interest.
+    - roi: ee.Geometry or ee.FeatureCollection bounds.
+
+    Returns
+    - ee.ImageCollection with scaled/renamed bands and cloud/saturation mask.
+    """
     start = '{}-01-01'.format(yr)
     end_date = '{}-01-01'.format(yr + 1)
 
@@ -114,6 +149,14 @@ def landsat_masked(yr, roi):
 
 
 def export_openet_correction_surfaces(local_check):
+    """Export monthly OpenET GridMET correction images to GCS.
+
+    Exports both ETr and ETo ratios for each month to the `wudr` bucket, skipping
+    any month where a local GeoTIFF already exists in `local_check`.
+
+    Parameters
+    - local_check: str or None; directory to check for existing local files.
+    """
     is_authorized()
 
     for etref in ['etr', 'eto']:
@@ -142,6 +185,11 @@ def export_openet_correction_surfaces(local_check):
 
 
 def get_lanid():
+    """Build a multi-band LANID irrigation mask image for 1987–2024.
+
+    Returns
+    - ee.Image with bands named `irr_<year>` where 1 indicates irrigated.
+    """
     first_image = ee.Image('users/xyhuwmir4/LANID_postCls/LANID_v2')
     second_image = ee.Image('users/xyhuwmir/LANID/update/LANID2018-2020')
 
@@ -172,6 +220,11 @@ def get_lanid():
 
 
 def is_authorized():
+    """Initialize the Earth Engine client using the configured project.
+
+    Prints status and exits(1) if initialization fails.
+    Returns None on success.
+    """
     try:
         ee.Initialize(project='ee-dgketchum')
         print('Authorized')

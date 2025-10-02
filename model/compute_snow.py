@@ -4,6 +4,19 @@ import numpy as np
 
 
 def calculate_snow(foo, foo_day):
+    """Update snow states and partition precip into rain/snow and melt.
+
+    A simple degree-day and shortwave-driven melt routine with evolving snow
+    albedo is applied. Inputs come from `foo_day` (temperature, srad, precip)
+    and tracker parameters (albedo, `swe_alpha`, `swe_beta`).
+
+    Parameters
+    - foo: SampleTracker holding state arrays (swe, albedo, melt, rain).
+    - foo_day: DayData with daily mean/max temperature, srad, precip.
+
+    Returns
+    - None; modifies `foo.swe`, `foo.melt`, `foo.rain`, `foo.snow_fall`, `foo.albedo`.
+    """
 
     temp = foo_day.temp_avg
     tmax = foo_day.max_temp
