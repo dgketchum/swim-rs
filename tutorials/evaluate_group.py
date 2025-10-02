@@ -1,15 +1,12 @@
 import collections
 import os
-import time
-from datetime import datetime
 from pprint import pprint
 
 import pandas as pd
 
 from analysis.metrics import compare_etf_estimates
 from model import obs_field_cycle
-from prep import get_flux_sites, get_ensemble_parameters
-from prep.prep_plots import prep_fields_json
+from prep import get_flux_sites
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
 
@@ -27,16 +24,12 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
     if monthly is None:
         return None
 
-    # print('\nOverpass\n')
-    # pprint(overpass)
-    # print('Monthly')
-    # pprint(monthly)
-
     agg_comp = monthly.copy()
     if len(agg_comp) < 3:
         return None
 
-    rmse_values = {k.split('_')[1]: v for k, v in agg_comp.items() if k.startswith('rmse_')}
+    rmse_values = {k.split('_')[1]: v for k, v in agg_comp.items() if k.startswith('rmse_')
+                   if 'swim' in k or 'openet' in k}
 
     if len(rmse_values) == 0:
         return None
@@ -103,7 +96,9 @@ if __name__ == '__main__':
         western_only = True
         model_ = 'ssebop'
 
-    target_dir = os.path.join(config.project_ws, 'multi_test')
+    # target_dir = os.path.join(config.project_ws, 'multi_test')
+    target_dir = os.path.join(config.project_ws, 'diy_ensemble')
+
     config.forecast_parameters_csv = os.path.join(target_dir, f'{project}.3.par.csv')
     config.spinup = os.path.join(target_dir, f'spinup_{project}.json')
     station_prepped_input = os.path.join(target_dir, f'prepped_input.json')

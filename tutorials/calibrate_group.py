@@ -52,7 +52,7 @@ def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrit
                           conflicted_obs=None)
     builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
     builder.build_localizer()
-    builder.add_regularization()
+    # builder.add_regularization()
 
     # short run sets up base realization and checks for prior-data conflict
     if pdc_remove:
@@ -82,7 +82,7 @@ def run_pest_sequence(conf, results, select_stations, pdc_remove=False, overwrit
                                   conflicted_obs=temp_pdc)
             builder.build_pest(target_etf=conf.etf_target_model, members=conf.etf_ensemble_members)
             builder.build_localizer()
-            builder.add_regularization()
+            # builder.add_regularization()
             builder.write_control_settings(noptmax=0)
             builder.dry_run(exe_)
 

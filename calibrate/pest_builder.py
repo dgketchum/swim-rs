@@ -272,8 +272,8 @@ class PestBuilder:
         pst.pestpp_options["ies_localizer"] = "loc.mat"
         pst.pestpp_options["ies_num_reals"] = reals
         pst.pestpp_options["ies_drop_conflicts"] = 'true'
-        pst.pestpp_options["ies_reg_factor"] = 0.25
-        pst.pestpp_options["ies_use_approx"] = 'true'
+        # pst.pestpp_options["ies_reg_factor"] = 0.25
+        # pst.pestpp_options["ies_use_approx"] = 'true'
 
         pst.control_data.noptmax = noptmax
         oe = ObservationEnsemble.from_gaussian_draw(pst=pst, num_reals=reals)
