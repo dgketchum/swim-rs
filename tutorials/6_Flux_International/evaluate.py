@@ -18,7 +18,7 @@ root = '/data/ssd2/swim'
 data = os.path.join(root, project, 'data')
 project_ws_ = os.path.join(root, project)
 if not os.path.isdir(root):
-    root = '/home/dgketchum/PycharmProjects/swim-rs'
+    root = '/home/dgketchum/code/swim-rs'
     project_ws_ = os.path.join(root, 'tutorials', project)
     data = os.path.join(project_ws_, 'data')
 

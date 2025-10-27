@@ -69,7 +69,7 @@ if __name__ == '__main__':
 
     project = '4_Flux_Network'
 
-    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
+    root = os.path.join(home, 'code', 'swim-rs')
     project_ws_ = os.path.join(root, 'tutorials', project)
     config_file = os.path.join(project_ws_, 'config.toml')
 

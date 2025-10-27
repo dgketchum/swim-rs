@@ -187,7 +187,7 @@ def plot_ndvi_forecast(results, output_dir, field_id):
 
 if __name__ == '__main__':
     home = os.path.expanduser('~')
-    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
+    root = os.path.join(home, 'code', 'swim-rs')
 
     project = '4_Flux_Network'
     constraint_ = 'tight'

@@ -16,7 +16,7 @@ data = os.path.join(root, project, 'data')
 project_ws = os.path.join(root, project)
 
 if not os.path.isdir(root):
-    root = os.path.join(os.path.expanduser('~'), 'PycharmProjects', 'swim-rs')
+    root = os.path.join(os.path.expanduser('~'), 'code', 'swim-rs')
     data = os.path.join(root, 'tutorials', project, 'data')
     project_ws = os.path.join(root, 'tutorials', project)
 

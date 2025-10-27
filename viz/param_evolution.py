@@ -68,7 +68,7 @@ def plot_parameter_histograms(initial_params_file, optimized_params_files, fig_o
 
 if __name__ == '__main__':
     home = os.path.expanduser('~')
-    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
+    root = os.path.join(home, 'code', 'swim-rs')
 
     project = 'alarc_test'
     # project = '3_Crane'

@@ -6,6 +6,7 @@ import pandas as pd
 from model import compute_field_et
 from model import obs_kcb_daily
 from model.tracker import SampleTracker, TUNABLE_PARAMS
+from model import TRACKER_PARAMS
 from model.day_data import DayData
 
 OUTPUT_FMT = ['aw',
@@ -51,7 +52,7 @@ class WaterBalanceError(Exception):
     """Raised when daily water balance residuals exceed tolerance."""
 
 
-def field_day_loop(config, plots, debug_flag=False, params=None):
+def field_day_loop(config, plots, debug_flag=False, params=None, state_in=None, capture_state=False, single_fid_idx=None):
     """Run the daily model loop over the configured date range and fields.
 
     Orchestrates tracker initialization (initial conditions, parameters, soils,
@@ -107,6 +108,16 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
     day_data = DayData()
 
+    if state_in is not None and single_fid_idx is not None:
+        # apply provided restart state for a single field
+        for k in TRACKER_PARAMS:
+            if k in state_in:
+                arr = tracker.__getattribute__(k)
+                arr[0, single_fid_idx] = state_in[k]
+                tracker.__setattr__(k, arr)
+
+    states_out = [] if capture_state else None
+
     for j, (step_dt, vals) in enumerate(valid_data.items()):
 
         day_data.update_day(step_dt, size, vals['doy'])
@@ -118,6 +129,13 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
         day_data.update_daily_irrigation(plots, vals, config)
 
         day_data.update_daily_inputs(vals, size)
+
+        if capture_state and single_fid_idx is not None:
+            snap = {}
+            for k in TRACKER_PARAMS:
+                v = tracker.__getattribute__(k)
+                snap[k] = float(v[0, single_fid_idx])
+            states_out.append(snap)
 
         obs_kcb_daily.kcb_daily(tracker, day_data)
 
@@ -148,6 +166,8 @@ def field_day_loop(config, plots, debug_flag=False, params=None):
 
     else:
         # if not debug, just return the actual ET and SWE results as ndarray
+        if capture_state:
+            return etf, swe, states_out
         return etf, swe
 
 

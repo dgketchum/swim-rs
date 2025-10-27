@@ -9,7 +9,7 @@ def run():
     """This script is meant to be executed by PEST++"""
 
     home = os.path.expanduser('~')
-    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
+    root = os.path.join(home, 'code', 'swim-rs')
 
     os.environ['PYTHONPATH'] = root
 

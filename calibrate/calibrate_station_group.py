@@ -165,14 +165,14 @@ if __name__ == '__main__':
     d = '/data/ssd2/swim'
     if not os.path.isdir(d):
         home = os.path.expanduser('~')
-        d = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials')
+        d = os.path.join(home, 'code', 'swim-rs', 'tutorials')
 
     project_ = '4_Flux_Network'
     project_ws_ = os.path.join(d, project_)
 
     config_file = os.path.join(project_ws_, 'config.toml')
 
-    bad_parameters = ('/home/dgketchum/PycharmProjects/swim-rs/tutorials/'
+    bad_parameters = ('/home/dgketchum/code/swim-rs/tutorials/'
                       '4_Flux_Network/results_comparison_bad.csv')
 
     run_pest_sequence(config_file, project_ws_, workers=22, realizations=200, bad_params=bad_parameters,

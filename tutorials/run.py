@@ -70,7 +70,7 @@ if __name__ == '__main__':
     # western_only = True
 
     home = os.path.expanduser('~')
-    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{config_filename}.toml')
+    config_file = os.path.join(home, 'code', 'swim-rs', 'tutorials', project, f'{config_filename}.toml')
 
     config_ = ProjectConfig()
     config_.read_config(config_file)

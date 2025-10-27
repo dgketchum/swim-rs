@@ -1,6 +1,7 @@
 import collections
 import os
 from pprint import pprint
+from datetime import datetime
 
 import pandas as pd
 
@@ -83,17 +84,17 @@ if __name__ == '__main__':
     project = '5_Flux_Ensemble'
 
     home = os.path.expanduser('~')
-    config_file = os.path.join(home, 'PycharmProjects', 'swim-rs', 'tutorials', project, f'{project}.toml')
+    config_file = os.path.join(home, 'code', 'swim-rs', 'tutorials', project, f'{project}.toml')
 
     config = ProjectConfig()
     config.read_config(config_file)
 
     if project == '5_Flux_Ensemble':
-        western_only = True
+        western_only = False
         model_ = 'openet'
 
     else:
-        western_only = True
+        western_only = False
         model_ = 'ssebop'
 
     # target_dir = os.path.join(config.project_ws, 'multi_test')
@@ -107,7 +108,7 @@ if __name__ == '__main__':
     flux_dir = os.path.join(config.data_dir, 'daily_flux_files')
 
     ec_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
-                                return_df=True, western_only=True, header=1)
+                                return_df=True, western_only=western_only, header=1)
 
     incomplete, complete, results = [], [], []
 
@@ -117,6 +118,9 @@ if __name__ == '__main__':
     config.calibrate = False
     config.forecast = True
     config.read_forecast_parameters()
+
+    modified_date = datetime.fromtimestamp(os.path.getmtime(config.forecast_parameters_csv))
+    print(f'Calibration made {modified_date}')
 
     df_dct = obs_field_cycle.field_day_loop(config, plots_, debug_flag=True)
 
@@ -128,15 +132,15 @@ if __name__ == '__main__':
 
         lulc = sdf.at[site_, 'General classification']
 
-        if lulc != 'Croplands':
-            continue
+        # if lulc != 'Croplands':
+        #     continue
 
         if site_ not in ec_sites:
             continue
 
         # unresolved data problems
-        if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114', 'MB_Pch']:
-            continue
+        # if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114', 'MB_Pch']:
+        #     continue
 
         # testing sites
         # if site_ in ['B_01', 'ALARC2_Smith6', 'S2', 'MR', 'US-FPe']:

@@ -42,7 +42,7 @@ if __name__ == '__main__':
 
     prior_constraint = 'tight'
 
-    root = os.path.join(home, 'PycharmProjects', 'swim-rs')
+    root = os.path.join(home, 'code', 'swim-rs')
     project_ws = os.path.join(root, 'tutorials', project)
 
     p_dir = os.path.join(project_ws, 'pest')
