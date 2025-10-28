@@ -245,7 +245,7 @@ class SampleTracker:
                 self.__setattr__(k, v)
 
         elif self.conf.forecast:
-            print('FORECAST')
+            # print('FORECAST')
 
             param_arr = {k: np.zeros((1, size)) for k in TUNABLE_PARAMS}
 
@@ -307,22 +307,23 @@ class SampleTracker:
             first = True
 
             for fid, var_dct in sdct.items():
+                if fid not in order:
+                    continue
 
                 if first:
                     tracker_array = {p: np.zeros((1, size)) for p in var_dct.keys()}
                     first = False
 
-                idx = self.plots.input['order'].index(fid)
+                idx = order.index(fid)
 
                 for k, v in var_dct.items():
-
                     if k in TRACKER_PARAMS:
                         tracker_array[k][0, idx] = v
 
-            print('USING SPINUP WATER BALANCE INFORMATION')
-
-            for k, v in tracker_array.items():
-                self.__setattr__(k, v)
+            if tracker_array is not None:
+                # print('USING SPINUP WATER BALANCE INFORMATION')
+                for k, v in tracker_array.items():
+                    self.__setattr__(k, v)
 
     def update_dataframe(self, targets, day_data, step_dt):
         """Append per-field daily diagnostics into `crop_df` (debug mode).

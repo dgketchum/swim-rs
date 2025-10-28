@@ -108,13 +108,29 @@ def field_day_loop(config, plots, debug_flag=False, params=None, state_in=None, 
 
     day_data = DayData()
 
-    if state_in is not None and single_fid_idx is not None:
-        # apply provided restart state for a single field
-        for k in TRACKER_PARAMS:
-            if k in state_in:
-                arr = tracker.__getattribute__(k)
-                arr[0, single_fid_idx] = state_in[k]
-                tracker.__setattr__(k, arr)
+    # Apply provided restart state. If single_fid_idx is None, broadcast across all fields.
+    if state_in is not None:
+        if single_fid_idx is not None:
+            # single-field restart
+            for k in TRACKER_PARAMS:
+                if k in state_in:
+                    arr = tracker.__getattribute__(k)
+                    arr[0, single_fid_idx] = state_in[k]
+                    tracker.__setattr__(k, arr)
+        else:
+            # broadcast restart to all fields (scalar or 1xN array accepted)
+            for k in TRACKER_PARAMS:
+                if k in state_in:
+                    v = state_in[k]
+                    arr = tracker.__getattribute__(k)
+                    if np.isscalar(v):
+                        arr[:] = v
+                    else:
+                        vv = np.array(v).reshape(1, -1)
+                        if vv.shape[1] != arr.shape[1]:
+                            raise ValueError('state_in length mismatch for %s' % k)
+                        arr[:] = vv
+                    tracker.__setattr__(k, arr)
 
     states_out = [] if capture_state else None
 
