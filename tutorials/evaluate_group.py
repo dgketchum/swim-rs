@@ -10,6 +10,7 @@ from model import obs_field_cycle
 from prep import get_flux_sites
 from swim.config import ProjectConfig
 from swim.sampleplots import SamplePlots
+from viz.swim_timeseries import flux_pdc_timeseries
 
 
 def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='ssebop',
@@ -108,7 +109,7 @@ if __name__ == '__main__':
     flux_dir = os.path.join(config.data_dir, 'daily_flux_files')
 
     ec_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
-                                return_df=True, western_only=western_only, header=1)
+                                   return_df=True, western_only=western_only, header=1)
 
     incomplete, complete, results = [], [], []
 
@@ -143,7 +144,7 @@ if __name__ == '__main__':
         #     continue
 
         # testing sites
-        # if site_ in ['B_01', 'ALARC2_Smith6', 'S2', 'MR', 'US-FPe']:
+        # if site_ not in ['S2']:  # 'B_01', 'ALARC2_Smith6', 'S2', 'MR', 'US-FPe'
         #     continue
 
         print(f'\n{ee} {site_}: {lulc}')
@@ -169,6 +170,10 @@ if __name__ == '__main__':
             results.append((result, lulc))
 
         complete.append(site_)
+        out_fig_dir_ = os.path.join(home, 'Downloads', project, 'figures', 'model_output', 'png')
+
+        # flux_pdc_timeseries(target_dir, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model=model_,
+        #                     members=['ssebop', 'ptjpl', 'sims'])
 
     pprint({s: [t[0] for t in results].count(s) for s in set(t[0] for t in results)})
     pprint(

@@ -157,7 +157,7 @@ def flux_pdc_timeseries(csv_dir, flux_file_dir, fids, out_fig_dir=None, spec='fl
                         model='ssebop', members=None, get_pdc=False):
     for fid in fids:
 
-        csv = os.path.join(csv_dir, fid, f'{fid}.csv')
+        csv = os.path.join(csv_dir, f'{fid}.csv')
         pdc_file = os.path.join(csv_dir, fid, f'{fid}.pdc.csv')
         flux_file = os.path.join(flux_file_dir, f'{fid}_daily_data.csv')
 
