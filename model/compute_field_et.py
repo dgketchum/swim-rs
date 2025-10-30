@@ -21,9 +21,6 @@ def compute_field_et(swb, day_data):
     - None; updates fields on `swb` in-place (e.g., kc_act, etc_act, swe, dperc).
     """
 
-    if day_data.dt_string == '2003-02-03':
-        a = 1
-
     swb.kc_bas = np.maximum(swb.kc_min, swb.kc_bas)
     swb.fc = ((swb.kc_bas - swb.kc_min) / (swb.kc_max - swb.kc_min))
 
@@ -105,7 +102,7 @@ def compute_field_et(swb, day_data):
         e_factor = 1 - (swb.depl_ze - swb.tew) / potential_e
         e_factor = np.minimum(np.maximum(e_factor, 0), 1)
         swb.e *= e_factor
-        swb.depl_ze = depl_ze_prev + swb.e
+        swb.depl_ze = np.where(depl_ze_prev < 0, 0.0, depl_ze_prev)  + swb.e
 
     swb.cum_evap_prev = swb.cum_evap_prev + swb.e - (swb.ppt_inf - depl_ze_prev)
     swb.cum_evap_prev = np.maximum(swb.cum_evap_prev, 0)
@@ -132,10 +129,12 @@ def compute_field_et(swb, day_data):
                                     swb.depl_root * 1.1 - swb.max_irr_rate,
                                     swb.next_day_irr)
 
-        potential_irr = np.where(swb.irr_continue, np.minimum(irr_waiting, swb.max_irr_rate), 0.0)
+        potential_irr_calc = np.where(swb.irr_continue, np.minimum(irr_waiting, swb.max_irr_rate), 0.0)
 
-        potential_irr = np.where((day_data.irr_day & (swb.depl_root > swb.raw)),
-                                 np.minimum(swb.max_irr_rate, swb.depl_root * 1.1), potential_irr)
+        potential_irr_calc = np.where((day_data.irr_day & (swb.depl_root > swb.raw)),
+                                 np.minimum(swb.max_irr_rate, swb.depl_root * 1.1), potential_irr_calc)
+
+        potential_irr = np.where(day_data.temp_avg < 5.0, 0.0, potential_irr_calc)
 
         # if np.any(potential_irr > 0.) and foo_day.doy > 190 and foo_day.irr_day[0, 46]:
         #     a = 1
