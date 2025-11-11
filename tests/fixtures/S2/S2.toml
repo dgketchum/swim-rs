@@ -1,0 +1,59 @@
+project = "S2"
+root = "."
+
+[paths]
+project_workspace = "{root}"
+data = "{root}/data"
+
+landsat = "{root}/data/landsat"
+landsat_tables = "{root}/data/landsat/tables"
+sentinel = "{root}/data/sentinel"
+sentinel_tables = "{root}/data/sentinel/tables"
+
+met = "{root}/data/met"
+gis = "{root}/data/gis"
+fields_shapefile = "{root}/data/gis/flux_footprint_s2.shp"
+gridmet_mapping = "{root}/data/gis/fields_gfid.shp"
+correction_tifs = "{root}/data/corrections"
+gridmet_factors = "{root}/data/gridmet_factors.json"
+
+properties = "{root}/data/properties"
+irr = "{root}/data/properties/irr.csv"
+ssurgo = "{root}/data/properties/ssurgo.csv"
+lulc = "{root}/data/properties/lulc.csv"
+properties_json = "{root}/data/properties/properties.json"
+snodas_in = "{root}/data/snodas/extracts"
+snodas_out = "{root}/data/snodas/snodas.json"
+
+remote_sensing_tables = "{root}/data/rs_tables"
+joined_timeseries = "{root}/data/plot_timeseries"
+dynamics_data = "{root}/data/dynamics.json"
+prepped_input = "{root}/data/prepped_input.json"
+
+[ids]
+feature_id = "FID"
+gridmet_join_id = "GFID"
+
+[misc]
+irrigation_threshold = 0.3
+elev_units = "m"
+refet_type = "eto"
+swb_mode = "cn"
+
+[date_range]
+start_date = "2020-01-01"
+end_date = "2020-01-03"
+
+[crop_coefficient]
+kc_proxy = "etf"
+cover_proxy = "ndvi"
+
+[calibration]
+pest_run_dir = "{root}/calib"
+calibration_dir = "{root}/calib/master"
+initial_values_csv = "{root}/calib/initial_values.csv"
+etf_target_model = "ssebop"
+
+[forecast]
+forecast_parameters = "{root}/calib/forecast_params.csv"
+
