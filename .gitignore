@@ -213,3 +213,6 @@ cython_debug/
 /examples/4_Flux_Network/master/
 /examples/4_Flux_Network/workers/
 /examples/logs/
+
+examples/6_Flux_International/data/landsat/
+examples/6_Flux_International/data/ecostress/
