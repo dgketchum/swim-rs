@@ -217,6 +217,7 @@ class SampleTracker:
             cal_arr = {k: np.zeros((1, size)) for k in TUNABLE_PARAMS}
 
             ct = 0
+            skipped_fields = set()
             for k, f in self.conf.calibration_files.items():
 
                 param_found = False
@@ -231,6 +232,11 @@ class SampleTracker:
                     if ct > 1000:
                         raise ValueError(f'Calibration Parameter Match Not Found\n Parameter {k} not in {f}')
 
+                # Skip parameters for fields not in plots data
+                if fid not in self.plots.input['order']:
+                    skipped_fields.add(fid)
+                    continue
+
                 idx = self.plots.input['order'].index(fid)
 
                 if params:
@@ -241,6 +247,14 @@ class SampleTracker:
 
                 cal_arr[group][0, idx] = value
 
+            if skipped_fields:
+                import warnings
+                skipped_list = sorted(skipped_fields)
+                warnings.warn(
+                    f"Skipped calibration parameters for {len(skipped_fields)} field(s) not in plots data: "
+                    f"{skipped_list[:10]}" + (f"... and {len(skipped_list) - 10} more" if len(skipped_list) > 10 else "")
+                )
+
             for k, v in cal_arr.items():
                 self.__setattr__(k, v)
 
@@ -250,6 +264,7 @@ class SampleTracker:
             param_arr = {k: np.zeros((1, size)) for k in TUNABLE_PARAMS}
 
             ct = 0
+            skipped_fields = set()
             for k, v in self.conf.forecast_parameters.items():
 
                 param_found = False
@@ -267,9 +282,10 @@ class SampleTracker:
                 # PEST++ has lower-cased the FIDs
                 l = [x.lower() for x in self.plots.input['order']]
 
-                # breaking change from LEnKF dev, we need another logic fork to if self.conf.filter
-                # if fid not in l:
-                #     continue
+                # Skip parameters for fields not in plots data
+                if fid not in l:
+                    skipped_fields.add(fid)
+                    continue
 
                 idx = l.index(fid)
 
@@ -279,6 +295,14 @@ class SampleTracker:
                     value = v
 
                 param_arr[group][0, idx] = value
+
+            if skipped_fields:
+                import warnings
+                skipped_list = sorted(skipped_fields)
+                warnings.warn(
+                    f"Skipped forecast parameters for {len(skipped_fields)} field(s) not in plots data: "
+                    f"{skipped_list[:10]}" + (f"... and {len(skipped_list) - 10} more" if len(skipped_list) > 10 else "")
+                )
 
             for k, v in param_arr.items():
                 self.__setattr__(k, v)

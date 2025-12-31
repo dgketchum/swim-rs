@@ -69,6 +69,13 @@ def field_day_loop(config, plots, debug_flag=False, params=None, state_in=None, 
     - If debug_flag: dict[fid -> pd.DataFrame]. Else: (etf_arr, swe_arr) ndarrays.
     """
     etf, swe = None, None
+
+    # Reconcile plots data with parameters in forecast/calibrate mode
+    if config.forecast or config.calibrate:
+        common_fields, dropped_plots, dropped_params = plots.reconcile_with_parameters(config)
+        if not common_fields:
+            raise ValueError("No fields found in both plots data and parameter set")
+
     size = len(plots.input['order'])
 
     tracker = SampleTracker(config, plots, size)
