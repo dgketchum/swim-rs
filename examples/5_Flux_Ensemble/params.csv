@@ -1,0 +1,13 @@
+,value,mult_name
+aw_ALARC2_Smith6,200.0000029802322,p_aw_ALARC2_Smith6_0_constant.csv
+rew_ALARC2_Smith6,3.0,p_rew_ALARC2_Smith6_0_constant.csv
+tew_ALARC2_Smith6,18.0,p_tew_ALARC2_Smith6_0_constant.csv
+kc_max_ALARC2_Smith6,1.393069019607843,p_kc_max_ALARC2_Smith6_0_constant.csv
+ke_max_ALARC2_Smith6,0.8507711050848913,p_ke_max_ALARC2_Smith6_0_constant.csv
+ks_alpha_ALARC2_Smith6,0.25,p_ks_alpha_ALARC2_Smith6_0_constant.csv
+kr_alpha_ALARC2_Smith6,0.35,p_kr_alpha_ALARC2_Smith6_0_constant.csv
+ndvi_k_ALARC2_Smith6,6.0,p_ndvi_k_ALARC2_Smith6_0_constant.csv
+ndvi_0_ALARC2_Smith6,0.25,p_ndvi_0_ALARC2_Smith6_0_constant.csv
+mad_ALARC2_Smith6,0.6,p_mad_ALARC2_Smith6_0_constant.csv
+swe_alpha_ALARC2_Smith6,0.15,p_swe_alpha_ALARC2_Smith6_0_constant.csv
+swe_beta_ALARC2_Smith6,1.5,p_swe_beta_ALARC2_Smith6_0_constant.csv

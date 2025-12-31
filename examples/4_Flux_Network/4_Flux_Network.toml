@@ -48,7 +48,7 @@ state_col = "state"
 irrigation_threshold = 0.3
 elev_units = "m"
 refet_type = "eto"
-swb_mode = "cn"
+swb_mode = "infil_excess"
 
 [date_range]
 start_date = "1987-01-01"
