@@ -3,6 +3,10 @@ import os
 from swimrs.data_extraction.ee.ee_utils import is_authorized
 from swimrs.swim.config import ProjectConfig
 
+# Deprecated: use per-example entrypoints:
+# - examples/4_Flux_Network/data_extract.py
+# - examples/5_Flux_Ensemble/data_extract.py
+
 
 def extract_snodas(conf):
     is_authorized()

@@ -41,7 +41,6 @@ class ProjectConfig:
         self.prepped_input = None
 
         # EE
-        self.ee_fields = None
         self.ee_bucket = None
 
         # IDs
@@ -98,7 +97,12 @@ class ProjectConfig:
         if project_root_override:
             self.root_path = os.path.expanduser(project_root_override)
         else:
-            self.root_path = os.path.expanduser(toml_root_path)
+            expanded_root = os.path.expanduser(toml_root_path) if toml_root_path is not None else None
+            if expanded_root and not os.path.isabs(expanded_root):
+                conf_dir = os.path.dirname(os.path.abspath(conf_file_path))
+                self.root_path = os.path.normpath(os.path.join(conf_dir, expanded_root))
+            else:
+                self.root_path = expanded_root
 
         base_format_vars = {
             'root': self.root_path,
@@ -156,7 +160,6 @@ class ProjectConfig:
         self.plot_timeseries = self.joined_timeseries_dir
 
         # Earth Engine
-        self.ee_fields = ee_conf.get('fields')
         self.ee_bucket = ee_conf.get('bucket')
 
         # IDs

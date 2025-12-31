@@ -4,6 +4,10 @@ from swimrs.swim.config import ProjectConfig
 from swimrs.prep import get_ensemble_parameters
 from swimrs.utils.rs_diagnostics import summarize_observation_counts, merge_counts_dict
 
+# Deprecated: use per-example entrypoints:
+# - examples/4_Flux_Network/data_prep.py
+# - examples/5_Flux_Ensemble/data_prep.py
+
 
 def prep_earthengine_extracts(conf, sites, overwrite=False, add_sentinel=False):
     from swimrs.prep.remote_sensing import sparse_time_series, join_remote_sensing

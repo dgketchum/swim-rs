@@ -65,7 +65,7 @@ workers = 20
 realizations = 200
 calibration_dir = "{pest_run_dir}/pest/mult"
 obs_folder = "{pest_run_dir}/obs"
-initial_values_csv = "{pest_run_dir}/pest/params.csv"
+initial_values_csv = "{pest_run_dir}/params.csv"
 spinup = "{pest_run_dir}/spinup.json"
 python_script = "{project_workspace}/custom_forward_run.py"
 

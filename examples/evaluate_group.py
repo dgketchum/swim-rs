@@ -102,7 +102,7 @@ if __name__ == '__main__':
         model_ = 'ssebop'
 
     # target_dir = os.path.join(config.project_ws, 'multi_test')
-    target_dir = os.path.join(config.project_ws, 'diy_ensemble_non_crop')
+    target_dir = os.path.join(config.project_ws, 'diy_ensemble')
 
     config.forecast_parameters_csv = os.path.join(target_dir, f'{project}.3.par.csv')
     config.spinup = os.path.join(target_dir, f'spinup_{project}.json')
@@ -110,8 +110,10 @@ if __name__ == '__main__':
 
     open_et_ = os.path.join(config.data_dir, 'openet_flux')
     flux_dir = os.path.join(config.data_dir, 'daily_flux_files')
+    station_metadata_csv = '/data/ssd2/swim/5_Flux_Ensemble/data/station_metadata.csv'
 
-    ec_sites, sdf = get_flux_sites(config.station_metadata_csv, crop_only=False,
+
+    ec_sites, sdf = get_flux_sites(station_metadata_csv, crop_only=True,
                                    return_df=True, western_only=western_only, header=1)
 
     incomplete, complete, results_overall, results_pair = [], [], [], []

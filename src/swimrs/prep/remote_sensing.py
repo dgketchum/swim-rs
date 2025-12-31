@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from swimrs.prep import COLUMN_MULTIINDEX
+from swimrs.prep import ACCEPTED_UNITS_MAP, COLUMN_MULTIINDEX
 
 
 def sparse_time_series(in_shp, csv_dir, years, out_pqt, feature_id='FID', instrument='landsat', parameter='ndvi',

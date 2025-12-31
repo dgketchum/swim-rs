@@ -9,8 +9,9 @@ import matplotlib.colors
 from swimrs.viz import COLOR_MAP
 
 
-def plot_swim_timeseries(df, parameters, model, irr_index=None, members=None, start='2018-01-01', end='2018-12-31',
-                         fig_dir=None, fid=None):
+def plot_swim_timeseries(df, parameters, model='ssebop', irr_index=None, members=None,
+                         start='2018-01-01', end='2018-12-31',
+                         fig_dir=None, fid=None, png_dir=None):
     if not isinstance(df, pd.DataFrame):
         df = pd.read_csv(df, index_col=0, parse_dates=True)
 
@@ -136,6 +137,11 @@ def plot_swim_timeseries(df, parameters, model, irr_index=None, members=None, st
         kwargs.update(dict(yaxis=dict(showgrid=False, range=[0, max_bar_val * 3])))
 
     fig.update_layout(**kwargs)
+
+    if png_dir is not None:
+        fig.write_image(png_dir)
+        print(png_dir)
+        return
 
     if fig_dir is not None and 'png' in fig_dir:
         png_file = os.path.join(fig_dir, f'{fid}_{start[:4]}_{pdc_present}_{flux_present}.png')

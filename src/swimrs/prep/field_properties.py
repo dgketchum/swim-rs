@@ -65,6 +65,9 @@ def write_field_properties(shp, out_js, lulc, irr=None, soils=None, cdl=None, fl
 
     if soils is not None:
         soil_df = pd.read_csv(soils, index_col=index_col)
+        # HWSD exports may come through as a single "mode" column (AWC); normalize to "awc"
+        if 'awc' not in soil_df.columns and 'mode' in soil_df.columns:
+            soil_df = soil_df.rename(columns={'mode': 'awc'})
         props = ['awc', 'ksat', 'clay', 'sand']
 
         for prop in props:

@@ -14,11 +14,12 @@ def run():
     from swimrs.calibrate.run_mp import optimize_fields
     from swimrs.swim.config import ProjectConfig
 
-    # Locate project config (assumes repo layout with examples/3_Crane/)
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-    project_ws = os.path.join(repo_root, 'examples', '3_Crane')
-    conf_file = os.path.join(project_ws, '3_Crane.toml') if os.path.exists(
-        os.path.join(project_ws, '3_Crane.toml')) else os.path.join(project_ws, 'config.toml')
+    here = os.path.dirname(os.path.abspath(__file__))
+    conf_file = os.path.join(here, '3_Crane.toml')
+    if not os.path.exists(conf_file):
+        conf_file = os.path.join(here, 'config.toml')
+    if not os.path.exists(conf_file):
+        raise FileNotFoundError(f'Expected config at {conf_file}')
 
     # Resolve input_data path from config
     cfg = ProjectConfig()

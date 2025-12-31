@@ -123,11 +123,11 @@ def get_flux_sites(sites, crop_only=False, return_df=False, western_only=False,
         return sites_
 
 
-def get_ensemble_parameters(skip=None, include=None):
+def get_ensemble_parameters(skip=None, include=None, masks=('irr', 'inv_irr')):
     """"""
     ensemble_params = []
 
-    for mask in ['irr', 'inv_irr']:
+    for mask in masks:
 
         for model in ['openet', 'eemetric', 'geesebal', 'ptjpl', 'sims', 'ssebop', 'disalexi']:
 

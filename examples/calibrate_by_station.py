@@ -8,6 +8,10 @@ from swimrs.prep import prep_fields_json, preproc
 from swimrs.swim.config import ProjectConfig
 from swimrs.prep import get_flux_sites, get_ensemble_parameters
 
+# Deprecated: use per-example entrypoints under:
+# - examples/4_Flux_Network/
+# - examples/5_Flux_Ensemble/
+
 
 def run_pest_sequence(conf, results, select_stations=None, pdc_remove=False, overwrite=False):
     """"""

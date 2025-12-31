@@ -73,7 +73,8 @@ class PestBuilder:
 
         targets = self.plot_order
 
-        aw = [self.plot_properties[t]['awc'] for t in targets]
+        # Some projects (international) may not have SSURGO; allow missing AWC
+        aw = [self.plot_properties.get(t, {}).get('awc', np.nan) for t in targets]
         ke_max = [self.plots.input['ke_max'][t] for t in targets]
         kc_max = [self.plots.input['kc_max'][t] for t in targets]
 
@@ -114,7 +115,20 @@ class PestBuilder:
                     params.append((k, kc_max_, 'p_{}_0_constant.csv'.format(k)))
 
                 elif 'mad_' in k:
-                    irr = np.nanmean([self.plot_properties[fid]['irr'][str(yr)] for yr in range(1987, 2023)])
+                    # Prefer properties-based irrigation fraction when present, otherwise use inferred dynamics.
+                    try:
+                        irr = np.nanmean([self.plot_properties[fid]['irr'][str(yr)] for yr in range(1987, 2023)])
+                    except Exception:
+                        irr_data = self.irr.get(fid, {})
+                        irr_vals = []
+                        for yy, vv in irr_data.items():
+                            if yy == 'fallow_years':
+                                continue
+                            try:
+                                irr_vals.append(float(vv.get('f_irr', np.nan)))
+                            except Exception:
+                                continue
+                        irr = float(np.nanmean(irr_vals)) if irr_vals else 0.0
                     if irr > 0.2:
                         params.append((k, 0.02, 'p_{}_0_constant.csv'.format(k)))
                     else:

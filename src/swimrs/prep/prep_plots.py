@@ -182,20 +182,34 @@ def preproc(config):
         data = fields.input_to_dataframe(fid)
         irr_threshold = config.irr_threshold
 
-        try:
-            irr_years = [int(k) for k, v in fields.input['irr_data'][fid].items() if k != 'fallow_years'
-                         and v['f_irr'] >= irr_threshold]
-        except KeyError:
-            print(f'missing {fid}')
-            continue
-
-        irr_index = [i for i in data.index if i.year in irr_years]
-
         data = data.loc[start: end]
 
-        data['etf'] = data[f'{config.etf_target_model}_etf_inv_irr']
-        idx_match = [i for i in irr_index if i in data.index]
-        data.loc[idx_match, 'etf'] = data.loc[idx_match, f'{config.etf_target_model}_etf_irr']
+        # Prefer irrigated/unirrigated masks when present; otherwise fall back to no_mask (international workflow).
+        target = config.etf_target_model
+        col_inv = f'{target}_etf_inv_irr'
+        col_irr = f'{target}_etf_irr'
+        col_nomask = f'{target}_etf_no_mask'
+
+        if col_inv in data.columns:
+            data['etf'] = data[col_inv]
+            try:
+                irr_years = [
+                    int(k) for k, v in fields.input['irr_data'][fid].items()
+                    if k != 'fallow_years' and v.get('f_irr', 0.0) >= irr_threshold
+                ]
+            except Exception:
+                irr_years = []
+            if irr_years and col_irr in data.columns:
+                irr_index = [i for i in data.index if i.year in irr_years]
+                idx_match = [i for i in irr_index if i in data.index]
+                data.loc[idx_match, 'etf'] = data.loc[idx_match, col_irr]
+        elif col_nomask in data.columns:
+            data['etf'] = data[col_nomask]
+        elif col_irr in data.columns:
+            data['etf'] = data[col_irr]
+        else:
+            print(f'{fid}: missing ETf columns for target={target}')
+            continue
 
         print('\n{}\npreproc ETf mean: {:.2f}'.format(fid, np.nanmean(data['etf'].values)))
         _file = os.path.join(config.obs_folder, 'obs_etf_{}.np'.format(fid))

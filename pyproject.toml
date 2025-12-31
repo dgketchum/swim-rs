@@ -20,6 +20,8 @@ dependencies = [
   "plotly",
   "openet-refet-gee",
   "pydantic>=1.10",
+  "zarr>=2.18",
+  "filelock",
 ]
 
 [project.scripts]

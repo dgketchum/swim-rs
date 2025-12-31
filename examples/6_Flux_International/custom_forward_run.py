@@ -27,21 +27,22 @@ def run():
 
     os.environ['PYTHONPATH'] = root
 
-    model_script = os.path.join(root, 'run', 'run_mp.py')
+    model_script = os.path.join(root, 'src', 'swimrs', 'calibrate', 'run_mp.py')
 
     project_ws = os.path.join(root, 'examples', '6_Flux_International')
 
-    conf_file = os.path.join(project_ws, 'config.toml')
+    conf_file = os.path.join(project_ws, '6_Flux_International.toml')
 
     cwd = os.getcwd()
 
+    input_data = os.path.join(cwd, 'prepped_input.json')
     calibration_dir = os.path.join(cwd, 'mult')
 
     args = ['python' + ' {}'.format(model_script),
-            '--project_dir', project_ws,
             '--config_path', conf_file,
-            '--worker_dir', cwd,
+            '--input_data_path', input_data,
             '--calibration_dir', calibration_dir]
+    args += ['--worker_dir', cwd]
 
     os.system(' '.join(args))
 

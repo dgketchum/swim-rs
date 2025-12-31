@@ -4,46 +4,22 @@ import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-
-def split_path(path):
-    parts = []
-    while True:
-        path, folder = os.path.split(path)
-        if folder:
-            parts.append(folder)
-        else:
-            if path:
-                parts.append(path)
-            break
-    return parts[::-1]
-
-
 def run():
-    """This script is meant to be executed by PEST++"""
+    """Custom forward runner for PEST++ workers."""
+    from swimrs.calibrate.run_mp import optimize_fields
+    from swimrs.swim.config import ProjectConfig
 
-    path = split_path(__file__)
-    project_top = path.index('swim-rs')
-    root = os.path.join(*path[:project_top + 1])
+    here = os.path.dirname(os.path.abspath(__file__))
+    conf_file = os.path.join(here, 'config.toml')
+    if not os.path.exists(conf_file):
+        raise FileNotFoundError(f'Expected config at {conf_file}')
 
-    os.environ['PYTHONPATH'] = root
-
-    model_script = os.path.join(root, 'run', 'run_mp.py')
-
-    project_ws = os.path.join(root, 'examples', '2_Fort_Peck')
-
-    conf_file = os.path.join(project_ws, 'config.toml')
+    cfg = ProjectConfig()
+    cfg.read_config(conf_file)
 
     cwd = os.getcwd()
-
     calibration_dir = os.path.join(cwd, 'mult')
-
-    args = ['python' + ' {}'.format(model_script),
-            '--project_dir', project_ws,
-            '--config_path', conf_file,
-            '--worker_dir', cwd,
-            '--calibration_dir', calibration_dir]
-
-    os.system(' '.join(args))
+    optimize_fields(conf_file, cfg.input_data, cwd, calibration_dir)
 
 
 if __name__ == '__main__':
