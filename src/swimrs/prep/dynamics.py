@@ -1,5 +1,25 @@
+"""
+Field dynamics analysis for SWIM-RS.
+
+DEPRECATED: This module is deprecated in favor of swimrs.container.compute.dynamics().
+
+Migration guide:
+    # Old way (deprecated)
+    from swimrs.prep.dynamics import SamplePlotDynamics
+    d = SamplePlotDynamics(...)
+    d.analyze_irrigation()
+    d.analyze_groundwater_subsidy()
+    d.save_json()
+
+    # New way (recommended)
+    from swimrs.container import SwimContainer
+    container = SwimContainer.open("project.swim")
+    container.compute.dynamics(etf_model="ssebop")
+"""
+
 import json
 import os
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -7,12 +27,21 @@ from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor
 
 from swimrs.prep.ndvi_regression import sentinel_adjust_quantile_mapping
+from swimrs.prep import _emit_deprecation_warning
 
 
 class SamplePlotDynamics:
+    """
+    DEPRECATED: Use container.compute.dynamics() instead.
+
+    This class analyzes field dynamics including irrigation detection,
+    groundwater subsidy, and K-parameter extraction.
+    """
+
     def __init__(self, plot_timeseries, properties_json, out_json_file, etf_target='ssebop',
                  irr_threshold=0.1, select=None, masks=('no_mask',), instruments=('landsat',),
                  use_mask=False, use_lulc=False, num_workers=12):
+        _emit_deprecation_warning(stacklevel=2)
 
         self.time_series = plot_timeseries
 

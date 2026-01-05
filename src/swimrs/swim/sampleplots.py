@@ -201,5 +201,410 @@ class SamplePlots:
             self.input['gwsub_data'] = {k: v for k, v in self.input['gwsub_data'].items() if k in field_set}
 
 
+class ContainerPlots:
+    """
+    Adapter that provides the same interface as SamplePlots but reads
+    from a SwimContainer instead of JSON files.
+
+    This enables using the SWIM-RS model with container-based data storage
+    while maintaining full compatibility with existing model code.
+
+    Usage:
+        from swimrs.container import SwimContainer
+        from swimrs.swim.sampleplots import ContainerPlots
+
+        container = SwimContainer("project.swim", mode="r")
+        plots = ContainerPlots(container, etf_model="ssebop")
+
+        # Use exactly like SamplePlots
+        config.forecast = True
+        df_dct = field_day_loop(config, plots, debug_flag=True)
+    """
+
+    def __init__(self, container, etf_model: str = "ssebop",
+                 masks: tuple = ("irr", "inv_irr"),
+                 met_source: str = None,
+                 instrument: str = "landsat",
+                 fields: list = None,
+                 use_fused_ndvi: bool = True):
+        """
+        Initialize ContainerPlots from a SwimContainer.
+
+        Args:
+            container: SwimContainer instance (opened for reading)
+            etf_model: ET model to use (ssebop, ptjpl, etc.)
+            masks: Mask types to include
+            met_source: Meteorology source (auto-detected if None)
+            instrument: Remote sensing instrument
+            fields: List of field UIDs (None for all)
+            use_fused_ndvi: If True, use fused Landsat+Sentinel NDVI
+        """
+        self.container = container
+        self.etf_model = etf_model
+        self.masks = masks
+        self.instrument = instrument
+        self.use_fused_ndvi = use_fused_ndvi
+
+        # Auto-detect met source
+        if met_source is None:
+            if "meteorology/gridmet/eto" in container._root:
+                met_source = "gridmet"
+            elif "meteorology/era5/eto" in container._root:
+                met_source = "era5"
+            else:
+                raise ValueError("No meteorology data found in container")
+        self.met_source = met_source
+
+        # Determine fields
+        if fields is None:
+            fields = container.field_uids
+        self._fields = fields
+
+        # Build the input dict (same structure as SamplePlots)
+        self.input = None
+        self.output = None
+        self.spinup = None
+
+        self._build_input_dict()
+
+    def _build_input_dict(self):
+        """Build the input dict structure expected by SampleTracker."""
+        self.input = {
+            'order': self._fields,
+            'props': self._load_props(),
+            'time_series': self._load_timeseries(),
+            'irr_data': self._load_json_dynamics("irr_data"),
+            'gwsub_data': self._load_json_dynamics("gwsub_data"),
+            'ke_max': self._load_scalar_dynamics("ke_max", default=1.0),
+            'kc_max': self._load_scalar_dynamics("kc_max", default=1.25),
+        }
+
+    def _load_props(self) -> dict:
+        """Load field properties from container."""
+        from swimrs.prep import MAX_EFFECTIVE_ROOTING_DEPTH as RZ
+
+        c = self.container
+        props = {}
+
+        for uid in self._fields:
+            if uid not in c._uid_to_index:
+                continue
+
+            idx = c._uid_to_index[uid]
+            field_props = {}
+
+            # LULC code and derived values
+            lulc_path = "properties/land_cover/modis_lc"
+            if lulc_path in c._root:
+                lulc_code = int(c._root[lulc_path][idx])
+                field_props["lulc_code"] = lulc_code
+
+                rz_info = RZ.get(str(lulc_code), {})
+                field_props["root_depth"] = rz_info.get("rooting_depth", 0.55)
+                field_props["zr_mult"] = rz_info.get("zr_multiplier", 1.0)
+            else:
+                field_props["lulc_code"] = 12
+                field_props["root_depth"] = 0.55
+                field_props["zr_mult"] = 1.0
+
+            # Soils
+            for soil_prop in ["awc", "ksat", "clay", "sand"]:
+                path = f"properties/soils/{soil_prop}"
+                if path in c._root:
+                    val = c._root[path][idx]
+                    if not np.isnan(val):
+                        field_props[soil_prop] = float(val)
+
+            # Area and location
+            if "geometry/area_m2" in c._root:
+                field_props["area_sq_m"] = float(c._root["geometry/area_m2"][idx])
+            if "geometry/lon" in c._root:
+                field_props["centroid_lon"] = float(c._root["geometry/lon"][idx])
+            if "geometry/lat" in c._root:
+                field_props["centroid_lat"] = float(c._root["geometry/lat"][idx])
+
+            props[uid] = field_props
+
+        return props
+
+    def _load_timeseries(self) -> dict:
+        """Load time series data from container."""
+        c = self.container
+        time_series = {}
+
+        # Variable mappings
+        met_var_map = {
+            "tmin": f"meteorology/{self.met_source}/tmin",
+            "tmax": f"meteorology/{self.met_source}/tmax",
+            "prcp": f"meteorology/{self.met_source}/prcp",
+            "srad": f"meteorology/{self.met_source}/srad",
+            "eto": f"meteorology/{self.met_source}/eto",
+            "eto_corr": f"meteorology/{self.met_source}/eto_corr",
+            "etr": f"meteorology/{self.met_source}/etr",
+            "etr_corr": f"meteorology/{self.met_source}/etr_corr",
+        }
+
+        field_indices = [c._uid_to_index[f] for f in self._fields if f in c._uid_to_index]
+
+        for i, date in enumerate(c._time_index):
+            dt_str = f"{date.year}-{date.month:02d}-{date.day:02d}"
+            day_data = {"doy": int(date.dayofyear)}
+
+            # Meteorology
+            for var_name, path in met_var_map.items():
+                if path in c._root:
+                    arr = c._root[path]
+                    values = [float(arr[i, idx]) if not np.isnan(arr[i, idx]) else None
+                              for idx in field_indices]
+                    day_data[var_name] = values
+                elif var_name in ["eto_corr", "etr_corr"]:
+                    day_data[var_name] = [None] * len(field_indices)
+
+            # SWE
+            swe_path = "snow/snodas/swe"
+            if swe_path not in c._root:
+                swe_path = "snow/era5/swe"
+            if swe_path in c._root:
+                arr = c._root[swe_path]
+                day_data["swe"] = [float(arr[i, idx]) if not np.isnan(arr[i, idx]) else 0.0
+                                   for idx in field_indices]
+            else:
+                day_data["swe"] = [0.0] * len(field_indices)
+
+            # Hourly precip placeholders
+            day_data["nld_ppt_d"] = day_data.get("prcp", [0.0] * len(field_indices))
+            for hr in range(24):
+                hr_key = f"prcp_hr_{hr:02d}"
+                if "prcp" in day_data:
+                    day_data[hr_key] = [v / 24.0 if v is not None else 0.0
+                                        for v in day_data["prcp"]]
+                else:
+                    day_data[hr_key] = [0.0] * len(field_indices)
+
+            # NDVI per mask
+            for mask in self.masks:
+                if self.use_fused_ndvi:
+                    ndvi_path = f"derived/combined_ndvi/{mask}"
+                else:
+                    ndvi_path = f"remote_sensing/ndvi/{self.instrument}/{mask}"
+
+                key = f"ndvi_{mask}"
+                if ndvi_path in c._root:
+                    arr = c._root[ndvi_path]
+                    day_data[key] = [float(arr[i, idx]) if not np.isnan(arr[i, idx]) else None
+                                     for idx in field_indices]
+                else:
+                    fallback_path = f"remote_sensing/ndvi/{self.instrument}/{mask}"
+                    if fallback_path in c._root:
+                        arr = c._root[fallback_path]
+                        day_data[key] = [float(arr[i, idx]) if not np.isnan(arr[i, idx]) else None
+                                         for idx in field_indices]
+                    else:
+                        day_data[key] = [None] * len(field_indices)
+
+            # ETf per mask
+            for mask in self.masks:
+                etf_path = f"remote_sensing/etf/{self.instrument}/{self.etf_model}/{mask}"
+                key = f"{self.etf_model}_etf_{mask}"
+                if etf_path in c._root:
+                    arr = c._root[etf_path]
+                    day_data[key] = [float(arr[i, idx]) if not np.isnan(arr[i, idx]) else None
+                                     for idx in field_indices]
+                else:
+                    day_data[key] = [None] * len(field_indices)
+
+            time_series[dt_str] = day_data
+
+        return time_series
+
+    def _load_json_dynamics(self, param: str) -> dict:
+        """Load JSON-encoded dynamics parameter (irr_data or gwsub_data)."""
+        import json
+
+        c = self.container
+        path = f"derived/dynamics/{param}"
+
+        if path not in c._root:
+            return {f: {} for f in self._fields}
+
+        result = {}
+        for uid in self._fields:
+            if uid not in c._uid_to_index:
+                result[uid] = {}
+                continue
+
+            idx = c._uid_to_index[uid]
+            json_str = c._root[path][idx]
+            if json_str:
+                data = json.loads(json_str)
+                result[uid] = {int(k) if k.isdigit() else k: v for k, v in data.items()}
+            else:
+                result[uid] = {}
+
+        return result
+
+    def _load_scalar_dynamics(self, param: str, default: float) -> dict:
+        """Load scalar dynamics parameter (ke_max or kc_max)."""
+        c = self.container
+        path = f"derived/dynamics/{param}"
+
+        if path not in c._root:
+            return {f: default for f in self._fields}
+
+        result = {}
+        for uid in self._fields:
+            if uid not in c._uid_to_index:
+                result[uid] = default
+                continue
+
+            idx = c._uid_to_index[uid]
+            val = c._root[path][idx]
+            result[uid] = float(val) if not np.isnan(val) else default
+
+        return result
+
+    def initialize_plot_data(self, config):
+        """
+        Compatibility method - data is already loaded from container.
+
+        This method exists for API compatibility with SamplePlots.
+        When using ContainerPlots, data is loaded in __init__.
+        """
+        pass  # Already initialized from container
+
+    def initialize_spinup(self, config):
+        """Load spinup state from config (same as SamplePlots)."""
+        import os
+        import json
+
+        if os.path.isfile(config.spinup):
+            print(f'SPINUP: {config.spinup}')
+            with open(config.spinup, 'r') as f:
+                self.spinup = json.load(f)
+        else:
+            raise FileNotFoundError(f'Spinup file {config.spinup} not found')
+
+    def input_to_dataframe(self, feature_id):
+        """Convert a field's time series to DataFrame (same as SamplePlots)."""
+        idx = self.input['order'].index(feature_id)
+
+        ts = self.input['time_series']
+        dct = {k: [] for k in ts[list(ts.keys())[0]]}
+        dates = []
+
+        for dt in ts:
+            doy_data = ts[dt]
+            dates.append(dt)
+            for k, v in doy_data.items():
+                if k == 'doy':
+                    dct['doy'].append(v)
+                else:
+                    dct[k].append(v[idx])
+
+        df_ = pd.DataFrame().from_dict(dct)
+        df_.index = pd.DatetimeIndex(dates)
+        return df_
+
+    def reconcile_with_parameters(self, config):
+        """
+        Reconcile plots data with config parameters (same as SamplePlots).
+
+        In forecast or calibration mode, this method identifies fields that exist
+        in both the plots data and the parameter set, filters the plots data to
+        only include those fields.
+        """
+        if self.input is None:
+            raise ValueError("Plots data not initialized.")
+
+        plots_fields = set(self.input['order'])
+        plots_fields_lower = {f.lower(): f for f in plots_fields}
+
+        param_fields = set()
+        if config.forecast and config.forecast_parameters is not None:
+            for param_name in config.forecast_parameters.index:
+                for tunable in TUNABLE_PARAMS:
+                    if param_name.startswith(f"{tunable}_"):
+                        fid = param_name[len(tunable) + 1:]
+                        param_fields.add(fid)
+                        break
+
+        elif config.calibrate and config.calibration_files is not None:
+            for param_name in config.calibration_files.keys():
+                for tunable in TUNABLE_PARAMS:
+                    if tunable in param_name:
+                        fid = param_name.replace(f"{tunable}_", "")
+                        param_fields.add(fid)
+                        break
+
+        if not param_fields:
+            return list(plots_fields), [], []
+
+        param_fields_lower = {f.lower(): f for f in param_fields}
+        common_lower = set(plots_fields_lower.keys()) & set(param_fields_lower.keys())
+        common_fields = [plots_fields_lower[f] for f in common_lower]
+
+        dropped_from_plots = [f for f in plots_fields if f.lower() not in common_lower]
+        dropped_from_params = [param_fields_lower[f] for f in param_fields_lower if f not in common_lower]
+
+        if dropped_from_plots:
+            warnings.warn(
+                f"Dropping {len(dropped_from_plots)} field(s) from plots data "
+                f"(no parameters found): {dropped_from_plots[:5]}"
+                + (f"... and {len(dropped_from_plots) - 5} more" if len(dropped_from_plots) > 5 else "")
+            )
+
+        if dropped_from_params:
+            warnings.warn(
+                f"Ignoring {len(dropped_from_params)} parameter set(s) "
+                f"(no plots data found): {dropped_from_params[:5]}"
+                + (f"... and {len(dropped_from_params) - 5} more" if len(dropped_from_params) > 5 else "")
+            )
+
+        if common_fields and len(common_fields) < len(plots_fields):
+            self._filter_to_fields(common_fields)
+
+        return common_fields, dropped_from_plots, dropped_from_params
+
+    def _filter_to_fields(self, field_list):
+        """Filter plots input data to only include specified fields."""
+        if self.input is None:
+            return
+
+        original_order = self.input['order']
+        field_set = set(field_list)
+
+        keep_indices = []
+        new_order = []
+        for fid in field_list:
+            if fid in original_order:
+                keep_indices.append(original_order.index(fid))
+                new_order.append(fid)
+
+        if not keep_indices:
+            raise ValueError("No valid fields remaining after filtering")
+
+        self.input['order'] = new_order
+
+        for dt, day_data in self.input['time_series'].items():
+            for key, values in day_data.items():
+                if key == 'doy':
+                    continue
+                if isinstance(values, list):
+                    day_data[key] = [values[i] for i in keep_indices]
+
+        if 'props' in self.input:
+            self.input['props'] = {k: v for k, v in self.input['props'].items() if k in field_set}
+
+        for key in ['ke_max', 'kc_max']:
+            if key in self.input:
+                self.input[key] = {k: v for k, v in self.input[key].items() if k in field_set}
+
+        if 'irr_data' in self.input:
+            self.input['irr_data'] = {k: v for k, v in self.input['irr_data'].items() if k in field_set}
+
+        if 'gwsub_data' in self.input:
+            self.input['gwsub_data'] = {k: v for k, v in self.input['gwsub_data'].items() if k in field_set}
+
+
 if __name__ == '__main__':
     pass

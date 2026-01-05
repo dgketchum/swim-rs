@@ -10,10 +10,11 @@ def run():
 
     home = os.path.expanduser('~')
     root = os.path.join(home, 'code', 'swim-rs')
+    src = os.path.join(root, 'src', 'swimrs')
 
     os.environ['PYTHONPATH'] = root
 
-    model_script = os.path.join(root, 'calibrate', 'run_mp.py')
+    model_script = os.path.join(src, 'calibrate', 'run_mp.py')
 
     project_ws = os.path.join(root, 'examples', '4_Flux_Network')
 

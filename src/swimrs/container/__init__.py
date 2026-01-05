@@ -5,19 +5,27 @@ Provides a unified data container for SWIM-RS projects using Zarr as the backend
 
 Key Classes:
     SwimContainer: Main container class for unified SWIM-RS data storage.
-    ContainerBase: Base class with lifecycle management (for extension).
+    ContainerState: Centralized state with xarray interface.
     SwimSchema: Schema definitions and validation rules.
 
-Convenience Functions:
-    open_container: Open an existing .swim file.
-    create_container: Create a new container from a shapefile.
+Storage Backends:
+    The container supports pluggable storage backends:
+    - ZipStoreProvider: Local .swim files (default)
+    - DirectoryStoreProvider: Local directories (faster for development)
+    - S3StoreProvider: Amazon S3 / S3-compatible storage
+    - GCSStoreProvider: Google Cloud Storage
+    - MemoryStoreProvider: In-memory (for testing)
 
-Architecture:
-    SwimContainer composes functionality from mixins:
-    - IngestionMixin: Data ingestion (ingest_ee_ndvi, ingest_gridmet, etc.)
-    - ComputeMixin: Derived data computation (compute_dynamics, compute_fused_ndvi)
-    - ExportMixin: Data export (export_prepped_input_json, export_shapefile)
-    - QueryMixin: Data access (status, get_dataframe, get_geodataframe)
+Components:
+    Clean, namespace-organized API via component attributes:
+    - container.ingest: Data ingestion (ndvi, etf, gridmet, etc.)
+    - container.compute: Derived computation (dynamics, fused_ndvi)
+    - container.export: Data export (prepped_input_json, shapefile)
+    - container.query: Data access (status, xarray, dataframe)
+
+Convenience Functions:
+    open_container: Open an existing container (local or cloud).
+    create_container: Create a new container from a shapefile.
 
 Example:
     >>> from swimrs.container import create_container, open_container
@@ -31,18 +39,16 @@ Example:
     ...     end_date="2023-12-31",
     ... )
     >>>
-    >>> # Ingest data
-    >>> container.ingest_gridmet("gridmet_dir/")
-    >>> container.ingest_ee_ndvi("ndvi_dir/", instrument="landsat", mask="irr")
+    >>> # Ingest data via component API
+    >>> container.ingest.gridmet("gridmet_dir/")
+    >>> container.ingest.ndvi("ndvi_dir/", instrument="landsat", mask="irr")
     >>>
     >>> # Compute dynamics and export for model
-    >>> container.compute_dynamics(etf_model="ssebop")
-    >>> container.compute_fused_ndvi()
-    >>> container.export_prepped_input_json("prepped_input.json")
+    >>> container.compute.dynamics(etf_model="ssebop")
+    >>> container.export.prepped_input_json("prepped_input.json")
     >>>
-    >>> # Or use directly with model via ContainerPlots
-    >>> from swimrs.swim.sampleplots import ContainerPlots
-    >>> plots = ContainerPlots(container, etf_model="ssebop")
+    >>> # Open from cloud storage (requires s3fs)
+    >>> container = SwimContainer.open("s3://bucket/project.zarr", mode="r")
 """
 
 from swimrs.container.container import (
@@ -50,12 +56,13 @@ from swimrs.container.container import (
     open_container,
     create_container,
 )
-from swimrs.container.base import ContainerBase
-from swimrs.container.mixins import (
-    IngestionMixin,
-    ComputeMixin,
-    ExportMixin,
-    QueryMixin,
+from swimrs.container.state import ContainerState
+from swimrs.container.components import (
+    Component,
+    Ingestor,
+    Calculator,
+    Exporter,
+    Query,
 )
 from swimrs.container.schema import (
     SwimSchema,
@@ -67,20 +74,67 @@ from swimrs.container.schema import (
     SoilSource,
     Parameter,
 )
+from swimrs.container.storage import (
+    StorageProvider,
+    StorageProviderFactory,
+    ZipStoreProvider,
+    DirectoryStoreProvider,
+    MemoryStoreProvider,
+    open_storage,
+)
+from swimrs.container.metrics import (
+    OperationMetrics,
+    OperationContext,
+    MetricsCollector,
+    MetricsSummary,
+    track_operation,
+)
+from swimrs.container.logging import (
+    ContainerLogger,
+    get_logger,
+    configure_logging,
+)
+from swimrs.container.workflow import (
+    WorkflowEngine,
+    WorkflowConfig,
+    WorkflowProgress,
+)
 
 __all__ = [
     # Main classes
     "SwimContainer",
-    "ContainerBase",
     "SwimSchema",
-    # Mixins (for extension)
-    "IngestionMixin",
-    "ComputeMixin",
-    "ExportMixin",
-    "QueryMixin",
+    "ContainerState",
+    # Components
+    "Component",
+    "Ingestor",
+    "Calculator",
+    "Exporter",
+    "Query",
     # Convenience functions
     "open_container",
     "create_container",
+    # Storage providers
+    "StorageProvider",
+    "StorageProviderFactory",
+    "ZipStoreProvider",
+    "DirectoryStoreProvider",
+    "MemoryStoreProvider",
+    "open_storage",
+    # Metrics and observability
+    "OperationMetrics",
+    "OperationContext",
+    "MetricsCollector",
+    "MetricsSummary",
+    "track_operation",
+    # Logging
+    "ContainerLogger",
+    "get_logger",
+    "configure_logging",
+    # Workflow
+    "WorkflowEngine",
+    "WorkflowConfig",
+    "WorkflowProgress",
     # Enums
     "Instrument",
     "MaskType",

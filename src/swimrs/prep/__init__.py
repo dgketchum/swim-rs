@@ -1,6 +1,44 @@
+"""
+SWIM-RS Prep Modules (DEPRECATED)
+
+This module is deprecated in favor of swimrs.container components.
+
+Migration guide:
+- SamplePlotDynamics → container.compute.dynamics()
+- prep_fields_json() → container.export.prepped_input_json()
+- sparse_time_series() → container.ingest.ndvi(), container.ingest.etf()
+- join_daily_timeseries() → container.ingest.gridmet()
+- write_field_properties() → container.ingest.properties()
+
+The new container-based workflow provides:
+- Unified data storage (zarr/NetCDF)
+- Provenance tracking
+- xarray-based vectorized operations
+- Cloud storage support
+
+See swimrs.container documentation for details.
+"""
+
+import warnings
+
 import pandas as pd
 import geopandas as gpd
 
+
+# Deprecation configuration
+_DEPRECATION_MSG = (
+    "swimrs.prep modules are deprecated and will be removed in a future version. "
+    "Use swimrs.container instead. See docstring for migration guide."
+)
+
+
+def _emit_deprecation_warning(stacklevel: int = 3) -> None:
+    """Emit deprecation warning for prep module usage."""
+    warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=stacklevel)
+
+
+# Note: Constants below are re-exported from swimrs.container.schema
+# for backwards compatibility. New code should import from schema directly.
 COLUMN_MULTIINDEX = ['site', 'instrument', 'parameter', 'units', 'algorithm', 'mask']
 
 ACCEPTED_UNITS_MAP = {'elev': 'm',

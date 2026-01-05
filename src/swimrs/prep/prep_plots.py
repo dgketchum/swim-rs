@@ -1,3 +1,19 @@
+"""
+Model input preparation for SWIM-RS.
+
+DEPRECATED: This module is deprecated in favor of swimrs.container components.
+
+Migration guide:
+    # Old way (deprecated)
+    from swimrs.prep.prep_plots import prep_fields_json
+    prep_fields_json(properties, time_series, dynamics, out_js, rs_params)
+
+    # New way (recommended)
+    from swimrs.container import SwimContainer
+    container = SwimContainer.open("project.swim")
+    container.export.prepped_input_json("output.json")
+"""
+
 try:
     import ujson as json
 except ImportError:
@@ -15,6 +31,7 @@ from datetime import datetime
 
 from swimrs.swim.sampleplots import SamplePlots
 from swimrs.prep.ndvi_regression import sentinel_adjust_quantile_mapping
+from swimrs.prep import _emit_deprecation_warning
 
 REQUIRED = ['tmin', 'tmax', 'srad', 'swe', 'prcp', 'nld_ppt_d',
             'prcp_hr_00', 'prcp_hr_01', 'prcp_hr_02', 'prcp_hr_03', 'prcp_hr_04',
@@ -32,7 +49,13 @@ ACCEPT_NAN = REQ_IRR + REQ_UNIRR + ['swe']
 
 def prep_fields_json(properties, time_series, dynamics, out_js, rs_params, target_plots=None,
                      interp_params=None):
-    """"""
+    """
+    DEPRECATED: Use container.export.prepped_input_json() instead.
+
+    Prepare model input JSON from time series and properties data.
+    """
+    _emit_deprecation_warning(stacklevel=2)
+
     with open(properties, 'r') as fp:
         properties = json.load(fp)
 

@@ -65,6 +65,148 @@ class Coverage:
 
 
 @dataclass
+class FieldIssue:
+    """A single issue found during field validation."""
+    field_uid: str
+    issue_type: str
+    message: str
+    value: Any = None
+    threshold: Any = None
+
+
+@dataclass
+class FieldValidationReport:
+    """
+    Comprehensive report of field-level validation results.
+
+    Provides detailed breakdown of which fields pass/fail validation
+    and why, with easy-to-read formatting for observability.
+    """
+    total_fields: int
+    valid_fields: List[str]
+    invalid_fields: List[str]
+    issues_by_field: Dict[str, List[FieldIssue]]
+    issues_by_type: Dict[str, List[str]]  # issue_type -> list of field UIDs
+    thresholds: Dict[str, Any]
+
+    @property
+    def valid_count(self) -> int:
+        return len(self.valid_fields)
+
+    @property
+    def invalid_count(self) -> int:
+        return len(self.invalid_fields)
+
+    @property
+    def percent_valid(self) -> float:
+        if self.total_fields == 0:
+            return 0.0
+        return 100.0 * self.valid_count / self.total_fields
+
+    def summary(self) -> str:
+        """Generate a concise summary of validation results."""
+        lines = [
+            "=" * 60,
+            "FIELD VALIDATION REPORT",
+            "=" * 60,
+            f"Total fields:   {self.total_fields}",
+            f"Valid fields:   {self.valid_count} ({self.percent_valid:.1f}%)",
+            f"Invalid fields: {self.invalid_count}",
+            "",
+        ]
+
+        if self.issues_by_type:
+            lines.append("Issues by type:")
+            for issue_type, fields in sorted(self.issues_by_type.items()):
+                lines.append(f"  {issue_type}: {len(fields)} fields")
+
+        if self.thresholds:
+            lines.append("")
+            lines.append("Validation thresholds:")
+            for name, value in self.thresholds.items():
+                lines.append(f"  {name}: {value}")
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
+    def detailed_report(self, max_fields_per_issue: int = 10) -> str:
+        """Generate detailed report showing which fields have which issues."""
+        lines = [self.summary(), ""]
+
+        if not self.issues_by_type:
+            lines.append("All fields passed validation.")
+            return "\n".join(lines)
+
+        lines.append("DETAILED BREAKDOWN BY ISSUE TYPE")
+        lines.append("-" * 40)
+
+        for issue_type, fields in sorted(self.issues_by_type.items()):
+            lines.append(f"\n{issue_type} ({len(fields)} fields):")
+
+            # Show sample of affected fields
+            display_fields = fields[:max_fields_per_issue]
+            for uid in display_fields:
+                # Get the specific issue details for this field
+                field_issues = self.issues_by_field.get(uid, [])
+                for issue in field_issues:
+                    if issue.issue_type == issue_type:
+                        if issue.value is not None:
+                            lines.append(f"  - {uid}: {issue.value}")
+                        else:
+                            lines.append(f"  - {uid}")
+                        break
+
+            if len(fields) > max_fields_per_issue:
+                lines.append(f"  ... and {len(fields) - max_fields_per_issue} more")
+
+        return "\n".join(lines)
+
+    def field_report(self, field_uid: str) -> str:
+        """Generate report for a specific field."""
+        if field_uid in self.valid_fields:
+            return f"{field_uid}: VALID (passed all checks)"
+
+        issues = self.issues_by_field.get(field_uid, [])
+        if not issues:
+            return f"{field_uid}: Unknown status"
+
+        lines = [f"{field_uid}: INVALID ({len(issues)} issues)"]
+        for issue in issues:
+            if issue.value is not None and issue.threshold is not None:
+                lines.append(f"  - {issue.issue_type}: {issue.message} (value={issue.value}, threshold={issue.threshold})")
+            elif issue.value is not None:
+                lines.append(f"  - {issue.issue_type}: {issue.message} (value={issue.value})")
+            else:
+                lines.append(f"  - {issue.issue_type}: {issue.message}")
+        return "\n".join(lines)
+
+    def to_dataframe(self) -> "pd.DataFrame":
+        """Convert validation results to a pandas DataFrame for analysis."""
+        import pandas as pd
+
+        records = []
+        for uid in self.valid_fields:
+            records.append({
+                "field_uid": uid,
+                "valid": True,
+                "issue_count": 0,
+                "issues": "",
+            })
+
+        for uid in self.invalid_fields:
+            issues = self.issues_by_field.get(uid, [])
+            issue_types = [i.issue_type for i in issues]
+            records.append({
+                "field_uid": uid,
+                "valid": False,
+                "issue_count": len(issues),
+                "issues": ", ".join(issue_types),
+            })
+
+        return pd.DataFrame(records)
+
+
+@dataclass
 class ValidationResult:
     """Result of validating readiness for an operation."""
     operation: str

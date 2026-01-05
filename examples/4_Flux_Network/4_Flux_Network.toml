@@ -16,7 +16,7 @@ sentinel_tables = "{sentinel}/tables"
 met = "{data}/met_timeseries/gridmet"
 
 gis = "{data}/gis"
-fields_shapefile = "{gis}/fields.shp"
+fields_shapefile = "{gis}/flux_footprints_3p_clean.shp"
 gridmet_mapping = "{gis}/fields_gfid.shp"
 
 correction_tifs = "{data}/bias_correction_tif"

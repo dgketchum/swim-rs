@@ -109,10 +109,10 @@ if __name__ == "__main__":
     cfg = _load_config()
 
     station_metadata = os.path.join(cfg.data_dir, "station_metadata.csv")
-    crop_sites = get_flux_sites(station_metadata, crop_only=True, western_only=True, header=1)
+    # crop_sites = get_flux_sites(station_metadata, crop_only=True, western_only=True, header=1)
     all_sites = get_flux_sites(station_metadata, crop_only=False, western_only=True, header=1)
-    non_crop_sites = [s for s in all_sites if s not in crop_sites]
+    non_crop_sites = [s for s in all_sites if s not in all_sites]
 
-    results = os.path.join(cfg.project_ws, "diy_ensemble_non_crop")
-    run_pest_sequence(cfg, results, select_stations=non_crop_sites, overwrite=True, pdc_remove=True)
+    results = os.path.join(cfg.project_ws, "diy_test_set")
+    run_pest_sequence(cfg, results, select_stations=['MR', 'US-FPe', 'ALARC2_Smith6'], overwrite=True, pdc_remove=True)
 
