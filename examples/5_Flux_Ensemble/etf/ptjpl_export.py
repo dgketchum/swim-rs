@@ -1,0 +1,196 @@
+"""
+PT-JPL ET fraction zonal statistics export module.
+
+Export per-scene PT-JPL ET fraction zonal means for polygons to Google Cloud Storage as CSVs.
+This version uses GRIDMET for reference ET, suitable for US flux sites.
+"""
+import os
+
+import ee
+import geopandas as gpd
+from tqdm import tqdm
+
+import openet.ptjpl as ptjpl
+
+from .common import (
+    LANDSAT_COLLECTIONS,
+    WEST_STATES,
+    GRIDMET_SOURCE,
+    GRIDMET_BAND,
+    GRIDMET_FACTOR,
+    load_shapefile,
+    setup_irrigation_masks,
+    get_irrigation_mask,
+    build_feature_collection,
+    export_table_to_gcs,
+    parse_scene_name,
+)
+
+PTJPL_ET_REF_SOURCE = GRIDMET_SOURCE
+PTJPL_ET_REF_BAND = GRIDMET_BAND
+PTJPL_ET_REF_FACTOR = GRIDMET_FACTOR
+PTJPL_ET_REF_RESAMPLE = 'bilinear'
+
+
+def export_ptjpl_zonal_stats(
+    shapefile,
+    bucket,
+    feature_id='FID',
+    select=None,
+    start_yr=2000,
+    end_yr=2024,
+    mask_type='no_mask',
+    check_dir=None,
+    state_col='state',
+    buffer=None,
+):
+    """
+    Export per-scene PT-JPL ET fraction zonal means for polygons to GCS CSVs.
+
+    Parameters
+    ----------
+    shapefile : str
+        Path to polygon shapefile with feature IDs.
+    bucket : str
+        GCS bucket name (no scheme). Tables saved under ptjpl_tables/<mask_type>/.
+    feature_id : str, optional
+        Field name for feature identifier.
+    select : list, optional
+        Optional list of feature IDs to process.
+    start_yr : int, optional
+        Inclusive start year (default: 2000).
+    end_yr : int, optional
+        Inclusive end year (default: 2024).
+    mask_type : {'no_mask', 'irr', 'inv_irr'}, optional
+        Irrigation masking strategy (default: 'no_mask').
+    check_dir : str, optional
+        If set, skip exports when CSV already exists at check_dir/<mask_type>/<desc>.csv.
+    state_col : str, optional
+        Column with state abbreviation for mask source selection.
+    buffer : float, optional
+        Buffer distance in meters to apply to geometries.
+    """
+    df = load_shapefile(shapefile, feature_id, buffer=buffer)
+
+    # Setup irrigation mask resources
+    irr_coll, irr_min_yr_mask, lanid, east_fc = setup_irrigation_masks()
+
+    for fid, row in tqdm(df.iterrows(), desc='Export PT-JPL zonal stats', total=df.shape[0]):
+        if row['geometry'].geom_type == 'Point':
+            continue
+        elif row['geometry'].geom_type == 'Polygon':
+            polygon = ee.Geometry(row.geometry.__geo_interface__)
+        else:
+            continue
+
+        if select is not None and fid not in select:
+            continue
+
+        for year in range(start_yr, end_yr + 1):
+            desc = f'ptjpl_etf_{fid}_{mask_type}_{year}'
+            fn_prefix = os.path.join('ptjpl_tables', mask_type, desc)
+
+            if check_dir:
+                f = os.path.join(check_dir, f'{desc}.csv')
+                if os.path.exists(f):
+                    print(f'{f} exists, skipping')
+                    continue
+
+            # Get irrigation mask if needed
+            if mask_type in ['irr', 'inv_irr']:
+                state = row.get(state_col, None) if state_col in row else None
+                irr, irr_mask = get_irrigation_mask(
+                    year, state, irr_coll, irr_min_yr_mask, lanid, east_fc
+                )
+            else:
+                irr, irr_mask = None, None
+
+            # Get scene IDs for this year and geometry
+            coll = ptjpl.Collection(
+                LANDSAT_COLLECTIONS,
+                start_date=f'{year}-01-01',
+                end_date=f'{year}-12-31',
+                geometry=polygon,
+                cloud_cover_max=70,
+            )
+            scenes = coll.get_image_ids()
+            scenes = list(set(scenes))
+            scenes = sorted(scenes, key=lambda item: item.split('_')[-1])
+
+            first, bands = True, None
+            selectors = [feature_id]
+
+            for img_id in scenes:
+                _name = parse_scene_name(img_id)
+                selectors.append(_name)
+
+                try:
+                    # Create PT-JPL image with GRIDMET reference ET
+                    ptjpl_img = ptjpl.Image.from_landsat_c2_sr(
+                        img_id,
+                        et_reference_source=PTJPL_ET_REF_SOURCE,
+                        et_reference_band=PTJPL_ET_REF_BAND,
+                        et_reference_factor=PTJPL_ET_REF_FACTOR,
+                        et_reference_resample=PTJPL_ET_REF_RESAMPLE,
+                    )
+                    etf_img = ptjpl_img.et_fraction.rename(_name)
+
+                except ee.ee_exception.EEException as e:
+                    print(f'{_name} returned error {e}')
+                    continue
+
+                # Apply masking
+                if mask_type == 'no_mask':
+                    etf_img = etf_img.clip(polygon)
+                elif mask_type == 'irr':
+                    etf_img = etf_img.clip(polygon).mask(irr_mask)
+                elif mask_type == 'inv_irr':
+                    etf_img = etf_img.clip(polygon).mask(irr.gt(0))
+
+                if first:
+                    bands = etf_img
+                    first = False
+                else:
+                    bands = bands.addBands([etf_img])
+
+            if bands is None:
+                continue
+
+            # Compute zonal statistics
+            fc = build_feature_collection(polygon, fid, feature_id)
+            data = bands.reduceRegions(collection=fc, reducer=ee.Reducer.mean(), scale=30)
+
+            # Export to GCS
+            export_table_to_gcs(data, desc, bucket, fn_prefix, selectors)
+
+
+if __name__ == '__main__':
+    ee.Initialize()
+
+    project = '5_Flux_Ensemble'
+    root = '/data/ssd2/swim'
+    data = os.path.join(root, project, 'data')
+    project_ws = os.path.join(root, project)
+
+    if not os.path.isdir(root):
+        root = '/home/dgketchum/code/swim-rs'
+        project_ws = os.path.join(root, 'examples', project)
+        data = os.path.join(project_ws, 'data')
+
+    shapefile_ = os.path.join(data, 'gis', 'flux_footprints_3p.shp')
+    chk_dir = os.path.join(data, 'landsat', 'extracts', 'ptjpl_etf')
+
+    FEATURE_ID = 'site_id'
+
+    export_ptjpl_zonal_stats(
+        shapefile=shapefile_,
+        bucket='wudr',
+        feature_id=FEATURE_ID,
+        start_yr=1987,
+        end_yr=2024,
+        select=None,
+        mask_type='no_mask',
+        check_dir=chk_dir,
+        state_col='state',
+        buffer=None,
+    )
