@@ -378,6 +378,9 @@ def get_container_dynamics_values(container) -> Dict[str, Any]:
             data = []
             for i in range(arr.shape[0]):
                 val = arr[i]
+                # Handle zarr v3 ndarray returns
+                if hasattr(val, 'item'):
+                    val = val.item()
                 if val:
                     data.append(json.loads(val))
                 else:
@@ -401,4 +404,7 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "regression: marks regression tests against golden files"
+    )
+    config.addinivalue_line(
+        "markers", "parity: marks parity tests comparing container vs legacy implementations"
     )

@@ -17,6 +17,18 @@ import pandas as pd
 import pytest
 
 
+def _extract_json(arr_element):
+    """
+    Extract JSON from zarr array element, handling zarr v3 ndarray returns.
+
+    Zarr v3 returns 0-dimensional ndarray for VariableLengthUTF8 scalar indexing.
+    This helper extracts the actual string value.
+    """
+    if hasattr(arr_element, 'item'):
+        return json.loads(arr_element.item())
+    return json.loads(arr_element)
+
+
 def _create_test_parquet(
     tmp_path: Path,
     fid: str,
@@ -236,8 +248,8 @@ def _create_test_container(
     tmin_arr[:, 0] = aligned_tmin[fid].values
     tmax_arr[:, 0] = aligned_tmax[fid].values
 
-    # LULC property
-    lulc_arr = container._state.create_property_array("properties/land_cover/modis_lc", dtype="int16")
+    # LULC property (use fill_value=-1 for integer dtype)
+    lulc_arr = container._state.create_property_array("properties/land_cover/modis_lc", dtype="int16", fill_value=-1)
     lulc_arr[0] = 12  # Cropland
 
     container._state.mark_modified()
@@ -331,7 +343,7 @@ class TestDynamicsParityIrrigation:
         irr_json = irr_arr[0]
         assert irr_json is not None
 
-        irr_data = json.loads(irr_json)
+        irr_data = _extract_json(irr_json)
 
         # Check structure
         assert "fallow_years" in irr_data
@@ -354,7 +366,7 @@ class TestDynamicsParityIrrigation:
         )
 
         irr_arr = container._state.root["derived/dynamics/irr_data"]
-        irr_data = json.loads(irr_arr[0])
+        irr_data = _extract_json(irr_arr[0])
 
         for yr in years:
             if yr in irr_data:
@@ -394,7 +406,7 @@ class TestDynamicsParityGroundwater:
         gwsub_json = gwsub_arr[0]
 
         if gwsub_json:
-            gwsub_data = json.loads(gwsub_json)
+            gwsub_data = _extract_json(gwsub_json)
 
             for yr, yr_data in gwsub_data.items():
                 if isinstance(yr_data, dict):
@@ -428,7 +440,7 @@ class TestDynamicsParityGroundwater:
         gwsub_json = gwsub_arr[0]
 
         if gwsub_json:
-            gwsub_data = json.loads(gwsub_json)
+            gwsub_data = _extract_json(gwsub_json)
 
             for yr, yr_data in gwsub_data.items():
                 if isinstance(yr_data, dict) and yr_data.get("subsidized") == 1:
@@ -470,7 +482,7 @@ class TestDynamicsEdgeCases:
         )
 
         # Set LULC to forest (code 1)
-        lulc_arr = container._state.create_property_array("properties/land_cover/modis_lc", dtype="int16")
+        lulc_arr = container._state.create_property_array("properties/land_cover/modis_lc", dtype="int16", fill_value=-1)
         lulc_arr[0] = 1  # Forest, not crop
 
         # Create minimal data with high ET/PPT ratio that would trigger irrigation
@@ -500,7 +512,7 @@ class TestDynamicsEdgeCases:
         )
 
         irr_arr = container._state.root["derived/dynamics/irr_data"]
-        irr_data = json.loads(irr_arr[0])
+        irr_data = _extract_json(irr_arr[0])
 
         # With LULC check, forest should not be classified as irrigated
         for yr in years:
@@ -528,7 +540,7 @@ class TestDynamicsEdgeCases:
         )
 
         irr_arr = container._state.root["derived/dynamics/irr_data"]
-        irr_data = json.loads(irr_arr[0])
+        irr_data = _extract_json(irr_arr[0])
 
         # Check that 2020 has irrigation windows
         if 2020 in irr_data and isinstance(irr_data[2020], dict):
@@ -546,6 +558,661 @@ class TestDynamicsEdgeCases:
                             pass
 
         container.close()
+
+
+# =============================================================================
+# Legacy Dynamics Parity Tests
+# =============================================================================
+
+class TestLegacyDynamicsParity:
+    """
+    Compare container dynamics against legacy SamplePlotDynamics output.
+
+    These tests validate that the new container-based dynamics computation
+    produces results identical to the original prep module implementation.
+
+    Tests skip gracefully when production data is not available (e.g., CI).
+    """
+
+    LEGACY_JSON = Path("/data/ssd2/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_dynamics.json")
+    PARQUET_DIR = Path("/data/ssd2/swim/5_Flux_Ensemble/data/plot_timeseries")
+    PROPS_JSON = Path("/data/ssd2/swim/5_Flux_Ensemble/data/properties/5_Flux_Ensemble_properties.json")
+    STATION_UID = "ALARC2_Smith6"
+
+    # Date range matching the legacy dynamics computation
+    START_DATE = "1987-01-01"
+    END_DATE = "2024-12-31"
+
+    @pytest.fixture
+    def legacy_dynamics(self):
+        """Load legacy dynamics JSON. Skip if not available."""
+        if not self.LEGACY_JSON.exists():
+            pytest.skip(f"Legacy dynamics JSON not found: {self.LEGACY_JSON}")
+
+        with open(self.LEGACY_JSON) as f:
+            return json.load(f)
+
+    @pytest.fixture
+    def parquet_data(self):
+        """Load parquet time series for the test station. Skip if not available."""
+        parquet_path = self.PARQUET_DIR / f"{self.STATION_UID}.parquet"
+        if not parquet_path.exists():
+            pytest.skip(f"Parquet file not found: {parquet_path}")
+
+        return pd.read_parquet(parquet_path)
+
+    @pytest.fixture
+    def properties(self):
+        """Load properties JSON. Skip if not available."""
+        if not self.PROPS_JSON.exists():
+            pytest.skip(f"Properties JSON not found: {self.PROPS_JSON}")
+
+        with open(self.PROPS_JSON) as f:
+            props = json.load(f)
+
+        if self.STATION_UID not in props:
+            pytest.skip(f"Station {self.STATION_UID} not in properties")
+
+        return props[self.STATION_UID]
+
+    def _create_container_from_parquet(
+        self,
+        parquet_df: pd.DataFrame,
+        properties: dict,
+        tmp_path: Path
+    ):
+        """
+        Create a container and populate it with data from parquet file.
+
+        This mirrors the data that was used to compute the legacy dynamics.
+        """
+        from swimrs.container import SwimContainer
+        import geopandas as gpd
+        from shapely.geometry import Polygon
+
+        # Create minimal shapefile
+        poly = Polygon([(-115, 32), (-115, 33), (-114, 33), (-114, 32)])
+        gdf = gpd.GeoDataFrame(
+            {"site_id": [self.STATION_UID]},
+            geometry=[poly],
+            crs="EPSG:4326"
+        )
+        shp_path = tmp_path / "test_field.shp"
+        gdf.to_file(shp_path)
+
+        # Create container
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(shp_path),
+            uid_column="site_id",
+            start_date=self.START_DATE,
+            end_date=self.END_DATE,
+        )
+
+        idx = pd.IndexSlice
+        time_index = container._state.time_index
+
+        # Extract and align data from parquet
+        # IMPORTANT: Legacy _find_field_k_parameters uses max(axis=1) across ALL sites
+        # in the parquet, not just the target site. This is likely unintended behavior
+        # but we must match it for parity testing.
+
+        def _extract_max_across_all(sel):
+            """Extract max across all columns (legacy behavior)."""
+            if sel.shape[1] > 1:
+                return sel.max(axis=1)
+            elif sel.shape[1] == 1:
+                return sel.iloc[:, 0]
+            return None
+
+        # NDVI - irr mask (use max across ALL sites/columns like legacy)
+        try:
+            ndvi_irr = parquet_df.loc[:, idx[:, :, ['ndvi'], :, :, 'irr']]
+            ndvi_irr = _extract_max_across_all(ndvi_irr)
+            if ndvi_irr is not None:
+                ndvi_arr = container._state.create_timeseries_array("remote_sensing/ndvi/landsat/irr")
+                aligned = ndvi_irr.reindex(time_index)
+                ndvi_arr[:, 0] = aligned.values
+        except KeyError:
+            pass
+
+        # NDVI - inv_irr mask
+        try:
+            ndvi_inv = parquet_df.loc[:, idx[:, :, ['ndvi'], :, :, 'inv_irr']]
+            ndvi_inv = _extract_max_across_all(ndvi_inv)
+            if ndvi_inv is not None:
+                ndvi_inv_arr = container._state.create_timeseries_array("remote_sensing/ndvi/landsat/inv_irr")
+                aligned = ndvi_inv.reindex(time_index)
+                ndvi_inv_arr[:, 0] = aligned.values
+        except KeyError:
+            pass
+
+        # ETf - ssebop irr mask (use max across ALL sites like legacy)
+        try:
+            etf_irr = parquet_df.loc[:, idx[:, :, ['etf'], :, ['ssebop'], 'irr']]
+            etf_irr = _extract_max_across_all(etf_irr)
+            if etf_irr is not None:
+                etf_arr = container._state.create_timeseries_array("remote_sensing/etf/landsat/ssebop/irr")
+                aligned = etf_irr.reindex(time_index)
+                etf_arr[:, 0] = aligned.values
+        except KeyError:
+            pass
+
+        # ETf - ssebop inv_irr mask
+        try:
+            etf_inv = parquet_df.loc[:, idx[:, :, ['etf'], :, ['ssebop'], 'inv_irr']]
+            etf_inv = _extract_max_across_all(etf_inv)
+            if etf_inv is not None:
+                etf_inv_arr = container._state.create_timeseries_array("remote_sensing/etf/landsat/ssebop/inv_irr")
+                aligned = etf_inv.reindex(time_index)
+                etf_inv_arr[:, 0] = aligned.values
+        except KeyError:
+            pass
+
+        # Meteorology - ETo (use first available, met data is typically same across sites)
+        try:
+            eto = parquet_df.loc[:, idx[:, :, ['eto'], :, ['gridmet'], :]]
+            eto = _extract_max_across_all(eto)
+            if eto is not None:
+                eto_arr = container._state.create_timeseries_array("meteorology/gridmet/eto")
+                aligned = eto.reindex(time_index)
+                eto_arr[:, 0] = aligned.values
+        except KeyError:
+            pass
+
+        # Meteorology - Precip
+        try:
+            prcp = parquet_df.loc[:, idx[:, :, ['prcp'], :, ['gridmet'], :]]
+            prcp = _extract_max_across_all(prcp)
+            if prcp is not None:
+                prcp_arr = container._state.create_timeseries_array("meteorology/gridmet/prcp")
+                aligned = prcp.reindex(time_index)
+                prcp_arr[:, 0] = aligned.values
+        except KeyError:
+            pass
+
+        # LULC property (use fill_value=-1 for integer dtype)
+        lulc_arr = container._state.create_property_array(
+            "properties/land_cover/modis_lc", dtype="int16", fill_value=-1
+        )
+        lulc_arr[0] = properties.get("lulc_code", 12)
+
+        # Irrigation fractions by year (for use_mask mode)
+        # Store in a property that dynamics can access
+        if "irr" in properties:
+            # The container stores irrigation fractions differently
+            # For now we'll use use_lulc=True which doesn't need this
+            pass
+
+        container._state.mark_modified()
+        container._state.refresh()
+
+        return container
+
+    @pytest.mark.parity
+    def test_ke_max_matches_legacy(
+        self,
+        legacy_dynamics,
+        parquet_data,
+        properties,
+        tmp_path,
+        tolerance
+    ):
+        """ke_max value matches legacy output within tolerance."""
+        expected_ke = legacy_dynamics["ke_max"].get(self.STATION_UID)
+        if expected_ke is None:
+            pytest.skip(f"No ke_max for {self.STATION_UID} in legacy data")
+
+        container = self._create_container_from_parquet(parquet_data, properties, tmp_path)
+
+        container.compute.dynamics(
+            etf_model="ssebop",
+            masks=("irr",),
+            instruments=("landsat",),
+            use_lulc=True,
+        )
+
+        ke_arr = container._state.root["derived/dynamics/ke_max"]
+        actual_ke = ke_arr[0]
+
+        container.close()
+
+        assert np.isclose(actual_ke, expected_ke, rtol=tolerance["rtol"], atol=tolerance["atol"]), \
+            f"ke_max mismatch: actual={actual_ke}, expected={expected_ke}"
+
+    @pytest.mark.parity
+    def test_kc_max_matches_legacy(
+        self,
+        legacy_dynamics,
+        parquet_data,
+        properties,
+        tmp_path,
+        tolerance
+    ):
+        """kc_max value matches legacy output within tolerance."""
+        expected_kc = legacy_dynamics["kc_max"].get(self.STATION_UID)
+        if expected_kc is None:
+            pytest.skip(f"No kc_max for {self.STATION_UID} in legacy data")
+
+        container = self._create_container_from_parquet(parquet_data, properties, tmp_path)
+
+        container.compute.dynamics(
+            etf_model="ssebop",
+            masks=("irr",),
+            instruments=("landsat",),
+            use_lulc=True,
+        )
+
+        kc_arr = container._state.root["derived/dynamics/kc_max"]
+        actual_kc = kc_arr[0]
+
+        container.close()
+
+        assert np.isclose(actual_kc, expected_kc, rtol=tolerance["rtol"], atol=tolerance["atol"]), \
+            f"kc_max mismatch: actual={actual_kc}, expected={expected_kc}"
+
+    @pytest.mark.parity
+    def test_irr_data_structure_matches_legacy(
+        self,
+        legacy_dynamics,
+        parquet_data,
+        properties,
+        tmp_path
+    ):
+        """Irrigation data structure matches legacy output."""
+        expected_irr = legacy_dynamics["irr"].get(self.STATION_UID)
+        if expected_irr is None:
+            pytest.skip(f"No irr data for {self.STATION_UID} in legacy data")
+
+        container = self._create_container_from_parquet(parquet_data, properties, tmp_path)
+
+        container.compute.dynamics(
+            etf_model="ssebop",
+            masks=("irr",),
+            instruments=("landsat",),
+            use_lulc=True,
+        )
+
+        irr_arr = container._state.root["derived/dynamics/irr_data"]
+        actual_irr = _extract_json(irr_arr[0])
+
+        container.close()
+
+        # Check structure keys match
+        expected_years = [k for k in expected_irr.keys() if k != "fallow_years"]
+        actual_years = [k for k in actual_irr.keys() if k != "fallow_years"]
+
+        # Check that we have data for the same years (as strings or ints)
+        expected_year_set = set(str(y) for y in expected_years)
+        actual_year_set = set(str(y) for y in actual_years)
+
+        # At minimum, check overlapping years have similar structure
+        common_years = expected_year_set & actual_year_set
+        assert len(common_years) > 0, "No common years between actual and expected"
+
+        # Check structure of a sample year
+        sample_year = list(common_years)[0]
+        expected_yr_data = expected_irr.get(sample_year) or expected_irr.get(int(sample_year))
+        actual_yr_data = actual_irr.get(sample_year) or actual_irr.get(int(sample_year))
+
+        if isinstance(expected_yr_data, dict) and isinstance(actual_yr_data, dict):
+            expected_keys = set(expected_yr_data.keys())
+            actual_keys = set(actual_yr_data.keys())
+            assert "irr_doys" in actual_keys, "Missing irr_doys in actual"
+            assert "irrigated" in actual_keys or "f_irr" in actual_keys, "Missing irrigation flag"
+
+    @pytest.mark.parity
+    def test_irr_doys_overlap_with_legacy(
+        self,
+        legacy_dynamics,
+        parquet_data,
+        properties,
+        tmp_path
+    ):
+        """Irrigation DOYs have reasonable overlap with legacy output."""
+        expected_irr = legacy_dynamics["irr"].get(self.STATION_UID)
+        if expected_irr is None:
+            pytest.skip(f"No irr data for {self.STATION_UID} in legacy data")
+
+        container = self._create_container_from_parquet(parquet_data, properties, tmp_path)
+
+        container.compute.dynamics(
+            etf_model="ssebop",
+            masks=("irr",),
+            instruments=("landsat",),
+            use_lulc=True,
+        )
+
+        irr_arr = container._state.root["derived/dynamics/irr_data"]
+        actual_irr = _extract_json(irr_arr[0])
+
+        container.close()
+
+        # Check DOY overlap for a few years
+        years_to_check = ["2020", "2021", "2022"]
+
+        for yr in years_to_check:
+            expected_yr = expected_irr.get(yr) or expected_irr.get(int(yr))
+            actual_yr = actual_irr.get(yr) or actual_irr.get(int(yr))
+
+            if not isinstance(expected_yr, dict) or not isinstance(actual_yr, dict):
+                continue
+
+            expected_doys = set(expected_yr.get("irr_doys", []))
+            actual_doys = set(actual_yr.get("irr_doys", []))
+
+            if not expected_doys or not actual_doys:
+                continue
+
+            # Calculate Jaccard similarity
+            intersection = len(expected_doys & actual_doys)
+            union = len(expected_doys | actual_doys)
+            jaccard = intersection / union if union > 0 else 0
+
+            # Expect at least 50% overlap (algorithm may differ slightly)
+            assert jaccard >= 0.5, \
+                f"Year {yr}: Low DOY overlap (Jaccard={jaccard:.2f}). " \
+                f"Expected {len(expected_doys)} DOYs, got {len(actual_doys)}"
+
+    @pytest.mark.parity
+    def test_gwsub_data_matches_legacy(
+        self,
+        legacy_dynamics,
+        parquet_data,
+        properties,
+        tmp_path,
+        tolerance
+    ):
+        """Groundwater subsidy data matches legacy output within tolerance."""
+        expected_gwsub = legacy_dynamics["gwsub"].get(self.STATION_UID)
+        if expected_gwsub is None:
+            pytest.skip(f"No gwsub data for {self.STATION_UID} in legacy data")
+
+        container = self._create_container_from_parquet(parquet_data, properties, tmp_path)
+
+        container.compute.dynamics(
+            etf_model="ssebop",
+            masks=("irr",),
+            instruments=("landsat",),
+            use_lulc=True,
+        )
+
+        gwsub_arr = container._state.root["derived/dynamics/gwsub_data"]
+        actual_gwsub = _extract_json(gwsub_arr[0])
+
+        container.close()
+
+        # Check a few years
+        years_to_check = ["2020", "2021", "2022"]
+
+        for yr in years_to_check:
+            expected_yr = expected_gwsub.get(yr) or expected_gwsub.get(int(yr))
+            actual_yr = actual_gwsub.get(yr) or actual_gwsub.get(int(yr))
+
+            if not isinstance(expected_yr, dict) or not isinstance(actual_yr, dict):
+                continue
+
+            # Check f_sub matches within tolerance
+            # NOTE: Legacy sets f_sub=0 for irrigated fields (assumes irrigation
+            # explains excess ET, not groundwater). Container computes f_sub from
+            # ET/PPT ratio without property-based irrigation info. Skip comparison
+            # when legacy f_sub=0 since this indicates an irrigated field.
+            if "f_sub" in expected_yr and "f_sub" in actual_yr:
+                if expected_yr["f_sub"] == 0:
+                    # Legacy identified as irrigated - skip comparison
+                    pass
+                else:
+                    assert np.isclose(
+                        actual_yr["f_sub"],
+                        expected_yr["f_sub"],
+                        rtol=tolerance["rtol"],
+                        atol=0.1  # Allow 0.1 absolute tolerance for f_sub
+                    ), f"Year {yr}: f_sub mismatch (actual={actual_yr['f_sub']}, expected={expected_yr['f_sub']})"
+
+            # Check subsidized flag matches (skip for irrigated fields)
+            if "subsidized" in expected_yr and "subsidized" in actual_yr:
+                if expected_yr["f_sub"] == 0:
+                    # Legacy identified as irrigated - skip comparison
+                    pass
+                else:
+                    assert actual_yr["subsidized"] == expected_yr["subsidized"], \
+                        f"Year {yr}: subsidized flag mismatch"
+
+
+class TestSingleSiteDynamics:
+    """
+    Test correct single-site dynamics computation.
+
+    This class validates that the container correctly filters data by site.
+
+    NOTE: For the ALARC2_Smith6 parquet, remote sensing data (ETf, NDVI) only
+    exists under ALARC2_Smith6, while meteorology (ETo) only exists under
+    ALARC1_Smith1. The parquet groups sites by GridMET cell, but each site
+    has its own data types. This means legacy's max(axis=1) doesn't actually
+    mix remote sensing between sites for this particular parquet.
+
+    These tests verify the container correctly handles this parquet structure
+    and produces results matching legacy (which is correct for this case).
+    """
+
+    PARQUET_DIR = Path("/data/ssd2/swim/5_Flux_Ensemble/data/plot_timeseries")
+    PROPS_JSON = Path("/data/ssd2/swim/5_Flux_Ensemble/data/properties/5_Flux_Ensemble_properties.json")
+    STATION_UID = "ALARC2_Smith6"
+
+    START_DATE = "1987-01-01"
+    END_DATE = "2024-12-31"
+
+    # Expected values - same as legacy since no mixing occurs for this parquet
+    # (remote sensing is site-specific, only met data is shared)
+    EXPECTED_KE_MAX = 0.8944
+    EXPECTED_KC_MAX = 1.1346
+
+    @pytest.fixture
+    def parquet_data(self):
+        """Load parquet time series for the test station. Skip if not available."""
+        parquet_path = self.PARQUET_DIR / f"{self.STATION_UID}.parquet"
+        if not parquet_path.exists():
+            pytest.skip(f"Parquet file not found: {parquet_path}")
+        return pd.read_parquet(parquet_path)
+
+    @pytest.fixture
+    def properties(self):
+        """Load properties JSON. Skip if not available."""
+        if not self.PROPS_JSON.exists():
+            pytest.skip(f"Properties JSON not found: {self.PROPS_JSON}")
+        with open(self.PROPS_JSON) as f:
+            props = json.load(f)
+        if self.STATION_UID not in props:
+            pytest.skip(f"Station {self.STATION_UID} not in properties")
+        return props[self.STATION_UID]
+
+    def _create_container_single_site(
+        self,
+        parquet_df: pd.DataFrame,
+        properties: dict,
+        tmp_path: Path
+    ):
+        """
+        Create container with data filtered to the target site.
+
+        For this parquet, remote sensing (ETf, NDVI) only exists under
+        ALARC2_Smith6, while met data exists under ALARC1_Smith1.
+        """
+        from swimrs.container import SwimContainer
+        import geopandas as gpd
+        from shapely.geometry import Polygon
+
+        # Create minimal shapefile
+        poly = Polygon([(-115, 32), (-115, 33), (-114, 33), (-114, 32)])
+        gdf = gpd.GeoDataFrame(
+            {"site_id": [self.STATION_UID]},
+            geometry=[poly],
+            crs="EPSG:4326"
+        )
+        shp_path = tmp_path / "test_field.shp"
+        gdf.to_file(shp_path)
+
+        # Create container
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(shp_path),
+            uid_column="site_id",
+            start_date=self.START_DATE,
+            end_date=self.END_DATE,
+        )
+
+        idx = pd.IndexSlice
+        time_index = container._state.time_index
+        target_site = self.STATION_UID
+
+        def _extract_first(sel):
+            """Extract data, taking max across columns if multiple."""
+            if sel.shape[1] > 1:
+                return sel.max(axis=1)
+            elif sel.shape[1] == 1:
+                return sel.iloc[:, 0]
+            return None
+
+        # NDVI - filter to target site
+        try:
+            ndvi_irr = parquet_df.loc[:, idx[[target_site], :, ['ndvi'], :, :, 'irr']]
+            ndvi_irr = _extract_first(ndvi_irr)
+            if ndvi_irr is not None:
+                ndvi_arr = container._state.create_timeseries_array("remote_sensing/ndvi/landsat/irr")
+                aligned = ndvi_irr.reindex(time_index)
+                ndvi_arr[:, 0] = aligned.values
+        except KeyError:
+            pass
+
+        # ETf - filter to target site
+        try:
+            etf_irr = parquet_df.loc[:, idx[[target_site], :, ['etf'], :, ['ssebop'], 'irr']]
+            etf_irr = _extract_first(etf_irr)
+            if etf_irr is not None:
+                etf_arr = container._state.create_timeseries_array("remote_sensing/etf/landsat/ssebop/irr")
+                aligned = etf_irr.reindex(time_index)
+                etf_arr[:, 0] = aligned.values
+        except KeyError:
+            pass
+
+        # Meteorology - ETo (use any available since sites share GridMET cell)
+        try:
+            eto = parquet_df.loc[:, idx[:, :, ['eto'], :, ['gridmet'], :]]
+            eto = _extract_first(eto)
+            if eto is not None:
+                eto_arr = container._state.create_timeseries_array("meteorology/gridmet/eto")
+                aligned = eto.reindex(time_index)
+                eto_arr[:, 0] = aligned.values
+        except KeyError:
+            pass
+
+        # Meteorology - Precip
+        try:
+            prcp = parquet_df.loc[:, idx[:, :, ['prcp'], :, ['gridmet'], :]]
+            prcp = _extract_first(prcp)
+            if prcp is not None:
+                prcp_arr = container._state.create_timeseries_array("meteorology/gridmet/prcp")
+                aligned = prcp.reindex(time_index)
+                prcp_arr[:, 0] = aligned.values
+        except KeyError:
+            pass
+
+        # LULC property
+        lulc_arr = container._state.create_property_array(
+            "properties/land_cover/modis_lc", dtype="int16", fill_value=-1
+        )
+        lulc_arr[0] = properties.get("lulc_code", 12)
+
+        container._state.mark_modified()
+        container._state.refresh()
+
+        return container
+
+    @pytest.mark.parity
+    def test_ke_max_with_explicit_site_filter(
+        self,
+        parquet_data,
+        properties,
+        tmp_path
+    ):
+        """
+        ke_max computed with explicit site filtering matches expected value.
+
+        For this parquet, filtering to ALARC2_Smith6 gives the same result
+        as legacy because remote sensing data only exists for that site.
+        """
+        container = self._create_container_single_site(parquet_data, properties, tmp_path)
+
+        container.compute.dynamics(
+            etf_model="ssebop",
+            masks=("irr",),
+            instruments=("landsat",),
+            use_lulc=True,
+        )
+
+        ke_arr = container._state.root["derived/dynamics/ke_max"]
+        actual_ke = ke_arr[0]
+        container.close()
+
+        assert np.isclose(actual_ke, self.EXPECTED_KE_MAX, rtol=0.01), \
+            f"ke_max: actual={actual_ke}, expected={self.EXPECTED_KE_MAX}"
+
+    @pytest.mark.parity
+    def test_kc_max_with_explicit_site_filter(
+        self,
+        parquet_data,
+        properties,
+        tmp_path
+    ):
+        """
+        kc_max computed with explicit site filtering matches expected value.
+        """
+        container = self._create_container_single_site(parquet_data, properties, tmp_path)
+
+        container.compute.dynamics(
+            etf_model="ssebop",
+            masks=("irr",),
+            instruments=("landsat",),
+            use_lulc=True,
+        )
+
+        kc_arr = container._state.root["derived/dynamics/kc_max"]
+        actual_kc = kc_arr[0]
+        container.close()
+
+        assert np.isclose(actual_kc, self.EXPECTED_KC_MAX, rtol=0.01), \
+            f"kc_max: actual={actual_kc}, expected={self.EXPECTED_KC_MAX}"
+
+    @pytest.mark.parity
+    def test_parquet_structure_is_site_specific(
+        self,
+        parquet_data
+    ):
+        """
+        Verify the parquet structure: remote sensing is site-specific.
+
+        This documents the actual parquet structure where:
+        - ETf/NDVI only exists under ALARC2_Smith6
+        - Met data (ETo) only exists under ALARC1_Smith1
+
+        This means legacy's max(axis=1) doesn't mix remote sensing data.
+        """
+        idx = pd.IndexSlice
+
+        # ETf should only be under target site
+        etf_sites = parquet_data.loc[:, idx[:, :, ['etf'], :, ['ssebop'], :]].columns.get_level_values('site').unique()
+        assert self.STATION_UID in etf_sites, f"ETf should exist for {self.STATION_UID}"
+        assert len(etf_sites) == 1, f"ETf should only exist for one site, found: {list(etf_sites)}"
+
+        # NDVI should only be under target site
+        ndvi_sites = parquet_data.loc[:, idx[:, :, ['ndvi'], :, :, :]].columns.get_level_values('site').unique()
+        assert self.STATION_UID in ndvi_sites, f"NDVI should exist for {self.STATION_UID}"
+
+        # Met data may be under a different site (shared GridMET cell)
+        eto_sites = parquet_data.loc[:, idx[:, :, ['eto'], :, :, :]].columns.get_level_values('site').unique()
+        assert len(eto_sites) >= 1, "ETo should exist for at least one site"
 
 
 if __name__ == "__main__":

@@ -413,6 +413,9 @@ class TestDynamicsComputation:
 
         irr_arr = container._state.root[irr_path]
         actual_irr_json = irr_arr[0]
+        # Handle zarr v3 ndarray returns
+        if hasattr(actual_irr_json, 'item'):
+            actual_irr_json = actual_irr_json.item()
         actual_irr = json.loads(actual_irr_json) if actual_irr_json else None
 
         expected_irr = golden_irr.get(S2_UID, golden_irr.get("S2"))
@@ -467,6 +470,9 @@ class TestDynamicsComputation:
 
         gwsub_arr = container._state.root[gwsub_path]
         actual_gwsub_json = gwsub_arr[0]
+        # Handle zarr v3 ndarray returns
+        if hasattr(actual_gwsub_json, 'item'):
+            actual_gwsub_json = actual_gwsub_json.item()
         actual_gwsub = json.loads(actual_gwsub_json) if actual_gwsub_json else None
 
         expected_gwsub = golden_gwsub.get(S2_UID, golden_gwsub.get("S2"))
@@ -613,6 +619,613 @@ class TestFullWorkflow:
                         actual_value, expected_value,
                         rtol=tolerance["rtol"],
                     )
+
+        container.close()
+
+
+# =============================================================================
+# Properties Ingestion Tests
+# =============================================================================
+
+class TestPropertiesIngestion:
+    """Tests for static property ingestion into S2 container."""
+
+    @pytest.mark.regression
+    def test_ingest_lulc(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+        """LULC ingestion stores land cover codes correctly."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+        if not s2_has_input_data:
+            pytest.skip("S2 input data not found")
+
+        lulc_csv = s2_input_dir / "properties" / "lulc.csv"
+        if not lulc_csv.exists():
+            pytest.skip(f"LULC CSV not found: {lulc_csv}")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+
+        container.ingest.properties(
+            lulc_csv=str(lulc_csv),
+            uid_column=S2_UID_COLUMN,
+            lulc_column="modis_lc",
+            extra_lulc_column="glc10_lc",
+        )
+
+        # Verify LULC was ingested
+        lulc_path = "properties/land_cover/modis_lc"
+        assert lulc_path in container._state.root
+
+        lulc_arr = container._state.root[lulc_path]
+        assert lulc_arr.shape[0] == 1  # One field
+
+        # S2 should have LULC code 12 (cropland)
+        lulc_value = lulc_arr[0]
+        assert lulc_value == 12, f"Expected LULC 12, got {lulc_value}"
+
+        container.close()
+
+    @pytest.mark.regression
+    def test_ingest_soils(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+        """Soil properties ingestion stores AWC, ksat, clay, sand."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+        if not s2_has_input_data:
+            pytest.skip("S2 input data not found")
+
+        soils_csv = s2_input_dir / "properties" / "ssurgo.csv"
+        if not soils_csv.exists():
+            pytest.skip(f"Soils CSV not found: {soils_csv}")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+
+        container.ingest.properties(
+            soils_csv=str(soils_csv),
+            uid_column=S2_UID_COLUMN,
+        )
+
+        # Verify soil properties were ingested
+        for prop in ["awc", "ksat", "clay", "sand"]:
+            path = f"properties/soils/{prop}"
+            assert path in container._state.root, f"Missing soil property: {prop}"
+
+            arr = container._state.root[path]
+            value = arr[0]
+            assert not np.isnan(value), f"Soil property {prop} is NaN"
+            assert value > 0, f"Soil property {prop} should be positive"
+
+        # Check specific AWC value (from fixture: 0.1)
+        awc_value = container._state.root["properties/soils/awc"][0]
+        assert 0.09 < awc_value < 0.11, f"AWC should be ~0.1, got {awc_value}"
+
+        container.close()
+
+    @pytest.mark.regression
+    def test_ingest_irrigation(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+        """Irrigation fraction ingestion stores mean and yearly values."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+        if not s2_has_input_data:
+            pytest.skip("S2 input data not found")
+
+        irr_csv = s2_input_dir / "properties" / "irr.csv"
+        if not irr_csv.exists():
+            pytest.skip(f"Irrigation CSV not found: {irr_csv}")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+
+        container.ingest.properties(
+            irrigation_csv=str(irr_csv),
+            uid_column=S2_UID_COLUMN,
+        )
+
+        # Verify mean irrigation was ingested
+        mean_path = "properties/irrigation/irr"
+        assert mean_path in container._state.root
+
+        mean_irr = container._state.root[mean_path][0]
+        assert not np.isnan(mean_irr), "Mean irrigation should not be NaN"
+        assert 0 <= mean_irr <= 1, f"Mean irrigation should be 0-1, got {mean_irr}"
+
+        # Verify yearly irrigation was ingested
+        yearly_path = "properties/irrigation/irr_yearly"
+        assert yearly_path in container._state.root
+
+        yearly_json = container._state.root[yearly_path][0]
+        # Handle zarr v3 ndarray returns
+        if hasattr(yearly_json, 'item'):
+            yearly_json = yearly_json.item()
+        assert yearly_json, "Yearly irrigation JSON should not be empty"
+
+        yearly_data = json.loads(yearly_json)
+        assert "2020" in yearly_data, "Should have 2020 irrigation data"
+        assert "2021" in yearly_data, "Should have 2021 irrigation data"
+
+        container.close()
+
+    @pytest.mark.regression
+    def test_ingest_all_properties(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+        """All properties can be ingested in a single call."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+        if not s2_has_input_data:
+            pytest.skip("S2 input data not found")
+
+        props_dir = s2_input_dir / "properties"
+        lulc_csv = props_dir / "lulc.csv"
+        soils_csv = props_dir / "ssurgo.csv"
+        irr_csv = props_dir / "irr.csv"
+
+        if not all(f.exists() for f in [lulc_csv, soils_csv, irr_csv]):
+            pytest.skip("Not all property files found")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+
+        # Ingest all properties at once
+        event = container.ingest.properties(
+            lulc_csv=str(lulc_csv),
+            soils_csv=str(soils_csv),
+            irrigation_csv=str(irr_csv),
+            uid_column=S2_UID_COLUMN,
+            lulc_column="modis_lc",
+            extra_lulc_column="glc10_lc",
+        )
+
+        # Verify provenance was recorded
+        assert event is not None
+        assert event.operation == "ingest"
+
+        # Verify all expected paths exist
+        expected_paths = [
+            "properties/land_cover/modis_lc",
+            "properties/soils/awc",
+            "properties/soils/ksat",
+            "properties/irrigation/irr",
+            "properties/irrigation/irr_yearly",
+        ]
+        for path in expected_paths:
+            assert path in container._state.root, f"Missing path: {path}"
+
+        container.close()
+
+
+# =============================================================================
+# Query Tests
+# =============================================================================
+
+class TestQuery:
+    """Tests for container query operations."""
+
+    def test_status_returns_string(self, s2_shapefile, tmp_path):
+        """status() returns a formatted status string."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+
+        status = container.query.status()
+
+        assert isinstance(status, str)
+        assert "CONTAINER STATUS" in status
+        assert "Fields: 1" in status
+        assert S2_UID in status or "1" in status
+
+        container.close()
+
+    def test_status_shows_data_paths(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+        """status() shows ingested data paths."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+        if not s2_has_input_data:
+            pytest.skip("S2 input data not found")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+
+        # Ingest some data
+        ndvi_dir = s2_input_dir / "ndvi"
+        if ndvi_dir.exists():
+            container.ingest.ndvi(
+                source_dir=str(ndvi_dir),
+                instrument="landsat",
+                mask="irr",
+            )
+
+        status = container.query.status()
+
+        # Should show remote_sensing section
+        assert "remote_sensing" in status or "DATA PATHS" in status
+
+        container.close()
+
+    def test_status_detailed_shows_provenance(self, s2_shapefile, tmp_path):
+        """status(detailed=True) includes provenance log."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+
+        status = container.query.status(detailed=True)
+
+        assert "PROVENANCE" in status
+
+        container.close()
+
+    def test_dataframe_returns_pandas(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+        """dataframe() returns a pandas DataFrame with correct structure."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+        if not s2_has_input_data:
+            pytest.skip("S2 input data not found")
+
+        from swimrs.container import SwimContainer
+        import pandas as pd
+
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+
+        # Ingest NDVI
+        ndvi_dir = s2_input_dir / "ndvi"
+        if not ndvi_dir.exists():
+            pytest.skip("NDVI directory not found")
+
+        container.ingest.ndvi(
+            source_dir=str(ndvi_dir),
+            instrument="landsat",
+            mask="irr",
+        )
+
+        # Query as DataFrame
+        df = container.query.dataframe("remote_sensing/ndvi/landsat/irr")
+
+        assert isinstance(df, pd.DataFrame)
+        assert isinstance(df.index, pd.DatetimeIndex)
+        assert S2_UID in df.columns
+
+        container.close()
+
+    def test_xarray_returns_dataarray(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+        """xarray() returns an xarray DataArray with correct coordinates."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+        if not s2_has_input_data:
+            pytest.skip("S2 input data not found")
+
+        from swimrs.container import SwimContainer
+        import xarray as xr
+
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+
+        # Ingest NDVI
+        ndvi_dir = s2_input_dir / "ndvi"
+        if not ndvi_dir.exists():
+            pytest.skip("NDVI directory not found")
+
+        container.ingest.ndvi(
+            source_dir=str(ndvi_dir),
+            instrument="landsat",
+            mask="irr",
+        )
+
+        # Query as xarray
+        da = container.query.xarray("remote_sensing/ndvi/landsat/irr")
+
+        assert isinstance(da, xr.DataArray)
+        assert "time" in da.coords
+        assert "site" in da.coords
+        assert S2_UID in da.coords["site"].values
+
+        container.close()
+
+
+# =============================================================================
+# Error Handling Tests
+# =============================================================================
+
+class TestErrorHandling:
+    """Tests for error handling and edge cases."""
+
+    def test_create_fails_with_invalid_uid_column(self, s2_shapefile, tmp_path):
+        """Container creation fails when uid_column doesn't exist."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+
+        with pytest.raises(ValueError, match="UID column.*not found"):
+            SwimContainer.create(
+                uri=str(container_path),
+                fields_shapefile=str(s2_shapefile),
+                uid_column="nonexistent_column",
+                start_date=START_DATE,
+                end_date=END_DATE,
+            )
+
+    def test_create_fails_with_existing_container(self, s2_shapefile, tmp_path):
+        """Container creation fails when file exists and overwrite=False."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+
+        # Create first container
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+        container.close()
+
+        # Try to create again without overwrite
+        with pytest.raises(FileExistsError, match="already exists"):
+            SwimContainer.create(
+                uri=str(container_path),
+                fields_shapefile=str(s2_shapefile),
+                uid_column=S2_UID_COLUMN,
+                start_date=START_DATE,
+                end_date=END_DATE,
+                overwrite=False,
+            )
+
+    def test_create_succeeds_with_overwrite(self, s2_shapefile, tmp_path):
+        """Container creation succeeds when file exists and overwrite=True."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+
+        # Create first container
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+        container.close()
+
+        # Create again with overwrite
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+            overwrite=True,
+        )
+
+        assert container.n_fields == 1
+        container.close()
+
+    def test_open_fails_with_nonexistent_file(self, tmp_path):
+        """Opening a nonexistent container raises FileNotFoundError."""
+        from swimrs.container import SwimContainer
+
+        nonexistent_path = tmp_path / "nonexistent.swim"
+
+        with pytest.raises(FileNotFoundError, match="not found"):
+            SwimContainer.open(str(nonexistent_path))
+
+    def test_ingest_ndvi_fails_without_overwrite(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+        """Re-ingesting NDVI without overwrite raises error."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+        if not s2_has_input_data:
+            pytest.skip("S2 input data not found")
+
+        ndvi_dir = s2_input_dir / "ndvi"
+        if not ndvi_dir.exists():
+            pytest.skip("NDVI directory not found")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+
+        # First ingest succeeds
+        container.ingest.ndvi(
+            source_dir=str(ndvi_dir),
+            instrument="landsat",
+            mask="irr",
+        )
+
+        # Second ingest without overwrite fails
+        with pytest.raises(ValueError, match="exists.*overwrite"):
+            container.ingest.ndvi(
+                source_dir=str(ndvi_dir),
+                instrument="landsat",
+                mask="irr",
+                overwrite=False,
+            )
+
+        container.close()
+
+    @pytest.mark.xfail(
+        reason="ZipStore in zarr v3 does not support overwriting existing arrays. "
+               "See ContainsArrayError when _safe_delete_path fails to remove arrays."
+    )
+    def test_ingest_ndvi_succeeds_with_overwrite(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+        """Re-ingesting NDVI with overwrite=True succeeds."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+        if not s2_has_input_data:
+            pytest.skip("S2 input data not found")
+
+        ndvi_dir = s2_input_dir / "ndvi"
+        if not ndvi_dir.exists():
+            pytest.skip("NDVI directory not found")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+
+        # First ingest
+        container.ingest.ndvi(
+            source_dir=str(ndvi_dir),
+            instrument="landsat",
+            mask="irr",
+        )
+
+        # Second ingest with overwrite succeeds
+        event = container.ingest.ndvi(
+            source_dir=str(ndvi_dir),
+            instrument="landsat",
+            mask="irr",
+            overwrite=True,
+        )
+
+        assert event is not None
+        container.close()
+
+    def test_query_invalid_path_raises_error(self, s2_shapefile, tmp_path):
+        """Querying a nonexistent path raises KeyError."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+
+        with pytest.raises(KeyError):
+            container.query.dataframe("nonexistent/path")
+
+        container.close()
+
+    def test_read_only_container_prevents_writes(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+        """Container opened in read-only mode prevents ingestion."""
+        if not s2_shapefile.exists():
+            pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
+        if not s2_has_input_data:
+            pytest.skip("S2 input data not found")
+
+        from swimrs.container import SwimContainer
+
+        container_path = tmp_path / "test.swim"
+
+        # Create and close container
+        container = SwimContainer.create(
+            uri=str(container_path),
+            fields_shapefile=str(s2_shapefile),
+            uid_column=S2_UID_COLUMN,
+            start_date=START_DATE,
+            end_date=END_DATE,
+        )
+        container.save()
+        container.close()
+
+        # Open in read-only mode
+        container = SwimContainer.open(str(container_path), mode="r")
+
+        ndvi_dir = s2_input_dir / "ndvi"
+        if ndvi_dir.exists():
+            with pytest.raises((ValueError, PermissionError)):
+                container.ingest.ndvi(
+                    source_dir=str(ndvi_dir),
+                    instrument="landsat",
+                    mask="irr",
+                )
 
         container.close()
 
