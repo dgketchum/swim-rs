@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 import zarr
+from zarr.core.dtype import VariableLengthUTF8, VariableLengthBytes
 
 from swimrs.container.provenance import ProvenanceLog, DatasetProvenance
 from swimrs.container.inventory import Inventory
@@ -397,27 +398,26 @@ class SwimContainer:
 
         # Create time coordinate
         time_grp = root.create_group("time")
-        time_grp.create_dataset(
+        time_grp.create_array(
             "daily",
             data=time_index.values.astype("datetime64[ns]"),
-            dtype="datetime64[ns]"
         )
 
         # Create geometry group
         geom_grp = root.create_group("geometry")
 
         # Store UIDs
-        geom_grp.create_dataset(
+        uid_arr = geom_grp.create_array(
             "uid",
-            data=np.array(uids, dtype=object),
-            dtype=object,
-            object_codec=zarr.codecs.VLenUTF8()
+            shape=(len(uids),),
+            dtype=VariableLengthUTF8(),
         )
+        uid_arr[:] = list(uids)
 
         # Store centroids
         centroids = gdf.geometry.centroid
-        geom_grp.create_dataset("lon", data=centroids.x.values, dtype="float64")
-        geom_grp.create_dataset("lat", data=centroids.y.values, dtype="float64")
+        geom_grp.create_array("lon", data=centroids.x.values)
+        geom_grp.create_array("lat", data=centroids.y.values)
 
         # Store area
         if gdf.crs and gdf.crs.is_projected:
@@ -425,16 +425,16 @@ class SwimContainer:
         else:
             # Reproject to equal area for area calculation
             areas = gdf.to_crs("EPSG:6933").geometry.area
-        geom_grp.create_dataset("area_m2", data=areas.values, dtype="float64")
+        geom_grp.create_array("area_m2", data=areas.values)
 
         # Store WKB geometries
         wkb_data = gdf.geometry.apply(lambda g: g.wkb).values
-        geom_grp.create_dataset(
+        wkb_arr = geom_grp.create_array(
             "wkb",
-            data=wkb_data,
-            dtype=object,
-            object_codec=zarr.codecs.VLenBytes()
+            shape=wkb_data.shape,
+            dtype=VariableLengthBytes(),
         )
+        wkb_arr[:] = wkb_data.tolist()
 
         # Store original shapefile properties
         props_grp = geom_grp.create_group("properties")
@@ -444,14 +444,14 @@ class SwimContainer:
             try:
                 data = gdf[col].values
                 if data.dtype == object:
-                    props_grp.create_dataset(
+                    str_arr = props_grp.create_array(
                         col,
-                        data=np.array(data.astype(str), dtype=object),
-                        dtype=object,
-                        object_codec=zarr.codecs.VLenUTF8()
+                        shape=data.shape,
+                        dtype=VariableLengthUTF8(),
                     )
+                    str_arr[:] = [str(x) for x in data]
                 else:
-                    props_grp.create_dataset(col, data=data)
+                    props_grp.create_array(col, data=data)
             except Exception as e:
                 print(f"Warning: Could not store property '{col}': {e}")
 
@@ -697,7 +697,7 @@ class SwimContainer:
         name = path.split("/")[-1]
         parent = self._ensure_group(parent_path)
 
-        arr = parent.create_dataset(
+        arr = parent.create_array(
             name,
             shape=(self.n_days, self.n_fields),
             chunks=(365, min(100, self.n_fields)),
@@ -713,7 +713,7 @@ class SwimContainer:
         name = path.split("/")[-1]
         parent = self._ensure_group(parent_path)
 
-        arr = parent.create_dataset(
+        arr = parent.create_array(
             name,
             shape=(self.n_fields,),
             chunks=(min(100, self.n_fields),),

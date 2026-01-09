@@ -55,10 +55,112 @@ class Query(Component):
         Returns:
             Formatted status string
         """
-        raise NotImplementedError(
-            "Status query not yet implemented. "
-            "Implement logic to generate container status report from inventory."
-        )
+        import numpy as np
+
+        lines = []
+        lines.append("=" * 60)
+        lines.append("CONTAINER STATUS")
+        lines.append("=" * 60)
+
+        # Basic metadata
+        lines.append(f"  URI: {self._state._provider.uri}")
+        lines.append(f"  Fields: {self._state.n_fields}")
+        time_idx = self._state._time_index
+        if time_idx is not None and len(time_idx) > 0:
+            lines.append(f"  Date range: {time_idx[0].date()} to {time_idx[-1].date()}")
+        lines.append(f"  Days: {self._state.n_days}")
+        lines.append("")
+
+        # List all paths in the zarr
+        lines.append("DATA PATHS:")
+        lines.append("-" * 40)
+
+        def _walk_group(group, prefix=""):
+            """Recursively list paths in zarr group."""
+            paths = []
+            try:
+                for key in sorted(group.keys()):
+                    child = group[key]
+                    full_path = f"{prefix}{key}" if prefix else key
+                    import zarr
+                    if isinstance(child, zarr.Array):
+                        # Get array stats
+                        shape = child.shape
+                        dtype = child.dtype
+                        try:
+                            arr = child[:]
+                            if np.issubdtype(arr.dtype, np.floating):
+                                valid_count = np.sum(~np.isnan(arr))
+                                total = arr.size
+                                pct = 100.0 * valid_count / total if total > 0 else 0
+                                stats = f"shape={shape}, {pct:.1f}% valid"
+                            elif arr.dtype.kind in ('U', 'O') or 'str' in str(dtype).lower():
+                                # String array - count non-empty
+                                non_empty = sum(1 for v in arr.flat if v and str(v).strip())
+                                total = arr.size
+                                pct = 100.0 * non_empty / total if total > 0 else 0
+                                stats = f"shape={shape}, {pct:.1f}% non-empty"
+                            else:
+                                stats = f"shape={shape}, dtype={dtype}"
+                        except Exception:
+                            stats = f"shape={shape}"
+                        paths.append((full_path, stats))
+                    else:
+                        paths.extend(_walk_group(child, f"{full_path}/"))
+            except Exception:
+                pass
+            return paths
+
+        paths = _walk_group(self._state.root)
+
+        # Group by top-level category
+        categories = {}
+        for path, stats in paths:
+            parts = path.split("/")
+            cat = parts[0]
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append((path, stats))
+
+        for cat in sorted(categories.keys()):
+            lines.append(f"\n  {cat}/")
+            for path, stats in sorted(categories[cat]):
+                subpath = path[len(cat) + 1:] if "/" in path else path
+                lines.append(f"    {subpath}: {stats}")
+
+        # Check key meteorology paths
+        lines.append("")
+        lines.append("METEOROLOGY CHECK:")
+        lines.append("-" * 40)
+        met_paths = [
+            ("meteorology/gridmet/eto", "GridMET ETo"),
+            ("meteorology/gridmet/prcp", "GridMET Precip"),
+            ("meteorology/era5/eto", "ERA5 ETo"),
+            ("meteorology/era5/prcp", "ERA5 Precip"),
+            ("meteorology/era5/precip", "ERA5 Precip (alt)"),
+            ("meteorology/snodas/swe", "SNODAS SWE"),
+            ("meteorology/era5/swe", "ERA5 SWE"),
+        ]
+        for path, label in met_paths:
+            try:
+                arr = self._state.root[path]
+                valid = np.sum(~np.isnan(arr[:])) if np.issubdtype(arr.dtype, np.floating) else arr.size
+                total = arr.size
+                pct = 100.0 * valid / total if total > 0 else 0
+                lines.append(f"  ✓ {label}: {arr.shape}, {pct:.1f}% valid")
+            except KeyError:
+                lines.append(f"  ✗ {label}: NOT FOUND")
+
+        if detailed:
+            lines.append("")
+            lines.append("PROVENANCE LOG:")
+            lines.append("-" * 40)
+            lines.append(self._state.provenance.summary())
+
+        lines.append("")
+        lines.append("=" * 60)
+
+        return "\n".join(lines)
 
     def validate(
         self,

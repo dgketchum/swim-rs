@@ -88,7 +88,7 @@ class Calculator(Component):
                     self._log.debug("skipping_existing", path=path)
                     continue
                 if path in self._state.root:
-                    del self._state.root[path]
+                    self._safe_delete_path(path)
 
                 # Load NDVI from both instruments
                 path1 = f"remote_sensing/ndvi/{instrument1}/{mask}"
@@ -145,7 +145,7 @@ class Calculator(Component):
         irr_threshold: float = 0.1,
         masks: Tuple[str, ...] = ("irr", "inv_irr"),
         instruments: Tuple[str, ...] = ("landsat", "sentinel"),
-        use_mask: str = "irr",
+        use_mask: bool = False,
         use_lulc: bool = True,
         lookback: int = 10,
         ndvi_threshold: float = 0.3,
@@ -162,13 +162,25 @@ class Calculator(Component):
         2. Calculates groundwater subsidy (ET/PPT ratio)
         3. Extracts Ke (evaporation) and Kc (crop) parameters
 
+        Two modes for determining irrigation status:
+
+        use_mask=True (CONUS - Examples 4 & 5):
+            - Reads per-year irrigation fraction from properties/irrigation/irr_yearly
+            - Year is irrigated if f_irr > irr_threshold
+            - Requires masks=("irr", "inv_irr")
+
+        use_lulc=True (International - Example 6):
+            - Computes irrigation from water balance (ET/PPT ratio)
+            - Year is irrigated if subsidy_months >= 3 AND field is cropped (LULC)
+            - Works with masks=("no_mask",)
+
         Args:
             etf_model: ET model to use ("ssebop", "ptjpl", etc.)
             irr_threshold: Fraction threshold for classifying irrigated years
             masks: Mask types to process
             instruments: Instruments for NDVI data
-            use_mask: Default mask for ETf analysis
-            use_lulc: Whether to use land cover for filtering
+            use_mask: If True, use irrigation mask properties (CONUS mode)
+            use_lulc: If True, use water balance + LULC (International mode)
             lookback: Days of lookback for irrigation window extension
             ndvi_threshold: NDVI threshold for window extension
             min_pos_days: Minimum consecutive positive slope days
@@ -178,8 +190,15 @@ class Calculator(Component):
 
         Returns:
             ProvenanceEvent recording the operation
+
+        Raises:
+            ValueError: If neither use_mask nor use_lulc is True
         """
         self._ensure_writable()
+
+        # Validate mode selection
+        if not (use_mask or use_lulc):
+            raise ValueError("Must use either use_mask or use_lulc for irrigation analysis")
 
         with self._track_operation(
             "compute_dynamics",
@@ -219,9 +238,15 @@ class Calculator(Component):
             # Compute groundwater subsidy
             gwsub_data = self._compute_groundwater_subsidy(ds, irr_threshold)
 
+            # Load per-year irrigation properties if using mask mode
+            irr_props = None
+            if use_mask:
+                irr_props = self._get_yearly_irrigation_properties()
+
             # Compute irrigation windows
             irr_data = self._compute_irrigation_data(
-                ds, irr_threshold, lookback, ndvi_threshold, min_pos_days, use_lulc
+                ds, irr_threshold, lookback, ndvi_threshold, min_pos_days,
+                use_mask, use_lulc, irr_props
             )
 
             # Write results
@@ -369,29 +394,15 @@ class Calculator(Component):
         instruments: Tuple[str, ...],
         met_source: str,
     ) -> Optional["xr.Dataset"]:
-        """Load all data needed for dynamics computation."""
+        """
+        Load all data needed for dynamics computation.
+
+        Combines data from multiple masks - uses primary mask data where available,
+        falls back to secondary mask for fields with no data in primary mask.
+        This handles cases where some fields have only irr mask data and others
+        have only inv_irr mask data.
+        """
         import xarray as xr
-
-        paths = {}
-
-        # Try to find NDVI (fused or primary instrument)
-        fused_path = f"derived/combined_ndvi/{masks[0]}"
-        if fused_path in self._state.root:
-            paths["ndvi"] = fused_path
-        else:
-            ndvi_path = f"remote_sensing/ndvi/{instruments[0]}/{masks[0]}"
-            if ndvi_path in self._state.root:
-                paths["ndvi"] = ndvi_path
-            else:
-                self._log.warning("no_ndvi_data")
-                return None
-
-        # ETf
-        etf_path = f"remote_sensing/etf/{instruments[0]}/{etf_model}/{masks[0]}"
-        if etf_path not in self._state.root:
-            self._log.warning("no_etf_data", path=etf_path)
-            return None
-        paths["etf"] = etf_path
 
         # Meteorology
         eto_path = f"meteorology/{met_source}/eto"
@@ -399,10 +410,60 @@ class Calculator(Component):
         if eto_path not in self._state.root or prcp_path not in self._state.root:
             self._log.warning("no_met_data", source=met_source)
             return None
-        paths["eto"] = eto_path
-        paths["prcp"] = prcp_path
 
-        return self._state.get_dataset(paths, fields=fields)
+        # Load NDVI from all masks and combine
+        ndvi_data = None
+        for mask in masks:
+            # Try fused NDVI first, then raw
+            fused_path = f"derived/combined_ndvi/{mask}"
+            ndvi_path = f"remote_sensing/ndvi/{instruments[0]}/{mask}"
+
+            path = fused_path if fused_path in self._state.root else ndvi_path
+            if path not in self._state.root:
+                continue
+
+            mask_ndvi = self._state.get_xarray(path, fields=fields)
+            if ndvi_data is None:
+                ndvi_data = mask_ndvi
+            else:
+                # Fill NaN values from secondary mask
+                ndvi_data = ndvi_data.fillna(mask_ndvi)
+
+        if ndvi_data is None:
+            self._log.warning("no_ndvi_data")
+            return None
+
+        # Load ETf from all masks and combine
+        etf_data = None
+        for mask in masks:
+            etf_path = f"remote_sensing/etf/{instruments[0]}/{etf_model}/{mask}"
+            if etf_path not in self._state.root:
+                continue
+
+            mask_etf = self._state.get_xarray(etf_path, fields=fields)
+            if etf_data is None:
+                etf_data = mask_etf
+            else:
+                # Fill NaN values from secondary mask
+                etf_data = etf_data.fillna(mask_etf)
+
+        if etf_data is None:
+            self._log.warning("no_etf_data", model=etf_model)
+            return None
+
+        # Load meteorology
+        eto_data = self._state.get_xarray(eto_path, fields=fields)
+        prcp_data = self._state.get_xarray(prcp_path, fields=fields)
+
+        # Combine into dataset
+        ds = xr.Dataset({
+            "ndvi": ndvi_data,
+            "etf": etf_data,
+            "eto": eto_data,
+            "prcp": prcp_data,
+        })
+
+        return ds
 
     def _compute_k_parameters(
         self, ds: "xr.Dataset"
@@ -412,24 +473,75 @@ class Calculator(Component):
 
         ke_max: 90th percentile of ETf where NDVI < 0.3
         kc_max: 90th percentile of all ETf values
+
+        Uses only raw observations where both ETf and NDVI are present.
         """
+        import xarray as xr
+
         etf = ds["etf"]
         ndvi = ds["ndvi"]
+        time_index = pd.DatetimeIndex(ds.coords["time"].values)
 
-        # ke_max: 90th percentile of ETf where NDVI < 0.3
-        low_ndvi_mask = ndvi < 0.3
-        etf_low_ndvi = etf.where(low_ndvi_mask)
+        results_ke = {}
+        results_kc = {}
 
-        # Compute per-site quantile
-        ke_max = etf_low_ndvi.quantile(0.9, dim="time", skipna=True)
-        # Fill default where no low-NDVI observations
-        ke_max = ke_max.fillna(1.0)
+        for site in ds.coords["site"].values:
+            site_str = str(site)
 
-        # kc_max: 90th percentile of all ETf
-        kc_max = etf.quantile(0.9, dim="time", skipna=True)
-        kc_max = kc_max.fillna(1.25)
+            # Extract site data as pandas Series
+            site_etf = etf.sel(site=site).to_pandas()
+            site_ndvi = ndvi.sel(site=site).to_pandas()
 
-        return ke_max, kc_max
+            # Use only raw observations where both ETf and NDVI are present
+            valid_mask = site_etf.notna() & site_ndvi.notna()
+            etf_valid = site_etf[valid_mask].values
+            ndvi_valid = site_ndvi[valid_mask].values
+
+            if len(etf_valid) == 0:
+                results_ke[site_str] = 1.0
+                results_kc[site_str] = 1.25
+                continue
+
+            # Create combined DataFrame (no interpolation for k-parameters)
+            adf = pd.DataFrame({"etf": etf_valid, "ndvi": ndvi_valid})
+
+            # Extract values and remove any remaining NaNs
+            all_etf = adf["etf"].values.flatten()
+            all_ndvi = adf["ndvi"].values.flatten()
+
+            nan_mask = np.isnan(all_etf)
+            all_etf = all_etf[~nan_mask]
+            sub_ndvi = all_ndvi[~nan_mask]
+
+            # ke_max: 90th percentile of ETf where NDVI < 0.3
+            # (uses only observations where both ETf and NDVI are present)
+            ke_max_mask = sub_ndvi < 0.3
+            if np.any(ke_max_mask):
+                ke_max = float(np.nanpercentile(all_etf[ke_max_mask], 90))
+            else:
+                ke_max = 1.0
+                self._log.debug("no_low_ndvi", site=site_str)
+
+            # kc_max: 90th percentile of ALL ETf observations
+            # (does NOT require NDVI to be present)
+            all_etf_obs = site_etf.dropna().values
+            if len(all_etf_obs) > 0:
+                kc_max = float(np.percentile(all_etf_obs, 90))
+            else:
+                kc_max = 1.25
+
+            results_ke[site_str] = ke_max
+            results_kc[site_str] = kc_max
+
+        # Convert back to xarray DataArrays
+        sites = ds.coords["site"].values
+        ke_values = [results_ke.get(str(s), 1.0) for s in sites]
+        kc_values = [results_kc.get(str(s), 1.25) for s in sites]
+
+        ke_da = xr.DataArray(ke_values, coords={"site": sites}, dims=["site"])
+        kc_da = xr.DataArray(kc_values, coords={"site": sites}, dims=["site"])
+
+        return ke_da, kc_da
 
     def _compute_groundwater_subsidy(
         self, ds: "xr.Dataset", irr_threshold: float
@@ -574,10 +686,22 @@ class Calculator(Component):
         lookback: int,
         ndvi_threshold: float,
         min_pos_days: int,
+        use_mask: bool,
         use_lulc: bool,
+        irr_props: Optional[Dict[str, Dict[str, float]]] = None,
     ) -> Dict[str, Dict]:
         """
         Compute irrigation windows for each field and year.
+
+        Two modes for determining irrigation status:
+
+        use_mask=True (CONUS):
+            Reads f_irr from irr_props (per-year irrigation fraction from properties).
+            Year is irrigated if f_irr > irr_threshold.
+
+        use_lulc=True (International):
+            Computes irrigation from water balance (ET/PPT ratio).
+            Year is irrigated if subsidy_months >= 3 AND field is cropped.
 
         Uses NDVI slope analysis to detect irrigation periods.
         Matches original SamplePlotDynamics behavior for exact parity.
@@ -606,36 +730,52 @@ class Calculator(Component):
             # Check if field is cropped (LULC 12, 13, 14)
             cropped = lulc_by_site.get(site_str, 12) in [12, 13, 14] if use_lulc else True
 
+            # Get per-year irrigation properties for this site if using mask mode
+            site_irr_props = irr_props.get(site_str, {}) if irr_props else {}
+
             for yr in years:
                 yr_mask = time_index.year == yr
+                yr_str = str(yr)
 
                 site_etf = etf.sel(site=site).isel(time=yr_mask)
                 site_eto = eto.sel(site=site).isel(time=yr_mask)
                 site_ppt = ppt.sel(site=site).isel(time=yr_mask)
 
-                # Determine if irrigated this year using ET/PPT ratio
-                eta = site_etf * site_eto
-                eta_monthly = eta.resample(time="ME").sum()
-                ppt_monthly = site_ppt.resample(time="ME").sum()
+                # Determine irrigation status based on mode
+                if use_mask:
+                    # CONUS mode: read f_irr from properties
+                    f_irr = site_irr_props.get(yr_str, np.nan)
+                    if pd.isna(f_irr):
+                        f_irr = 0.0
+                    irrigated = f_irr > irr_threshold
 
-                subsidy_months = 0
-                for e, p in zip(eta_monthly.values, ppt_monthly.values):
-                    if not np.isnan(e) and not np.isnan(p) and p > 0:
-                        if e / (p + 1.0) > 1.3:
-                            subsidy_months += 1
+                elif use_lulc:
+                    # International mode: compute from water balance
+                    eta = site_etf * site_eto
+                    eta_monthly = eta.resample(time="ME").sum()
+                    ppt_monthly = site_ppt.resample(time="ME").sum()
 
-                # Original logic: subsidy_months >= 3 AND cropped (when use_lulc=True)
-                if subsidy_months >= 3 and cropped:
-                    irrigated = True
-                    f_irr = 1.0
+                    subsidy_months = 0
+                    for e, p in zip(eta_monthly.values, ppt_monthly.values):
+                        if not np.isnan(e) and not np.isnan(p) and p > 0:
+                            if e / (p + 1.0) > 1.3:
+                                subsidy_months += 1
+
+                    if subsidy_months >= 3 and cropped:
+                        irrigated = True
+                        f_irr = 1.0
+                    else:
+                        irrigated = False
+                        f_irr = 0.0
                 else:
-                    irrigated = False
-                    f_irr = 0.0
+                    raise ValueError("Must use either use_mask or use_lulc for irrigation analysis")
+
+                if not irrigated:
                     fallow_years.append(int(yr))
                     site_data[int(yr)] = {
                         "irr_doys": [],
                         "irrigated": 0,
-                        "f_irr": 0.0,
+                        "f_irr": float(f_irr),
                     }
                     continue
 
@@ -683,6 +823,37 @@ class Calculator(Component):
                 value = lulc_arr[idx]
                 if not np.isnan(value):
                     result[site_str] = int(value)
+        return result
+
+    def _get_yearly_irrigation_properties(self) -> Dict[str, Dict[str, float]]:
+        """
+        Get per-year irrigation fraction from container properties.
+
+        Returns:
+            Dict mapping site_id -> {year_str: f_irr, ...}
+            e.g., {"US-FPe": {"2020": 0.0, "2021": 0.0}, "ALARC2_Smith6": {"2020": 1.0}}
+        """
+        import json
+
+        yearly_path = "properties/irrigation/irr_yearly"
+        if yearly_path not in self._state.root:
+            return {}
+
+        arr = self._state.root[yearly_path]
+        result = {}
+
+        for site_str in self._state.field_uids:
+            if site_str in self._state._uid_to_index:
+                idx = self._state._uid_to_index[site_str]
+                json_str = arr[idx]
+                # Handle zarr v3 ndarray returns
+                if hasattr(json_str, 'item'):
+                    json_str = json_str.item()
+                if json_str:
+                    try:
+                        result[site_str] = json.loads(json_str)
+                    except json.JSONDecodeError:
+                        result[site_str] = {}
         return result
 
     def _get_extended_year_ndvi(
@@ -842,8 +1013,7 @@ class Calculator(Component):
         overwrite: bool,
     ) -> None:
         """Write computed dynamics results to container."""
-        import zarr
-        from numcodecs import VLenUTF8
+        from zarr.core.dtype import VariableLengthUTF8
 
         # Write ke_max
         ke_path = "derived/dynamics/ke_max"
@@ -851,7 +1021,7 @@ class Calculator(Component):
             pass
         else:
             if ke_path in self._state.root:
-                del self._state.root[ke_path]
+                self._safe_delete_path(ke_path)
             arr = self._state.create_property_array(ke_path)
             for site in ke_max.coords["site"].values:
                 if str(site) in self._state._uid_to_index:
@@ -864,7 +1034,7 @@ class Calculator(Component):
             pass
         else:
             if kc_path in self._state.root:
-                del self._state.root[kc_path]
+                self._safe_delete_path(kc_path)
             arr = self._state.create_property_array(kc_path)
             for site in kc_max.coords["site"].values:
                 if str(site) in self._state._uid_to_index:
@@ -877,18 +1047,20 @@ class Calculator(Component):
             pass
         else:
             if irr_path in self._state.root:
-                del self._state.root[irr_path]
+                self._safe_delete_path(irr_path)
             parent = self._state.ensure_group("derived/dynamics")
-            arr = parent.create_dataset(
+            arr = parent.create_array(
                 "irr_data",
                 shape=(self._state.n_fields,),
-                dtype=object,
-                object_codec=VLenUTF8(),
+                dtype=VariableLengthUTF8(),
             )
+            # Build values list then assign at once
+            values = [""] * self._state.n_fields
             for field_uid in fields:
                 if field_uid in self._state._uid_to_index and field_uid in irr_data:
                     idx = self._state._uid_to_index[field_uid]
-                    arr[idx] = json.dumps(irr_data[field_uid])
+                    values[idx] = json.dumps(irr_data[field_uid])
+            arr[:] = values
 
         # Write gwsub_data as JSON strings
         gwsub_path = "derived/dynamics/gwsub_data"
@@ -896,15 +1068,17 @@ class Calculator(Component):
             pass
         else:
             if gwsub_path in self._state.root:
-                del self._state.root[gwsub_path]
+                self._safe_delete_path(gwsub_path)
             parent = self._state.ensure_group("derived/dynamics")
-            arr = parent.create_dataset(
+            arr = parent.create_array(
                 "gwsub_data",
                 shape=(self._state.n_fields,),
-                dtype=object,
-                object_codec=VLenUTF8(),
+                dtype=VariableLengthUTF8(),
             )
+            # Build values list then assign at once
+            values = [""] * self._state.n_fields
             for field_uid in fields:
                 if field_uid in self._state._uid_to_index and field_uid in gwsub_data:
                     idx = self._state._uid_to_index[field_uid]
-                    arr[idx] = json.dumps(gwsub_data[field_uid])
+                    values[idx] = json.dumps(gwsub_data[field_uid])
+            arr[:] = values

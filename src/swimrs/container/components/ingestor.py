@@ -89,10 +89,10 @@ class Ingestor(Component):
             if path in self._state.root and not overwrite:
                 raise ValueError(f"Data exists at {path}. Use overwrite=True.")
             if path in self._state.root:
-                del self._state.root[path]
+                self._safe_delete_path(path)
 
             # Parse all CSVs into unified DataFrame
-            all_data = self._parse_ee_csvs(source_dir, instrument, "ndvi", fields)
+            all_data = self._parse_ee_remote_sensing_csvs(source_dir, instrument, "ndvi", fields, mask=mask)
 
             if all_data.empty:
                 self._log.warning("no_data_found", source=str(source_dir))
@@ -176,10 +176,10 @@ class Ingestor(Component):
             if path in self._state.root and not overwrite:
                 raise ValueError(f"Data exists at {path}. Use overwrite=True.")
             if path in self._state.root:
-                del self._state.root[path]
+                self._safe_delete_path(path)
 
             # Parse all CSVs into unified DataFrame
-            all_data = self._parse_ee_csvs(source_dir, instrument, "etf", fields)
+            all_data = self._parse_ee_remote_sensing_csvs(source_dir, instrument, "etf", fields, mask=mask)
 
             if all_data.empty:
                 self._log.warning("no_data_found", source=str(source_dir))
@@ -267,7 +267,7 @@ class Ingestor(Component):
                     self._log.debug("skipping_existing", path=path)
                     continue
                 if path in self._state.root:
-                    del self._state.root[path]
+                    self._safe_delete_path(path)
 
                 # Load data from Parquet files
                 var_data = self._load_met_variable(
@@ -361,16 +361,19 @@ class Ingestor(Component):
 
             # Process each variable
             for var in variables:
-                path = f"meteorology/era5/{var}"
+                # Apply mapping to get the normalized variable name
+                # This matches the mapping applied during CSV parsing
+                normalized_var = param_mapping.get(var, var)
+                path = f"meteorology/era5/{normalized_var}"
 
                 if path in self._state.root and not overwrite:
                     self._log.debug("skipping_existing", path=path)
                     continue
                 if path in self._state.root:
-                    del self._state.root[path]
+                    self._safe_delete_path(path)
 
-                # Extract variable data from site_data
-                var_df = self._extract_variable_from_site_data(site_data, var)
+                # Extract variable data from site_data using normalized name
+                var_df = self._extract_variable_from_site_data(site_data, normalized_var)
 
                 if var_df.empty:
                     self._log.debug("no_data_for_variable", variable=var)
@@ -434,7 +437,7 @@ class Ingestor(Component):
             if path in self._state.root and not overwrite:
                 raise ValueError(f"Data exists at {path}. Use overwrite=True.")
             if path in self._state.root:
-                del self._state.root[path]
+                self._safe_delete_path(path)
 
             # Load SWE data
             if source_file:
@@ -606,7 +609,7 @@ class Ingestor(Component):
                 pass
             else:
                 if ke_path in self._state.root:
-                    del self._state.root[ke_path]
+                    self._safe_delete_path(ke_path)
                 arr = self._state.create_property_array(ke_path)
                 for uid in self._state.field_uids:
                     if uid in data.get("ke_max", {}):
@@ -619,7 +622,7 @@ class Ingestor(Component):
                 pass
             else:
                 if kc_path in self._state.root:
-                    del self._state.root[kc_path]
+                    self._safe_delete_path(kc_path)
                 arr = self._state.create_property_array(kc_path)
                 for uid in self._state.field_uids:
                     if uid in data.get("kc_max", {}):
@@ -627,8 +630,7 @@ class Ingestor(Component):
                         arr[idx] = data["kc_max"][uid]
 
             # Write irr_data and gwsub_data as JSON strings
-            import zarr
-            from numcodecs import VLenUTF8
+            from zarr.core.dtype import VariableLengthUTF8
 
             for key in ["irr", "gwsub"]:
                 data_key = f"{key}_data" if key in ["irr", "gwsub"] else key
@@ -639,20 +641,22 @@ class Ingestor(Component):
                 if data_path in self._state.root and not overwrite:
                     continue
                 if data_path in self._state.root:
-                    del self._state.root[data_path]
+                    self._safe_delete_path(data_path)
 
                 parent = self._state.ensure_group("derived/dynamics")
-                arr = parent.create_dataset(
+                arr = parent.create_array(
                     f"{key}_data",
                     shape=(self._state.n_fields,),
-                    dtype=object,
-                    object_codec=VLenUTF8(),
+                    dtype=VariableLengthUTF8(),
                 )
 
+                # Build list of values then assign at once
+                values = [""] * self._state.n_fields
                 for uid in self._state.field_uids:
                     if uid in data.get(data_key, {}):
                         idx = self._state.get_field_index(uid)
-                        arr[idx] = json.dumps(data[data_key][uid])
+                        values[idx] = json.dumps(data[data_key][uid])
+                arr[:] = values
 
             ctx["fields_processed"] = len(data.get("ke_max", {}))
 
@@ -674,12 +678,13 @@ class Ingestor(Component):
     # Helper Methods
     # -------------------------------------------------------------------------
 
-    def _parse_ee_csvs(
+    def _parse_ee_remote_sensing_csvs(
         self,
         source_dir: Path,
         instrument: str,
         parameter: str,
         fields: Optional[List[str]] = None,
+        mask: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Parse Earth Engine CSV exports into a unified DataFrame.
@@ -688,6 +693,17 @@ class Ingestor(Component):
         - Landsat: NDVI_YYYYMMDD (e.g., NDVI_20170115)
         - Sentinel: YYYYMMDD_... (e.g., 20170115_S2A)
 
+        File naming convention for mask filtering:
+        - ndvi_{field_id}_{mask}_{year}.csv
+        - {model}_etf_{field_id}_{mask}_{year}.csv
+
+        Args:
+            source_dir: Directory containing CSV files
+            instrument: Source instrument ("landsat", "sentinel", etc.)
+            parameter: Data type ("ndvi" or "etf")
+            fields: Optional list of field UIDs to process
+            mask: Optional mask type to filter files ("irr", "inv_irr", "no_mask")
+
         Returns:
             DataFrame with DatetimeIndex and field UIDs as columns
         """
@@ -695,6 +711,33 @@ class Ingestor(Component):
         if not csv_files:
             self._log.warning("no_csv_files", directory=str(source_dir))
             return pd.DataFrame()
+
+        # Filter files by mask if specified
+        if mask is not None:
+            # Match files that contain the mask pattern in the filename
+            # File naming convention: ndvi_{field_id}_{mask}_{year}.csv
+            # or {model}_etf_{field_id}_{mask}_{year}.csv
+            # e.g., "ndvi_US-FPe_irr_2020.csv" should match mask="irr"
+            # but "ndvi_US-FPe_inv_irr_2020.csv" should NOT match mask="irr"
+            filtered_files = []
+            for f in csv_files:
+                filename = f.stem  # filename without extension
+                # Handle special case: "irr" vs "inv_irr"
+                # "inv_irr" should not match when mask="irr"
+                if mask == "irr":
+                    # Match _irr_ but exclude _inv_irr_
+                    if "_irr_" in filename and "_inv_irr_" not in filename:
+                        filtered_files.append(f)
+                else:
+                    # For other masks, use simple pattern matching
+                    mask_pattern = f"_{mask}_"
+                    if mask_pattern in filename:
+                        filtered_files.append(f)
+            csv_files = filtered_files
+
+            if not csv_files:
+                self._log.debug("no_files_for_mask", mask=mask, directory=str(source_dir))
+                return pd.DataFrame()
 
         all_series = []
         fields_found = set()
@@ -768,8 +811,26 @@ class Ingestor(Component):
         if not all_series:
             return pd.DataFrame()
 
+        # Group series by field ID and combine (handle multiple CSV files per field)
+        from collections import defaultdict
+        field_series = defaultdict(list)
+        for s in all_series:
+            field_series[s.name].append(s)
+
+        combined_series = []
+        for field_id, series_list in field_series.items():
+            if len(series_list) == 1:
+                combined = series_list[0]
+            else:
+                # Combine multiple series for the same field
+                combined = series_list[0]
+                for s in series_list[1:]:
+                    combined = combined.combine_first(s)
+                combined.name = field_id
+            combined_series.append(combined)
+
         # Combine all series into a DataFrame
-        result = pd.concat(all_series, axis=1)
+        result = pd.concat(combined_series, axis=1)
         result = result.sort_index()
 
         # Ensure we have a proper DatetimeIndex
@@ -934,7 +995,7 @@ class Ingestor(Component):
         param_mapping: Dict[str, str],
     ) -> Dict[str, pd.DataFrame]:
         """
-        Parse ERA5 monthly CSV exports.
+        Parse ERA5 monthly CSV exports using vectorized operations.
 
         Column format: {param}_{YYYYMMDD} (e.g., eto_20170115)
 
@@ -942,7 +1003,7 @@ class Ingestor(Component):
             Dict mapping field_uid to DataFrame with parameter columns
         """
         site_data = {}
-
+        valid_uids = set(self._state._uid_to_index.keys())
         csv_files = list(source_dir.glob("*.csv"))
 
         for csv_file in csv_files:
@@ -953,7 +1014,7 @@ class Ingestor(Component):
 
             # Determine field ID column
             uid_col = None
-            for col in ["FID", "fid", "site_id", "SITE_ID"]:
+            for col in ["FID", "fid", "site_id", "SITE_ID", "sid", "SID"]:
                 if col in df.columns:
                     uid_col = col
                     break
@@ -961,52 +1022,64 @@ class Ingestor(Component):
             if uid_col is None:
                 continue
 
-            # Process each row (each row is a site)
-            for _, row in df.iterrows():
-                field_uid = str(row[uid_col])
-
-                if field_uid not in self._state._uid_to_index:
+            # Parse column headers ONCE to identify data columns and create MultiIndex
+            col_tuples = []  # (param, date) tuples for MultiIndex
+            valid_cols = []  # corresponding column names
+            for col in df.columns:
+                if col == uid_col:
+                    continue
+                if "_" not in col:
                     continue
 
-                # Parse parameter columns
-                records = []
-                for col in df.columns:
-                    if "_" not in col:
-                        continue
-
-                    parts = col.rsplit("_", 1)
-                    if len(parts) != 2:
-                        continue
-
-                    param, date_str = parts
-                    if len(date_str) != 8 or not date_str.isdigit():
-                        continue
-
-                    # Apply parameter mapping
-                    param = param_mapping.get(param, param)
-
-                    try:
-                        date = pd.to_datetime(date_str)
-                        value = row[col]
-                        records.append({"date": date, "param": param, "value": value})
-                    except Exception:
-                        continue
-
-                if not records:
+                parts = col.rsplit("_", 1)
+                if len(parts) != 2:
                     continue
 
-                # Convert to DataFrame
-                rec_df = pd.DataFrame(records)
-                pivoted = rec_df.pivot(index="date", columns="param", values="value")
+                param, date_str = parts
+                if len(date_str) != 8 or not date_str.isdigit():
+                    continue
 
-                if field_uid in site_data:
-                    # Merge with existing data
-                    site_data[field_uid] = pd.concat([site_data[field_uid], pivoted])
-                    site_data[field_uid] = site_data[field_uid][
-                        ~site_data[field_uid].index.duplicated(keep="last")
+                # Apply parameter mapping
+                param = param_mapping.get(param, param)
+
+                try:
+                    date = pd.to_datetime(date_str)
+                    col_tuples.append((param, date))
+                    valid_cols.append(col)
+                except Exception:
+                    continue
+
+            if not valid_cols:
+                continue
+
+            # Filter to valid sites and set UID as index
+            df[uid_col] = df[uid_col].astype(str)
+            df = df[df[uid_col].isin(valid_uids)]
+            if df.empty:
+                continue
+
+            df = df.set_index(uid_col)
+
+            # Extract just the data columns and set MultiIndex
+            data_df = df[valid_cols].copy()
+            data_df.columns = pd.MultiIndex.from_tuples(col_tuples, names=["param", "date"])
+
+            # For each site, unstack to get DataFrame with date index, param columns
+            for uid in data_df.index:
+                row = data_df.loc[uid]
+                # Handle case where uid appears multiple times
+                if isinstance(row, pd.DataFrame):
+                    row = row.iloc[0]
+                # Unstack: param level becomes columns, date becomes index
+                site_df = row.unstack(level="param")
+
+                if uid in site_data:
+                    site_data[uid] = pd.concat([site_data[uid], site_df])
+                    site_data[uid] = site_data[uid][
+                        ~site_data[uid].index.duplicated(keep="last")
                     ]
                 else:
-                    site_data[field_uid] = pivoted
+                    site_data[uid] = site_df
 
         return site_data
 
@@ -1122,7 +1195,7 @@ class Ingestor(Component):
         if path in self._state.root and not overwrite:
             return
         if path in self._state.root:
-            del self._state.root[path]
+            self._safe_delete_path(path)
 
         df = pd.read_csv(lulc_csv)
         df = df.set_index(uid_column)
@@ -1146,8 +1219,8 @@ class Ingestor(Component):
                 irr_crop_override = (mean_irr > 0.3) & (df[lulc_column] != 12)
                 df.loc[irr_crop_override, lulc_column] = 12
 
-        # Write to container
-        arr = self._state.create_property_array(path, dtype="int16")
+        # Write to container (use -1 as fill_value for integer types)
+        arr = self._state.create_property_array(path, dtype="int16", fill_value=-1)
 
         for uid in self._state.field_uids:
             if uid in df.index:
@@ -1178,7 +1251,7 @@ class Ingestor(Component):
             if path in self._state.root and not overwrite:
                 continue
             if path in self._state.root:
-                del self._state.root[path]
+                self._safe_delete_path(path)
 
             # Find the matching column
             col = None
@@ -1205,32 +1278,64 @@ class Ingestor(Component):
         uid_column: str,
         overwrite: bool,
     ) -> None:
-        """Ingest irrigation fraction data (mean across years)."""
-        path = "properties/irrigation/irr"
-
-        if path in self._state.root and not overwrite:
-            return
-        if path in self._state.root:
-            del self._state.root[path]
+        """Ingest irrigation fraction data (mean and per-year)."""
+        mean_path = "properties/irrigation/irr"
+        yearly_path = "properties/irrigation/irr_yearly"
 
         df = pd.read_csv(irrigation_csv)
         df = df.set_index(uid_column)
 
-        # Calculate mean irrigation across all numeric columns
+        # Extract year columns (format: irr_YYYY)
+        year_cols = [c for c in df.columns if c.startswith("irr_") and c[4:].isdigit()]
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         if len(numeric_cols) == 0:
             return
 
-        mean_irr = df[numeric_cols].mean(axis=1)
+        # Store mean irrigation
+        if mean_path not in self._state.root or overwrite:
+            if mean_path in self._state.root:
+                self._safe_delete_path(mean_path)
 
-        arr = self._state.create_property_array(path)
+            mean_irr = df[numeric_cols].mean(axis=1)
+            arr = self._state.create_property_array(mean_path)
 
-        for uid in self._state.field_uids:
-            if uid in mean_irr.index:
-                idx = self._state.get_field_index(uid)
-                value = mean_irr[uid]
-                if pd.notna(value):
-                    arr[idx] = float(value)
+            for uid in self._state.field_uids:
+                if uid in mean_irr.index:
+                    idx = self._state.get_field_index(uid)
+                    value = mean_irr[uid]
+                    if pd.notna(value):
+                        arr[idx] = float(value)
+
+        # Store per-year irrigation as JSON strings
+        if yearly_path not in self._state.root or overwrite:
+            if yearly_path in self._state.root:
+                self._safe_delete_path(yearly_path)
+
+            if year_cols:
+                from zarr.core.dtype import VariableLengthUTF8
+                import json
+
+                parent = self._state.ensure_group("properties/irrigation")
+                arr = parent.create_array(
+                    "irr_yearly",
+                    shape=(self._state.n_fields,),
+                    dtype=VariableLengthUTF8(),
+                )
+
+                values = ["{}"] * self._state.n_fields
+                for uid in self._state.field_uids:
+                    if uid in df.index:
+                        idx = self._state.get_field_index(uid)
+                        # Build dict: {"2020": 0.5, "2021": 0.8, ...}
+                        yearly_data = {}
+                        for col in year_cols:
+                            year_str = col[4:]  # Extract YYYY from irr_YYYY
+                            val = df.loc[uid, col]
+                            if pd.notna(val):
+                                yearly_data[year_str] = float(val)
+                        values[idx] = json.dumps(yearly_data)
+
+                arr[:] = values
 
     def _ingest_location(
         self,
@@ -1254,7 +1359,7 @@ class Ingestor(Component):
             if path in self._state.root and not overwrite:
                 continue
             if path in self._state.root:
-                del self._state.root[path]
+                self._safe_delete_path(path)
 
             col = None
             for c in possible_cols:

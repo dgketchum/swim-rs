@@ -762,6 +762,9 @@ class Exporter(Component):
                     if field_uid in self._state._uid_to_index:
                         idx = self._state._uid_to_index[field_uid]
                         data = arr[idx]
+                        # zarr v3 returns 0-d ndarray for scalar indexing
+                        if hasattr(data, 'item'):
+                            data = data.item()
                         if data is not None and data != "":
                             try:
                                 dynamics[key][field_uid] = json.loads(data)
@@ -797,20 +800,6 @@ class Exporter(Component):
                 paths["swe"] = swe_path
                 break
 
-        # NDVI
-        if use_fused_ndvi:
-            fused_path = f"derived/combined_ndvi/{masks[0]}"
-            if fused_path in self._state.root:
-                paths["ndvi"] = fused_path
-            else:
-                ndvi_path = f"remote_sensing/ndvi/{instrument}/{masks[0]}"
-                if ndvi_path in self._state.root:
-                    paths["ndvi"] = ndvi_path
-        else:
-            ndvi_path = f"remote_sensing/ndvi/{instrument}/{masks[0]}"
-            if ndvi_path in self._state.root:
-                paths["ndvi"] = ndvi_path
-
         # ETf for each mask
         for mask in masks:
             etf_path = f"remote_sensing/etf/{instrument}/{etf_model}/{mask}"
@@ -820,7 +809,35 @@ class Exporter(Component):
         if not paths:
             return None
 
-        return self._state.get_dataset(paths, fields=fields)
+        # Load base dataset (met, snow, ETf)
+        ds = self._state.get_dataset(paths, fields=fields)
+
+        # NDVI: combine from all masks using fillna() to handle fields
+        # that only have data in one mask (e.g., non-irrigated stations
+        # only have inv_irr data, irrigated stations only have irr data)
+        ndvi_data = None
+        for mask in masks:
+            if use_fused_ndvi:
+                fused_path = f"derived/combined_ndvi/{mask}"
+                ndvi_path = f"remote_sensing/ndvi/{instrument}/{mask}"
+                path = fused_path if fused_path in self._state.root else ndvi_path
+            else:
+                path = f"remote_sensing/ndvi/{instrument}/{mask}"
+
+            if path not in self._state.root:
+                continue
+
+            mask_ndvi = self._state.get_xarray(path, fields=fields)
+            if ndvi_data is None:
+                ndvi_data = mask_ndvi
+            else:
+                # Fill NaN values from secondary mask
+                ndvi_data = ndvi_data.fillna(mask_ndvi)
+
+        if ndvi_data is not None:
+            ds["ndvi"] = ndvi_data
+
+        return ds
 
     def _apply_etf_switching(
         self,
@@ -830,25 +847,50 @@ class Exporter(Component):
         irr_threshold: float,
         irr_data: Dict[str, Dict],
     ) -> "xr.Dataset":
-        """Apply ETf mask switching based on irrigation status."""
+        """
+        Apply ETf mask switching based on irrigation status.
+
+        Logic matches legacy prep_plots.preproc():
+        1. Start with non-irrigated (inv_irr) mask as base
+        2. Fill NaN from irrigated (irr) mask for fields with only irr data
+        3. For irrigated years (f_irr >= threshold), use irr mask values
+
+        This ensures fields that only have data in one mask still get values,
+        while applying proper mask switching for mixed fields.
+        """
         import xarray as xr
 
-        # Start with non-irrigated mask
-        if "etf_inv_irr" in ds:
-            etf = ds["etf_inv_irr"].copy()
-        elif "etf_no_mask" in ds:
-            etf = ds["etf_no_mask"].copy()
-        elif "etf_irr" in ds:
-            etf = ds["etf_irr"].copy()
-        else:
+        # Determine which ETf variables are available
+        has_inv_irr = "etf_inv_irr" in ds
+        has_irr = "etf_irr" in ds
+        has_no_mask = "etf_no_mask" in ds
+
+        if not (has_inv_irr or has_irr or has_no_mask):
             return ds
 
-        # Switch to irrigated mask for irrigated years
-        if "etf_irr" in ds:
+        # Build base ETf by combining masks with fillna()
+        # Priority: inv_irr -> irr -> no_mask (for base values)
+        if has_inv_irr:
+            etf = ds["etf_inv_irr"].copy()
+            # Fill NaN from irr mask (for fields that only have irrigated data)
+            if has_irr:
+                etf = etf.fillna(ds["etf_irr"])
+            if has_no_mask:
+                etf = etf.fillna(ds["etf_no_mask"])
+        elif has_irr:
+            etf = ds["etf_irr"].copy()
+            if has_no_mask:
+                etf = etf.fillna(ds["etf_no_mask"])
+        else:
+            etf = ds["etf_no_mask"].copy()
+
+        # Apply year-based switching: for irrigated years, use irr mask values
+        # This overrides the base values for years where the field is irrigated
+        if has_irr:
             for site in ds.coords["site"].values:
                 site_irr = irr_data.get(str(site), {})
 
-                # Find irrigated years
+                # Find irrigated years (f_irr >= threshold)
                 irr_years = []
                 for k, v in site_irr.items():
                     if k == "fallow_years":
@@ -865,7 +907,7 @@ class Exporter(Component):
                     etf.loc[dict(site=site, time=irr_mask)] = \
                         ds["etf_irr"].sel(site=site).isel(time=irr_mask)
 
-        # Replace ETf variables with switched version
+        # Add combined ETf to dataset
         ds["etf"] = etf
 
         # Add model-specific ETf name

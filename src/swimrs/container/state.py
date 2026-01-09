@@ -487,7 +487,7 @@ class ContainerState:
         name = path.split("/")[-1]
         parent = self.ensure_group(parent_path)
 
-        arr = parent.create_dataset(
+        arr = parent.create_array(
             name,
             shape=(self.n_days, self.n_fields),
             chunks=(365, min(100, self.n_fields)),
@@ -517,7 +517,7 @@ class ContainerState:
         name = path.split("/")[-1]
         parent = self.ensure_group(parent_path)
 
-        arr = parent.create_dataset(
+        arr = parent.create_array(
             name,
             shape=(self.n_fields,),
             chunks=(min(100, self.n_fields),),

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 import zarr
+import zarr.storage
 from filelock import FileLock
 
 from .base import StorageProvider
@@ -116,7 +117,7 @@ class ZipStoreProvider(StorageProvider):
         else:
             zarr_mode = self._mode
 
-        self._store = zarr.ZipStore(str(self._path), mode=zarr_mode)
+        self._store = zarr.storage.ZipStore(str(self._path), mode=zarr_mode)
         self._root = zarr.open_group(
             self._store, mode="a" if zarr_mode != "r" else "r"
         )
@@ -227,8 +228,8 @@ class DirectoryStoreProvider(StorageProvider):
         else:
             zarr_mode = self._mode
 
-        # Use DirectoryStore for uncompressed access
-        self._store = zarr.DirectoryStore(str(self._path))
+        # Use LocalStore (zarr 3.x) for uncompressed directory access
+        self._store = zarr.storage.LocalStore(str(self._path))
         self._root = zarr.open_group(self._store, mode=zarr_mode)
 
         return self._root
@@ -305,7 +306,7 @@ class MemoryStoreProvider(StorageProvider):
         if self.is_open:
             return self._root
 
-        self._store = zarr.MemoryStore()
+        self._store = zarr.storage.MemoryStore()
         self._root = zarr.open_group(self._store, mode="a")
 
         return self._root

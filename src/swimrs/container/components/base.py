@@ -80,6 +80,32 @@ class Component:
                 "Use mode='r+' or mode='a' to enable writes."
             )
 
+    def _safe_delete_path(self, path: str) -> bool:
+        """
+        Safely delete a path from the zarr store.
+
+        Handles stores that don't support deletion (like ZipStore) gracefully.
+        For ZipStore, deletion is not supported but writing to the same path
+        will create a new entry that overrides the old one when reading.
+
+        Args:
+            path: The zarr path to delete
+
+        Returns:
+            True if deletion succeeded, False if skipped due to store limitation
+        """
+        if path not in self._state.root:
+            return True  # Nothing to delete
+
+        try:
+            del self._state.root[path]
+            return True
+        except NotImplementedError:
+            # ZipStore and some other stores don't support deletion
+            # Writing new data will override the old entry
+            self._log.debug("cannot_delete_path", path=path, reason="store_limitation")
+            return False
+
     @contextmanager
     def _track_operation(
         self,
