@@ -1,5 +1,6 @@
 import os
 import json
+import subprocess
 import toml
 import pandas as pd
 from pprint import pprint
@@ -72,6 +73,27 @@ class ProjectConfig:
         self.python_script = None
         self.forecast_parameters_csv = None
 
+        # Data sources (new normalized config)
+        self.met_source = None      # "gridmet" | "era5"
+        self.snow_source = None     # "snodas" | "era5" | None
+        self.soil_source = None     # "ssurgo" | "hwsd"
+        self.mask_mode = None       # "irrigation" | "none"
+        self.bucket_uri = None      # computed gs://{bucket}/{project}/
+
+        # ERA5 config
+        self.era5_params = None
+        self.era5_param_mapping = None
+        self.era5_extracts_dir = None
+
+        # HWSD (international soils)
+        self.hwsd_csv = None
+
+        # Container path
+        self.container_path = None
+
+        # Ecostress
+        self.ecostress_dir = None
+
         # Derived / mode flags
         self.calibrate = None
         self.forecast = None
@@ -120,6 +142,12 @@ class ProjectConfig:
         calib_toml_conf = self.resolved_config.get('calibration', {})
         forecast_toml_conf = self.resolved_config.get('forecast', {})
         era5land_conf = self.resolved_config.get('era5land', {})
+        data_sources_conf = self.resolved_config.get('data_sources', {})
+
+        # Nested sections (CONUS-specific and ERA5-specific)
+        paths_conus_conf = paths_conf.get('conus', {})
+        paths_era5_conf = paths_conf.get('era5', {})
+        ids_conus_conf = ids_conf.get('conus', {})
 
         # Basic paths
         self.project_dir = paths_conf.get('project')
@@ -132,14 +160,20 @@ class ProjectConfig:
         self.landsat_tables_dir = paths_conf.get('landsat_tables')
         self.sentinel_dir = paths_conf.get('sentinel')
         self.sentinel_tables_dir = paths_conf.get('sentinel_tables')
-        self.met_dir = paths_conf.get('met')
+        # Met dir: check nested sections first, then flat
+        self.met_dir = (paths_conus_conf.get('met') or
+                        paths_era5_conf.get('met') or
+                        paths_conf.get('met'))
+        # ERA5 extracts dir (for international)
+        self.era5_extracts_dir = paths_era5_conf.get('ee_extracts')
         self.gis_dir = paths_conf.get('gis')
 
         # Field geometry and factors
         self.fields_shapefile = paths_conf.get('fields_shapefile')
-        self.gridmet_mapping_shp = paths_conf.get('gridmet_mapping')
-        self.correction_tifs = paths_conf.get('correction_tifs')
-        self.gridmet_factors = paths_conf.get('gridmet_factors')
+        # Read from nested [paths.conus] with fallback to flat
+        self.gridmet_mapping_shp = paths_conus_conf.get('gridmet_mapping') or paths_conf.get('gridmet_mapping')
+        self.correction_tifs = paths_conus_conf.get('correction_tifs') or paths_conf.get('correction_tifs')
+        self.gridmet_factors = paths_conus_conf.get('gridmet_factors') or paths_conf.get('gridmet_factors')
 
         # Required field shapefile
         if not self.fields_shapefile:
@@ -147,12 +181,16 @@ class ProjectConfig:
 
         # Properties, SNODAS, timeseries
         self.properties_dir = paths_conf.get('properties')
-        self.irr_csv = paths_conf.get('irr')
-        self.ssurgo_csv = paths_conf.get('ssurgo')
+        # Read from nested [paths.conus] with fallback
+        self.irr_csv = paths_conus_conf.get('irr') or paths_conf.get('irr')
+        self.ssurgo_csv = paths_conus_conf.get('ssurgo') or paths_conf.get('ssurgo')
         self.lulc_csv = paths_conf.get('lulc')
         self.properties_json = paths_conf.get('properties_json')
-        self.snodas_in_dir = paths_conf.get('snodas_in')
-        self.snodas_out_json = paths_conf.get('snodas_out')
+        # HWSD for international
+        self.hwsd_csv = paths_conf.get('hwsd')
+        # SNODAS from nested [paths.conus]
+        self.snodas_in_dir = paths_conus_conf.get('snodas_in') or paths_conf.get('snodas_in')
+        self.snodas_out_json = paths_conus_conf.get('snodas_out') or paths_conf.get('snodas_out')
         self.remote_sensing_tables_dir = paths_conf.get('remote_sensing_tables')
         self.joined_timeseries_dir = paths_conf.get('joined_timeseries')
         self.dynamics_data_json = paths_conf.get('dynamics_data')
@@ -161,11 +199,31 @@ class ProjectConfig:
 
         # Earth Engine
         self.ee_bucket = ee_conf.get('bucket')
+        # Compute bucket_uri
+        if self.ee_bucket and self.project_name:
+            self.bucket_uri = f"gs://{self.ee_bucket}/{self.project_name}/"
+
+        # Data sources (new normalized config)
+        self.met_source = data_sources_conf.get('met_source', 'gridmet')
+        self.snow_source = data_sources_conf.get('snow_source', 'snodas')
+        self.soil_source = data_sources_conf.get('soil_source', 'ssurgo')
+        self.mask_mode = data_sources_conf.get('mask_mode', 'irrigation')
 
         # IDs
         self.feature_id_col = ids_conf.get('feature_id')
-        self.gridmet_mapping_index_col = ids_conf.get('gridmet_join_id')
-        self.state_col = ids_conf.get('state_col')
+        # Read from nested [ids.conus] if available, else fall back to flat
+        self.gridmet_mapping_index_col = ids_conus_conf.get('gridmet_join_id') or ids_conf.get('gridmet_join_id')
+        self.state_col = ids_conus_conf.get('state_col') or ids_conf.get('state_col')
+
+        # ERA5-Land config
+        self.era5_params = era5land_conf.get('params', [])
+        self.era5_param_mapping = era5land_conf.get('param_mapping', {})
+
+        # Container path (for SwimContainer workflow)
+        self.container_path = paths_conf.get('container')
+
+        # Ecostress (international)
+        self.ecostress_dir = paths_conf.get('ecostress')
 
         # Model settings
         self.irrigation_threshold = misc_conf.get('irrigation_threshold')
@@ -322,29 +380,119 @@ class ProjectConfig:
             f"  Forecast Mode: {self.forecast}"
         )
 
+    def sync_from_bucket(self, dry_run=False, subdirs=None):
+        """
+        Sync Earth Engine exports from GCS bucket to local filesystem.
+
+        Uses gsutil rsync to mirror the bucket structure to local data directory.
+        Bucket structure: gs://{bucket}/{project}/remote_sensing/...
+        Local structure:  {data_dir}/remote_sensing/...
+
+        Parameters
+        ----------
+        dry_run : bool, optional
+            If True, show what would be synced without making changes.
+        subdirs : list of str, optional
+            Specific subdirectories to sync (e.g., ['remote_sensing', 'properties']).
+            If None, syncs the entire bucket prefix.
+
+        Returns
+        -------
+        subprocess.CompletedProcess
+            Result of the gsutil command.
+
+        Raises
+        ------
+        ValueError
+            If bucket or data_dir is not configured.
+        subprocess.CalledProcessError
+            If gsutil command fails.
+
+        Example
+        -------
+        >>> cfg = ProjectConfig()
+        >>> cfg.read_config("project.toml")
+        >>> cfg.sync_from_bucket(dry_run=True)  # Preview
+        >>> cfg.sync_from_bucket()  # Actually sync
+        >>> cfg.sync_from_bucket(subdirs=['remote_sensing'])  # Sync only remote sensing
+        """
+        if not self.ee_bucket:
+            raise ValueError("ee_bucket not configured in TOML [earth_engine] section")
+        if not self.data_dir:
+            raise ValueError("data_dir not configured")
+        if not self.project_name:
+            raise ValueError("project_name not configured")
+
+        results = []
+
+        if subdirs:
+            # Sync specific subdirectories
+            for subdir in subdirs:
+                src = f"gs://{self.ee_bucket}/{self.project_name}/{subdir}/"
+                dst = os.path.join(self.data_dir, subdir) + "/"
+
+                os.makedirs(dst, exist_ok=True)
+
+                cmd = ["gsutil", "-m", "rsync", "-r"]
+                if dry_run:
+                    cmd.append("-n")
+                cmd.extend([src, dst])
+
+                print(f"Running: {' '.join(cmd)}")
+                result = subprocess.run(cmd, check=True)
+                results.append(result)
+        else:
+            # Sync entire project prefix
+            src = f"gs://{self.ee_bucket}/{self.project_name}/"
+            dst = self.data_dir + "/"
+
+            os.makedirs(dst, exist_ok=True)
+
+            cmd = ["gsutil", "-m", "rsync", "-r"]
+            if dry_run:
+                cmd.append("-n")
+            cmd.extend([src, dst])
+
+            print(f"Running: {' '.join(cmd)}")
+            result = subprocess.run(cmd, check=True)
+            results.append(result)
+
+        return results[0] if len(results) == 1 else results
+
     @staticmethod
     def _resolve_paths(raw_config, base_format_vars):
         config = json.loads(json.dumps(raw_config))
         format_vars = {k: (os.path.expanduser(v) if isinstance(v, str) else v)
                        for k, v in base_format_vars.items()}
 
+        def resolve_dict(d, format_vars, depth=0):
+            """Recursively resolve format strings in a dict, returning count of resolved items."""
+            if depth > 5:  # Prevent infinite recursion
+                return 0
+            resolved_count = 0
+            for key, value in list(d.items()):
+                if isinstance(value, dict):
+                    # Recurse into nested dicts
+                    resolved_count += resolve_dict(value, format_vars, depth + 1)
+                elif isinstance(value, str) and ('{' in value or '}' in value):
+                    template = value.replace(' ', '')
+                    try:
+                        formatted_value = template.format(**format_vars)
+                        if formatted_value != d[key]:
+                            d[key] = formatted_value
+                            resolved_count += 1
+                        if key not in format_vars or format_vars[key] != formatted_value:
+                            format_vars[key] = formatted_value
+                    except KeyError:
+                        pass
+            return resolved_count
+
         max_iterations = 10
         for i in range(max_iterations):
             newly_resolved_count = 0
             for section_name, section_content in list(config.items()):
                 if isinstance(section_content, dict):
-                    for key, value in list(section_content.items()):
-                        if isinstance(value, str) and ('{' in value or '}' in value):
-                            template = value.replace(' ', '')
-                            try:
-                                formatted_value = template.format(**format_vars)
-                                if formatted_value != section_content[key]:
-                                    section_content[key] = formatted_value
-                                    newly_resolved_count += 1
-                                if key not in format_vars or format_vars[key] != formatted_value:
-                                    format_vars[key] = formatted_value
-                            except KeyError as e:
-                                pass
+                    newly_resolved_count += resolve_dict(section_content, format_vars)
                 elif isinstance(section_content, str) and ('{' in section_content or '}' in section_content):
                     template = section_content.replace('{{', '{').replace('}}', '}')
                     try:
@@ -360,11 +508,17 @@ class ProjectConfig:
             if newly_resolved_count == 0 and i > 0:
                 break
 
+        def expand_tildes(d):
+            """Recursively expand ~ in paths."""
+            for key, value in d.items():
+                if isinstance(value, dict):
+                    expand_tildes(value)
+                elif isinstance(value, str) and value.startswith('~'):
+                    d[key] = os.path.expanduser(value)
+
         for section_name, section_content in config.items():
             if isinstance(section_content, dict):
-                for key, value in section_content.items():
-                    if isinstance(value, str) and value.startswith('~'):
-                        section_content[key] = os.path.expanduser(value)
+                expand_tildes(section_content)
             elif isinstance(section_content, str) and section_content.startswith('~'):
                 config[section_name] = os.path.expanduser(section_content)
         return config

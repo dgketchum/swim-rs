@@ -29,6 +29,7 @@ def extract_snodas(cfg: ProjectConfig) -> None:
         debug=False,
         check_dir=None,
         feature_id=cfg.feature_id_col,
+        file_prefix=cfg.project_name,
     )
 
 
@@ -37,10 +38,10 @@ def extract_properties(cfg: ProjectConfig) -> None:
     from swimrs.data_extraction.ee.ee_props import get_cdl, get_irrigation, get_landcover, get_ssurgo
 
     project = cfg.project_name
-    get_cdl(cfg.fields_shapefile, f"{project}_cdl", selector=cfg.feature_id_col, dest='bucket', bucket=cfg.ee_bucket)
-    get_irrigation(cfg.fields_shapefile, f"{project}_irr", debug=True, selector=cfg.feature_id_col, lanid=True, dest='bucket', bucket=cfg.ee_bucket)
-    get_ssurgo(cfg.fields_shapefile, f"{project}_ssurgo", debug=False, selector=cfg.feature_id_col, dest='bucket', bucket=cfg.ee_bucket)
-    get_landcover(cfg.fields_shapefile, f"{project}_landcover", debug=False, selector=cfg.feature_id_col, out_fmt="CSV", dest='bucket', bucket=cfg.ee_bucket)
+    get_cdl(cfg.fields_shapefile, f"{project}_cdl", selector=cfg.feature_id_col, dest='bucket', bucket=cfg.ee_bucket, file_prefix=project)
+    get_irrigation(cfg.fields_shapefile, f"{project}_irr", debug=True, selector=cfg.feature_id_col, lanid=True, dest='bucket', bucket=cfg.ee_bucket, file_prefix=project)
+    get_ssurgo(cfg.fields_shapefile, f"{project}_ssurgo", debug=False, selector=cfg.feature_id_col, dest='bucket', bucket=cfg.ee_bucket, file_prefix=project)
+    get_landcover(cfg.fields_shapefile, f"{project}_landcover", debug=False, selector=cfg.feature_id_col, out_fmt="CSV", dest='bucket', bucket=cfg.ee_bucket, file_prefix=project)
 
 
 def extract_remote_sensing(cfg: ProjectConfig, sites=None, get_sentinel: bool = True) -> None:
@@ -65,6 +66,7 @@ def extract_remote_sensing(cfg: ProjectConfig, sites=None, get_sentinel: bool = 
             satellite="landsat",
             state_col=cfg.state_col,
             select=sites,
+            file_prefix=cfg.project_name,
         )
 
         if get_sentinel:
@@ -82,6 +84,7 @@ def extract_remote_sensing(cfg: ProjectConfig, sites=None, get_sentinel: bool = 
                 satellite="sentinel",
                 state_col=cfg.state_col,
                 select=sites,
+                file_prefix=cfg.project_name,
             )
 
         for model in models:
@@ -102,6 +105,7 @@ def extract_remote_sensing(cfg: ProjectConfig, sites=None, get_sentinel: bool = 
                 state_col=cfg.state_col,
                 select=sites,
                 model=model,
+                file_prefix=cfg.project_name,
             )
 
 

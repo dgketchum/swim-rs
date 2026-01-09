@@ -1,5 +1,11 @@
 import os
+import sys
 from pathlib import Path
+
+import geopandas as gpd
+
+# Add this directory to path so etf package can be imported
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from swimrs.data_extraction.ee.ee_utils import is_authorized
 from swimrs.swim.config import ProjectConfig
@@ -50,7 +56,7 @@ def extract_properties(conf: ProjectConfig) -> None:
     get_hwsd(conf.fields_shapefile, f"{project}_hwsd", debug=False, selector=conf.feature_id_col, dest='bucket', bucket=conf.ee_bucket, file_prefix=project)
 
 
-def extract_remote_sensing(conf: ProjectConfig, overwrite=False) -> None:
+def extract_ndvi(conf: ProjectConfig, overwrite=False) -> None:
     """Exports Landsat + Sentinel-2 NDVI with mask_type='no_mask' (international workflow)."""
     from swimrs.data_extraction.ee.ndvi_export import sparse_sample_ndvi
 
@@ -95,10 +101,59 @@ def extract_remote_sensing(conf: ProjectConfig, overwrite=False) -> None:
     )
 
 
+def extract_etf(conf: ProjectConfig, sites=None, overwrite: bool = False) -> None:
+    """
+    Extract PT-JPL ETf zonal statistics using ERA5LAND meteorology.
+
+    This function uses the etf/ package module to export per-scene ET fraction
+    zonal means for international flux sites where US-specific datasets
+    (GRIDMET, IrrMapper) are not available.
+
+    Parameters
+    ----------
+    conf : ProjectConfig
+        Project configuration object.
+    sites : list, optional
+        List of site IDs to process. If None, processes all sites.
+    overwrite : bool, optional
+        If True, skip check_dir and re-export all data. Default is False.
+    """
+    import ee
+    ee.Initialize()
+
+    from etf import export_ptjpl_zonal_stats
+
+    if overwrite:
+        chk_dir = None
+    else:
+        chk_dir = os.path.join(conf.landsat_dir, 'extracts', 'ptjpl_etf')
+
+    print(f"\n{'='*60}")
+    print("Extracting PT-JPL ETf zonal statistics (ERA5LAND)")
+    print(f"{'='*60}")
+
+    export_ptjpl_zonal_stats(
+        shapefile=conf.fields_shapefile,
+        bucket=conf.ee_bucket,
+        feature_id=conf.feature_id_col,
+        select=sites,
+        start_yr=conf.start_dt.year,
+        end_yr=conf.end_dt.year,
+        check_dir=chk_dir,
+        buffer=None,
+        batch_size=60,
+        file_prefix=conf.project_name,
+    )
+
+
 if __name__ == "__main__":
     cfg = _load_config()
-    # extract_era5land(cfg, overwrite=True)
+
+    extract_era5land(cfg, overwrite=True)
     # extract_properties(cfg)
-    extract_remote_sensing(cfg, overwrite=True)
+    # extract_ndvi(cfg, overwrite=False)
+
+    # PT-JPL ETf extraction using ERA5LAND meteorology
+    # extract_etf(cfg, overwrite=True)
 
 # ========================= EOF ====================================================================
