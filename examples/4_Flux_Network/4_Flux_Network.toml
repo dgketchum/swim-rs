@@ -1,48 +1,51 @@
 project = "4_Flux_Network"
-root = "/data/ssd2/swim"
+root = "/data/ssd1/swim"
 
 [paths]
 project_workspace = "{root}/{project}"
 data = "{project_workspace}/data"
-
-landsat = "{data}/landsat"
-landsat_ee_data = "{landsat}/extracts"
-landsat_tables = "{landsat}/tables"
-
-sentinel = "{data}/sentinel"
-sentinel_ee_data = "{sentinel}/extracts"
-sentinel_tables = "{sentinel}/tables"
-
-met = "{data}/met_timeseries/gridmet"
-
 gis = "{data}/gis"
 fields_shapefile = "{gis}/flux_footprints_3p_clean.shp"
-gridmet_mapping = "{gis}/fields_gfid.shp"
-
-correction_tifs = "{data}/bias_correction_tif"
-gridmet_factors = "{gis}/fields_gfid.json"
-
 properties = "{data}/properties"
-irr = "{properties}/{project}_irr.csv"
-ssurgo = "{properties}/{project}_ssurgo.csv"
 lulc = "{properties}/{project}_landcover.csv"
 properties_json = "{properties}/{project}_properties.json"
-
-snodas_in = "{data}/snodas/extracts"
-snodas_out = "{data}/snodas/snodas.json"
-
-remote_sensing_tables = "{data}/rs_tables"
-joined_timeseries = "{data}/plot_timeseries"
 dynamics_data = "{data}/{project}_dynamics.json"
 prepped_input = "{data}/prepped_input.json"
+container = "{data}/{project}.swim"
+
+# Remote sensing
+landsat = "{data}/remote_sensing/landsat"
+landsat_tables = "{landsat}/tables"
+remote_sensing_tables = "{data}/rs_tables"
+
+# Intermediate files (data_prep.py workflow)
+joined_timeseries = "{data}/plot_timeseries"
+
+[paths.conus]
+met = "{data}/meteorology/gridmet"
+gridmet_mapping = "{gis}/fields_gfid.shp"
+correction_tifs = "{data}/bias_correction_tif"
+gridmet_factors = "{gis}/fields_gfid.json"
+irr = "{properties}/{project}_irr.csv"
+ssurgo = "{properties}/{project}_ssurgo.csv"
+snodas_in = "{data}/snow/snodas/extracts"
+snodas_out = "{data}/snow/snodas/snodas.json"
 
 [earth_engine]
 bucket = "wudr"
 
 [ids]
 feature_id = "site_id"
+
+[ids.conus]
 gridmet_join_id = "site_id"
 state_col = "state"
+
+[data_sources]
+met_source = "gridmet"
+snow_source = "snodas"
+soil_source = "ssurgo"
+mask_mode = "irrigation"
 
 [misc]
 irrigation_threshold = 0.3
@@ -60,13 +63,10 @@ cover_proxy = "ndvi"
 
 [calibration]
 pest_run_dir = "{project_workspace}/pestrun"
-etf_target_model = 'ssebop'
+etf_target_model = "ssebop"
 workers = 20
 realizations = 200
 calibration_dir = "{pest_run_dir}/pest/mult"
 obs_folder = "{pest_run_dir}/obs"
 initial_values_csv = "{pest_run_dir}/params.csv"
-spinup = '{pest_run_dir}/spinup.json'
-
-[forecast]
-# forecast_parameters = "{pest_run_dir}/master/{project}.3.par.csv"
+spinup = "{pest_run_dir}/spinup.json"

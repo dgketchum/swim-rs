@@ -43,6 +43,8 @@ def export_ptjpl_zonal_stats(
     check_dir=None,
     state_col='state',
     buffer=None,
+    batch_size=15,
+    file_prefix='swim',
 ):
     """
     Export per-scene PT-JPL ET fraction zonal means for polygons to GCS CSVs.
@@ -52,7 +54,7 @@ def export_ptjpl_zonal_stats(
     shapefile : str
         Path to polygon shapefile with feature IDs.
     bucket : str
-        GCS bucket name (no scheme). Tables saved under ptjpl_tables/<mask_type>/.
+        GCS bucket name (no scheme).
     feature_id : str, optional
         Field name for feature identifier.
     select : list, optional
@@ -64,11 +66,16 @@ def export_ptjpl_zonal_stats(
     mask_type : {'no_mask', 'irr', 'inv_irr'}, optional
         Irrigation masking strategy (default: 'no_mask').
     check_dir : str, optional
-        If set, skip exports when CSV already exists at check_dir/<mask_type>/<desc>.csv.
+        If set, skip exports when CSV already exists at check_dir/<desc>.csv.
     state_col : str, optional
         Column with state abbreviation for mask source selection.
     buffer : float, optional
         Buffer distance in meters to apply to geometries.
+    batch_size : int, optional
+        Number of scenes to process per export batch (default: 15).
+        Smaller batches reduce server-side memory usage.
+    file_prefix : str, optional
+        Bucket path prefix, typically project name (default: 'swim').
     """
     df = load_shapefile(shapefile, feature_id, buffer=buffer)
 
@@ -87,15 +94,6 @@ def export_ptjpl_zonal_stats(
             continue
 
         for year in range(start_yr, end_yr + 1):
-            desc = f'ptjpl_etf_{fid}_{mask_type}_{year}'
-            fn_prefix = os.path.join('ptjpl_tables', mask_type, desc)
-
-            if check_dir:
-                f = os.path.join(check_dir, f'{desc}.csv')
-                if os.path.exists(f):
-                    print(f'{f} exists, skipping')
-                    continue
-
             # Get irrigation mask if needed
             if mask_type in ['irr', 'inv_irr']:
                 state = row.get(state_col, None) if state_col in row else None
@@ -117,51 +115,75 @@ def export_ptjpl_zonal_stats(
             scenes = list(set(scenes))
             scenes = sorted(scenes, key=lambda item: item.split('_')[-1])
 
-            first, bands = True, None
-            selectors = [feature_id]
-
-            for img_id in scenes:
-                _name = parse_scene_name(img_id)
-                selectors.append(_name)
-
-                try:
-                    # Create PT-JPL image with GRIDMET reference ET
-                    ptjpl_img = ptjpl.Image.from_landsat_c2_sr(
-                        img_id,
-                        et_reference_source=PTJPL_ET_REF_SOURCE,
-                        et_reference_band=PTJPL_ET_REF_BAND,
-                        et_reference_factor=PTJPL_ET_REF_FACTOR,
-                        et_reference_resample=PTJPL_ET_REF_RESAMPLE,
-                    )
-                    etf_img = ptjpl_img.et_fraction.rename(_name)
-
-                except ee.ee_exception.EEException as e:
-                    print(f'{_name} returned error {e}')
-                    continue
-
-                # Apply masking
-                if mask_type == 'no_mask':
-                    etf_img = etf_img.clip(polygon)
-                elif mask_type == 'irr':
-                    etf_img = etf_img.clip(polygon).mask(irr_mask)
-                elif mask_type == 'inv_irr':
-                    etf_img = etf_img.clip(polygon).mask(irr.gt(0))
-
-                if first:
-                    bands = etf_img
-                    first = False
-                else:
-                    bands = bands.addBands([etf_img])
-
-            if bands is None:
+            if not scenes:
                 continue
 
-            # Compute zonal statistics
-            fc = build_feature_collection(polygon, fid, feature_id)
-            data = bands.reduceRegions(collection=fc, reducer=ee.Reducer.mean(), scale=30)
+            # Process scenes in batches to avoid server-side memory issues
+            n_batches = (len(scenes) + batch_size - 1) // batch_size
 
-            # Export to GCS
-            export_table_to_gcs(data, desc, bucket, fn_prefix, selectors)
+            for batch_idx in range(n_batches):
+                batch_start = batch_idx * batch_size
+                batch_end = min(batch_start + batch_size, len(scenes))
+                batch_scenes = scenes[batch_start:batch_end]
+
+                # Include batch suffix only if multiple batches
+                if n_batches > 1:
+                    desc = f'ptjpl_etf_{fid}_{mask_type}_{year}_b{batch_idx:02d}'
+                else:
+                    desc = f'ptjpl_etf_{fid}_{mask_type}_{year}'
+                fn_prefix = f'{file_prefix}/remote_sensing/landsat/extracts/ptjpl_etf/{mask_type}/{desc}'
+
+                if check_dir:
+                    f = os.path.join(check_dir, f'{desc}.csv')
+                    if os.path.exists(f):
+                        print(f'{f} exists, skipping')
+                        continue
+
+                first, bands = True, None
+                selectors = [feature_id]
+
+                for img_id in batch_scenes:
+                    _name = parse_scene_name(img_id)
+                    selectors.append(_name)
+
+                    try:
+                        # Create PT-JPL image with GRIDMET reference ET
+                        ptjpl_img = ptjpl.Image.from_landsat_c2_sr(
+                            img_id,
+                            et_reference_source=PTJPL_ET_REF_SOURCE,
+                            et_reference_band=PTJPL_ET_REF_BAND,
+                            et_reference_factor=PTJPL_ET_REF_FACTOR,
+                            et_reference_resample=PTJPL_ET_REF_RESAMPLE,
+                        )
+                        etf_img = ptjpl_img.et_fraction.rename(_name)
+
+                    except ee.ee_exception.EEException as e:
+                        print(f'{_name} returned error {e}')
+                        continue
+
+                    # Apply masking
+                    if mask_type == 'no_mask':
+                        etf_img = etf_img.clip(polygon)
+                    elif mask_type == 'irr':
+                        etf_img = etf_img.clip(polygon).mask(irr_mask)
+                    elif mask_type == 'inv_irr':
+                        etf_img = etf_img.clip(polygon).mask(irr.gt(0))
+
+                    if first:
+                        bands = etf_img
+                        first = False
+                    else:
+                        bands = bands.addBands([etf_img])
+
+                if bands is None:
+                    continue
+
+                # Compute zonal statistics
+                fc = build_feature_collection(polygon, fid, feature_id)
+                data = bands.reduceRegions(collection=fc, reducer=ee.Reducer.mean(), scale=30)
+
+                # Export to GCS
+                export_table_to_gcs(data, desc, bucket, fn_prefix, selectors)
 
 
 if __name__ == '__main__':
