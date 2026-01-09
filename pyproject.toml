@@ -22,6 +22,16 @@ dependencies = [
   "pydantic>=1.10",
   "zarr>=2.18",
   "filelock",
+  "tqdm",
+]
+
+[project.optional-dependencies]
+openet = [
+  "openet-ptjpl",
+  "openet-sims",
+  "openet-ssebop",
+  "openet-disalexi",
+  "openet-geesebal",
 ]
 
 [project.scripts]
