@@ -9,21 +9,85 @@ from openet.refetgee import Daily
 from swimrs.data_extraction.ee.ee_utils import as_ee_feature_collection
 
 
+def _compute_utc_offset_hours(fc: ee.FeatureCollection) -> ee.Number:
+    """Compute UTC offset in hours from feature collection centroid longitude.
+
+    Uses the solar time approximation: offset_hours = longitude / 15, rounded.
+    This matches the approach in openet-ptjpl for ERA5-Land reference ET.
+    """
+    centroid_lon = ee.Number(fc.geometry().centroid(1).coordinates().get(0))
+    return centroid_lon.divide(15).round()
+
+
+def _local_day_utc_bounds(day_date: date, utc_offset_hours: ee.Number) -> tuple:
+    """Get UTC start/end times for a local day given UTC offset.
+
+    Parameters
+    ----------
+    day_date : date
+        The calendar date (interpreted as local date)
+    utc_offset_hours : ee.Number
+        Hours offset from UTC (e.g., -7 for Mountain Time)
+
+    Returns
+    -------
+    tuple[ee.Date, ee.Date]
+        (utc_start, utc_end) representing local midnight-to-midnight in UTC
+    """
+    local_midnight = ee.Date.fromYMD(day_date.year, day_date.month, day_date.day)
+    utc_start = local_midnight.advance(utc_offset_hours.multiply(-1), 'hour')
+    utc_end = utc_start.advance(1, 'day')
+    return utc_start, utc_end
+
+
+def _aggregate_hourly_to_daily(hourly_coll: ee.ImageCollection, day_str: str) -> ee.Image:
+    """Aggregate 24 hourly images to daily values.
+
+    Parameters
+    ----------
+    hourly_coll : ee.ImageCollection
+        Filtered collection of ~24 hourly ERA5-Land images for one local day
+    day_str : str
+        Date string in YYYYMMDD format for band naming
+
+    Returns
+    -------
+    ee.Image
+        Multi-band image with daily aggregates
+    """
+    # Temperature: mean, min, max (convert K to C)
+    temp = hourly_coll.select('temperature_2m')
+    tmean_c = temp.mean().subtract(273.15).rename(f'tmean_{day_str}')
+    tmin_c = temp.min().subtract(273.15).rename(f'tmin_{day_str}')
+    tmax_c = temp.max().subtract(273.15).rename(f'tmax_{day_str}')
+
+    # Precipitation: sum (convert m to mm)
+    precip_mm = hourly_coll.select('total_precipitation_hourly').sum().multiply(1000).rename(f'precip_{day_str}')
+
+    # Solar radiation: sum J/m² then convert to mean W/m² (divide by 86400 seconds)
+    srad_wm2 = hourly_coll.select('surface_solar_radiation_downwards_hourly').sum().divide(86400).rename(f'srad_{day_str}')
+
+    # SWE: mean of instantaneous values (convert m to mm)
+    swe_mm = hourly_coll.select('snow_depth_water_equivalent').mean().multiply(1000).rename(f'swe_{day_str}')
+
+    return ee.Image([swe_mm, tmean_c, tmin_c, tmax_c, precip_mm, srad_wm2])
+
+
 def sample_era5_land_variables_daily(shapefile, bucket=None, debug=False, check_dir=None,
                                      overwrite=False, start_yr=2004, end_yr=2023, feature_id_col='FID',
                                      file_prefix='swim'):
     """Export daily ERA5-Land variables reduced over features, by month.
 
-    Uses the daily aggregated ERA5-Land collection when possible:
-    - ee.ImageCollection("ECMWF/ERA5_LAND/DAILY_AGGR") for SWE, temperature, precipitation, and shortwave radiation.
-    - ETo is still computed via openet-refet-gee from the HOURLY collection (until we add a trusted daily refET band).
+    Uses the ERA5-Land HOURLY collection with local-time day boundaries to match
+    openet-ptjpl's reference ET calculation. The UTC offset is computed from the
+    feature collection centroid longitude (offset_hours = lon / 15, rounded).
 
     For each month in the year range, builds an ee.Image with per-day bands for:
     - SWE (mm)
     - ETo (mm; via refetgee)
     - Tmean/Tmin/Tmax (°C)
     - precip (mm)
-    - srad (W/m^2; derived from daily sum if needed)
+    - srad (W/m^2; derived from daily sum)
     then reduces to feature means and exports to GCS.
 
     Parameters
@@ -41,7 +105,9 @@ def sample_era5_land_variables_daily(shapefile, bucket=None, debug=False, check_
     """
     fc = as_ee_feature_collection(shapefile, feature_id=feature_id_col)
     era5_land_hourly = ee.ImageCollection('ECMWF/ERA5_LAND/HOURLY')
-    era5_land_daily = ee.ImageCollection('ECMWF/ERA5_LAND/DAILY_AGGR')
+
+    # Compute UTC offset from feature collection centroid for local-time aggregation
+    utc_offset_hours = _compute_utc_offset_hours(fc)
 
     skipped_months, exported_months = 0, 0
     dtimes = [(y, m) for y in range(start_yr, end_yr + 1) for m in range(1, 13)]
@@ -50,22 +116,6 @@ def sample_era5_land_variables_daily(shapefile, bucket=None, debug=False, check_
     # ERA5-Land native resolution is ~11km, but small polygons (e.g., 150m buffers)
     # need a finer scale so the image is resampled before reduction.
     scale_era5 = 150
-
-    def _select_daily_aggr(img: ee.Image) -> dict:
-        """Select required DAILY_AGGR bands with known names."""
-        # Based on the dataset's current band list in Earth Engine (DAILY_AGGR):
-        # - temperature_2m, temperature_2m_min, temperature_2m_max
-        # - snow_depth_water_equivalent
-        # - total_precipitation_sum
-        # - surface_solar_radiation_downwards_sum
-        return {
-            "swe_m": img.select("snow_depth_water_equivalent"),
-            "tmean_k": img.select("temperature_2m"),
-            "tmin_k": img.select("temperature_2m_min"),
-            "tmax_k": img.select("temperature_2m_max"),
-            "precip_m": img.select("total_precipitation_sum"),
-            "srad_j": img.select("surface_solar_radiation_downwards_sum"),
-        }
 
     def _days_in_month(year_: int, month_: int) -> list[date]:
         d0 = date(year_, month_, 1)
@@ -110,50 +160,28 @@ def sample_era5_land_variables_daily(shapefile, bucket=None, debug=False, check_
         for d in days_in_month:
             day_str_yyyymmdd = d.strftime('%Y%m%d')
 
-            day_start_ee = ee.Date(d.isoformat())
-            day_end_ee = day_start_ee.advance(1, 'day')
+            # Get UTC bounds for local day
+            utc_start, utc_end = _local_day_utc_bounds(d, utc_offset_hours)
+            day_start_ee = ee.Date(d.isoformat())  # Keep for system:time_start
 
-            # Daily aggregate image for the day (preferred for non-refET variables)
-            daily_img = era5_land_daily.filterDate(day_start_ee, day_end_ee).first()
+            # Filter hourly collection for local day
+            hourly_for_day = era5_land_hourly.filterDate(utc_start, utc_end)
 
-            # DAILY_AGGR band names (current): temperature_2m (mean), temperature_2m_min/max, etc.
-            # Units: temps in K, precip in m, SWE in m, srad sums in J/m^2/day.
-            b = _select_daily_aggr(daily_img)
+            # Aggregate hourly to daily
+            daily_vars = _aggregate_hourly_to_daily(hourly_for_day, day_str_yyyymmdd)
 
-            daily_mean_swe_img = b["swe_m"].multiply(1000).rename(f'swe_{day_str_yyyymmdd}')
-            daily_mean_swe_img = daily_mean_swe_img.set('system:time_start', day_start_ee.millis())
+            # ETo computed via refetgee (uses same local-time filtered collection)
+            daily_eto_img = Daily.era5_land(hourly_for_day).etr.rename(f'eto_{day_str_yyyymmdd}')
 
-            daily_tmean_c_img = b["tmean_k"].subtract(273.15).rename(f'tmean_{day_str_yyyymmdd}')
-            daily_tmin_c_img = b["tmin_k"].subtract(273.15).rename(f'tmin_{day_str_yyyymmdd}')
-            daily_tmax_c_img = b["tmax_k"].subtract(273.15).rename(f'tmax_{day_str_yyyymmdd}')
-
-            daily_tmean_c_img = daily_tmean_c_img.set('system:time_start', day_start_ee.millis())
-            daily_tmin_c_img = daily_tmin_c_img.set('system:time_start', day_start_ee.millis())
-            daily_tmax_c_img = daily_tmax_c_img.set('system:time_start', day_start_ee.millis())
-
-            daily_total_precip_img = b["precip_m"].multiply(1000).rename(f'precip_{day_str_yyyymmdd}')
-            daily_total_precip_img = daily_total_precip_img.set('system:time_start', day_start_ee.millis())
-
-            # Convert daily energy sum (J/m^2/day) to mean flux density (W/m^2)
-            daily_mean_srad_img = b["srad_j"].divide(86400).rename(f'srad_{day_str_yyyymmdd}')
-            daily_mean_srad_img = daily_mean_srad_img.set('system:time_start', day_start_ee.millis())
-
-            # ETo still computed from hourly (refetgee expects hourly inputs)
-            era5_coll_for_day_hourly = era5_land_hourly.filterDate(day_start_ee, day_end_ee)
-            daily_eto_img = Daily.era5_land(era5_coll_for_day_hourly).etr.rename(f'eto_{day_str_yyyymmdd}')
-            daily_eto_img = daily_eto_img.set('system:time_start', day_start_ee.millis())
-
-            all_daily_bands = [
-                daily_mean_swe_img, daily_eto_img,
-                daily_tmean_c_img, daily_tmin_c_img, daily_tmax_c_img,
-                daily_total_precip_img, daily_mean_srad_img
-            ]
+            # Combine all bands and set time property
+            all_daily_bands = daily_vars.addBands(daily_eto_img)
+            all_daily_bands = all_daily_bands.set('system:time_start', day_start_ee.millis())
 
             if first_band_in_month:
-                monthly_bands_image = ee.Image(all_daily_bands)
+                monthly_bands_image = all_daily_bands
                 first_band_in_month = False
             else:
-                monthly_bands_image = monthly_bands_image.addBands(ee.Image(all_daily_bands))
+                monthly_bands_image = monthly_bands_image.addBands(all_daily_bands)
 
         if monthly_bands_image is None:
             continue
@@ -176,7 +204,7 @@ def sample_era5_land_variables_daily(shapefile, bucket=None, debug=False, check_
             collection=output_data,
             description=desc,
             bucket=bucket,
-            fileNamePrefix=f'{file_prefix}/era5/{desc}',
+            fileNamePrefix=f'{file_prefix}/meteorology/era5_land/{desc}',
             fileFormat='CSV',
             selectors=current_month_selectors
         )
