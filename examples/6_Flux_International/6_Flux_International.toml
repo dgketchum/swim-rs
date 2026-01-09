@@ -1,0 +1,65 @@
+project = "6_Flux_International"
+root = "/data/ssd1/swim"
+
+[paths]
+project_workspace = "{root}/{project}"
+data = "{project_workspace}/data"
+gis = "{data}/gis"
+fields_shapefile = "{gis}/flux_intl_buffers_150m_06JAN2026.shp"
+properties = "{data}/properties"
+lulc = "{properties}/{project}_landcover.csv"
+hwsd = "{properties}/{project}_hwsd.csv"
+properties_json = "{properties}/{project}_properties.json"
+
+# Remote sensing extracts only (no tables - processed in SwimContainer)
+landsat = "{data}/remote_sensing/landsat"
+sentinel = "{data}/remote_sensing/sentinel"
+ecostress = "{data}/remote_sensing/ecostress"
+
+# Container output
+container = "{project_workspace}/{project}.swim"
+
+[paths.era5]
+met = "{data}/meteorology/era5_land"
+ee_extracts = "{data}/meteorology/era5_land/ee_extracts"
+
+[earth_engine]
+bucket = "wudr"
+
+[ids]
+feature_id = "sid"
+
+[data_sources]
+met_source = "era5"
+snow_source = "era5"
+soil_source = "hwsd"
+mask_mode = "none"
+
+[era5land]
+params = ["swe", "eto", "tmean", "tmin", "tmax", "precip", "srad"]
+param_mapping = { precip = "prcp" }
+
+[misc]
+irrigation_threshold = 0.3
+elev_units = "m"
+refet_type = "eto"
+swb_mode = "cn"
+
+[date_range]
+start_date = "1987-01-01"
+end_date = "2025-12-31"
+
+[crop_coefficient]
+kc_proxy = "etf"
+cover_proxy = "ndvi"
+
+[calibration]
+pest_run_dir = "{project_workspace}/pestrun"
+etf_target_model = "ptjpl"
+workers = 20
+realizations = 200
+calibration_dir = "{pest_run_dir}/pest/mult"
+obs_folder = "{pest_run_dir}/obs"
+initial_values_csv = "{pest_run_dir}/params.csv"
+spinup = "{pest_run_dir}/spinup.json"
+python_script = "{project_workspace}/custom_forward_run.py"

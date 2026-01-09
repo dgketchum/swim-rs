@@ -5,8 +5,9 @@ from datetime import datetime
 from pprint import pprint
 import pandas as pd
 
-from swimrs.analysis.metrics import compare_etf_estimates
+from ssebop_evaluation import evaluate_ssebop_site
 from swimrs.model.initialize import initialize_data
+from swimrs.model import obs_field_cycle
 from swimrs.prep import get_flux_sites
 
 
@@ -27,26 +28,25 @@ def run_flux_sites(fid, config, plot_data, outfile):
     df.to_csv(outfile)
 
 
-def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='ssebop',
+def compare_ssebop(fid, flux_file, model_output, plot_data_,
                    return_comparison=False, gap_tolerance=5):
-    openet_daily = os.path.join(openet_dir, 'daily_data', f'{fid}.csv')
-    openet_monthly = os.path.join(openet_dir, 'monthly_data', f'{fid}.csv')
+    """Compare SWIM and SSEBop against flux observations for a single site."""
     irr_ = plot_data_.input['irr_data'][fid]
-    daily, overpass, monthly = compare_etf_estimates(model_output, flux_file, openet_daily_path=openet_daily,
-                                                     openet_monthly_path=openet_monthly, irr=irr_, model=model,
-                                                     gap_tolerance=gap_tolerance)
+    daily, overpass, monthly = evaluate_ssebop_site(
+        model_output, flux_file,
+        irr=irr_,
+        gap_tolerance=gap_tolerance
+    )
 
-    # print('\nOverpass\n')
-    # pprint(overpass)
-    # print('Monthly')
-    # pprint(monthly)
+    if monthly is None:
+        return None
 
     agg_comp = monthly.copy()
     if len(agg_comp) < 3:
         return None
 
     rmse_values = {k.split('_')[1]: v for k, v in agg_comp.items() if k.startswith('rmse_')
-                   if 'swim' in k or 'openet' in k}
+                   if 'swim' in k or 'ssebop' in k}
 
     if len(rmse_values) == 0:
         return None
@@ -58,36 +58,22 @@ def compare_openet(fid, flux_file, model_output, openet_dir, plot_data_, model='
     if not return_comparison:
         return lowest_rmse_model
 
-    if return_comparison:
+    try:
+        print(f"Flux Mean: {agg_comp['mean_flux']}")
+        print(f"SWIM Mean: {agg_comp['mean_swim']}")
+        print(f"SSEBop NHM Mean: {agg_comp.get('mean_ssebop')}")
+        print(f"SWIM RMSE: {agg_comp['rmse_swim']}")
+        print(f"SSEBop NHM RMSE: {agg_comp.get('rmse_ssebop')}")
+        return lowest_rmse_model
 
-        if len(agg_comp) == 0:
-            print(fid, 'empty')
-            return None
-
-        try:
-            print(f"Flux Mean: {agg_comp['mean_flux']}")
-            print(f"SWIM Mean: {agg_comp['mean_swim']}")
-            print(f"{lowest_rmse_model} Mean: {agg_comp[f'mean_{lowest_rmse_model}']}")
-            print(f"OpenET Mean: {agg_comp['mean_openet']}")
-            print(f"SWIM RMSE: {agg_comp['rmse_swim']}")
-            print(f"{lowest_rmse_model} RMSE: {agg_comp[f'rmse_{lowest_rmse_model}']}")
-            print(f"OpenET RMSE: {agg_comp['rmse_openet']}")
-            return lowest_rmse_model
-
-        except KeyError as exc:
-            print(fid, exc)
-            return None
-
-    # print('\n')
+    except KeyError as exc:
+        print(fid, exc)
+        return None
 
 
 if __name__ == '__main__':
 
     project = '6_Flux_International'
-    model = 'ptjpl'
-
-    # project = '5_Flux_Ensemble'
-    # model = 'openet'
 
     root = '/data/ssd2/swim'
     data = os.path.join(root, project, 'data')
@@ -98,8 +84,6 @@ if __name__ == '__main__':
         data = os.path.join(project_ws_, 'data')
 
     config_file = os.path.join(project_ws_, 'config.toml')
-
-    open_et_ = os.path.join(project_ws_, 'openet_flux')
 
     station_file = os.path.join(data, 'station_metadata.csv')
     sites, sdf = get_flux_sites(station_file, crop_only=False, return_df=True)
@@ -159,8 +143,8 @@ if __name__ == '__main__':
             print(f'{site_} error: {exc}')
             continue
 
-        result = compare_openet(site_, flux_data, out_csv, open_et_, fields_,
-                                model=model, return_comparison=True, gap_tolerance=5)
+        result = compare_ssebop(site_, flux_data, out_csv, fields_,
+                                return_comparison=True, gap_tolerance=5)
 
         if result:
             results.append((result, lulc))
