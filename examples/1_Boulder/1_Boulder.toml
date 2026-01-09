@@ -9,10 +9,6 @@ landsat = "{data}/landsat"
 landsat_ee_data = "{landsat}/extracts"
 landsat_tables = "{landsat}/tables"
 
-sentinel = "{data}/sentinel"
-sentinel_ee_data = "{sentinel}/extracts"
-sentinel_tables = "{sentinel}/tables"
-
 met = "{data}/met_timeseries/gridmet"
 
 gis = "{data}/gis"
@@ -35,9 +31,11 @@ remote_sensing_tables = "{data}/rs_tables"
 joined_timeseries = "{data}/plot_timeseries"
 dynamics_data = "{data}/{project}_dynamics.json"
 prepped_input = "{data}/prepped_input.json"
+container = "{data}/{project}.swim"
 
 [earth_engine]
-# bucket = "your-gcs-bucket"
+bucket = "wudr"
+drive_folder = "swim"
 
 [ids]
 feature_id = "FID_1"
