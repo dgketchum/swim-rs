@@ -1,3 +1,12 @@
+"""Metrics module for ET model evaluation.
+
+DEPRECATED: This module is maintained for backwards compatibility only.
+For new code, use the standalone evaluation modules in the example directories:
+- examples/4_Flux_Network/ssebop_evaluation.py - SSEBop NHM evaluation
+- examples/5_Flux_Ensemble/openet_evaluation.py - OpenET ensemble evaluation
+- examples/6_Flux_International/openet_evaluation.py - International sites
+"""
+import warnings
 from datetime import datetime
 
 import numpy as np
@@ -6,7 +15,21 @@ from sklearn.metrics import mean_squared_error, r2_score
 
 
 def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_path=None, openet_monthly_path=None,
-                          irr=None, target_model='ssebop', gap_tolerance=5, ssebop_eto_source='eto_corr'):
+                          irr=None, target_model='ssebop', gap_tolerance=5, ssebop_eto_source='eto_corr',
+                          ensemble_members=None):
+    """Compare ETf estimates across models.
+
+    DEPRECATED: This function is maintained for backwards compatibility.
+    Use the standalone evaluation modules instead:
+    - ssebop_evaluation.evaluate_ssebop_site() for SSEBop comparisons
+    - openet_evaluation.evaluate_openet_site() for OpenET comparisons
+    """
+    warnings.warn(
+        "compare_etf_estimates is deprecated. "
+        "Use standalone evaluation functions in example directories instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     flux_data = pd.read_csv(flux_data_path, index_col='date', parse_dates=True)
 
     if isinstance(combined_output_path, pd.DataFrame):
@@ -56,10 +79,24 @@ def compare_etf_estimates(combined_output_path, flux_data_path, openet_daily_pat
                          'EEMETRIC_3x3': 'eemetric', 'DISALEXI_3x3': 'disalexi', 'ensemble_mean_3x3': 'openet'}
 
     elif target_model == 'ssebop':
+        # Always include ensemble mean; optionally include individual models for comparison
         openet_rename = {'ensemble_mean_3x3': 'openet'}
+        if ensemble_members:
+            model_name_map = {
+                'ptjpl': 'PTJPL_3x3',
+                'ssebop': 'SSEBOP_3x3',
+                'sims': 'SIMS_3x3',
+                'geesebal': 'GEESEBAL_3x3',
+                'eemetric': 'EEMETRIC_3x3',
+                'disalexi': 'DISALEXI_3x3',
+            }
+            for member in ensemble_members:
+                col_name = model_name_map.get(member)
+                if col_name:
+                    openet_rename[col_name] = member
 
     else:
-        raise ValueError
+        raise ValueError(f"target_model must be 'openet' or 'ssebop', got '{target_model}'")
 
     openet_models = list(openet_rename.values())
 

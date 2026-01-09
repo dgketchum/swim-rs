@@ -5,7 +5,7 @@ from pprint import pprint
 
 import pandas as pd
 
-from swimrs.analysis.metrics import compare_etf_estimates
+from openet_evaluation import evaluate_openet_site
 from swimrs.model.obs_field_cycle import field_day_loop
 from swimrs.prep import get_flux_sites
 from swimrs.swim.config import ProjectConfig
@@ -25,17 +25,17 @@ def run_flux_site(fid: str, cfg: ProjectConfig, plots: SamplePlots, outfile: str
 
 
 def compare_openet(fid: str, flux_file: str, model_output: str, openet_dir: str, plots: SamplePlots,
-                   target_model: str, return_comparison: bool = False, gap_tolerance: int = 5):
+                   return_comparison: bool = False, gap_tolerance: int = 5):
+    """Compare SWIM and OpenET ensemble against flux observations for a single site."""
     openet_daily = os.path.join(openet_dir, "daily_data", f"{fid}.csv")
     openet_monthly = os.path.join(openet_dir, "monthly_data", f"{fid}.csv")
     irr_ = plots.input["irr_data"][fid]
-    daily, overpass, monthly = compare_etf_estimates(
+    daily, overpass, monthly = evaluate_openet_site(
         model_output,
         flux_file,
         openet_daily_path=openet_daily,
         openet_monthly_path=openet_monthly,
         irr=irr_,
-        target_model=target_model,
         gap_tolerance=gap_tolerance,
     )
 
@@ -96,7 +96,7 @@ if __name__ == "__main__":
             incomplete.append(site_id)
             continue
 
-        _ = compare_openet(site_id, flux_file, out_csv, openet_dir, plots_, target_model=cfg.etf_target_model,
+        _ = compare_openet(site_id, flux_file, out_csv, openet_dir, plots_,
                            return_comparison=True, gap_tolerance=5)
         complete.append(site_id)
 

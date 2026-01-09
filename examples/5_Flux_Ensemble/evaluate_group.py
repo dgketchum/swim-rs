@@ -3,11 +3,11 @@ import os
 from datetime import datetime
 from pathlib import Path
 from pprint import pprint
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 import pandas as pd
 
-from swimrs.analysis.metrics import compare_etf_estimates
+from openet_evaluation import evaluate_openet_site
 from swimrs.model.obs_field_cycle import field_day_loop
 from swimrs.prep import get_flux_sites
 from swimrs.swim.config import ProjectConfig
@@ -15,24 +15,26 @@ from swimrs.swim.sampleplots import SamplePlots
 
 
 def compare_openet(fid: str, flux_file: str, model_output: str, openet_dir: str, plots: SamplePlots,
-                   model: str, gap_tolerance: int = 5, ssebop_eto_source: str = "eto_corr"):
+                   gap_tolerance: int = 5, ensemble_members: Optional[List[str]] = None):
+    """Compare SWIM and OpenET ensemble against flux observations for a single site."""
     openet_daily = os.path.join(openet_dir, "daily_data", f"{fid}.csv")
     openet_monthly = os.path.join(openet_dir, "monthly_data", f"{fid}.csv")
     irr_ = plots.input["irr_data"][fid]
-    daily, overpass, monthly = compare_etf_estimates(
+    daily, overpass, monthly = evaluate_openet_site(
         model_output,
         flux_file,
         openet_daily_path=openet_daily,
         openet_monthly_path=openet_monthly,
         irr=irr_,
-        target_model=model,
         gap_tolerance=gap_tolerance,
-        ssebop_eto_source=ssebop_eto_source,
+        ensemble_members=ensemble_members,
     )
     return monthly
 
 
-def _verbose_monthly_summary(site_id: str, monthly: dict, target_model: str) -> Tuple[Optional[str], Optional[str]]:
+def _verbose_monthly_summary(site_id: str, monthly: dict,
+                             ensemble_members: Optional[List[str]] = None) -> Tuple[Optional[str], Optional[str]]:
+    """Print summary statistics for SWIM vs OpenET comparison."""
     rmse_all = {
         k.split("_", 1)[1]: v
         for k, v in monthly.items()
@@ -52,21 +54,22 @@ def _verbose_monthly_summary(site_id: str, monthly: dict, target_model: str) -> 
     print("Best overall:", best_overall_model)
     print("Best swim vs openet:", best_pair_model if best_pair_model else "NA")
 
-    if target_model == "openet":
-        print(f"Flux Mean: {monthly.get('mean_flux')}")
-        print(f"SWIM Mean: {monthly.get('mean_swim')}")
-        print(f"{best_overall_model} Mean: {monthly.get(f'mean_{best_overall_model}')}")
-        print(f"OpenET Mean: {monthly.get('mean_openet')}")
-        print(f"SWIM RMSE: {monthly.get('rmse_swim')}")
-        print(f"{best_overall_model} RMSE: {monthly.get(f'rmse_{best_overall_model}')}")
-        print(f"OpenET RMSE: {monthly.get('rmse_openet')}")
-    elif target_model == "ssebop":
-        print(f"Flux Mean: {monthly.get('mean_flux')}")
-        print(f"SWIM Mean: {monthly.get('mean_swim')}")
-        print(f"SSEBop NHM Mean: {monthly.get('mean_ssebop')}")
-        print(f"SWIM RMSE: {monthly.get('rmse_swim')}")
-        print(f"{best_overall_model} RMSE: {monthly.get(f'rmse_{best_overall_model}')}")
-        print(f"SSEBop NHM RMSE: {monthly.get('rmse_ssebop')}")
+    print(f"Flux Mean: {monthly.get('mean_flux')}")
+    print(f"SWIM Mean: {monthly.get('mean_swim')}")
+    print(f"SWIM RMSE: {monthly.get('rmse_swim')}")
+    print(f"OpenET Ensemble Mean: {monthly.get('mean_openet')}")
+    print(f"OpenET Ensemble RMSE: {monthly.get('rmse_openet')}")
+    print(f"{best_overall_model} Mean: {monthly.get(f'mean_{best_overall_model}')}")
+    print(f"{best_overall_model} RMSE: {monthly.get(f'rmse_{best_overall_model}')}")
+
+    # Show individual ensemble member stats if provided
+    if ensemble_members:
+        print("Ensemble member comparisons:")
+        for member in ensemble_members:
+            rmse_key = f"rmse_{member}"
+            mean_key = f"mean_{member}"
+            if rmse_key in monthly:
+                print(f"  {member.upper()} RMSE: {monthly.get(rmse_key)}, Mean: {monthly.get(mean_key)}")
 
     return best_overall_model, best_pair_model
 
@@ -90,7 +93,7 @@ if __name__ == "__main__":
     flux_dir = os.path.join(cfg.data_dir, "daily_flux_files")
 
     station_metadata = os.path.join(cfg.data_dir, "station_metadata.csv")
-    ec_sites, sdf = get_flux_sites(station_metadata, crop_only=True, return_df=True, western_only=True, header=1)
+    ec_sites, sdf = get_flux_sites(station_metadata, crop_only=True, return_df=True, western_only=False, header=1)
 
     plots = SamplePlots()
     plots.initialize_plot_data(cfg)
@@ -107,6 +110,10 @@ if __name__ == "__main__":
     sites = [k for k in df_dct.keys() if k in ec_sites]
 
     print(f"{len(sites)} sites to evalutate in 5_Flux_Ensemble")
+
+    # Use ensemble_members for comparison models
+    ensemble_members = getattr(cfg, 'etf_ensemble_members', ['ssebop', 'ptjpl', 'sims'])
+    print(f"Ensemble members for comparison: {ensemble_members}")
 
     incomplete, complete = [], []
     results_overall, results_pair = [], []
@@ -126,11 +133,12 @@ if __name__ == "__main__":
         df.to_csv(out_csv)
 
         flux_file = os.path.join(flux_dir, f"{site_id}_daily_data.csv")
-        monthly = compare_openet(site_id, flux_file, out_csv, openet_dir, plots, model=cfg.etf_target_model,
-                                 gap_tolerance=5)
+        monthly = compare_openet(site_id, flux_file, out_csv, openet_dir, plots,
+                                 gap_tolerance=5, ensemble_members=ensemble_members)
         if monthly and isinstance(monthly, dict):
             results[site_id] = monthly
-            best_overall, best_pair = _verbose_monthly_summary(site_id, monthly, target_model=cfg.etf_target_model)
+            best_overall, best_pair = _verbose_monthly_summary(site_id, monthly,
+                                                               ensemble_members=ensemble_members)
             if best_overall:
                 results_overall.append((best_overall, lulc))
             if best_pair:
