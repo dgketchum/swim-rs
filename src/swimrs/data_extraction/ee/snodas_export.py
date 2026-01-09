@@ -75,7 +75,7 @@ def sample_snodas_swe(
                 data,
                 description=desc,
                 bucket=bucket,
-                fileNamePrefix=f'{file_prefix}/snodas/{desc}',
+                fileNamePrefix=f'{file_prefix}/snow/snodas/extracts/{desc}',
                 fileFormat='CSV',
                 selectors=selectors,
             )

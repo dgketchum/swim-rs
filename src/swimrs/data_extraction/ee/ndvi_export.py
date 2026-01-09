@@ -107,7 +107,7 @@ def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_t
                 image=img,
                 description=desc,
                 bucket=bucket,
-                fileNamePrefix=f'{file_prefix}/ndvi/images/{desc}',
+                fileNamePrefix=f'{file_prefix}/remote_sensing/landsat/extracts/ndvi/images/{desc}',
                 region=feature_coll.geometry(),
                 crs='EPSG:5070',
                 scale=30,
@@ -267,7 +267,7 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
                     data,
                     description=f'{satellite}_{desc}',
                     bucket=bucket,
-                    fileNamePrefix=f'{file_prefix}/ndvi/{satellite}/{desc}',
+                    fileNamePrefix=f'{file_prefix}/remote_sensing/{satellite}/extracts/ndvi/{mask_type}/{desc}',
                     fileFormat='CSV',
                     selectors=selectors,
                 )
@@ -421,7 +421,7 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
                 data,
                 description=desc,
                 bucket=bucket,
-                fileNamePrefix=f'{file_prefix}/ndvi/{desc}',
+                fileNamePrefix=f'{file_prefix}/remote_sensing/{satellite}/extracts/ndvi/{mask_type}/{desc}',
                 fileFormat='CSV',
                 selectors=selectors,
             )
