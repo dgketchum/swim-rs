@@ -10,7 +10,7 @@ def run():
     from swimrs.swim.config import ProjectConfig
 
     here = os.path.dirname(os.path.abspath(__file__))
-    conf_file = os.path.join(here, 'config.toml')
+    conf_file = os.path.join(here, '2_Fort_Peck.toml')
     if not os.path.exists(conf_file):
         raise FileNotFoundError(f'Expected config at {conf_file}')
 
