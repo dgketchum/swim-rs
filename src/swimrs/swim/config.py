@@ -27,6 +27,7 @@ class ProjectConfig:
         self.gis_dir = None
         self.fields_shapefile = None
         self.gridmet_mapping_shp = None
+        self.gridmet_centroids = None
         self.correction_tifs = None
         self.gridmet_factors = None
         self.properties_dir = None
@@ -165,13 +166,14 @@ class ProjectConfig:
                         paths_era5_conf.get('met') or
                         paths_conf.get('met'))
         # ERA5 extracts dir (for international)
-        self.era5_extracts_dir = paths_era5_conf.get('ee_extracts')
+        self.era5_extracts_dir = paths_era5_conf.get('extracts')
         self.gis_dir = paths_conf.get('gis')
 
         # Field geometry and factors
         self.fields_shapefile = paths_conf.get('fields_shapefile')
         # Read from nested [paths.conus] with fallback to flat
         self.gridmet_mapping_shp = paths_conus_conf.get('gridmet_mapping') or paths_conf.get('gridmet_mapping')
+        self.gridmet_centroids = paths_conus_conf.get('gridmet_centroids') or paths_conf.get('gridmet_centroids')
         self.correction_tifs = paths_conus_conf.get('correction_tifs') or paths_conf.get('correction_tifs')
         self.gridmet_factors = paths_conus_conf.get('gridmet_factors') or paths_conf.get('gridmet_factors')
 

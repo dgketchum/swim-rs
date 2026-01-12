@@ -43,7 +43,7 @@ static_properties = os.path.join(data, 'properties', f'{project}_properties.json
 # properties = os.path.join(data, 'properties', f'{project}_properties.csv')
 dyanmics_data = os.path.join(data, f'{project}_dynamics.json')
 
-era5_extracts = os.path.join(era5, 'ee_extracts')
+era5_extracts = os.path.join(era5, 'extracts')
 era5_series = os.path.join(era5, 'era5_land')
 
 prepped_input = os.path.join(data, 'prepped_input.json')

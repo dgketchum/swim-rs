@@ -13,12 +13,17 @@ def sample_snodas_swe(
     start_yr=2004,
     end_yr=2023,
     feature_id='FID',
+    select=None,
     dest='drive',
     drive_folder='swim',
     file_prefix='swim',
     drive_categorize=False,
 ):
     feature_coll = as_ee_feature_collection(feature_coll, feature_id=feature_id)
+
+    # Optionally filter to a subset of features by ID
+    if select is not None:
+        feature_coll = feature_coll.filter(ee.Filter.inList(feature_id, select))
     snodas = ee.ImageCollection('projects/earthengine-legacy/assets/projects/climate-engine/snodas/daily')
     skipped, exported = 0, 0
     dtimes = [(y, m) for y in range(start_yr, end_yr + 1) for m in range(1, 13)]

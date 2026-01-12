@@ -21,7 +21,7 @@ container = "{project_workspace}/{project}.swim"
 
 [paths.era5]
 met = "{data}/meteorology/era5_land"
-ee_extracts = "{data}/meteorology/era5_land/ee_extracts"
+extracts = "{data}/meteorology/era5_land/extracts"
 
 [earth_engine]
 bucket = "wudr"

@@ -180,7 +180,8 @@ def extract_gridmet(cfg: ProjectConfig, sites=None) -> None:
     nldas_needed = (cfg.swb_mode == "ier")
 
     assign_gridmet_and_corrections(
-        fields=cfg.gridmet_mapping_shp,
+        fields=cfg.fields_shapefile,
+        gridmet_points=cfg.gridmet_centroids,
         gridmet_ras=cfg.correction_tifs,
         fields_join=cfg.gridmet_mapping_shp,
         factors_js=cfg.gridmet_factors,

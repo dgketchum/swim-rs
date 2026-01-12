@@ -23,13 +23,13 @@ joined_timeseries = "{data}/plot_timeseries"
 
 [paths.conus]
 met = "{data}/meteorology/gridmet"
+gridmet_centroids = "{gis}/gridmet_centroids.shp"
 gridmet_mapping = "{gis}/fields_gfid.shp"
 correction_tifs = "{data}/bias_correction_tif"
 gridmet_factors = "{gis}/fields_gfid.json"
 irr = "{properties}/{project}_irr.csv"
 ssurgo = "{properties}/{project}_ssurgo.csv"
 snodas_in = "{data}/snow/snodas/extracts"
-snodas_out = "{data}/snow/snodas/snodas.json"
 
 [earth_engine]
 bucket = "wudr"
@@ -51,7 +51,7 @@ mask_mode = "irrigation"
 irrigation_threshold = 0.3
 elev_units = "m"
 refet_type = "eto"
-swb_mode = "ier"
+swb_mode = "cn"
 
 [date_range]
 start_date = "1987-01-01"

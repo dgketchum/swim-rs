@@ -46,8 +46,10 @@ def compute_field_et(swb, day_data):
         # Choose runoff method: 'cn' for Curve Number, else infiltration-excess
         if getattr(swb.conf, 'swb_mode', None) == 'cn':
             runoff.runoff_curve_number(swb, day_data)
-        else:
+        elif getattr(swb.conf, 'swb_mode', None) == 'ier':
             runoff.runoff_infiltration_excess(swb, day_data)
+        else:
+            raise ValueError('Runoff mode not found, set it with "swb_mode" in the config toml')
 
         swb.ppt_inf = (swb.melt + swb.rain) - swb.sro
 

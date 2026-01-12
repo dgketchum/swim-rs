@@ -78,6 +78,7 @@ def ingest_ndvi(container: SwimContainer, cfg: ProjectConfig):
         print(f"Ingesting Landsat NDVI from: {landsat_ndvi_dir}")
         container.ingest.ndvi(
             source_dir=str(landsat_ndvi_dir),
+            uid_column=cfg.feature_id_col,
             instrument="landsat",
             mask="no_mask",
         )
@@ -90,6 +91,7 @@ def ingest_ndvi(container: SwimContainer, cfg: ProjectConfig):
         print(f"Ingesting Sentinel NDVI from: {sentinel_ndvi_dir}")
         container.ingest.ndvi(
             source_dir=str(sentinel_ndvi_dir),
+            uid_column=cfg.feature_id_col,
             instrument="sentinel",
             mask="no_mask",
         )
@@ -107,6 +109,7 @@ def ingest_etf(container: SwimContainer, cfg: ProjectConfig):
         print(f"Ingesting Landsat {etf_model} ETf from: {landsat_etf_dir}")
         container.ingest.etf(
             source_dir=str(landsat_etf_dir),
+            uid_column=cfg.feature_id_col,
             model=etf_model,
             instrument="landsat",
             mask="no_mask",

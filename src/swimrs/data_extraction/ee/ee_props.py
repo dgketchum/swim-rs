@@ -80,7 +80,7 @@ def get_cdl(fields, desc, selector='FID', dest='drive', bucket=None, drive_folde
     print(desc)
 
 
-def get_irrigation(fields, desc, debug=False, selector='FID', lanid=False, dest='drive', bucket=None, drive_folder='swim', file_prefix='swim', drive_categorize=False):
+def get_irrigation(fields, desc, debug=False, selector='FID', select=None, lanid=False, dest='drive', bucket=None, drive_folder='swim', file_prefix='swim', drive_categorize=False):
     """Export annual irrigation fraction per feature using IrrMapper (and LANID).
 
     Parameters
@@ -88,6 +88,7 @@ def get_irrigation(fields, desc, debug=False, selector='FID', lanid=False, dest=
     - desc: export description/prefix.
     - debug: bool; if True, prints a sample feature.
     - selector: feature ID property to include.
+    - select: optional list[str] of selector values to include.
     - lanid: bool; if True, mosaics LANID east of WEST/EAST boundary for years.
 
     Side Effects
@@ -95,6 +96,10 @@ def get_irrigation(fields, desc, debug=False, selector='FID', lanid=False, dest=
     """
     east, west = None, None
     plots = as_ee_feature_collection(fields, feature_id=selector)
+
+    # Optionally filter to a subset of features by ID
+    if select is not None:
+        plots = plots.filter(ee.Filter.inList(selector, select))
 
     irr_coll = ee.ImageCollection(IRR)
     if lanid:
@@ -162,7 +167,7 @@ def get_irrigation(fields, desc, debug=False, selector='FID', lanid=False, dest=
     print(desc)
 
 
-def get_ssurgo(fields, desc, debug=False, selector='FID', dest='drive', bucket=None, drive_folder='swim', file_prefix='swim', drive_categorize=False):
+def get_ssurgo(fields, desc, debug=False, selector='FID', select=None, dest='drive', bucket=None, drive_folder='swim', file_prefix='swim', drive_categorize=False):
     """Export SSURGO-derived soil attributes averaged per feature.
 
     Parameters
@@ -170,6 +175,7 @@ def get_ssurgo(fields, desc, debug=False, selector='FID', dest='drive', bucket=N
     - desc: export description/prefix.
     - debug: bool; if True, prints a sample feature.
     - selector: feature ID property to include.
+    - select: optional list[str] of selector values to include.
 
     Side Effects
     - Starts ee.batch table export (columns: awc, ksat, clay, sand) to `wudr`.
@@ -182,6 +188,10 @@ def get_ssurgo(fields, desc, debug=False, selector='FID', dest='drive', bucket=N
     sand_asset = 'projects/openet/soil/ssurgo_Sand_WTA_0to152cm_composite'
 
     plots = as_ee_feature_collection(fields, feature_id=selector)
+
+    # Optionally filter to a subset of features by ID
+    if select is not None:
+        plots = plots.filter(ee.Filter.inList(selector, select))
 
     ksat_ = ee.Image(ksat_asset).select('b1').rename('ksat')
     awc_ = ee.Image(awc_asset).select('b1').rename('awc')
@@ -283,7 +293,8 @@ def get_hwsd(fields, desc, debug=False, selector='FID', out_fmt='CSV', local_fil
         task.start()
         print(desc)
 
-def get_landcover(fields, desc, debug=False, selector='FID', out_fmt='CSV', local_file=None, dest='drive', bucket=None, drive_folder='swim', file_prefix='swim', drive_categorize=False):
+
+def get_landcover(fields, desc, debug=False, selector='FID', select=None, out_fmt='CSV', local_file=None, dest='drive', bucket=None, drive_folder='swim', file_prefix='swim', drive_categorize=False):
     """Export dominant landcover from MODIS and FROM-GLC10 per feature.
 
     Parameters
@@ -291,10 +302,15 @@ def get_landcover(fields, desc, debug=False, selector='FID', out_fmt='CSV', loca
     - desc: export description/prefix.
     - debug: bool; if True, prints a sample feature.
     - selector: feature ID property to include.
+    - select: optional list[str] of selector values to include.
     - out_fmt: 'CSV' or other formats supported by EE table export.
     - local_file: if provided, writes a local CSV instead of GCS export.
     """
     plots = as_ee_feature_collection(fields, feature_id=selector)
+
+    # Optionally filter to a subset of features by ID
+    if select is not None:
+        plots = plots.filter(ee.Filter.inList(selector, select))
 
     vtype = ee.ImageCollection('MODIS/061/MCD12Q1').select('LC_Type1').first().rename('modis_lc')
     vtype = vtype.addBands([ee.ImageCollection('projects/sat-io/open-datasets/FROM-GLC10')

@@ -15,7 +15,7 @@ from typing import Optional, Union
 
 import zarr
 import zarr.storage
-from filelock import FileLock
+from filelock import FileLock, Timeout
 
 from .base import StorageProvider
 
@@ -95,8 +95,17 @@ class ZipStoreProvider(StorageProvider):
 
         # Acquire file lock for write modes
         if self._mode in ("r+", "a", "w"):
-            self._lock = FileLock(str(self._path) + ".lock", timeout=30)
-            self._lock.acquire()
+            lock_path = str(self._path) + ".lock"
+            self._lock = FileLock(lock_path, timeout=3)
+            try:
+                self._lock.acquire()
+            except Timeout:
+                raise RuntimeError(
+                    f"Could not acquire lock for container: {self._path}\n"
+                    f"Another process may have it open, or a previous process crashed.\n"
+                    f"If you're sure no other process is using this container, delete the lock file:\n"
+                    f"  {lock_path}"
+                ) from None
 
             # Suppress ZipStore duplicate name warnings during writes.
             # Zarr's ZipStore creates duplicate zip entries when writing to the
@@ -217,8 +226,17 @@ class DirectoryStoreProvider(StorageProvider):
 
         # Acquire file lock for write modes
         if self._mode in ("r+", "a", "w"):
-            self._lock = FileLock(str(self._path) + ".lock", timeout=30)
-            self._lock.acquire()
+            lock_path = str(self._path) + ".lock"
+            self._lock = FileLock(lock_path, timeout=3)
+            try:
+                self._lock.acquire()
+            except Timeout:
+                raise RuntimeError(
+                    f"Could not acquire lock for container: {self._path}\n"
+                    f"Another process may have it open, or a previous process crashed.\n"
+                    f"If you're sure no other process is using this container, delete the lock file:\n"
+                    f"  {lock_path}"
+                ) from None
 
         # DirectoryStore maps modes directly
         if self._mode == "r":

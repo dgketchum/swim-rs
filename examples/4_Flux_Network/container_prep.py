@@ -97,7 +97,7 @@ def ingest_meteorology(container: SwimContainer, cfg: ProjectConfig, overwrite: 
         return
 
     # Ingest GridMET with all available variables
-    container.ingest_gridmet(
+    container.ingest.gridmet(
         source_dir=cfg.met_dir,
         variables=["eto", "etr", "prcp", "tmin", "tmax", "srad", "u2", "ea"],
         include_corrected=True,  # Also ingest eto_corr, etr_corr if available
@@ -130,8 +130,9 @@ def ingest_remote_sensing(container: SwimContainer, cfg: ProjectConfig,
         ndvi_dir = os.path.join(cfg.landsat_dir, "extracts", "ndvi", mask)
         if os.path.isdir(ndvi_dir):
             print(f"Ingesting Landsat NDVI ({mask})...")
-            container.ingest_ee_ndvi(
-                csv_dir=ndvi_dir,
+            container.ingest.ndvi(
+                source_dir=ndvi_dir,
+                uid_column=cfg.feature_id_col,
                 instrument="landsat",
                 mask=mask,
                 fields=sites,
@@ -144,8 +145,9 @@ def ingest_remote_sensing(container: SwimContainer, cfg: ProjectConfig,
             ndvi_dir = os.path.join(cfg.sentinel_dir, "extracts", "ndvi", mask)
             if os.path.isdir(ndvi_dir):
                 print(f"Ingesting Sentinel NDVI ({mask})...")
-                container.ingest_ee_ndvi(
-                    csv_dir=ndvi_dir,
+                container.ingest.ndvi(
+                    source_dir=ndvi_dir,
+                    uid_column=cfg.feature_id_col,
                     instrument="sentinel",
                     mask=mask,
                     fields=sites,
@@ -158,8 +160,9 @@ def ingest_remote_sensing(container: SwimContainer, cfg: ProjectConfig,
             etf_dir = os.path.join(cfg.landsat_dir, "extracts", f"{model}_etf", mask)
             if os.path.isdir(etf_dir):
                 print(f"Ingesting ETf ({model}, {mask})...")
-                container.ingest_ee_etf(
-                    csv_dir=etf_dir,
+                container.ingest.etf(
+                    source_dir=etf_dir,
+                    uid_column=cfg.feature_id_col,
                     instrument="landsat",
                     model=model,
                     mask=mask,
@@ -185,35 +188,18 @@ def ingest_snow(container: SwimContainer, cfg: ProjectConfig, overwrite: bool = 
         print("SNODAS data already ingested, skipping")
         return
 
-    # SNODAS can be ingested from either the raw directory or the JSON
-    if cfg.snodas_out_json and os.path.exists(cfg.snodas_out_json):
-        container.ingest_snodas(
-            json_path=cfg.snodas_out_json,
+    # Ingest directly from extracts directory
+    if cfg.snodas_in_dir and os.path.isdir(cfg.snodas_in_dir):
+        container.ingest.snodas(
+            source_dir=cfg.snodas_in_dir,
+            uid_column=cfg.feature_id_col,
             overwrite=overwrite,
         )
-    elif cfg.snodas_in_dir and os.path.isdir(cfg.snodas_in_dir):
-        # If only raw SNODAS directory exists, need to process it first
-        from swimrs.data_extraction.snodas.snodas import create_timeseries_json
-        import tempfile
-
-        # Create temporary JSON
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
-            temp_json = f.name
-
-        create_timeseries_json(
-            cfg.snodas_in_dir,
-            temp_json,
-            feature_id=cfg.feature_id_col,
-        )
-
-        container.ingest_snodas(json_path=temp_json, overwrite=overwrite)
-        os.unlink(temp_json)
     else:
-        print("Warning: No SNODAS data found, skipping")
+        print("Warning: No SNODAS extracts found, skipping")
 
 
-def ingest_properties(container: SwimContainer, cfg: ProjectConfig,
-                      sites: list = None, overwrite: bool = False):
+def ingest_properties(container: SwimContainer, cfg: ProjectConfig, overwrite: bool = False):
     """
     Ingest field properties (soils, LULC, irrigation) into the container.
 
@@ -222,31 +208,18 @@ def ingest_properties(container: SwimContainer, cfg: ProjectConfig,
     Args:
         container: SwimContainer instance
         cfg: ProjectConfig instance
-        sites: Optional list of site IDs to include
         overwrite: If True, replace existing data
     """
     print("\n=== Ingesting Properties ===")
 
-    # For properties, we can either:
-    # 1. Ingest from individual CSVs (soils, LULC, irrigation)
-    # 2. Ingest from a pre-built properties.json
-
-    if cfg.properties_json and os.path.exists(cfg.properties_json):
-        # Use existing properties JSON
-        container.ingest_properties(
-            properties_json=cfg.properties_json,
-            fields=sites,
-            overwrite=overwrite,
-        )
-    else:
-        # Build properties from individual sources
-        container.ingest_properties(
-            soils_csv=cfg.ssurgo_csv,
-            lulc_csv=cfg.lulc_csv,
-            irr_csv=cfg.irr_csv,
-            fields=sites,
-            overwrite=overwrite,
-        )
+    # Build properties from individual sources
+    container.ingest.properties(
+        soils_csv=cfg.ssurgo_csv,
+        lulc_csv=cfg.lulc_csv,
+        irrigation_csv=cfg.irr_csv,
+        uid_column=cfg.feature_id_col,
+        overwrite=overwrite,
+    )
 
 
 def compute_fused_ndvi(container: SwimContainer, overwrite: bool = False):
@@ -345,7 +318,7 @@ def prep_all(container: SwimContainer, cfg: ProjectConfig = None, sites: list = 
     ingest_snow(container, cfg, overwrite=overwrite)
 
     # Step 4: Ingest properties
-    ingest_properties(container, cfg, sites=sites, overwrite=overwrite)
+    ingest_properties(container, cfg, overwrite=overwrite)
 
     # Step 5: Compute fused NDVI
     compute_fused_ndvi(container, overwrite=overwrite)

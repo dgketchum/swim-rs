@@ -204,7 +204,7 @@ def sample_era5_land_variables_daily(shapefile, bucket=None, debug=False, check_
             collection=output_data,
             description=desc,
             bucket=bucket,
-            fileNamePrefix=f'{file_prefix}/meteorology/era5_land/{desc}',
+            fileNamePrefix=f'{file_prefix}/meteorology/era5_land/extracts/{desc}',
             fileFormat='CSV',
             selectors=current_month_selectors
         )

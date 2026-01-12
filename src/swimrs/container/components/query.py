@@ -151,6 +151,31 @@ class Query(Component):
             except KeyError:
                 lines.append(f"  ✗ {label}: NOT FOUND")
 
+        # Check key remote sensing paths
+        lines.append("")
+        lines.append("REMOTE SENSING CHECK:")
+        lines.append("-" * 40)
+        rs_paths = [
+            ("remote_sensing/ndvi/landsat/irr", "Landsat NDVI (irr)"),
+            ("remote_sensing/ndvi/landsat/inv_irr", "Landsat NDVI (inv_irr)"),
+            ("remote_sensing/ndvi/landsat/no_mask", "Landsat NDVI (no_mask)"),
+            ("remote_sensing/ndvi/sentinel/irr", "Sentinel NDVI (irr)"),
+            ("remote_sensing/ndvi/sentinel/no_mask", "Sentinel NDVI (no_mask)"),
+            ("remote_sensing/etf/landsat/ssebop/irr", "SSEBop ETf (irr)"),
+            ("remote_sensing/etf/landsat/ssebop/inv_irr", "SSEBop ETf (inv_irr)"),
+            ("remote_sensing/etf/landsat/ptjpl/no_mask", "PT-JPL ETf (no_mask)"),
+            ("snow/snodas/swe", "SNODAS SWE"),
+        ]
+        for path, label in rs_paths:
+            try:
+                arr = self._state.root[path]
+                valid = np.sum(~np.isnan(arr[:])) if np.issubdtype(arr.dtype, np.floating) else arr.size
+                total = arr.size
+                pct = 100.0 * valid / total if total > 0 else 0
+                lines.append(f"  ✓ {label}: {arr.shape}, {pct:.1f}% valid")
+            except KeyError:
+                lines.append(f"  ✗ {label}: NOT FOUND")
+
         if detailed:
             lines.append("")
             lines.append("PROVENANCE LOG:")

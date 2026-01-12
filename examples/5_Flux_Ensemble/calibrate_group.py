@@ -113,6 +113,6 @@ if __name__ == "__main__":
     all_sites = get_flux_sites(station_metadata, crop_only=False, western_only=True, header=1)
     non_crop_sites = [s for s in all_sites if s not in all_sites]
 
-    results = os.path.join(cfg.project_ws, "diy_test_set")
+    results = os.path.join(cfg.project_ws, "diy_ensemble_test")
     run_pest_sequence(cfg, results, select_stations=['MR', 'US-FPe', 'ALARC2_Smith6'], overwrite=True, pdc_remove=True)
 

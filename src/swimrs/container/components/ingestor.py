@@ -52,6 +52,7 @@ class Ingestor(Component):
     def ndvi(
         self,
         source_dir: Union[str, Path],
+        uid_column: str = "FID",
         instrument: str = "landsat",
         mask: str = "irr",
         fields: Optional[List[str]] = None,
@@ -63,7 +64,8 @@ class Ingestor(Component):
         Ingest NDVI data from Earth Engine CSV exports.
 
         Args:
-            source_dir: Directory containing CSV files (one per field per year)
+            source_dir: Directory containing CSV files
+            uid_column: Column name for field UID in CSVs (default: "FID")
             instrument: Source instrument ("landsat", "sentinel", "ecostress")
             mask: Mask type ("irr", "inv_irr", "no_mask")
             fields: Optional list of field UIDs to process (default: all)
@@ -92,7 +94,7 @@ class Ingestor(Component):
                 self._safe_delete_path(path)
 
             # Parse all CSVs into unified DataFrame
-            all_data = self._parse_ee_remote_sensing_csvs(source_dir, instrument, "ndvi", fields, mask=mask)
+            all_data = self._parse_ee_remote_sensing_csvs(source_dir, instrument, "ndvi", uid_column, fields, mask=mask)
 
             if all_data.empty:
                 self._log.warning("no_data_found", source=str(source_dir))
@@ -140,6 +142,7 @@ class Ingestor(Component):
     def etf(
         self,
         source_dir: Union[str, Path],
+        uid_column: str = "FID",
         model: str = "ssebop",
         mask: str = "irr",
         instrument: str = "landsat",
@@ -150,7 +153,8 @@ class Ingestor(Component):
         Ingest ET fraction data from Earth Engine CSV exports.
 
         Args:
-            source_dir: Directory containing CSV files (one per field per year)
+            source_dir: Directory containing CSV files
+            uid_column: Column name for field UID in CSVs (default: "FID")
             model: ET model ("ssebop", "ptjpl", "sims", "eemetric", etc.)
             mask: Mask type ("irr", "inv_irr", "no_mask")
             instrument: Source instrument ("landsat", "ecostress")
@@ -179,7 +183,7 @@ class Ingestor(Component):
                 self._safe_delete_path(path)
 
             # Parse all CSVs into unified DataFrame
-            all_data = self._parse_ee_remote_sensing_csvs(source_dir, instrument, "etf", fields, mask=mask)
+            all_data = self._parse_ee_remote_sensing_csvs(source_dir, instrument, "etf", uid_column, fields, mask=mask)
 
             if all_data.empty:
                 self._log.warning("no_data_found", source=str(source_dir))
@@ -405,17 +409,18 @@ class Ingestor(Component):
 
     def snodas(
         self,
-        source_file: Optional[Union[str, Path]] = None,
-        source_dir: Optional[Union[str, Path]] = None,
+        source_dir: Union[str, Path],
+        uid_column: str = "FID",
         fields: Optional[List[str]] = None,
         overwrite: bool = False,
     ) -> "ProvenanceEvent":
         """
-        Ingest SNODAS snow water equivalent data.
+        Ingest SNODAS snow water equivalent data from Earth Engine CSV extracts.
 
         Args:
-            source_file: JSON file with SWE data (keyed by field UID)
-            source_dir: Alternative: directory with per-field files
+            source_dir: Directory containing CSV files from Earth Engine export.
+                CSV format: rows=fields, columns=dates (YYYYMMDD), values=SWE in meters.
+            uid_column: Column name for field UID in CSVs (default: "FID")
             fields: Optional list of field UIDs to process
             overwrite: If True, replace existing data
 
@@ -423,34 +428,28 @@ class Ingestor(Component):
             ProvenanceEvent recording the operation
         """
         self._ensure_writable()
+        source_dir = Path(source_dir)
         path = "snow/snodas/swe"
-
-        source = source_file or source_dir
-        if source is None:
-            raise ValueError("Must provide either source_file or source_dir")
 
         with self._track_operation(
             "ingest_snodas",
             target=path,
-            source=str(source),
+            source=str(source_dir),
         ) as ctx:
             if path in self._state.root and not overwrite:
                 raise ValueError(f"Data exists at {path}. Use overwrite=True.")
             if path in self._state.root:
                 self._safe_delete_path(path)
 
-            # Load SWE data
-            if source_file:
-                swe_data = self._load_snodas_json(Path(source_file), fields)
-            else:
-                swe_data = self._load_snodas_dir(Path(source_dir), fields)
+            # Load SWE data from CSV extracts
+            swe_data = self._load_snodas_extracts(source_dir, uid_column, fields)
 
             if swe_data.empty:
-                self._log.warning("no_data_found", source=str(source))
+                self._log.warning("no_data_found", source=str(source_dir))
                 return self._state.provenance.record(
                     "ingest",
                     target=path,
-                    source=str(source),
+                    source=str(source_dir),
                     params={},
                     records_count=0,
                     success=True,
@@ -466,9 +465,9 @@ class Ingestor(Component):
             event = self._state.provenance.record(
                 "ingest",
                 target=path,
-                source=str(source),
-                source_format="snodas_json" if source_file else "snodas_dir",
-                params={},
+                source=str(source_dir),
+                source_format="earth_engine_csv",
+                params={"uid_column": uid_column},
                 fields_affected=list(swe_data.columns),
                 records_count=records,
             )
@@ -683,14 +682,16 @@ class Ingestor(Component):
         source_dir: Path,
         instrument: str,
         parameter: str,
+        uid_column: str,
         fields: Optional[List[str]] = None,
         mask: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Parse Earth Engine CSV exports into a unified DataFrame.
 
+        CSV format: rows=fields (identified by uid_column), columns=dates (YYYYMMDD).
         Handles date parsing from column names:
-        - Landsat: NDVI_YYYYMMDD (e.g., NDVI_20170115)
+        - Landsat: PARAM_YYYYMMDD (e.g., NDVI_20170115)
         - Sentinel: YYYYMMDD_... (e.g., 20170115_S2A)
 
         File naming convention for mask filtering:
@@ -701,6 +702,7 @@ class Ingestor(Component):
             source_dir: Directory containing CSV files
             instrument: Source instrument ("landsat", "sentinel", etc.)
             parameter: Data type ("ndvi" or "etf")
+            uid_column: Column name for field UID in CSVs
             fields: Optional list of field UIDs to process
             mask: Optional mask type to filter files ("irr", "inv_irr", "no_mask")
 
@@ -715,23 +717,32 @@ class Ingestor(Component):
         # Filter files by mask if specified
         if mask is not None:
             # Match files that contain the mask pattern in the filename
-            # File naming convention: ndvi_{field_id}_{mask}_{year}.csv
-            # or {model}_etf_{field_id}_{mask}_{year}.csv
-            # e.g., "ndvi_US-FPe_irr_2020.csv" should match mask="irr"
-            # but "ndvi_US-FPe_inv_irr_2020.csv" should NOT match mask="irr"
+            # File naming conventions vary:
+            #   - ndvi_{year}_{mask}.csv (e.g., ndvi_2020_irr.csv)
+            #   - ndvi_{field}_{mask}_{year}.csv (e.g., ndvi_US-FPe_irr_2020.csv)
+            #   - {model}_etf_{field}_{mask}_{year}.csv
+            # Handle "irr" vs "inv_irr" - "inv_irr" should NOT match mask="irr"
             filtered_files = []
             for f in csv_files:
                 filename = f.stem  # filename without extension
-                # Handle special case: "irr" vs "inv_irr"
-                # "inv_irr" should not match when mask="irr"
+                # Check for mask at end of filename (_irr) or in middle (_irr_)
                 if mask == "irr":
-                    # Match _irr_ but exclude _inv_irr_
-                    if "_irr_" in filename and "_inv_irr_" not in filename:
+                    # Match _irr at end or _irr_ in middle, but exclude inv_irr
+                    has_irr = filename.endswith("_irr") or "_irr_" in filename
+                    has_inv_irr = "inv_irr" in filename
+                    if has_irr and not has_inv_irr:
+                        filtered_files.append(f)
+                elif mask == "inv_irr":
+                    # Match _inv_irr at end or _inv_irr_ in middle
+                    if filename.endswith("_inv_irr") or "_inv_irr_" in filename:
+                        filtered_files.append(f)
+                elif mask == "no_mask":
+                    # Match _no_mask at end or _no_mask_ in middle
+                    if filename.endswith("_no_mask") or "_no_mask_" in filename:
                         filtered_files.append(f)
                 else:
-                    # For other masks, use simple pattern matching
-                    mask_pattern = f"_{mask}_"
-                    if mask_pattern in filename:
+                    # Generic mask pattern
+                    if filename.endswith(f"_{mask}") or f"_{mask}_" in filename:
                         filtered_files.append(f)
             csv_files = filtered_files
 
@@ -749,31 +760,19 @@ class Ingestor(Component):
                 self._log.debug("csv_parse_error", file=str(csv_file), error=str(e))
                 continue
 
-            # Try to determine the field ID
-            if "FID" in df.columns:
-                field_id = str(df.iloc[0]["FID"])
-            elif df.columns[0] not in ["date", "Date", "time"]:
-                field_id = str(df.columns[0])
-            else:
-                field_id = csv_file.stem.split("_")[0]
-
-            # Filter by requested fields
-            if fields and field_id not in fields:
+            # Verify uid_column exists in the CSV
+            if uid_column not in df.columns:
+                self._log.warning("uid_column_missing", file=str(csv_file), uid_column=uid_column,
+                                  available_columns=list(df.columns[:5]))
                 continue
 
-            # Skip if field not in container
-            if field_id not in self._state._uid_to_index:
-                continue
-
-            fields_found.add(field_id)
-
-            # Parse data columns (those with dates in the column name)
+            # Parse data columns (those with dates in the column name) - do once per file
             data_cols = []
             dates = []
+            non_data_cols = {uid_column, "system:index", ".geo", "lat", "lon", "LAT", "LON"}
 
             for col in df.columns:
-                # Skip non-data columns
-                if col in ["FID", "system:index", ".geo", "lat", "lon", "LAT", "LON"]:
+                if col in non_data_cols:
                     continue
 
                 try:
@@ -795,20 +794,38 @@ class Ingestor(Component):
                     continue
 
             if not data_cols:
+                self._log.warning("no_date_columns_found", file=str(csv_file),
+                                  sample_columns=list(df.columns[:5]))
                 continue
 
-            # Extract values and create series
-            values = df[data_cols].iloc[0].values
-            series = pd.Series(values, index=dates, name=field_id)
-            series = series.sort_index()
+            # Iterate over all rows (each row is a field)
+            for _, row in df.iterrows():
+                field_id = str(row[uid_column])
 
-            # Remove duplicates by taking the max value
-            if series.index.duplicated().any():
-                series = series.groupby(series.index).max()
+                # Filter by requested fields
+                if fields and field_id not in fields:
+                    continue
 
-            all_series.append(series)
+                # Skip if field not in container
+                if field_id not in self._state._uid_to_index:
+                    continue
+
+                fields_found.add(field_id)
+
+                # Extract values for this row and create series
+                values = row[data_cols].values
+                series = pd.Series(values, index=dates, name=field_id)
+                series = series.sort_index()
+
+                # Remove duplicates by taking the max value
+                if series.index.duplicated().any():
+                    series = series.groupby(series.index).max()
+
+                all_series.append(series)
 
         if not all_series:
+            self._log.warning("no_series_created", fields_found=list(fields_found),
+                              container_fields_sample=list(self._state._uid_to_index.keys())[:5])
             return pd.DataFrame()
 
         # Group series by field ID and combine (handle multiple CSV files per field)
@@ -914,6 +931,9 @@ class Ingestor(Component):
         # Reindex data to container time index
         aligned = data.reindex(index=self._state.time_index, columns=common_fields)
 
+        # Ensure numeric dtype (CSV parsing can produce object dtype)
+        aligned = aligned.apply(pd.to_numeric, errors='coerce')
+
         # Write each field
         for field_uid in common_fields:
             if field_uid not in self._state._uid_to_index:
@@ -921,7 +941,7 @@ class Ingestor(Component):
             field_idx = self._state._uid_to_index[field_uid]
             arr[:, field_idx] = aligned[field_uid].values
 
-        return int(np.count_nonzero(~np.isnan(aligned.values)))
+        return int(np.count_nonzero(~np.isnan(aligned.values.astype(float))))
 
     def _load_met_variable(
         self,
@@ -1105,77 +1125,69 @@ class Ingestor(Component):
         result = pd.concat(series_list, axis=1)
         return result.sort_index()
 
-    def _load_snodas_json(
-        self,
-        source_file: Path,
-        fields: Optional[List[str]],
-    ) -> pd.DataFrame:
-        """Load SNODAS SWE data from JSON file."""
-        import json
-
-        with open(source_file) as f:
-            data = json.load(f)
-
-        series_list = []
-
-        for field_uid, records in data.items():
-            if fields and field_uid not in fields:
-                continue
-            if field_uid not in self._state._uid_to_index:
-                continue
-
-            # Records format: {date_str: value} or [{date: ..., swe: ...}]
-            if isinstance(records, dict):
-                dates = [pd.to_datetime(d) for d in records.keys()]
-                values = list(records.values())
-            elif isinstance(records, list):
-                dates = [pd.to_datetime(r.get("date", r.get("time"))) for r in records]
-                values = [r.get("swe", r.get("value")) for r in records]
-            else:
-                continue
-
-            series = pd.Series(values, index=dates, name=field_uid)
-            series_list.append(series)
-
-        if not series_list:
-            return pd.DataFrame()
-
-        result = pd.concat(series_list, axis=1)
-        return result.sort_index()
-
-    def _load_snodas_dir(
+    def _load_snodas_extracts(
         self,
         source_dir: Path,
+        uid_column: str,
         fields: Optional[List[str]],
     ) -> pd.DataFrame:
-        """Load SNODAS SWE data from directory of files."""
+        """
+        Load SNODAS SWE data from Earth Engine CSV extracts.
+
+        CSV format: rows=fields, columns=dates (YYYYMMDD), values=SWE in meters.
+        Values are converted to millimeters (*1000).
+
+        Args:
+            source_dir: Directory containing CSV files
+            uid_column: Column name for field UID
+            fields: Optional list of field UIDs to filter
+
+        Returns:
+            DataFrame with DatetimeIndex and field UIDs as columns, SWE in mm
+        """
+        csv_files = list(source_dir.glob("*.csv"))
+        if not csv_files:
+            self._log.warning("no_csv_files", directory=str(source_dir))
+            return pd.DataFrame()
+
+        # Accumulate data across all CSV files (each file is one month)
+        all_data: Dict[str, Dict[str, float]] = {}  # {field_uid: {date: value}}
+
+        for csv_file in csv_files:
+            try:
+                df = pd.read_csv(csv_file, index_col=uid_column)
+            except Exception as e:
+                self._log.debug("csv_parse_error", file=str(csv_file), error=str(e))
+                continue
+
+            # Each row is a field, each column is a date (YYYYMMDD format)
+            for field_uid, row in df.iterrows():
+                field_uid = str(field_uid)
+
+                # Filter by requested fields
+                if fields and field_uid not in fields:
+                    continue
+                # Filter by fields in container
+                if field_uid not in self._state._uid_to_index:
+                    continue
+
+                if field_uid not in all_data:
+                    all_data[field_uid] = {}
+
+                for date_str, value in row.items():
+                    # Convert meters to millimeters
+                    all_data[field_uid][str(date_str)] = value * 1000.0
+
+        if not all_data:
+            return pd.DataFrame()
+
+        # Convert to DataFrame with DatetimeIndex
         series_list = []
-
-        for f in source_dir.glob("*.json"):
-            field_uid = f.stem
-            if fields and field_uid not in fields:
-                continue
-            if field_uid not in self._state._uid_to_index:
-                continue
-
-            import json
-            with open(f) as fp:
-                records = json.load(fp)
-
-            if isinstance(records, dict):
-                dates = [pd.to_datetime(d) for d in records.keys()]
-                values = list(records.values())
-            elif isinstance(records, list):
-                dates = [pd.to_datetime(r.get("date", r.get("time"))) for r in records]
-                values = [r.get("swe", r.get("value")) for r in records]
-            else:
-                continue
-
+        for field_uid, date_values in all_data.items():
+            dates = [pd.to_datetime(d, format="%Y%m%d") for d in date_values.keys()]
+            values = list(date_values.values())
             series = pd.Series(values, index=dates, name=field_uid)
             series_list.append(series)
-
-        if not series_list:
-            return pd.DataFrame()
 
         result = pd.concat(series_list, axis=1)
         return result.sort_index()
