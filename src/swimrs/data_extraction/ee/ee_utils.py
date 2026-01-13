@@ -14,18 +14,34 @@ CRS_TRANSFORM = [0.041666666666666664,
 # References:
 #   Roy, D.P., et al. (2016). Characterization of Landsat-7 to Landsat-8
 #   reflectance and NDVI differences. Remote Sensing of Environment, 176, 163-180.
+#   https://www.sciencedirect.com/science/article/pii/S0034425716300220
 #
 #   Claverie, M., et al. (2018). The Harmonized Landsat and Sentinel-2 (HLS)
 #   product. Remote Sensing of Environment, 219, 145-161.
+#   https://www.sciencedirect.com/science/article/pii/S0034425718304139
+
+# Landsat factors from https://github.com/google/earthengine-community/blob/master/tutorials/landsat-etm-to-oli-harmonization/index.md
+
+# Roy et al. (2016) OLS coefficients for ETM+ to OLI transformation:
+#   Band order: [Blue, Green, Red, NIR, SWIR1, SWIR2]
+#   Slopes:     [0.8474, 0.8483, 0.9047, 0.8462, 0.8937, 0.9071]
+#   Intercepts: [0.0003, 0.0088, 0.0061, 0.0412, 0.0254, 0.0172]
+
 SBAF_COEFFICIENTS = {
-    # Landsat 4/5 TM and Landsat 7 ETM+ -> OLI (Roy et al., 2016)
-    'TM': {'red_slope': 0.9747, 'red_intercept': 0.0200,
-           'nir_slope': 0.9965, 'nir_intercept': 0.0150},
-    'ETM': {'red_slope': 0.9747, 'red_intercept': 0.0200,
-            'nir_slope': 0.9965, 'nir_intercept': 0.0150},
-    # Sentinel-2 MSI -> OLI (Claverie et al., 2018)
-    'MSI': {'red_slope': 0.9778, 'red_intercept': 0.0001,
-            'nir_slope': 1.0053, 'nir_intercept': -0.0135},
+    # Landsat 4/5 TM and Landsat 7 ETM+ -> OLI (Roy et al., 2016, Table 2 OLS Surface Reflectance)
+    'TM': {'red_slope': 0.9047, 'red_intercept': 0.0061,
+           'nir_slope': 0.8462, 'nir_intercept': 0.0412},
+    'ETM': {'red_slope': 0.9047, 'red_intercept': 0.0061,
+            'nir_slope': 0.8462, 'nir_intercept': 0.0412},
+
+    # Sentinel-2 MSI -> OLI (HLS, average of S2A and S2B, uses B8A for NIR)
+    # https://hls.gsfc.nasa.gov/algorithms/bandpass-adjustment/
+    # S2A Red (B4):  slope=0.9765, offset=0.0009  |  S2B: slope=0.9761, offset=0.0010
+    # S2A NIR (B8A): slope=0.9983, offset=-0.0001 |  S2B: slope=0.9966, offset=0.0000
+
+    'MSI': {'red_slope': 0.9763, 'red_intercept': 0.00095,
+            'nir_slope': 0.99745, 'nir_intercept': -0.00005},
+
     # OLI is reference - no adjustment needed
     'OLI': {'red_slope': 1.0, 'red_intercept': 0.0,
             'nir_slope': 1.0, 'nir_intercept': 0.0},
@@ -50,16 +66,15 @@ def harmonize_landsat_to_oli(image):
     """
     spacecraft_id = ee.String(image.get('SPACECRAFT_ID'))
 
-    # Determine sensor type from spacecraft ID
-    is_tm = ee.List(['LANDSAT_4', 'LANDSAT_5']).contains(spacecraft_id)
-    is_etm = spacecraft_id.equals('LANDSAT_7')
+    # OLI sensors (Landsat 8/9) are the reference - no adjustment needed
+    # TM (Landsat 4/5) and ETM+ (Landsat 7) use the same SBAF coefficients
+    is_oli = ee.List(['LANDSAT_8', 'LANDSAT_9']).contains(spacecraft_id)
 
     # Select coefficients based on sensor
-    # TM and ETM+ use the same coefficients (Roy et al., 2016)
     coef = ee.Dictionary(ee.Algorithms.If(
-        is_tm.Or(is_etm),
-        SBAF_COEFFICIENTS['TM'],
-        SBAF_COEFFICIENTS['OLI']
+        is_oli,
+        SBAF_COEFFICIENTS['OLI'],
+        SBAF_COEFFICIENTS['TM']
     ))
 
     red_slope = ee.Number(coef.get('red_slope'))
@@ -81,7 +96,7 @@ def harmonize_sentinel_to_oli(image):
 
     Sentinel-2 band mapping:
     - B4 = Red band (665nm)
-    - B8 = NIR band (842nm)
+    - B8A = Narrow NIR band (865nm) - used for HLS harmonization
 
     Args:
         image: ee.Image from sentinel2_sr
@@ -93,7 +108,7 @@ def harmonize_sentinel_to_oli(image):
 
     # Apply linear transformation: harmonized = slope * original + intercept
     red_h = image.select('B4').multiply(coef['red_slope']).add(coef['red_intercept']).rename('RED_H')
-    nir_h = image.select('B8').multiply(coef['nir_slope']).add(coef['nir_intercept']).rename('NIR_H')
+    nir_h = image.select('B8A').multiply(coef['nir_slope']).add(coef['nir_intercept']).rename('NIR_H')
 
     return image.addBands(red_h).addBands(nir_h)
 
@@ -206,7 +221,7 @@ def landsat_c2_sr(input_img):
 
     mask = _cloud_mask(input_img)
 
-    image = prep_image.updateMask(mask).copyProperties(input_img, ['system:time_start'])
+    image = prep_image.updateMask(mask).copyProperties(input_img, ['system:time_start', 'SPACECRAFT_ID'])
 
     return image
 
