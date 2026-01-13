@@ -37,6 +37,7 @@ prepped_input = "{root}/data/prepped_input.json"
 [ids]
 feature_id = "FID"
 gridmet_join_id = "GFID"
+gridmet_id = "GFID"  # Column name for GridMET cell ID in mapping shapefile
 
 [misc]
 irrigation_threshold = 0.3

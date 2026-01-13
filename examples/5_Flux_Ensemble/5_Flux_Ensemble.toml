@@ -39,6 +39,7 @@ feature_id = "site_id"
 
 [ids.conus]
 gridmet_join_id = "site_id"
+gridmet_id = "GFID"  # Column name for GridMET cell ID in mapping shapefile
 state_col = "state"
 
 [data_sources]

@@ -13,7 +13,7 @@ import pynldas2 as nld
 from rasterstats import zonal_stats
 
 from swimrs.data_extraction.gridmet.thredds import GridMet
-from swimrs.prep import COLUMN_MULTIINDEX, ACCEPTED_UNITS_MAP
+from swimrs.prep import ACCEPTED_UNITS_MAP
 
 CLIMATE_COLS = {
     'etr': {
@@ -50,22 +50,6 @@ CLIMATE_COLS = {
         'col': 'q'},
 }
 
-GRIDMET_GET = ['elev',
-               'tmin',
-               'tmax',
-               'etr',
-               'etr_corr',
-               'eto',
-               'eto_corr',
-               'prcp',
-               'srad',
-               'u2',
-               'ea',
-               ]
-
-BASIC_REQ = ['date', 'year', 'month', 'day', 'centroid_lat', 'centroid_lon']
-
-COLUMN_ORDER = BASIC_REQ + GRIDMET_GET
 
 
 def _build_raster_list(gridmet_ras):
@@ -210,9 +194,27 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
                      use_nldas=False):
     """Download GridMET time series and optionally NLDAS-2 hourly precipitation.
 
-    Set ``use_nldas=True`` to append hourly precipitation fields derived from
-    NLDAS-2 via pynldas2. When False, hourly precip fields are omitted from
-    outputs and downstream code will derive them from daily precip if needed.
+    Downloads one parquet file per unique GFID (GridMET cell). Each file contains
+    simple column names (e.g., 'tmin', 'tmax', 'eto', 'eto_corr') without field-specific
+    information. The UID-to-GFID mapping is handled during ingestion.
+
+    Output format:
+        - Files named: {GFID}.parquet
+        - Index: DatetimeIndex (daily dates)
+        - Columns: Simple names like 'tmin', 'tmax', 'eto', 'eto_corr', 'prcp', etc.
+
+    Args:
+        fields: Path to shapefile with GFID column (from assign_gridmet_and_corrections)
+        gridmet_factors: Path to JSON with correction factors (from assign_gridmet_and_corrections)
+        gridmet_csv_dir: Output directory for parquet files
+        start: Start date (default: 1987-01-01)
+        end: End date (default: 2021-12-31)
+        overwrite: If True, overwrite existing files
+        append: If True, append new dates to existing files
+        target_fields: Optional list of field UIDs to filter GFIDs
+        feature_id: Column name for field UID
+        return_df: If True, return DataFrame after first download
+        use_nldas: If True, include hourly precipitation from NLDAS-2
     """
     if not start:
         start = '1987-01-01'
@@ -221,52 +223,63 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
     fields = gpd.read_file(fields)
     fields.index = fields[feature_id]
-    fields = fields.sample(frac=1)
 
     with open(gridmet_factors, 'r') as f:
-        gridmet_factors = json.load(f)
+        gridmet_factors_dict = json.load(f)
 
     hr_cols = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
 
-    downloaded, skipped_exists = {}, []
-    _file = None
+    # Get unique GFIDs to download
+    if target_fields is not None:
+        # Filter to GFIDs for the target fields
+        target_fields_set = set(str(f) for f in target_fields)
+        mask = fields.index.astype(str).isin(target_fields_set)
+        filtered_fields = fields[mask]
+        unique_gfids = filtered_fields['GFID'].dropna().unique()
+    else:
+        unique_gfids = fields['GFID'].dropna().unique()
 
-    for k, v in tqdm(fields.iterrows(), desc='Downloading GridMET', total=len(fields)):
+    unique_gfids = [str(int(g)) for g in unique_gfids]
+    print(f'Downloading {len(unique_gfids)} unique GridMET cells')
+
+    downloaded, skipped_exists = [], []
+
+    for g_fid in tqdm(unique_gfids, desc='Downloading GridMET'):
+        _file = os.path.join(gridmet_csv_dir, f'{g_fid}.parquet')
 
         try:
-            elev, existing = None, None
-            out_cols = COLUMN_ORDER.copy()
-            if use_nldas:
-                out_cols += ['nld_ppt_d'] + hr_cols
-            df, first = pd.DataFrame(), True
-
-            if target_fields and str(k) not in target_fields:
-                continue
-
-            g_fid = str(int(v['GFID']))
-
-            if g_fid in downloaded.keys():
-                downloaded[g_fid].append(k)
-
-            _file = os.path.join(gridmet_csv_dir, '{}.parquet'.format(g_fid))
+            # Check if file exists
             if os.path.exists(_file) and not overwrite and not append:
                 skipped_exists.append(_file)
                 continue
 
+            # Handle append mode
+            dl_start, dl_end = start, end
+            existing = None
             if os.path.exists(_file) and append:
                 existing = pd.read_parquet(_file)
                 target_dates = pd.date_range(start, end, freq='D')
                 missing_dates = [i for i in target_dates if i not in existing.index]
 
-                if len(missing_dates) == 0 and not return_df:
+                if len(missing_dates) == 0:
+                    if return_df:
+                        return existing
                     continue
-                elif len(missing_dates) == 0 and return_df:
-                    return df
                 else:
-                    start, end = missing_dates[0].strftime('%Y-%m-%d'), missing_dates[-1].strftime('%Y-%m-%d')
+                    dl_start = missing_dates[0].strftime('%Y-%m-%d')
+                    dl_end = missing_dates[-1].strftime('%Y-%m-%d')
 
-            r = gridmet_factors[g_fid]
+            # Get lat/lon from factors
+            if g_fid not in gridmet_factors_dict:
+                print(f'GFID {g_fid} not found in factors file')
+                continue
+
+            r = gridmet_factors_dict[g_fid]
             lat, lon = r['lat'], r['lon']
+
+            # Download data from THREDDS
+            df = pd.DataFrame()
+            first = True
 
             for thredds_var, cols in CLIMATE_COLS.items():
                 variable = cols['col']
@@ -275,39 +288,38 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
                     continue
 
                 try:
-                    g = GridMet(thredds_var, start=start, end=end, lat=lat, lon=lon)
+                    g = GridMet(thredds_var, start=dl_start, end=dl_end, lat=lat, lon=lon)
                     s = g.get_point_timeseries()
                 except OSError as e:
-                    print('Error on {}, {}'.format(k, e))
+                    print(f'Error downloading {thredds_var} for GFID {g_fid}: {e}')
+                    continue
 
                 df[variable] = s[thredds_var]
 
                 if first:
-                    df['date'] = [i.strftime('%Y-%m-%d') for i in df.index]
-                    df['year'] = [i.year for i in df.index]
-                    df['month'] = [i.month for i in df.index]
-                    df['day'] = [i.day for i in df.index]
-                    df['centroid_lat'] = [lat for _ in range(df.shape[0])]
-                    df['centroid_lon'] = [lon for _ in range(df.shape[0])]
                     g = GridMet('elev', lat=lat, lon=lon)
                     elev = g.get_point_elevation()
-                    df['elev'] = [elev for _ in range(df.shape[0])]
+                    df['elev'] = elev
                     first = False
 
+                # Download NLDAS hourly precip if requested
                 if thredds_var == 'pr' and use_nldas:
-                    # gridmet is utc-6, US/Central, NLDAS is UTC-0
-                    # shifting NLDAS to UTC-6 is the most straightforward alignment
-                    s = pd.to_datetime(start) - timedelta(days=1)
-                    s = s.strftime('%Y-%m-%d')
-                    e = pd.to_datetime(end) + timedelta(days=2)
-                    e = e.strftime('%Y-%m-%d')
-                    nldas = nld.get_bycoords((lon, lat), start_date=s, end_date=e, variables=['prcp'])
+                    s_nldas = pd.to_datetime(dl_start) - timedelta(days=1)
+                    e_nldas = pd.to_datetime(dl_end) + timedelta(days=2)
+                    nldas = nld.get_bycoords(
+                        (lon, lat),
+                        start_date=s_nldas.strftime('%Y-%m-%d'),
+                        end_date=e_nldas.strftime('%Y-%m-%d'),
+                        variables=['prcp']
+                    )
                     if nldas.size == 0:
-                        raise ValueError(f'Failed to download NLDAS-2 for {k} on GFID {g_fid}')
+                        raise ValueError(f'Failed to download NLDAS-2 for GFID {g_fid}')
 
                     central = pytz.timezone('US/Central')
                     nldas = nldas.tz_convert(central)
-                    hourly_ppt = nldas.pivot_table(columns=nldas.index.hour, index=nldas.index.date, values='prcp')
+                    hourly_ppt = nldas.pivot_table(
+                        columns=nldas.index.hour, index=nldas.index.date, values='prcp'
+                    )
                     df[hr_cols] = hourly_ppt.loc[df.index]
 
                     nan_ct = np.sum(np.isnan(df[hr_cols].values), axis=0)
@@ -318,52 +330,59 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
 
                     df['nld_ppt_d'] = df[hr_cols].sum(axis=1)
 
+            if df.empty:
+                print(f'No data downloaded for GFID {g_fid}')
+                continue
+
+            # Calculate vapor pressure from specific humidity
             p_air = air_pressure(df['elev'])
             ea_kpa = actual_vapor_pressure(df['q'], p_air)
             df['ea'] = ea_kpa.copy()
 
+            # Apply bias corrections for ETo and ETr
             for variable in ['etr', 'eto']:
                 for month in range(1, 13):
-                    corr_factor = gridmet_factors[g_fid][str(month)][variable]
+                    corr_factor = gridmet_factors_dict[g_fid][str(month)][variable]
                     idx = [i for i in df.index if i.month == month]
-                    df.loc[idx, variable] = df.loc[idx, variable]
-                    df.loc[idx, '{}_corr'.format(variable)] = df.loc[idx, variable] * corr_factor
+                    df.loc[idx, f'{variable}_corr'] = df.loc[idx, variable] * corr_factor
 
-            df['tmax'] = df.tmax - 273.15
-            df['tmin'] = df.tmin - 273.15
+            # Convert temperatures from Kelvin to Celsius
+            df['tmax'] = df['tmax'] - 273.15
+            df['tmin'] = df['tmin'] - 273.15
 
+            # Drop intermediate columns not needed for output
+            df = df.drop(columns=['q'], errors='ignore')
+
+            # Select output columns (simple names, no MultiIndex)
+            out_cols = ['tmin', 'tmax', 'eto', 'etr', 'eto_corr', 'etr_corr',
+                        'prcp', 'srad', 'u2', 'ea', 'elev']
+            if use_nldas:
+                out_cols.extend(['nld_ppt_d'] + hr_cols)
+
+            # Keep only columns that exist
+            out_cols = [c for c in out_cols if c in df.columns]
             df = df[out_cols]
-            # ['site', 'instrument', 'parameter', 'units', 'algorithm', 'mask']
-            target_cols = []
-            for c in df.columns:
-                vals = [k, 'none', c, ACCEPTED_UNITS_MAP.get(c, 'none'), None, 'no_mask']
-                if 'prcp_hr' in c or 'nld_ppt' in c:
-                    vals[4] = 'nldas2'
-                else:
-                    vals[4] = 'gridmet'
 
-                target_cols.append(tuple(vals))
-
-            target_cols = pd.MultiIndex.from_tuples(target_cols, names=COLUMN_MULTIINDEX)
-            df.columns = target_cols
-
-            if existing is not None and not overwrite and append:
-                df = pd.concat([df, existing], axis=0, ignore_index=False)
+            # Append to existing if needed
+            if existing is not None and append:
+                df = pd.concat([existing, df], axis=0)
                 df = df.sort_index()
+                # Remove duplicates keeping last
+                df = df[~df.index.duplicated(keep='last')]
 
             df.to_parquet(_file)
             print(f'wrote {_file}')
-            downloaded[g_fid] = [k]
+            downloaded.append(g_fid)
 
             if return_df:
                 return df
 
         except Exception as exc:
-            print(f'Error on {_file}: {exc}')
+            print(f'Error on GFID {g_fid}: {exc}')
             continue
 
-    print(f'downloaded {len(downloaded)} files')
-    print(f'skipped {len(skipped_exists)} existing files')
+    print(f'Downloaded {len(downloaded)} files')
+    print(f'Skipped {len(skipped_exists)} existing files')
 
 
 # from CGMorton's RefET (github.com/WSWUP/RefET)

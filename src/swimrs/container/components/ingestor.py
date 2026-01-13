@@ -90,8 +90,6 @@ class Ingestor(Component):
             # Check if data exists
             if path in self._state.root and not overwrite:
                 raise ValueError(f"Data exists at {path}. Use overwrite=True.")
-            if path in self._state.root:
-                self._safe_delete_path(path)
 
             # Parse all CSVs into unified DataFrame
             all_data = self._parse_ee_remote_sensing_csvs(source_dir, instrument, "ndvi", uid_column, fields, mask=mask)
@@ -113,7 +111,7 @@ class Ingestor(Component):
             )
 
             # Align to container grid and write
-            records = self._write_timeseries(path, all_data, fields)
+            records = self._write_timeseries(path, all_data, fields, overwrite=overwrite)
 
             ctx["records_processed"] = records
             ctx["fields_processed"] = len(all_data.columns)
@@ -179,8 +177,6 @@ class Ingestor(Component):
             # Check if data exists
             if path in self._state.root and not overwrite:
                 raise ValueError(f"Data exists at {path}. Use overwrite=True.")
-            if path in self._state.root:
-                self._safe_delete_path(path)
 
             # Parse all CSVs into unified DataFrame
             all_data = self._parse_ee_remote_sensing_csvs(source_dir, instrument, "etf", uid_column, fields, mask=mask)
@@ -200,7 +196,7 @@ class Ingestor(Component):
             all_data = all_data.where((all_data >= 0) & (all_data <= 2.0))
 
             # Align to container grid and write
-            records = self._write_timeseries(path, all_data, fields)
+            records = self._write_timeseries(path, all_data, fields, overwrite=overwrite)
 
             ctx["records_processed"] = records
             ctx["fields_processed"] = len(all_data.columns)
@@ -228,30 +224,74 @@ class Ingestor(Component):
     def gridmet(
         self,
         source_dir: Union[str, Path],
+        grid_shapefile: Optional[Union[str, Path]] = None,
+        grid_mapping: Optional[Union[str, Path, Dict[str, int], "GridMapping"]] = None,
+        uid_column: str = "FID",
+        grid_column: str = "GFID",
         variables: Optional[List[str]] = None,
         include_corrected: bool = True,
-        field_mapping: Optional[Dict[str, str]] = None,
         overwrite: bool = False,
     ) -> "ProvenanceEvent":
         """
         Ingest GridMET meteorology data from Parquet files.
 
+        GridMET data is downloaded at grid cell resolution (4km), where multiple
+        fields may share the same grid cell. This method uses a UID-to-GFID mapping
+        to replicate grid cell data across all fields that share that cell.
+
         Args:
-            source_dir: Directory containing Parquet files (one per field)
+            source_dir: Directory containing Parquet files (one per GFID)
+            grid_shapefile: Shapefile with UID and GFID columns for mapping
+            grid_mapping: Alternative to grid_shapefile - can be:
+                - Path to JSON file with {uid: gfid, ...} mapping
+                - Dict with {uid: gfid, ...} mapping
+                - GridMapping instance
+            uid_column: Column name for field UID in shapefile (default: "FID")
+            grid_column: Column name for grid ID in shapefile (default: "GFID")
             variables: Variables to ingest (default: all available)
-            include_corrected: Include bias-corrected ET variables
-            field_mapping: Optional UID to met-file mapping
+            include_corrected: Include bias-corrected ET variables (eto_corr, etr_corr)
             overwrite: If True, replace existing data
 
         Returns:
             ProvenanceEvent recording the operation
+
+        Raises:
+            ValueError: If neither grid_shapefile nor grid_mapping provided
         """
+        from .grid_mapping import GridMapping
+
         self._ensure_writable()
         source_dir = Path(source_dir)
 
+        # Build grid mapping
+        if grid_shapefile is None and grid_mapping is None:
+            raise ValueError(
+                "Must provide either grid_shapefile or grid_mapping. "
+                "GridMET data requires a UID-to-GFID mapping to assign "
+                "grid cell data to fields."
+            )
+
+        if grid_shapefile is not None:
+            mapping = GridMapping.from_shapefile(
+                grid_shapefile, uid_column, grid_column, source_name="gridmet"
+            )
+        elif isinstance(grid_mapping, (str, Path)):
+            mapping = GridMapping.from_json(grid_mapping, source_name="gridmet")
+        elif isinstance(grid_mapping, dict):
+            mapping = GridMapping(grid_mapping, source_name="gridmet")
+        else:
+            # Assume it's already a GridMapping instance
+            mapping = grid_mapping
+
+        self._log.info(
+            "gridmet_mapping_loaded",
+            n_fields=mapping.n_fields,
+            n_grid_cells=mapping.n_grid_cells,
+        )
+
         # Default variables
         if variables is None:
-            variables = ["eto", "etr", "prcp", "tmin", "tmax", "srad", "vpd", "ea", "u2"]
+            variables = ["eto", "etr", "prcp", "tmin", "tmax", "srad", "ea", "u2"]
             if include_corrected:
                 variables.extend(["eto_corr", "etr_corr"])
 
@@ -270,20 +310,16 @@ class Ingestor(Component):
                 if path in self._state.root and not overwrite:
                     self._log.debug("skipping_existing", path=path)
                     continue
-                if path in self._state.root:
-                    self._safe_delete_path(path)
 
-                # Load data from Parquet files
-                var_data = self._load_met_variable(
-                    source_dir, var, "gridmet", field_mapping
-                )
+                # Load data from Parquet files using grid mapping
+                var_data = self._load_gridded_variable(source_dir, var, mapping)
 
                 if var_data.empty:
                     self._log.debug("no_data_for_variable", variable=var)
                     continue
 
                 # Write to container
-                records = self._write_timeseries(path, var_data, None)
+                records = self._write_timeseries(path, var_data, None, overwrite=overwrite)
                 total_records += records
                 fields_processed.update(var_data.columns)
 
@@ -296,7 +332,11 @@ class Ingestor(Component):
                 target="meteorology/gridmet",
                 source=str(source_dir),
                 source_format="parquet",
-                params={"variables": variables, "include_corrected": include_corrected},
+                params={
+                    "variables": variables,
+                    "include_corrected": include_corrected,
+                    "grid_cells": mapping.n_grid_cells,
+                },
                 fields_affected=list(fields_processed),
                 records_count=total_records,
             )
@@ -373,8 +413,6 @@ class Ingestor(Component):
                 if path in self._state.root and not overwrite:
                     self._log.debug("skipping_existing", path=path)
                     continue
-                if path in self._state.root:
-                    self._safe_delete_path(path)
 
                 # Extract variable data from site_data using normalized name
                 var_df = self._extract_variable_from_site_data(site_data, normalized_var)
@@ -384,7 +422,7 @@ class Ingestor(Component):
                     continue
 
                 # Write to container
-                records = self._write_timeseries(path, var_df, None)
+                records = self._write_timeseries(path, var_df, None, overwrite=overwrite)
                 total_records += records
                 fields_processed.update(var_df.columns)
 
@@ -438,8 +476,6 @@ class Ingestor(Component):
         ) as ctx:
             if path in self._state.root and not overwrite:
                 raise ValueError(f"Data exists at {path}. Use overwrite=True.")
-            if path in self._state.root:
-                self._safe_delete_path(path)
 
             # Load SWE data from CSV extracts
             swe_data = self._load_snodas_extracts(source_dir, uid_column, fields)
@@ -456,7 +492,7 @@ class Ingestor(Component):
                 )
 
             # Write to container
-            records = self._write_timeseries(path, swe_data, fields)
+            records = self._write_timeseries(path, swe_data, fields, overwrite=overwrite)
 
             ctx["records_processed"] = records
             ctx["fields_processed"] = len(swe_data.columns)
@@ -485,11 +521,11 @@ class Ingestor(Component):
         self,
         lulc_csv: Optional[Union[str, Path]] = None,
         soils_csv: Optional[Union[str, Path]] = None,
-        irrigation_csv: Optional[Union[str, Path]] = None,
+        irr_csv: Optional[Union[str, Path]] = None,
         location_csv: Optional[Union[str, Path]] = None,
         uid_column: str = "FID",
-        lulc_column: str = "MODIS_LC",
-        extra_lulc_column: Optional[str] = "glcland10",
+        lulc_column: str = "modis_lc",
+        extra_lulc_column: Optional[str] = "glc10_lc",
         overwrite: bool = False,
     ) -> "ProvenanceEvent":
         """
@@ -502,11 +538,11 @@ class Ingestor(Component):
         Args:
             lulc_csv: CSV with land use/land cover data
             soils_csv: CSV with soil properties (AWC, clay, sand, ksat)
-            irrigation_csv: CSV with irrigation fraction data
+            irr_csv: CSV with irrigation fraction data
             location_csv: CSV with location data (lat, lon, elevation)
             uid_column: Column name for field UID in CSVs
-            lulc_column: Column name for LULC code
-            extra_lulc_column: Optional column for secondary LULC (e.g., glcland10)
+            lulc_column: Column name for LULC code (default: modis_lc)
+            extra_lulc_column: Column for secondary LULC (default: glc10_lc)
             overwrite: If True, replace existing data
 
         Returns:
@@ -529,7 +565,7 @@ class Ingestor(Component):
                     uid_column,
                     lulc_column,
                     extra_lulc_column,
-                    irrigation_csv,
+                    irr_csv,
                     overwrite,
                 )
                 properties_ingested.append("land_cover")
@@ -542,10 +578,10 @@ class Ingestor(Component):
                 properties_ingested.append("soils")
 
             # Process irrigation
-            if irrigation_csv:
-                irrigation_csv = Path(irrigation_csv)
-                sources.append(str(irrigation_csv))
-                self._ingest_irrigation(irrigation_csv, uid_column, overwrite)
+            if irr_csv:
+                irr_csv = Path(irr_csv)
+                sources.append(str(irr_csv))
+                self._ingest_irrigation(irr_csv, uid_column, overwrite)
                 properties_ingested.append("irrigation")
 
             # Process location
@@ -902,6 +938,7 @@ class Ingestor(Component):
         path: str,
         data: pd.DataFrame,
         fields: Optional[List[str]],
+        overwrite: bool = False,
     ) -> int:
         """
         Write time series DataFrame to container Zarr array.
@@ -910,6 +947,7 @@ class Ingestor(Component):
             path: Target path in container
             data: DataFrame with DatetimeIndex and field columns
             fields: Optional field filter
+            overwrite: If True, overwrite existing array
 
         Returns:
             Number of non-NaN values written
@@ -917,7 +955,7 @@ class Ingestor(Component):
         import xarray as xr
 
         # Create the array
-        arr = self._state.create_timeseries_array(path)
+        arr = self._state.create_timeseries_array(path, overwrite=overwrite)
 
         # Align data to container grid
         # Reindex to container time and field dimensions
@@ -943,57 +981,59 @@ class Ingestor(Component):
 
         return int(np.count_nonzero(~np.isnan(aligned.values.astype(float))))
 
-    def _load_met_variable(
+    def _load_gridded_variable(
         self,
         source_dir: Path,
         variable: str,
-        source: str,
-        field_mapping: Optional[Dict[str, str]],
+        grid_mapping: "GridMapping",
     ) -> pd.DataFrame:
         """
-        Load a meteorology variable from Parquet files.
+        Load a variable from grid-cell-based parquet files.
 
-        Expects files named {field_uid}.parquet with the variable as a column.
+        Replicates timeseries across all fields mapped to each grid cell.
+        This handles the case where multiple fields share the same GridMET
+        cell (or other coarse-resolution grid).
+
+        Args:
+            source_dir: Directory containing {grid_id}.parquet files
+            variable: Variable name to extract (e.g., 'eto', 'tmax')
+            grid_mapping: GridMapping with UID→grid_id relationships
+
+        Returns:
+            DataFrame with columns=field_uids, index=dates
+
+        Raises:
+            ValueError: If legacy MultiIndex format is detected
         """
+        from .grid_mapping import GridMapping
+
         result_series = []
+        valid_uids = set(self._state._uid_to_index.keys())
 
-        parquet_files = list(source_dir.glob("*.parquet"))
+        # Filter mapping to only UIDs in this container
+        mapping = grid_mapping.filter_to_valid_uids(valid_uids)
 
-        for pq_file in parquet_files:
-            # Determine field UID
-            field_uid = pq_file.stem
-            if field_mapping and field_uid in field_mapping:
-                field_uid = field_mapping[field_uid]
+        if not mapping.unique_grid_ids:
+            self._log.warning(
+                "no_grid_cells_mapped",
+                n_container_fields=len(valid_uids),
+                n_mapping_fields=len(grid_mapping),
+            )
+            return pd.DataFrame()
 
-            if field_uid not in self._state._uid_to_index:
+        for grid_id in mapping.unique_grid_ids:
+            # Find parquet file for this grid cell
+            pq_file = source_dir / f"{grid_id}.parquet"
+            if not pq_file.exists():
+                self._log.debug(
+                    "grid_file_missing",
+                    grid_id=grid_id,
+                    file=str(pq_file),
+                )
                 continue
 
             try:
                 df = pd.read_parquet(pq_file)
-
-                # Handle MultiIndex columns
-                if isinstance(df.columns, pd.MultiIndex):
-                    # Find the variable in the MultiIndex
-                    matching_cols = [
-                        c for c in df.columns
-                        if (len(c) > 2 and c[2] == variable) or
-                           (len(c) > 0 and c[0] == variable)
-                    ]
-                    if matching_cols:
-                        series = df[matching_cols[0]]
-                    else:
-                        continue
-                elif variable in df.columns:
-                    series = df[variable]
-                else:
-                    continue
-
-                series.name = field_uid
-                if not isinstance(series.index, pd.DatetimeIndex):
-                    series.index = pd.DatetimeIndex(series.index)
-
-                result_series.append(series)
-
             except Exception as e:
                 self._log.debug(
                     "parquet_read_error",
@@ -1003,11 +1043,39 @@ class Ingestor(Component):
                 )
                 continue
 
+            # Require simple column format (no legacy MultiIndex support)
+            if isinstance(df.columns, pd.MultiIndex):
+                raise ValueError(
+                    f"Legacy MultiIndex format not supported. "
+                    f"Re-download gridmet data with simple column format: {pq_file}"
+                )
+
+            if variable not in df.columns:
+                self._log.debug(
+                    "variable_not_in_file",
+                    variable=variable,
+                    file=str(pq_file),
+                    available=list(df.columns),
+                )
+                continue
+
+            series = df[variable]
+
+            if not isinstance(series.index, pd.DatetimeIndex):
+                series.index = pd.DatetimeIndex(series.index)
+
+            # Replicate for all UIDs mapped to this grid cell
+            for uid in mapping.get_uids_for_grid(grid_id):
+                if uid not in valid_uids:
+                    continue
+                uid_series = series.copy()
+                uid_series.name = uid
+                result_series.append(uid_series)
+
         if not result_series:
             return pd.DataFrame()
 
-        result = pd.concat(result_series, axis=1)
-        return result.sort_index()
+        return pd.concat(result_series, axis=1).sort_index()
 
     def _parse_era5_csvs(
         self,

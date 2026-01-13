@@ -48,6 +48,7 @@ class ProjectConfig:
         # IDs
         self.feature_id_col = None
         self.gridmet_mapping_index_col = None
+        self.gridmet_id_col = None  # Column name for GridMET cell ID (GFID)
         self.state_col = None
 
         # Runtime settings
@@ -215,6 +216,7 @@ class ProjectConfig:
         self.feature_id_col = ids_conf.get('feature_id')
         # Read from nested [ids.conus] if available, else fall back to flat
         self.gridmet_mapping_index_col = ids_conus_conf.get('gridmet_join_id') or ids_conf.get('gridmet_join_id')
+        self.gridmet_id_col = ids_conus_conf.get('gridmet_id') or ids_conf.get('gridmet_id', 'GFID')
         self.state_col = ids_conus_conf.get('state_col') or ids_conf.get('state_col')
 
         # ERA5-Land config
