@@ -202,7 +202,7 @@ class ExportConfig:
     output: Path = None
     validate: bool = True
     etf_model: str = "ssebop"
-    use_fused_ndvi: bool = True
+    use_merged_ndvi: bool = True
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ExportConfig":
@@ -211,7 +211,7 @@ class ExportConfig:
             output=Path(data["output"]) if data.get("output") else None,
             validate=data.get("validate", True),
             etf_model=data.get("etf_model", "ssebop"),
-            use_fused_ndvi=data.get("use_fused_ndvi", True),
+            use_merged_ndvi=data.get("use_merged_ndvi", True),
         )
 
 

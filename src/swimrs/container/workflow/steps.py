@@ -417,7 +417,7 @@ class ExportStep(WorkflowStep):
 
     output_path: Path
     etf_model: str = "ssebop"
-    use_fused_ndvi: bool = True
+    use_merged_ndvi: bool = True
     validate: bool = True
 
     @property
@@ -439,7 +439,7 @@ class ExportStep(WorkflowStep):
             event = container.export_prepped_input_json(
                 output_path=self.output_path,
                 etf_model=self.etf_model,
-                use_fused_ndvi=self.use_fused_ndvi,
+                use_merged_ndvi=self.use_merged_ndvi,
                 validate=self.validate,
             )
             duration = time.perf_counter() - start

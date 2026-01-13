@@ -168,7 +168,7 @@ class WorkflowEngine:
                 ExportStep(
                     output_path=self.config.resolve_path(self.config.export.output),
                     etf_model=self.config.export.etf_model,
-                    use_fused_ndvi=self.config.export.use_fused_ndvi,
+                    use_merged_ndvi=self.config.export.use_merged_ndvi,
                     validate=self.config.export.validate,
                 )
             )

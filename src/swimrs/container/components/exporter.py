@@ -62,7 +62,7 @@ class Exporter(Component):
         met_source: str = "gridmet",
         instrument: str = "landsat",
         fields: Optional[List[str]] = None,
-        use_fused_ndvi: bool = True,
+        use_merged_ndvi: bool = True,
         irr_threshold: float = 0.1,
         include_switched_etf: bool = True,
         validate: bool = False,
@@ -84,7 +84,7 @@ class Exporter(Component):
             met_source: Meteorology source
             instrument: NDVI instrument
             fields: Optional list of field UIDs (default: all)
-            use_fused_ndvi: Use combined Landsat+Sentinel NDVI
+            use_merged_ndvi: Use combined Landsat+Sentinel NDVI
             irr_threshold: Threshold for irrigation classification
             include_switched_etf: Apply ETf mask switching logic
             validate: If True, filter fields by validation rules
@@ -130,7 +130,7 @@ class Exporter(Component):
                 masks,
                 met_source,
                 instrument,
-                use_fused_ndvi,
+                use_merged_ndvi,
                 irr_threshold,
                 include_switched_etf,
             )
@@ -156,7 +156,7 @@ class Exporter(Component):
                     "masks": list(masks),
                     "met_source": met_source,
                     "instrument": instrument,
-                    "use_fused_ndvi": use_fused_ndvi,
+                    "use_merged_ndvi": use_merged_ndvi,
                     "irr_threshold": irr_threshold,
                 },
                 fields_affected=target_fields,
@@ -636,7 +636,7 @@ class Exporter(Component):
         masks: Tuple[str, ...],
         met_source: str,
         instrument: str,
-        use_fused_ndvi: bool,
+        use_merged_ndvi: bool,
         irr_threshold: float,
         include_switched_etf: bool,
     ) -> Dict[str, Any]:
@@ -658,7 +658,7 @@ class Exporter(Component):
         time_series = {}
 
         # Get required data
-        ds = self._build_export_dataset(fields, etf_model, masks, met_source, instrument, use_fused_ndvi)
+        ds = self._build_export_dataset(fields, etf_model, masks, met_source, instrument, use_merged_ndvi)
 
         if ds is None:
             output["order"] = []
@@ -780,7 +780,7 @@ class Exporter(Component):
         masks: Tuple[str, ...],
         met_source: str,
         instrument: str,
-        use_fused_ndvi: bool,
+        use_merged_ndvi: bool,
     ) -> Optional["xr.Dataset"]:
         """Build dataset with all required variables for export."""
         import xarray as xr
@@ -817,10 +817,10 @@ class Exporter(Component):
         # only have inv_irr data, irrigated stations only have irr data)
         ndvi_data = None
         for mask in masks:
-            if use_fused_ndvi:
-                fused_path = f"derived/combined_ndvi/{mask}"
+            if use_merged_ndvi:
+                merged_path = f"derived/merged_ndvi/{mask}"
                 ndvi_path = f"remote_sensing/ndvi/{instrument}/{mask}"
-                path = fused_path if fused_path in self._state.root else ndvi_path
+                path = merged_path if merged_path in self._state.root else ndvi_path
             else:
                 path = f"remote_sensing/ndvi/{instrument}/{mask}"
 

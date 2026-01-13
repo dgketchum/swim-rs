@@ -26,11 +26,11 @@ class Calculator(Component):
     Component for computing derived data products.
 
     Provides methods for computing dynamics (irrigation detection,
-    groundwater subsidy, K-parameters) and fusing multi-sensor NDVI.
+    groundwater subsidy, K-parameters) and merging multi-sensor NDVI.
 
     Example:
         container.compute.dynamics(etf_model="ssebop")
-        container.compute.fused_ndvi()
+        container.compute.merged_ndvi()
     """
 
     def __init__(self, state: "ContainerState", container=None):
@@ -43,28 +43,33 @@ class Calculator(Component):
         """
         super().__init__(state, container)
 
-    def fused_ndvi(
+    def merged_ndvi(
         self,
-        masks: Tuple[str, ...] = ("irr", "inv_irr", "no_mask"),
-        instrument1: str = "landsat",
-        instrument2: str = "sentinel",
-        min_pairs: int = 20,
-        window_days: int = 5,
+        masks: Tuple[str, ...] = ("irr", "inv_irr"),
+        instruments: Tuple[str, ...] = ("landsat", "sentinel"),
+        preference_order: Tuple[str, ...] = ("landsat", "sentinel"),
         overwrite: bool = False,
     ) -> "ProvenanceEvent":
         """
-        Compute fused NDVI by combining multiple sensors.
+        Merge harmonized sensor time series into a unified NDVI dataset.
 
-        Uses quantile mapping to harmonize NDVI from different sensors
-        (typically Landsat and Sentinel) into a combined time series
-        with better temporal coverage.
+        Systematic spectral differences between sensors are handled during
+        GEE extraction via Spectral Bandpass Adjustment Factors (SBAF).
+        This method performs a simple chronological merge, combining
+        observations from multiple sensors into a denser time series.
+
+        References:
+            Roy, D.P., et al. (2016). Characterization of Landsat-7 to Landsat-8
+            reflectance and NDVI differences. Remote Sensing of Environment.
+
+            Claverie, M., et al. (2018). The Harmonized Landsat and Sentinel-2
+            (HLS) product. Remote Sensing of Environment.
 
         Args:
-            masks: Mask types to process
-            instrument1: Primary instrument (base for fusion)
-            instrument2: Secondary instrument to fuse
-            min_pairs: Minimum paired observations for quantile mapping
-            window_days: Time window for finding paired observations
+            masks: Mask types to process (e.g., "irr", "inv_irr")
+            instruments: Instruments to merge (e.g., "landsat", "sentinel")
+            preference_order: When multiple sensors have data for the same date,
+                prefer sensors in this order (default: Landsat > Sentinel)
             overwrite: If True, replace existing results
 
         Returns:
@@ -73,16 +78,15 @@ class Calculator(Component):
         self._ensure_writable()
 
         with self._track_operation(
-            "compute_fused_ndvi",
-            target="derived/combined_ndvi",
-            instrument1=instrument1,
-            instrument2=instrument2,
+            "compute_merged_ndvi",
+            target="derived/merged_ndvi",
+            instruments=instruments,
         ) as ctx:
             total_records = 0
             fields_processed = set()
 
             for mask in masks:
-                path = f"derived/combined_ndvi/{mask}"
+                path = f"derived/merged_ndvi/{mask}"
 
                 if path in self._state.root and not overwrite:
                     self._log.debug("skipping_existing", path=path)
@@ -90,45 +94,41 @@ class Calculator(Component):
                 if path in self._state.root:
                     self._safe_delete_path(path)
 
-                # Load NDVI from both instruments
-                path1 = f"remote_sensing/ndvi/{instrument1}/{mask}"
-                path2 = f"remote_sensing/ndvi/{instrument2}/{mask}"
+                # Collect NDVI from all available instruments
+                sensor_data = []
+                for instrument in instruments:
+                    inst_path = f"remote_sensing/ndvi/{instrument}/{mask}"
+                    if inst_path in self._state.root:
+                        da = self._state.get_xarray(inst_path)
+                        sensor_data.append((instrument, da))
 
-                if path1 not in self._state.root:
-                    self._log.warning("missing_source", path=path1)
+                if not sensor_data:
+                    self._log.warning("no_ndvi_sources", mask=mask)
                     continue
 
-                # Get data as xarray
-                da1 = self._state.get_xarray(path1)
-
-                # Check if second instrument exists
-                if path2 in self._state.root:
-                    da2 = self._state.get_xarray(path2)
-                    # Apply quantile mapping to harmonize
-                    fused = self._fuse_sensors(da1, da2, min_pairs, window_days)
+                # Merge sensors chronologically
+                if len(sensor_data) == 1:
+                    merged = sensor_data[0][1]
                 else:
-                    # Just use first instrument
-                    fused = da1
+                    merged = self._merge_sensors(sensor_data, preference_order)
 
                 # Write result
                 arr = self._state.create_timeseries_array(path)
-                arr[:, :] = fused.values
+                arr[:, :] = merged.values
 
-                total_records += int(np.count_nonzero(~np.isnan(fused.values)))
-                fields_processed.update(fused.coords["site"].values)
+                total_records += int(np.count_nonzero(~np.isnan(merged.values)))
+                fields_processed.update(merged.coords["site"].values)
 
             ctx["records_processed"] = total_records
             ctx["fields_processed"] = len(fields_processed)
 
             event = self._state.provenance.record(
                 "compute",
-                target="derived/combined_ndvi",
+                target="derived/merged_ndvi",
                 params={
                     "masks": list(masks),
-                    "instrument1": instrument1,
-                    "instrument2": instrument2,
-                    "min_pairs": min_pairs,
-                    "window_days": window_days,
+                    "instruments": list(instruments),
+                    "preference_order": list(preference_order),
                 },
                 fields_affected=list(fields_processed),
                 records_count=total_records,
@@ -138,6 +138,11 @@ class Calculator(Component):
             self._state.refresh()
 
             return event
+
+    # Keep fused_ndvi as alias for backward compatibility
+    def fused_ndvi(self, *args, **kwargs) -> "ProvenanceEvent":
+        """Deprecated: Use merged_ndvi() instead."""
+        return self.merged_ndvi(*args, **kwargs)
 
     def dynamics(
         self,
@@ -210,7 +215,7 @@ class Calculator(Component):
             target_fields = fields if fields else self._state.field_uids
 
             # Check for fused NDVI and warn if missing
-            fused_path = f"derived/combined_ndvi/{masks[0]}"
+            fused_path = f"derived/merged_ndvi/{masks[0]}"
             if fused_path not in self._state.root:
                 self._log.warning(
                     "fused_ndvi_missing",
@@ -324,65 +329,51 @@ class Calculator(Component):
     # Helper Methods
     # -------------------------------------------------------------------------
 
-    def _fuse_sensors(
+    def _merge_sensors(
         self,
-        da1: "xr.DataArray",
-        da2: "xr.DataArray",
-        min_pairs: int,
-        window_days: int,
+        sensor_data: List[Tuple[str, "xr.DataArray"]],
+        preference_order: Tuple[str, ...],
     ) -> "xr.DataArray":
         """
-        Fuse two sensor DataArrays using quantile mapping.
+        Merge multiple sensor DataArrays chronologically.
 
-        For each site, finds paired observations within window_days
-        and uses them to build a quantile mapping from sensor2 to sensor1.
+        Since sensors are already harmonized via SBAF during extraction,
+        this performs a simple merge. When multiple sensors have data
+        for the same date, the preferred sensor's value is used.
+
+        Args:
+            sensor_data: List of (instrument_name, DataArray) tuples
+            preference_order: Instruments in order of preference
+
+        Returns:
+            Merged DataArray with values from all sensors
         """
         import xarray as xr
-        from scipy.stats import percentileofscore
 
-        # Result array starts as copy of primary sensor
-        result = da1.copy()
+        # Start with the first sensor's data as base
+        base_name, base_da = sensor_data[0]
+        result = base_da.copy()
 
-        for site in da1.coords["site"].values:
-            s1 = da1.sel(site=site).to_pandas().dropna()
-            s2 = da2.sel(site=site).to_pandas().dropna()
+        # Build preference ranking
+        pref_rank = {inst: i for i, inst in enumerate(preference_order)}
 
-            if s1.empty or s2.empty:
-                continue
+        for site in result.coords["site"].values:
+            for time in result.coords["time"].values:
+                # Collect values from all sensors for this point
+                values = []
+                for inst_name, da in sensor_data:
+                    try:
+                        val = da.sel(site=site, time=time).values
+                        if not np.isnan(val):
+                            rank = pref_rank.get(inst_name, len(pref_rank))
+                            values.append((rank, val, inst_name))
+                    except (KeyError, IndexError):
+                        continue
 
-            # Find paired observations within tolerance
-            s1_df = s1.rename("val1").rename_axis("time").reset_index()
-            s2_df = s2.rename("val2").rename_axis("time").reset_index()
-
-            paired = pd.merge_asof(
-                s1_df.sort_values("time"),
-                s2_df.sort_values("time"),
-                on="time",
-                direction="nearest",
-                tolerance=pd.Timedelta(days=window_days),
-            )
-            paired = paired.dropna(subset=["val1", "val2"])
-
-            if len(paired) < min_pairs:
-                # Not enough pairs, just fill with sensor2 values directly
-                for t in s2.index:
-                    if pd.isna(result.sel(site=site, time=t).values):
-                        result.loc[dict(site=site, time=t)] = s2[t]
-                continue
-
-            # Build quantile mapping
-            train_vals1 = paired["val1"].values
-            train_vals2 = paired["val2"].values
-
-            # Adjust sensor2 values and fill gaps in sensor1
-            for t in s2.index:
-                if pd.isna(result.sel(site=site, time=t).values):
-                    # Apply quantile mapping
-                    val2 = s2[t]
-                    pctl = percentileofscore(train_vals2, val2, kind="weak")
-                    pctl = np.clip(pctl, 0, 100)
-                    adjusted = np.percentile(train_vals1, pctl)
-                    result.loc[dict(site=site, time=t)] = adjusted
+                if values:
+                    # Use value from highest preference sensor
+                    values.sort(key=lambda x: x[0])
+                    result.loc[dict(site=site, time=time)] = values[0][1]
 
         return result
 
@@ -415,7 +406,7 @@ class Calculator(Component):
         ndvi_data = None
         for mask in masks:
             # Try fused NDVI first, then raw
-            fused_path = f"derived/combined_ndvi/{mask}"
+            fused_path = f"derived/merged_ndvi/{mask}"
             ndvi_path = f"remote_sensing/ndvi/{instruments[0]}/{mask}"
 
             path = fused_path if fused_path in self._state.root else ndvi_path
