@@ -197,8 +197,13 @@ class DirectoryStoreProvider(StorageProvider):
         """Check if the directory exists and is a zarr store."""
         if not self._path.exists():
             return False
-        # Check for .zgroup or .zattrs to confirm it's a zarr store
-        return (self._path / ".zgroup").exists() or (self._path / ".zattrs").exists()
+        # Check for zarr files to confirm it's a zarr store
+        # zarr 2.x uses .zgroup/.zattrs, zarr 3.x uses zarr.json
+        return (
+            (self._path / ".zgroup").exists()
+            or (self._path / ".zattrs").exists()
+            or (self._path / "zarr.json").exists()
+        )
 
     def delete(self) -> None:
         """Delete the entire directory and any associated lock file."""

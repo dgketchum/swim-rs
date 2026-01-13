@@ -69,6 +69,7 @@ class StorageProviderFactory:
         cls,
         uri: Union[str, Path],
         mode: str = "r",
+        storage: str = "auto",
         **kwargs: Any,
     ) -> StorageProvider:
         """
@@ -82,6 +83,10 @@ class StorageProviderFactory:
                 - GCS URI: "gs://bucket/key"
                 - Memory: "memory://name"
             mode: Access mode ('r', 'r+', 'a', 'w')
+            storage: Storage type for local paths ("auto", "directory", "zip").
+                - "auto" (default): auto-detect from path, defaults to directory for new
+                - "directory": explicit directory store
+                - "zip": explicit zip store
             **kwargs: Additional arguments passed to the provider
 
         Returns:
@@ -92,7 +97,7 @@ class StorageProviderFactory:
         """
         # Handle Path objects
         if isinstance(uri, Path):
-            return cls._from_local_path(uri, mode, **kwargs)
+            return cls._from_local_path(uri, mode, storage=storage, **kwargs)
 
         # Parse URI
         uri_str = str(uri)
@@ -110,12 +115,12 @@ class StorageProviderFactory:
 
         if scheme == "":
             # No scheme - treat as local path
-            return cls._from_local_path(Path(uri_str), mode, **kwargs)
+            return cls._from_local_path(Path(uri_str), mode, storage=storage, **kwargs)
 
         elif scheme == "file":
             # File URI
             path = Path(parsed.path)
-            return cls._from_local_path(path, mode, **kwargs)
+            return cls._from_local_path(path, mode, storage=storage, **kwargs)
 
         elif scheme == "s3":
             # S3 URI
@@ -149,6 +154,7 @@ class StorageProviderFactory:
         cls,
         path: Path,
         mode: str,
+        storage: str = "auto",
         force_zip: bool = False,
         force_directory: bool = False,
         **kwargs: Any,
@@ -157,53 +163,52 @@ class StorageProviderFactory:
         Create local storage provider from path.
 
         Selection logic:
-        1. If force_zip=True: ZipStoreProvider
-        2. If force_directory=True: DirectoryStoreProvider
-        3. If path ends with .swim or .zip: ZipStoreProvider
-        4. If path ends with / or .zarr: DirectoryStoreProvider
-        5. If path exists and is a directory: DirectoryStoreProvider
-        6. If path exists and is a file: ZipStoreProvider
-        7. Default for creation: infer from extension or use ZipStoreProvider
+        1. If storage="zip" or force_zip=True: ZipStoreProvider
+        2. If storage="directory" or force_directory=True: DirectoryStoreProvider
+        3. If storage="auto" (default):
+           a. If path exists as file: ZipStoreProvider
+           b. If path exists as directory: DirectoryStoreProvider
+           c. If path doesn't exist: DirectoryStoreProvider (for development)
 
         Args:
             path: Local filesystem path
             mode: Access mode
-            force_zip: Force zip storage regardless of path
-            force_directory: Force directory storage regardless of path
+            storage: Storage type ("auto", "directory", "zip")
+            force_zip: Force zip storage (deprecated, use storage="zip")
+            force_directory: Force directory storage (deprecated, use storage="directory")
             **kwargs: Additional arguments (ignored for local)
 
         Returns:
             StorageProvider: ZipStoreProvider or DirectoryStoreProvider
         """
-        if force_zip and force_directory:
-            raise ValueError("Cannot specify both force_zip and force_directory")
-
+        # Handle deprecated force_* parameters
         if force_zip:
-            return ZipStoreProvider(path, mode=mode)
-
+            storage = "zip"
         if force_directory:
-            return DirectoryStoreProvider(path, mode=mode)
+            storage = "directory"
 
-        # Infer from extension
-        suffix = path.suffix.lower()
-        name = path.name.lower()
+        if storage not in ("auto", "directory", "zip"):
+            raise ValueError(
+                f"Invalid storage type: {storage}. "
+                "Must be 'auto', 'directory', or 'zip'."
+            )
 
-        if suffix in (".swim", ".zip"):
+        # Explicit storage selection
+        if storage == "zip":
             return ZipStoreProvider(path, mode=mode)
-
-        if suffix == ".zarr" or name.endswith("/"):
+        if storage == "directory":
             return DirectoryStoreProvider(path, mode=mode)
 
-        # If path exists, check if it's a file or directory
+        # Auto-detection: check if path exists
         if path.exists():
-            if path.is_dir():
-                return DirectoryStoreProvider(path, mode=mode)
-            else:
+            if path.is_file():
                 return ZipStoreProvider(path, mode=mode)
+            elif path.is_dir():
+                return DirectoryStoreProvider(path, mode=mode)
 
-        # For new containers, default to zip storage with .swim extension
-        # unless the path already suggests directory storage
-        return ZipStoreProvider(path, mode=mode)
+        # New path: default to DirectoryStore for development
+        # DirectoryStore is more resilient and easier to debug
+        return DirectoryStoreProvider(path, mode=mode)
 
     @classmethod
     def for_testing(cls, name: str = "test") -> StorageProvider:

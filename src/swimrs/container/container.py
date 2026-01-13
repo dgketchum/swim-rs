@@ -36,6 +36,7 @@ from swimrs.container.storage import (
     StorageProvider,
     StorageProviderFactory,
     ZipStoreProvider,
+    DirectoryStoreProvider,
 )
 from swimrs.container.components import (
     Ingestor,
@@ -275,6 +276,7 @@ class SwimContainer:
         end_date: Union[str, datetime],
         project_name: str = None,
         overwrite: bool = False,
+        storage: str = "auto",
         **storage_kwargs: Any,
     ) -> "SwimContainer":
         """
@@ -291,19 +293,33 @@ class SwimContainer:
             end_date: End of analysis period
             project_name: Optional project name
             overwrite: If True, overwrite existing storage
+            storage: Storage backend for local paths:
+                - "auto" (default): directory store (better for development)
+                - "directory": explicit directory store
+                - "zip": explicit zip store (better for sharing)
             **storage_kwargs: Additional arguments passed to storage provider
 
         Returns:
             New SwimContainer instance
 
         Example:
-            # Local file
+            # Local directory store (default)
             container = SwimContainer.create(
                 "project.swim",
                 fields_shapefile="fields.shp",
                 uid_column="FID",
                 start_date="2016-01-01",
                 end_date="2023-12-31"
+            )
+
+            # Explicit zip store for sharing
+            container = SwimContainer.create(
+                "project.swim",
+                fields_shapefile="fields.shp",
+                uid_column="FID",
+                start_date="2016-01-01",
+                end_date="2023-12-31",
+                storage="zip"
             )
 
             # S3
@@ -326,18 +342,33 @@ class SwimContainer:
                 path = path.with_suffix(cls.EXTENSION)
             uri_str = str(path)
 
-        # Create storage provider for write mode
-        provider = StorageProviderFactory.from_uri(uri_str, mode="w", **storage_kwargs)
+            # Handle overwrite BEFORE creating provider so auto-detection
+            # uses the default (DirectoryStore) instead of the existing format
+            if overwrite and path.exists():
+                import shutil
+                if path.is_file():
+                    path.unlink()
+                    # Also remove lock file if present
+                    lock_path = Path(str(path) + ".lock")
+                    if lock_path.exists():
+                        lock_path.unlink()
+                elif path.is_dir():
+                    shutil.rmtree(path)
+                    lock_path = Path(str(path) + ".lock")
+                    if lock_path.exists():
+                        lock_path.unlink()
 
-        # Check for existing container
+        # Create storage provider for write mode
+        provider = StorageProviderFactory.from_uri(
+            uri_str, mode="w", storage=storage, **storage_kwargs
+        )
+
+        # Check for existing container (only relevant if overwrite=False)
         if provider.exists():
-            if overwrite:
-                provider.delete()
-            else:
-                raise FileExistsError(
-                    f"Container already exists: {provider.uri}. "
-                    "Use overwrite=True to replace."
-                )
+            raise FileExistsError(
+                f"Container already exists: {provider.uri}. "
+                "Use overwrite=True to replace."
+            )
 
         # Parse dates
         if isinstance(start_date, str):
@@ -726,6 +757,142 @@ class SwimContainer:
         """Mark the container as having unsaved changes."""
         self._modified = True
 
+    # -------------------------------------------------------------------------
+    # Pack / Unpack Methods
+    # -------------------------------------------------------------------------
+
+    def pack(self, output_path: Union[str, Path]) -> Path:
+        """
+        Pack container to zip file for sharing.
+
+        Creates a compressed copy of this container. The original
+        directory is preserved.
+
+        Args:
+            output_path: Path for output zip file (.swim extension added if missing)
+
+        Returns:
+            Path to created zip file
+
+        Raises:
+            ValueError: If container is not using DirectoryStore
+            FileExistsError: If output file already exists
+
+        Example:
+            # Create directory container
+            container = SwimContainer.create("project.swim", ...)
+
+            # Pack for sharing
+            zip_path = container.pack("project_share.swim")
+            print(f"Packed to: {zip_path}")
+        """
+        import shutil
+
+        output_path = Path(output_path)
+        if not output_path.suffix:
+            output_path = output_path.with_suffix(self.EXTENSION)
+
+        # Check if output already exists
+        if output_path.exists():
+            raise FileExistsError(
+                f"Output file already exists: {output_path}. "
+                "Delete it first or choose a different name."
+            )
+
+        # Check that we have a directory-based container
+        if not isinstance(self._provider, DirectoryStoreProvider):
+            if isinstance(self._provider, ZipStoreProvider):
+                # Already a zip - just copy
+                shutil.copy2(self._provider.location, output_path)
+                print(f"Copied zip to: {output_path}")
+                return output_path
+            else:
+                raise ValueError(
+                    "pack() is only supported for local containers. "
+                    f"Current storage type: {type(self._provider).__name__}"
+                )
+
+        # Save any pending changes first
+        if self._modified:
+            self._save_metadata()
+
+        # Create zip from directory using shutil.make_archive
+        source_dir = self._provider.location
+
+        # shutil.make_archive wants the archive name without extension
+        archive_base = str(output_path.with_suffix(""))
+
+        # Create the zip archive
+        shutil.make_archive(archive_base, "zip", source_dir)
+
+        # Rename to desired extension if not .zip
+        if output_path.suffix != ".zip":
+            created_path = Path(archive_base + ".zip")
+            created_path.rename(output_path)
+
+        print(f"Packed to: {output_path}")
+        return output_path
+
+    def unpack(self, output_path: Union[str, Path]) -> "SwimContainer":
+        """
+        Unpack zip container to directory format.
+
+        Creates a directory copy of this container. The original
+        zip file is preserved.
+
+        Args:
+            output_path: Path for output directory (.swim extension added if missing)
+
+        Returns:
+            New SwimContainer pointing to unpacked directory
+
+        Raises:
+            ValueError: If container is not using ZipStore
+            FileExistsError: If output directory already exists
+
+        Example:
+            # Open existing zip container
+            container = SwimContainer.open("project.swim")
+
+            # Unpack for development
+            dev_container = container.unpack("project_dev.swim")
+            print(f"Unpacked to: {dev_container.path}")
+        """
+        import shutil
+
+        output_path = Path(output_path)
+        if not output_path.suffix:
+            output_path = output_path.with_suffix(self.EXTENSION)
+
+        # Check if output already exists
+        if output_path.exists():
+            raise FileExistsError(
+                f"Output path already exists: {output_path}. "
+                "Delete it first or choose a different name."
+            )
+
+        # Check that we have a zip-based container
+        if not isinstance(self._provider, ZipStoreProvider):
+            if isinstance(self._provider, DirectoryStoreProvider):
+                # Already a directory - just copy
+                shutil.copytree(self._provider.location, output_path)
+                print(f"Copied directory to: {output_path}")
+                return SwimContainer.open(output_path, mode="r+")
+            else:
+                raise ValueError(
+                    "unpack() is only supported for local containers. "
+                    f"Current storage type: {type(self._provider).__name__}"
+                )
+
+        # Extract zip to directory using shutil.unpack_archive
+        source_zip = self._provider.location
+        shutil.unpack_archive(str(source_zip), str(output_path), "zip")
+
+        print(f"Unpacked to: {output_path}")
+
+        # Return new container pointing to the unpacked directory
+        return SwimContainer.open(output_path, mode="r+")
+
 
 # -------------------------------------------------------------------------
 # Convenience functions
@@ -739,6 +906,10 @@ def open_container(
     """
     Open an existing SWIM container.
 
+    Auto-detects storage format:
+    - If path is a file → ZipStore
+    - If path is a directory → DirectoryStore
+
     Args:
         uri: Location of the container:
             - Local path: "project.swim", "/path/to/project.zarr"
@@ -751,7 +922,7 @@ def open_container(
         SwimContainer instance
 
     Example:
-        # Local file
+        # Local file (auto-detects zip or directory)
         container = open_container("project.swim", mode="r+")
 
         # S3 storage
@@ -773,6 +944,7 @@ def create_container(
     end_date: Union[str, datetime],
     project_name: str = None,
     overwrite: bool = False,
+    storage: str = "auto",
     **storage_kwargs: Any,
 ) -> SwimContainer:
     """
@@ -789,19 +961,33 @@ def create_container(
         end_date: End of analysis period
         project_name: Optional project name
         overwrite: If True, overwrite existing container
+        storage: Storage backend for local paths:
+            - "auto" (default): directory store (better for development)
+            - "directory": explicit directory store
+            - "zip": explicit zip store (better for sharing)
         **storage_kwargs: Additional arguments for cloud storage providers
 
     Returns:
         New SwimContainer instance
 
     Example:
-        # Local file
+        # Local directory store (default)
         container = create_container(
             "project.swim",
             fields_shapefile="fields.shp",
             uid_column="FID",
             start_date="2017-01-01",
             end_date="2023-12-31"
+        )
+
+        # Explicit zip store for sharing
+        container = create_container(
+            "project.swim",
+            fields_shapefile="fields.shp",
+            uid_column="FID",
+            start_date="2017-01-01",
+            end_date="2023-12-31",
+            storage="zip"
         )
 
         # S3 storage
@@ -823,5 +1009,6 @@ def create_container(
         end_date=end_date,
         project_name=project_name,
         overwrite=overwrite,
+        storage=storage,
         **storage_kwargs,
     )

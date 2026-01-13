@@ -471,6 +471,7 @@ class ContainerState:
         path: str,
         dtype: str = "float32",
         fill_value: float = np.nan,
+        overwrite: bool = False,
     ) -> zarr.Array:
         """
         Create a new time series array at the given path.
@@ -479,6 +480,7 @@ class ContainerState:
             path: Full zarr path (e.g., "remote_sensing/ndvi/landsat/irr")
             dtype: Data type for the array
             fill_value: Fill value for missing data
+            overwrite: If True, overwrite existing array
 
         Returns:
             The created zarr Array
@@ -493,6 +495,7 @@ class ContainerState:
             chunks=(365, min(100, self.n_fields)),
             dtype=dtype,
             fill_value=fill_value,
+            overwrite=overwrite,
         )
         return arr
 
@@ -501,6 +504,7 @@ class ContainerState:
         path: str,
         dtype: str = "float32",
         fill_value: float = np.nan,
+        overwrite: bool = False,
     ) -> zarr.Array:
         """
         Create a new static property array at the given path.
@@ -509,6 +513,7 @@ class ContainerState:
             path: Full zarr path (e.g., "properties/soils/awc")
             dtype: Data type for the array
             fill_value: Fill value for missing data
+            overwrite: If True, overwrite existing array
 
         Returns:
             The created zarr Array
@@ -522,6 +527,7 @@ class ContainerState:
             shape=(self.n_fields,),
             chunks=(min(100, self.n_fields),),
             dtype=dtype,
+            overwrite=overwrite,
             fill_value=fill_value,
         )
         return arr
