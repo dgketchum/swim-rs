@@ -10,6 +10,9 @@ landsat = "{remote_sensing}/landsat"
 landsat_ee_data = "{landsat}/extracts"
 landsat_tables = "{landsat}/tables"
 
+sentinel = "{remote_sensing}/sentinel"
+sentinel_ee_data = "{sentinel}/extracts"
+
 met = "{data}/met_timeseries/gridmet"
 
 gis = "{data}/gis"
@@ -41,6 +44,7 @@ drive_folder = "swim"
 [ids]
 feature_id = "FID_1"
 gridmet_join_id = "GFID"
+gridmet_id = "GFID"  # Column name for GridMET cell ID in mapping shapefile
 state_col = "STATE"
 
 [misc]
