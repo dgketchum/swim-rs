@@ -10,7 +10,92 @@ CRS_TRANSFORM = [0.041666666666666664,
                  0, -0.041666666666666664,
                  49.42083333333334]
 
-import ee
+# Spectral Bandpass Adjustment Factors (SBAF) for harmonization to Landsat 8 OLI
+# References:
+#   Roy, D.P., et al. (2016). Characterization of Landsat-7 to Landsat-8
+#   reflectance and NDVI differences. Remote Sensing of Environment, 176, 163-180.
+#
+#   Claverie, M., et al. (2018). The Harmonized Landsat and Sentinel-2 (HLS)
+#   product. Remote Sensing of Environment, 219, 145-161.
+SBAF_COEFFICIENTS = {
+    # Landsat 4/5 TM and Landsat 7 ETM+ -> OLI (Roy et al., 2016)
+    'TM': {'red_slope': 0.9747, 'red_intercept': 0.0200,
+           'nir_slope': 0.9965, 'nir_intercept': 0.0150},
+    'ETM': {'red_slope': 0.9747, 'red_intercept': 0.0200,
+            'nir_slope': 0.9965, 'nir_intercept': 0.0150},
+    # Sentinel-2 MSI -> OLI (Claverie et al., 2018)
+    'MSI': {'red_slope': 0.9778, 'red_intercept': 0.0001,
+            'nir_slope': 1.0053, 'nir_intercept': -0.0135},
+    # OLI is reference - no adjustment needed
+    'OLI': {'red_slope': 1.0, 'red_intercept': 0.0,
+            'nir_slope': 1.0, 'nir_intercept': 0.0},
+}
+
+
+def harmonize_landsat_to_oli(image):
+    """Apply SBAF coefficients to harmonize Landsat TM/ETM+ to OLI reference.
+
+    Adds RED_H and NIR_H bands with harmonized reflectance values. Landsat 8/9 (OLI)
+    images pass through unchanged (coefficients are 1.0/0.0).
+
+    After landsat_c2_sr processing, all Landsat sensors have:
+    - B4 = Red band
+    - B5 = NIR band
+
+    Args:
+        image: ee.Image from landsat_c2_sr with SPACECRAFT_ID property
+
+    Returns:
+        ee.Image with added RED_H and NIR_H bands
+    """
+    spacecraft_id = ee.String(image.get('SPACECRAFT_ID'))
+
+    # Determine sensor type from spacecraft ID
+    is_tm = ee.List(['LANDSAT_4', 'LANDSAT_5']).contains(spacecraft_id)
+    is_etm = spacecraft_id.equals('LANDSAT_7')
+
+    # Select coefficients based on sensor
+    # TM and ETM+ use the same coefficients (Roy et al., 2016)
+    coef = ee.Dictionary(ee.Algorithms.If(
+        is_tm.Or(is_etm),
+        SBAF_COEFFICIENTS['TM'],
+        SBAF_COEFFICIENTS['OLI']
+    ))
+
+    red_slope = ee.Number(coef.get('red_slope'))
+    red_intercept = ee.Number(coef.get('red_intercept'))
+    nir_slope = ee.Number(coef.get('nir_slope'))
+    nir_intercept = ee.Number(coef.get('nir_intercept'))
+
+    # Apply linear transformation: harmonized = slope * original + intercept
+    red_h = image.select('B4').multiply(red_slope).add(red_intercept).rename('RED_H')
+    nir_h = image.select('B5').multiply(nir_slope).add(nir_intercept).rename('NIR_H')
+
+    return image.addBands(red_h).addBands(nir_h)
+
+
+def harmonize_sentinel_to_oli(image):
+    """Apply SBAF coefficients to harmonize Sentinel-2 MSI to OLI reference.
+
+    Adds RED_H and NIR_H bands with harmonized reflectance values.
+
+    Sentinel-2 band mapping:
+    - B4 = Red band (665nm)
+    - B8 = NIR band (842nm)
+
+    Args:
+        image: ee.Image from sentinel2_sr
+
+    Returns:
+        ee.Image with added RED_H and NIR_H bands
+    """
+    coef = SBAF_COEFFICIENTS['MSI']
+
+    # Apply linear transformation: harmonized = slope * original + intercept
+    red_h = image.select('B4').multiply(coef['red_slope']).add(coef['red_intercept']).rename('RED_H')
+    nir_h = image.select('B8').multiply(coef['nir_slope']).add(coef['nir_intercept']).rename('NIR_H')
+
+    return image.addBands(red_h).addBands(nir_h)
 
 
 def sentinel2_sr(input_img):
@@ -44,15 +129,17 @@ def sentinel2_sr(input_img):
     return image
 
 
-def sentinel2_masked(yr, roi):
+def sentinel2_masked(yr, roi, harmonize=True):
     """Return a masked Sentinel-2 SR ImageCollection for a year and ROI.
 
     Parameters
     - yr: int, year of interest.
     - roi: ee.Geometry or ee.FeatureCollection bounds.
+    - harmonize: bool, apply SBAF harmonization to OLI reference (default True).
 
     Returns
     - ee.ImageCollection of cloud-masked, reflectance-scaled optical bands.
+      If harmonize=True, includes RED_H and NIR_H bands.
     """
     start = f'{yr}-01-01'
     end_date = f'{yr + 1}-01-01'
@@ -61,6 +148,9 @@ def sentinel2_masked(yr, roi):
         .filterBounds(roi) \
         .filterDate(start, end_date) \
         .map(sentinel2_sr)
+
+    if harmonize:
+        s2_coll = s2_coll.map(harmonize_sentinel_to_oli)
 
     return s2_coll
 
@@ -121,15 +211,17 @@ def landsat_c2_sr(input_img):
     return image
 
 
-def landsat_masked(yr, roi):
+def landsat_masked(yr, roi, harmonize=True):
     """Return cloud-masked Landsat C2 SR ImageCollection merged across sensors.
 
     Parameters
     - yr: int, year of interest.
     - roi: ee.Geometry or ee.FeatureCollection bounds.
+    - harmonize: bool, apply SBAF harmonization to OLI reference (default True).
 
     Returns
     - ee.ImageCollection with scaled/renamed bands and cloud/saturation mask.
+      If harmonize=True, includes RED_H and NIR_H bands for consistent NDVI.
     """
     start = '{}-01-01'.format(yr)
     end_date = '{}-01-01'.format(yr + 1)
@@ -146,6 +238,9 @@ def landsat_masked(yr, roi):
         roi).filterDate(start, end_date).map(landsat_c2_sr)
 
     lsSR_masked = ee.ImageCollection(l7_coll.merge(l8_coll).merge(l9_coll).merge(l5_coll).merge(l4_coll))
+
+    if harmonize:
+        lsSR_masked = lsSR_masked.map(harmonize_landsat_to_oli)
 
     return lsSR_masked
 

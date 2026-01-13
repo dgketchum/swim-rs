@@ -74,7 +74,8 @@ def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_t
                               '{}-12-31'.format(year)).select('classification').mosaic()
     irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
 
-    coll = landsat_masked(year, feature_coll).map(lambda x: x.normalizedDifference(['B5', 'B4']))
+    # Use harmonized bands (SBAF-adjusted to OLI reference)
+    coll = landsat_masked(year, feature_coll, harmonize=True).map(lambda x: x.normalizedDifference(['NIR_H', 'RED_H']))
     scenes = coll.aggregate_histogram('system:index').getInfo()
 
     for img_id in scenes:
@@ -211,10 +212,11 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
             polygon = ee.Geometry.Polygon([[c[0], c[1]] for c in row['geometry'].exterior.coords])
             fc = ee.FeatureCollection(ee.Feature(polygon, {feature_id: site}))
 
+            # Use harmonized bands (SBAF-adjusted to OLI reference)
             if satellite == 'landsat':
-                coll = landsat_masked(year, fc).map(lambda x: x.normalizedDifference(['B5', 'B4']))
+                coll = landsat_masked(year, fc, harmonize=True).map(lambda x: x.normalizedDifference(['NIR_H', 'RED_H']))
             elif satellite == 'sentinel':
-                coll = sentinel2_masked(year, fc).map(lambda x: x.normalizedDifference(['B5', 'B4']))
+                coll = sentinel2_masked(year, fc, harmonize=True).map(lambda x: x.normalizedDifference(['NIR_H', 'RED_H']))
             else:
                 raise ValueError('Must choose a satellite from landsat or sentinel')
 
@@ -370,10 +372,11 @@ def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr
                 print(desc, 'exists, skipping')
                 continue
 
+        # Use harmonized bands (SBAF-adjusted to OLI reference)
         if satellite == 'landsat':
-            coll = landsat_masked(year, feature_coll).map(lambda x: x.normalizedDifference(['B5', 'B4']))
+            coll = landsat_masked(year, feature_coll, harmonize=True).map(lambda x: x.normalizedDifference(['NIR_H', 'RED_H']))
         elif satellite == 'sentinel':
-            coll = sentinel2_masked(year, feature_coll).map(lambda x: x.normalizedDifference(['B8', 'B4']))
+            coll = sentinel2_masked(year, feature_coll, harmonize=True).map(lambda x: x.normalizedDifference(['NIR_H', 'RED_H']))
         else:
             raise ValueError('Must choose a satellite from landsat or sentinel')
 
