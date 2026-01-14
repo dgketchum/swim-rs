@@ -166,6 +166,12 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
     if not df.crs.srs == 'EPSG:4326':
         df = df.to_crs(epsg=4326)
 
+    # Filter to selected fields before iterating
+    total_fields = len(df)
+    if select is not None:
+        df = df[df.index.isin(select)]
+    print(f'Selected {len(df)} of {total_fields} fields')
+
     s, e = '1987-01-01', '2024-12-31'
     irr_coll = ee.ImageCollection(IRR)
     coll = irr_coll.filterDate(s, e).select('classification')
@@ -180,9 +186,6 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
     for fid, row in tqdm(df.iterrows(), desc=f'Extracting {satellite} NDVI', total=df.shape[0]):
 
         for year in range(start_yr, end_yr + 1):
-
-            if select is not None and fid not in select:
-                continue
 
             site = row[feature_id]
 
