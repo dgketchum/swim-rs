@@ -801,11 +801,26 @@ class Ingestor(Component):
                 self._log.debug("csv_parse_error", file=str(csv_file), error=str(e))
                 continue
 
-            # Verify uid_column exists in the CSV
+            # Handle single-field CSVs where field ID is the first column header
+            # Format: field_id, date1, date2, ...
+            #         (empty), val1, val2, ...
+            # Convert to standard format by renaming first column and setting field ID as row value
             if uid_column not in df.columns:
-                self._log.warning("uid_column_missing", file=str(csv_file), uid_column=uid_column,
-                                  available_columns=list(df.columns[:5]))
-                continue
+                first_col = df.columns[0]
+                # Check if first column header is a known field ID
+                if first_col in self._state._uid_to_index:
+                    # This is a single-field sparse CSV - convert to standard format
+                    field_id = first_col
+                    new_cols = [uid_column] + list(df.columns[1:])
+                    df.columns = new_cols
+                    # Cast first column to object dtype before assigning string
+                    df[uid_column] = df[uid_column].astype(object)
+                    df.iloc[0, 0] = field_id
+                    self._log.debug("converted_sparse_csv", file=str(csv_file), field_id=field_id)
+                else:
+                    self._log.warning("uid_column_missing", file=str(csv_file), uid_column=uid_column,
+                                      available_columns=list(df.columns[:5]))
+                    continue
 
             # Parse data columns (those with dates in the column name) - do once per file
             data_cols = []
