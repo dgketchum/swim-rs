@@ -103,6 +103,9 @@ def _create_container_from_parquets(
     Create a container populated with data from legacy parquet files.
 
     This mirrors how data would be loaded for the legacy prep_fields_json.
+
+    Raises:
+        pytest.skip: If shapefile doesn't exist or doesn't have expected columns.
     """
     from swimrs.container import SwimContainer
     import geopandas as gpd
@@ -110,13 +113,20 @@ def _create_container_from_parquets(
     # Use actual shapefile if available, otherwise create minimal geometry
     if SHAPEFILE.exists():
         gdf = gpd.read_file(SHAPEFILE)
-        # The shapefile FID column is truncated (shapefile limitation)
-        # Use field_1 which has full station IDs
-        uid_col = "FID"
-        if "field_1" in gdf.columns:
-            # Check if field_1 has our stations (full IDs)
-            if any(gdf["field_1"].isin(stations)):
-                uid_col = "field_1"
+
+        # Find the UID column - try several possibilities
+        uid_col = None
+        for candidate in ["field_1", "FID", "site_id", "SITE_ID", "fid"]:
+            if candidate in gdf.columns:
+                if any(gdf[candidate].isin(stations)):
+                    uid_col = candidate
+                    break
+
+        if uid_col is None:
+            pytest.skip(
+                f"Shapefile {SHAPEFILE} does not have a column containing "
+                f"stations {stations}. Available columns: {list(gdf.columns)}"
+            )
 
         # Filter to target stations
         gdf = gdf[gdf[uid_col].isin(stations)].copy()
@@ -124,13 +134,10 @@ def _create_container_from_parquets(
             gdf["FID"] = gdf[uid_col]  # Copy to FID for container
 
         if gdf.empty:
-            # Try different column names
-            for col in ["site_id", "SITE_ID", "fid"]:
-                if col in gdf.columns:
-                    gdf = gpd.read_file(SHAPEFILE)
-                    gdf = gdf[gdf[col].isin(stations)].copy()
-                    gdf = gdf.rename(columns={col: "FID"})
-                    break
+            pytest.skip(
+                f"No matching stations found in shapefile. "
+                f"Looked for {stations} in column {uid_col}"
+            )
     else:
         from shapely.geometry import Polygon
         geometries = []

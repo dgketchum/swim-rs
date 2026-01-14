@@ -213,7 +213,8 @@ class ContainerState:
         paths = {}
 
         def _scan_group(group: zarr.Group, prefix: str = "") -> None:
-            for name, item in group.items():
+            for name in group.keys():
+                item = group[name]
                 full_path = f"{prefix}/{name}" if prefix else name
                 if isinstance(item, zarr.Array):
                     # Convert path to variable name

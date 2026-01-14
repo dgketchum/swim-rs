@@ -6,7 +6,8 @@ and managed by `SampleTracker` for vectorized, per-field simulation.
 import os
 
 
-TRACKER_PARAMS = ['taw',
+TRACKER_PARAMS = ['cn2',
+                  'taw',
                   'taw3',
                   'rew',
                   'tew',

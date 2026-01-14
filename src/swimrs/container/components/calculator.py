@@ -214,12 +214,13 @@ class Calculator(Component):
             # Get fields to process
             target_fields = fields if fields else self._state.field_uids
 
-            # Check for fused NDVI and warn if missing
+            # Require merged NDVI for reliable irrigation window detection
             fused_path = f"derived/merged_ndvi/{masks[0]}"
             if fused_path not in self._state.root:
-                self._log.warning(
-                    "fused_ndvi_missing",
-                    message="Fused NDVI not found. Consider running compute.fused_ndvi() first for better results.",
+                raise ValueError(
+                    f"Merged NDVI not found at '{fused_path}'. "
+                    "Run container.compute.merged_ndvi() before dynamics() to ensure "
+                    "reliable irrigation window detection from multi-sensor NDVI."
                 )
 
             # Load required data
@@ -348,32 +349,22 @@ class Calculator(Component):
         Returns:
             Merged DataArray with values from all sensors
         """
-        import xarray as xr
-
-        # Start with the first sensor's data as base
-        base_name, base_da = sensor_data[0]
-        result = base_da.copy()
-
-        # Build preference ranking
+        # Sort sensors by preference order
         pref_rank = {inst: i for i, inst in enumerate(preference_order)}
+        sorted_data = sorted(
+            sensor_data,
+            key=lambda x: pref_rank.get(x[0], len(pref_rank))
+        )
 
-        for site in result.coords["site"].values:
-            for time in result.coords["time"].values:
-                # Collect values from all sensors for this point
-                values = []
-                for inst_name, da in sensor_data:
-                    try:
-                        val = da.sel(site=site, time=time).values
-                        if not np.isnan(val):
-                            rank = pref_rank.get(inst_name, len(pref_rank))
-                            values.append((rank, val, inst_name))
-                    except (KeyError, IndexError):
-                        continue
+        # Start with highest preference sensor
+        result = sorted_data[0][1].copy()
 
-                if values:
-                    # Use value from highest preference sensor
-                    values.sort(key=lambda x: x[0])
-                    result.loc[dict(site=site, time=time)] = values[0][1]
+        # Fill NaN values from lower preference sensors (vectorized)
+        for inst_name, da in sorted_data[1:]:
+            # Use np.where for fast vectorized fill: keep result where valid, else use da
+            result_vals = result.values
+            da_vals = da.values
+            result.values = np.where(np.isnan(result_vals), da_vals, result_vals)
 
         return result
 
@@ -556,26 +547,37 @@ class Calculator(Component):
         for site in ds.coords["site"].values:
             site_str = str(site)
             site_data = {}
-            site_eta = eta.sel(site=site)
-            site_ppt = ppt.sel(site=site)
-            site_etf = etf.sel(site=site)
+
+            # Extract site data once as pandas Series (fast)
+            site_eta_s = eta.sel(site=site).to_pandas()
+            site_ppt_s = ppt.sel(site=site).to_pandas()
+            site_etf_s = etf.sel(site=site).to_pandas()
+
+            # Pre-compute yearly sums using pandas groupby (vectorized)
+            years_idx = site_eta_s.index.year
+            eta_yearly = site_eta_s.groupby(years_idx).sum()
+            ppt_yearly = site_ppt_s.groupby(years_idx).sum()
+            etf_yearly = site_etf_s.groupby(years_idx).sum()
+
+            # Pre-compute monthly sums for subsidy month detection
+            monthly_idx = site_eta_s.index.to_period('M')
+            eta_monthly = site_eta_s.groupby(monthly_idx).sum()
+            ppt_monthly = site_ppt_s.groupby(monthly_idx).sum()
 
             # Track years with valid ETf data
             etf_years = []
             gw_count = 0
 
             for yr in all_years:
-                yr_mask = time_index.year == yr
-
                 # Check if this year has valid ETf data (sum > 0)
-                etf_yr_sum = float(site_etf.isel(time=yr_mask).sum(skipna=True))
+                etf_yr_sum = etf_yearly.get(yr, 0)
                 if etf_yr_sum <= 0:
                     continue
 
                 etf_years.append(int(yr))
 
-                eta_yr = float(site_eta.isel(time=yr_mask).sum(skipna=True))
-                ppt_yr = float(site_ppt.isel(time=yr_mask).sum(skipna=True))
+                eta_yr = eta_yearly.get(yr, 0)
+                ppt_yr = ppt_yearly.get(yr, 0)
 
                 if ppt_yr <= 0:
                     continue
@@ -589,15 +591,15 @@ class Calculator(Component):
                     subsidized = 0
                     f_sub = 0.0
 
-                # Find months where eta > ppt (monthly aggregation)
-                eta_monthly = site_eta.isel(time=yr_mask).resample(time="ME").sum()
-                ppt_monthly = site_ppt.isel(time=yr_mask).resample(time="ME").sum()
+                # Find months where eta > ppt for this year
                 months = []
-                for i, (e, p) in enumerate(
-                    zip(eta_monthly.values, ppt_monthly.values)
-                ):
-                    if not np.isnan(e) and not np.isnan(p) and e > p:
-                        months.append(i + 1)
+                for month in range(1, 13):
+                    period = pd.Period(year=yr, month=month, freq='M')
+                    if period in eta_monthly.index and period in ppt_monthly.index:
+                        e = eta_monthly[period]
+                        p = ppt_monthly[period]
+                        if not np.isnan(e) and not np.isnan(p) and e > p:
+                            months.append(month)
 
                 site_data[int(yr)] = {
                     "subsidized": subsidized,
@@ -724,13 +726,24 @@ class Calculator(Component):
             # Get per-year irrigation properties for this site if using mask mode
             site_irr_props = irr_props.get(site_str, {}) if irr_props else {}
 
-            for yr in years:
-                yr_mask = time_index.year == yr
-                yr_str = str(yr)
+            # Extract site data once as pandas Series (fast) - avoid repeated .sel() in year loop
+            site_etf_s = etf.sel(site=site).to_pandas()
+            site_eto_s = eto.sel(site=site).to_pandas()
+            site_ppt_s = ppt.sel(site=site).to_pandas()
+            site_ndvi_s = ndvi.sel(site=site).to_pandas()
 
-                site_etf = etf.sel(site=site).isel(time=yr_mask)
-                site_eto = eto.sel(site=site).isel(time=yr_mask)
-                site_ppt = ppt.sel(site=site).isel(time=yr_mask)
+            # Pre-compute monthly eta and ppt for use_lulc mode (vectorized)
+            # Interpolate ETf to match legacy _build_et_frame behavior
+            if use_lulc:
+                etf_interp = site_etf_s.interpolate()
+                etf_interp = etf_interp.bfill().ffill()
+                site_eta_s = etf_interp * site_eto_s
+                monthly_idx = site_eta_s.index.to_period('M')
+                eta_monthly_all = site_eta_s.groupby(monthly_idx).sum()
+                ppt_monthly_all = site_ppt_s.groupby(monthly_idx).sum()
+
+            for yr in years:
+                yr_str = str(yr)
 
                 # Determine irrigation status based on mode
                 if use_mask:
@@ -741,16 +754,16 @@ class Calculator(Component):
                     irrigated = f_irr > irr_threshold
 
                 elif use_lulc:
-                    # International mode: compute from water balance
-                    eta = site_etf * site_eto
-                    eta_monthly = eta.resample(time="ME").sum()
-                    ppt_monthly = site_ppt.resample(time="ME").sum()
-
+                    # International mode: compute from water balance using pre-computed monthly data
                     subsidy_months = 0
-                    for e, p in zip(eta_monthly.values, ppt_monthly.values):
-                        if not np.isnan(e) and not np.isnan(p) and p > 0:
-                            if e / (p + 1.0) > 1.3:
-                                subsidy_months += 1
+                    for month in range(1, 13):
+                        period = pd.Period(year=yr, month=month, freq='M')
+                        if period in eta_monthly_all.index and period in ppt_monthly_all.index:
+                            e = eta_monthly_all[period]
+                            p = ppt_monthly_all[period]
+                            if not np.isnan(e) and not np.isnan(p) and p > 0:
+                                if e / (p + 1.0) > 1.3:
+                                    subsidy_months += 1
 
                     if subsidy_months >= 3 and cropped:
                         irrigated = True
@@ -770,9 +783,9 @@ class Calculator(Component):
                     }
                     continue
 
-                # Get NDVI with extended-year context for boundary handling
-                ndvi_series = self._get_extended_year_ndvi(
-                    ndvi, site, yr, years, time_index
+                # Get NDVI with extended-year context for boundary handling (using pre-extracted pandas)
+                ndvi_series = self._get_extended_year_ndvi_fast(
+                    site_ndvi_s, yr, years
                 )
 
                 # Detect irrigation windows from NDVI patterns
@@ -872,6 +885,29 @@ class Calculator(Component):
         ext_mask = time_index.year.isin(extended_years)
         return ndvi.sel(site=site).isel(time=ext_mask).to_pandas()
 
+    def _get_extended_year_ndvi_fast(
+        self,
+        site_ndvi_s: pd.Series,
+        year: int,
+        years: List[int],
+    ) -> pd.Series:
+        """
+        Get NDVI with extended year context for boundary handling (pandas version).
+
+        Uses ±1 year of data for smoother detection at year boundaries.
+        This is the fast pandas-based version of _get_extended_year_ndvi.
+        """
+        # Determine extended years based on position in range
+        if year == years[0]:
+            extended_years = [year, year + 1] if len(years) > 1 else [year]
+        elif year == years[-1]:
+            extended_years = [year - 1, year]
+        else:
+            extended_years = [year - 1, year, year + 1]
+
+        ext_mask = site_ndvi_s.index.year.isin(extended_years)
+        return site_ndvi_s[ext_mask]
+
     def _backfill_irrigation_windows(
         self,
         irr_data: Dict[str, Dict],
@@ -921,11 +957,12 @@ class Calculator(Component):
         """
         Detect irrigation windows from NDVI time series.
 
-        Algorithm:
+        Algorithm matches legacy SamplePlotDynamics._detect_irrigation_windows():
         1. Apply 32-day rolling mean to smooth NDVI
         2. Compute slope (diff)
         3. Find consecutive positive slope periods >= min_pos_days
         4. Extend windows by lookback and until NDVI drops below threshold
+        5. Extend to include next group if its min NDVI > threshold
         """
         ydf = pd.DataFrame({"ndvi": ndvi_series})
 
@@ -938,26 +975,27 @@ class Calculator(Component):
         # Compute slope
         ydf["diff"] = ydf["ndvi"].diff()
 
-        # Check data quality
-        if ydf["ndvi"].isna().sum() > 200:
+        # Check data quality - if all NaN after processing, skip
+        if np.count_nonzero(np.isnan(ydf["ndvi"].values)) > 200:
             return []
 
-        # Find local minima
+        # Find local minima (where slope goes from negative to positive)
         local_min_indices = ydf[(ydf["diff"] > 0) & (ydf["diff"].shift(1) < 0)].index
 
-        # Group consecutive positive slope days
+        # Group consecutive positive/negative slope days
         positive_slope = ydf["diff"] > 0
         groups = (positive_slope != positive_slope.shift()).cumsum()
         ydf["groups"] = groups
 
-        # Find groups with >= min_pos_days
+        # Find groups with >= min_pos_days of positive slope
         group_counts = positive_slope.groupby(groups).sum()
-        long_groups = group_counts[group_counts >= min_pos_days].index
+        long_positive_slope_groups = group_counts[group_counts >= min_pos_days].index
 
         irr_doys = []
-        for group in long_groups:
-            group_mask = groups == group
-            group_indices = positive_slope[group_mask].index
+        groups_list = groups.tolist()
+
+        for group in long_positive_slope_groups:
+            group_indices = positive_slope[groups == group].index
 
             if len(group_indices) == 0:
                 continue
@@ -971,15 +1009,25 @@ class Calculator(Component):
             else:
                 start_day = start_index
 
-            # Extend end until NDVI drops below threshold
+            # Extend end until NDVI drops below threshold (matching legacy logic exactly)
             end_day = end_index + pd.Timedelta(days=2)
             try:
-                while end_day in ydf.index:
-                    prev_ndvi = ydf.loc[end_day - pd.Timedelta(days=1), "ndvi"]
-                    if prev_ndvi <= ndvi_threshold or pd.isna(prev_ndvi):
-                        break
-                    end_day += pd.Timedelta(days=1)
+                prev_day_ndvi = ydf.loc[end_day - pd.Timedelta(days=1), "ndvi"]
+                if prev_day_ndvi > ndvi_threshold:
+                    ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1), "ndvi"]
+                    while ndvi_doy > ndvi_threshold and end_day in ydf.index:
+                        end_day += pd.Timedelta(days=1)
+                        ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1), "ndvi"]
             except (KeyError, TypeError):
+                pass
+
+            # Extend to next group if its min NDVI > threshold (legacy lines 582-584)
+            try:
+                if group + 1 in groups_list:
+                    next_group_ndvi = ydf[ydf["groups"] == group + 1]["ndvi"].values
+                    if next_group_ndvi.min() > ndvi_threshold:
+                        end_day = ydf[ydf["groups"] == group + 1].index[-1]
+            except (KeyError, IndexError, ValueError):
                 pass
 
             end_day = end_day + pd.Timedelta(days=1)

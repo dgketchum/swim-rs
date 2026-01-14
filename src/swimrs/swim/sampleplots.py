@@ -384,7 +384,7 @@ class ContainerPlots:
             # NDVI per mask
             for mask in self.masks:
                 if self.use_fused_ndvi:
-                    ndvi_path = f"derived/combined_ndvi/{mask}"
+                    ndvi_path = f"derived/merged_ndvi/{mask}"
                 else:
                     ndvi_path = f"remote_sensing/ndvi/{self.instrument}/{mask}"
 

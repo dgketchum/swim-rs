@@ -304,7 +304,7 @@ class ComputeFusedNDVIStep(WorkflowStep):
         return "Compute fused Landsat+Sentinel NDVI"
 
     def check_complete(self, container: "SwimContainer") -> bool:
-        return "derived/combined_ndvi/irr" in container._root
+        return "derived/merged_ndvi/irr" in container._root
 
     def execute(self, container: "SwimContainer") -> StepResult:
         import time
@@ -357,7 +357,7 @@ class ComputeDynamicsStep(WorkflowStep):
             Tuple of (satisfied: bool, message: str)
         """
         # Fused NDVI is preferred but not required
-        fused_path = f"derived/combined_ndvi/{self.masks[0]}"
+        fused_path = f"derived/merged_ndvi/{self.masks[0]}"
         ndvi_path = f"remote_sensing/ndvi/{self.instrument}/{self.masks[0]}"
 
         if fused_path in container._root:

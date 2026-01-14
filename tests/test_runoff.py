@@ -17,7 +17,7 @@ def test_runoff_infiltration_excess_zero_when_dry():
     d = DummyDay()
     d.hr_precip = np.zeros((24, 1))
     runoff.runoff_infiltration_excess(foo, d)
-    assert float(foo.sro) == 0.0
+    assert foo.sro.item() == 0.0
 
 
 def test_runoff_curve_number_reasonable():
@@ -31,4 +31,4 @@ def test_runoff_curve_number_reasonable():
     d.precip = np.array([[5.0]])
     runoff.runoff_curve_number(foo, d)
     assert np.isfinite(foo.sro).all()
-    assert float(foo.sro) >= 0.0
+    assert foo.sro.item() >= 0.0

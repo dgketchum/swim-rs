@@ -440,7 +440,7 @@ class SwimSchema:
 
     DERIVED_STRUCTURE = {
         "dynamics": ["ke_max", "kc_max", "irr_data", "gwsub_data"],
-        "combined_ndvi": ["ndvi"],  # Fused multi-instrument NDVI
+        "merged_ndvi": ["ndvi"],  # Fused multi-instrument NDVI
     }
 
     @classmethod

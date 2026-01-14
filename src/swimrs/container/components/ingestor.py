@@ -146,6 +146,7 @@ class Ingestor(Component):
         instrument: str = "landsat",
         fields: Optional[List[str]] = None,
         overwrite: bool = False,
+        min_etf: float = 0.05,
     ) -> "ProvenanceEvent":
         """
         Ingest ET fraction data from Earth Engine CSV exports.
@@ -158,6 +159,8 @@ class Ingestor(Component):
             instrument: Source instrument ("landsat", "ecostress")
             fields: Optional list of field UIDs to process
             overwrite: If True, replace existing data
+            min_etf: Minimum valid ETf value (default: 0.05). Values below
+                this are treated as noise/artifacts and set to NaN.
 
         Returns:
             ProvenanceEvent recording the operation
@@ -192,8 +195,10 @@ class Ingestor(Component):
                     success=True,
                 )
 
-            # Apply basic quality filters (ETf should be 0-1.5 range typically)
-            all_data = all_data.where((all_data >= 0) & (all_data <= 2.0))
+            # Filter values below min_etf (default 0.05) as noise/artifacts
+            # This matches legacy sparse_time_series() behavior which replaces
+            # 0.0 with NaN and filters values < 0.05
+            all_data = all_data.where(all_data >= min_etf)
 
             # Align to container grid and write
             records = self._write_timeseries(path, all_data, fields, overwrite=overwrite)

@@ -318,22 +318,113 @@ class Query(Component):
     def field_timeseries(
         self,
         uid: str,
-        parameters: List[str] = None,
+        parameters: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """
         Get all time series for a single field.
 
         Args:
             uid: Field UID
-            parameters: Optional list of parameters to include
+            parameters: Optional list of parameter paths to include.
+                        Can be zarr paths (e.g., "remote_sensing/ndvi/landsat/irr")
+                        or variable names (e.g., "ndvi_landsat_irr").
+                        If None, includes all available time series.
 
         Returns:
-            DataFrame with DatetimeIndex and parameter columns
+            DataFrame with DatetimeIndex and parameter columns, including:
+            - All requested time series parameters
+            - 'irr_doy': Binary flag (1 if day is in computed irrigation window, 0 otherwise)
+
+        Example:
+            df = container.query.field_timeseries("US-Ne1")
+            df = container.query.field_timeseries(
+                "US-Ne1",
+                parameters=["meteorology/gridmet/eto", "remote_sensing/ndvi/landsat/irr"]
+            )
         """
-        raise NotImplementedError(
-            "Field timeseries query not yet implemented. "
-            "Implement logic to assemble all time series for a single field."
-        )
+        import json
+
+        # Validate the field UID exists
+        if uid not in self._state._uid_to_index:
+            raise KeyError(f"Unknown field UID: {uid}")
+
+        # Get available paths (maps variable names to zarr paths)
+        available_paths = self._state._available_paths
+
+        # Filter to only 2D time series arrays
+        timeseries_paths = {}
+        for var_name, zarr_path in available_paths.items():
+            if zarr_path in self._state.root:
+                arr = self._state.root[zarr_path]
+                if len(arr.shape) == 2:
+                    timeseries_paths[var_name] = zarr_path
+
+        # If parameters specified, filter to those
+        if parameters is not None:
+            filtered_paths = {}
+            for param in parameters:
+                # Check if it's a zarr path or variable name
+                if param in timeseries_paths.values():
+                    # It's a zarr path, find the variable name
+                    var_name = param.replace("/", "_").lstrip("_")
+                    filtered_paths[var_name] = param
+                elif param in timeseries_paths:
+                    # It's a variable name
+                    filtered_paths[param] = timeseries_paths[param]
+                else:
+                    # Try to find a partial match
+                    found = False
+                    for var_name, zarr_path in timeseries_paths.items():
+                        if param in zarr_path or param in var_name:
+                            filtered_paths[var_name] = zarr_path
+                            found = True
+                            break
+                    if not found:
+                        raise KeyError(f"Parameter not found: {param}")
+            timeseries_paths = filtered_paths
+
+        # Build the DataFrame
+        field_idx = self._state.get_field_index(uid)
+        data = {}
+
+        for var_name, zarr_path in timeseries_paths.items():
+            arr = self._state.root[zarr_path]
+            data[var_name] = arr[:, field_idx]
+
+        df = pd.DataFrame(data, index=self._state._time_index)
+        df.index.name = "time"
+
+        # Add irr_doy binary column from computed dynamics
+        irr_path = "derived/dynamics/irr_data"
+        if irr_path in self._state.root:
+            irr_arr = self._state.root[irr_path]
+            irr_json = irr_arr[field_idx]
+            # Handle zarr v3 ndarray returns
+            if hasattr(irr_json, 'item'):
+                irr_json = irr_json.item()
+            if irr_json and isinstance(irr_json, str):
+                try:
+                    irr_data = json.loads(irr_json)
+                    # Build a set of (year, doy) tuples for irrigation days
+                    irr_set = set()
+                    for year_key, year_data in irr_data.items():
+                        if isinstance(year_data, dict) and 'irr_doys' in year_data:
+                            year_int = int(year_key)
+                            for doy in year_data['irr_doys']:
+                                irr_set.add((year_int, doy))
+                    # Create binary column
+                    df['irr_doy'] = [
+                        1 if (ts.year, ts.dayofyear) in irr_set else 0
+                        for ts in df.index
+                    ]
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    df['irr_doy'] = 0
+            else:
+                df['irr_doy'] = 0
+        else:
+            df['irr_doy'] = 0
+
+        return df
 
     def dynamics(self, uid: str) -> Dict[str, Any]:
         """

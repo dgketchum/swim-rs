@@ -109,6 +109,9 @@ class SampleTracker:
         self.s3 = 0.
         self.s4 = 0.
 
+        # Curve number for antecedent condition II (default for medium soil)
+        self.cn2 = 77.0
+
         self.isnan = []
 
         self.zr = 0.1
@@ -172,7 +175,8 @@ class SampleTracker:
 
         Sets available water (`aw`) when not in calibrate/forecast modes, the
         saturated hydraulic conductivity (`ksat`) in mm/day and hourly form,
-        and initializes `daw3` and initial root-zone depletion.
+        curve number (`cn2`) derived from clay content, and initializes `daw3`
+        and initial root-zone depletion.
         """
 
         fields = self.plots.input['order']
@@ -185,6 +189,16 @@ class SampleTracker:
         self.ksat = np.array([self.plots.input['props'][f]['ksat'] for f in fields]).reshape(1, -1)
         self.ksat = self.ksat * 0.001 * 86400.
         self.ksat_hourly = np.ones((24, self.ksat.shape[1])) * self.ksat / 24.
+
+        # Derive curve number (CN2) from clay content
+        # Hydrologic group based on clay percentage:
+        #   Coarse (A, clay < 15%): CN2 = 67
+        #   Medium (B, 15-30%):     CN2 = 77
+        #   Fine (C/D, > 30%):      CN2 = 85
+        # Values for row crops in good hydrologic condition (USDA TR-55)
+        clay = np.array([self.plots.input['props'][f].get('clay', 20.0)
+                         for f in fields]).reshape(1, -1)
+        self.cn2 = np.where(clay < 15.0, 67.0, np.where(clay > 30.0, 85.0, 77.0))
 
         self.daw3 = np.zeros_like(self.aw)
         self.depl_root = self.aw * self.zr * 0.2
@@ -325,7 +339,7 @@ class SampleTracker:
         size = len(order)
         tracker_array = None
 
-        if os.path.exists(self.conf.spinup):
+        if self.conf.spinup and os.path.exists(self.conf.spinup):
             with open(self.conf.spinup, 'r') as fp:
                 sdct = json.load(fp)
 

@@ -71,7 +71,7 @@ class Exporter(Component):
         """
         Export model-ready prepped input JSON file.
 
-        Creates a JSONL file suitable for the SWIM-RS model containing:
+        Creates a JSON file suitable for the SWIM-RS model containing:
         - Field order and properties
         - Daily time series (met, NDVI, ETf)
         - Per-year irrigation and groundwater subsidy data
@@ -135,12 +135,10 @@ class Exporter(Component):
                 include_switched_etf,
             )
 
-            # Write JSONL
+            # Write JSON
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, "w") as f:
-                for key, value in output.items():
-                    json.dump({key: value}, f)
-                    f.write("\n")
+                json.dump(output, f, indent=2)
 
             ctx["records_processed"] = len(target_fields)
             ctx["fields_processed"] = len(target_fields)
@@ -714,6 +712,8 @@ class Exporter(Component):
 
     def _get_properties_dict(self, fields: List[str]) -> Dict[str, Dict]:
         """Get properties for all fields as a dictionary."""
+        from swimrs.container.schema import get_rooting_depth
+
         props = {}
 
         props_ds = self._state.get_properties_dataset(fields=fields)
@@ -728,9 +728,15 @@ class Exporter(Component):
                 if not np.isnan(value):
                     field_props[var] = float(value)
 
-            # Add LULC code mapping
+            # Add LULC code mapping and derived rooting depth properties
             if "modis_lc" in field_props:
-                field_props["lulc_code"] = int(field_props["modis_lc"])
+                lulc_code = int(field_props["modis_lc"])
+                field_props["lulc_code"] = lulc_code
+
+                # Compute root_depth and zr_mult from LULC (matches legacy prep)
+                root_depth, zr_mult = get_rooting_depth(lulc_code, use_max=True)
+                field_props["root_depth"] = root_depth
+                field_props["zr_mult"] = zr_mult
 
             props[field_uid] = field_props
 
@@ -812,10 +818,8 @@ class Exporter(Component):
         # Load base dataset (met, snow, ETf)
         ds = self._state.get_dataset(paths, fields=fields)
 
-        # NDVI: combine from all masks using fillna() to handle fields
-        # that only have data in one mask (e.g., non-irrigated stations
-        # only have inv_irr data, irrigated stations only have irr data)
-        ndvi_data = None
+        # NDVI: keep separate variables per mask (model expects ndvi_irr, ndvi_inv_irr)
+        # Interpolate sparse observations to create continuous time series (matches legacy prep)
         for mask in masks:
             if use_merged_ndvi:
                 merged_path = f"derived/merged_ndvi/{mask}"
@@ -828,14 +832,15 @@ class Exporter(Component):
                 continue
 
             mask_ndvi = self._state.get_xarray(path, fields=fields)
-            if ndvi_data is None:
-                ndvi_data = mask_ndvi
-            else:
-                # Fill NaN values from secondary mask
-                ndvi_data = ndvi_data.fillna(mask_ndvi)
 
-        if ndvi_data is not None:
-            ds["ndvi"] = ndvi_data
+            # Interpolate NDVI to fill gaps (matches legacy prep_plots line 148-149)
+            # Convert to pandas for interpolation, then back to xarray
+            ndvi_df = mask_ndvi.to_pandas()
+            ndvi_interp = ndvi_df.interpolate(limit=100, axis=0)
+            ndvi_interp = ndvi_interp.bfill(axis=0).ffill(axis=0)
+
+            # Convert back to xarray with same coordinates
+            ds[f"ndvi_{mask}"] = mask_ndvi.copy(data=ndvi_interp.values)
 
         return ds
 
