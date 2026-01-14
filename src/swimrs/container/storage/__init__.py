@@ -41,9 +41,47 @@ Examples:
     provider = StorageProviderFactory.from_uri("s3://bucket/project.zarr")
 """
 
+from pathlib import Path
+from typing import Union
+
 from .base import StorageProvider
 from .local import DirectoryStoreProvider, MemoryStoreProvider, ZipStoreProvider
 from .factory import StorageProviderFactory, open_storage
+
+
+def detect_storage_type(path: Union[str, Path]) -> str:
+    """
+    Detect storage type from path.
+
+    Auto-detection logic following scientific computing norms:
+    - If path is an existing file → "zip"
+    - If path is an existing directory → "directory"
+    - If path doesn't exist → "directory" (default for new containers)
+
+    Args:
+        path: Path to check
+
+    Returns:
+        Storage type string: "zip" or "directory"
+
+    Examples:
+        >>> detect_storage_type("existing.swim")  # existing file
+        'zip'
+        >>> detect_storage_type("existing_dir.swim")  # existing directory
+        'directory'
+        >>> detect_storage_type("new_project.swim")  # doesn't exist
+        'directory'
+    """
+    path = Path(path)
+
+    if path.is_file():
+        return "zip"
+    elif path.is_dir():
+        return "directory"
+    else:
+        # New path - default to directory for development
+        return "directory"
+
 
 # Cloud providers imported lazily to avoid hard dependency
 __all__ = [
@@ -56,6 +94,8 @@ __all__ = [
     # Factory
     "StorageProviderFactory",
     "open_storage",
+    # Helpers
+    "detect_storage_type",
 ]
 
 
