@@ -5,6 +5,8 @@ root = "/data/ssd1/swim"
 project_workspace = "{root}/{project}"
 data = "{project_workspace}/data"
 gis = "{data}/gis"
+# Filtered to Croplands classification (~60 stations)
+# Create with: python setup_shapefile.py (filters from master at examples/gis/flux_stations.shp)
 fields_shapefile = "{gis}/flux_fields.shp"
 properties = "{data}/properties"
 lulc = "{properties}/{project}_landcover.csv"

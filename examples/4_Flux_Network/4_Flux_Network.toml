@@ -5,7 +5,9 @@ root = "/data/ssd1/swim"
 project_workspace = "{root}/{project}"
 data = "{project_workspace}/data"
 gis = "{data}/gis"
-fields_shapefile = "{gis}/flux_footprints_3p_clean.shp"
+# Master flux stations shapefile (160 stations with site_id, lc_class, state, etc.)
+# Source: examples/gis/flux_stations.shp - symlink or copy to {gis}/flux_stations.shp
+fields_shapefile = "{gis}/flux_stations.shp"
 properties = "{data}/properties"
 lulc = "{properties}/{project}_landcover.csv"
 properties_json = "{properties}/{project}_properties.json"

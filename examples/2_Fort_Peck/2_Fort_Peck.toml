@@ -45,9 +45,10 @@ prepped_input = "{data}/prepped_input.json"
 bucket = "wudr"
 
 [ids]
-feature_id = "field_1"
+feature_id = "site_id"  # Station identifier column in master shapefile
 gridmet_join_id = "GFID"
 gridmet_id = "GFID"  # Column name for GridMET cell ID in mapping shapefile
+state_col = "state"  # Column containing US state codes for irrigation masking
 
 [misc]
 irrigation_threshold = 0.3

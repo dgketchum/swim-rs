@@ -34,10 +34,14 @@ joined_timeseries = "{root}/data/plot_timeseries"
 dynamics_data = "{root}/data/dynamics.json"
 prepped_input = "{root}/data/prepped_input.json"
 
+[earth_engine]
+bucket = "wudr"
+
 [ids]
-feature_id = "FID"
+feature_id = "site_id"  # Station identifier column in master shapefile
 gridmet_join_id = "GFID"
 gridmet_id = "GFID"  # Column name for GridMET cell ID in mapping shapefile
+state_col = "state"  # Column containing US state codes for irrigation masking
 
 [misc]
 irrigation_threshold = 0.3
