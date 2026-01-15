@@ -1,0 +1,428 @@
+"""Typed state containers for SWIM-RS water balance modeling.
+
+Provides dataclass-based containers for:
+- WaterBalanceState: Mutable daily state arrays
+- FieldProperties: Static soil/crop properties
+- CalibrationParameters: PEST++ calibration parameters
+
+All containers use numpy arrays with shape (n_fields,) for vectorized
+computation with numba kernels.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+import numpy as np
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+__all__ = [
+    "WaterBalanceState",
+    "FieldProperties",
+    "CalibrationParameters",
+]
+
+
+@dataclass
+class WaterBalanceState:
+    """Mutable state arrays for daily water balance computation.
+
+    All arrays have shape (n_fields,). State is updated in-place
+    during the daily step loop.
+
+    Attributes
+    ----------
+    n_fields : int
+        Number of fields/pixels being modeled
+    depl_root : NDArray[np.float64]
+        Root zone depletion (mm), 0 = field capacity
+    depl_ze : NDArray[np.float64]
+        Surface layer depletion (mm) for evaporation
+    daw3 : NDArray[np.float64]
+        Available water in layer 3 below root zone (mm)
+    taw3 : NDArray[np.float64]
+        Total available water capacity in layer 3 (mm)
+    swe : NDArray[np.float64]
+        Snow water equivalent (mm)
+    albedo : NDArray[np.float64]
+        Snow albedo (dimensionless, 0-1)
+    zr : NDArray[np.float64]
+        Current root depth (m)
+    kr : NDArray[np.float64]
+        Evaporation reduction coefficient (damped)
+    ks : NDArray[np.float64]
+        Water stress coefficient (damped)
+    irr_continue : NDArray[np.float64]
+        Irrigation continuation flag (1.0 if continuing from previous day)
+    next_day_irr : NDArray[np.float64]
+        Carryover irrigation amount for next day (mm)
+    """
+
+    n_fields: int
+    depl_root: NDArray[np.float64] = field(default=None)
+    depl_ze: NDArray[np.float64] = field(default=None)
+    daw3: NDArray[np.float64] = field(default=None)
+    taw3: NDArray[np.float64] = field(default=None)
+    swe: NDArray[np.float64] = field(default=None)
+    albedo: NDArray[np.float64] = field(default=None)
+    zr: NDArray[np.float64] = field(default=None)
+    kr: NDArray[np.float64] = field(default=None)
+    ks: NDArray[np.float64] = field(default=None)
+    irr_continue: NDArray[np.float64] = field(default=None)
+    next_day_irr: NDArray[np.float64] = field(default=None)
+
+    def __post_init__(self):
+        """Initialize arrays with zeros if not provided."""
+        n = self.n_fields
+        if self.depl_root is None:
+            self.depl_root = np.zeros(n, dtype=np.float64)
+        if self.depl_ze is None:
+            self.depl_ze = np.zeros(n, dtype=np.float64)
+        if self.daw3 is None:
+            self.daw3 = np.zeros(n, dtype=np.float64)
+        if self.taw3 is None:
+            self.taw3 = np.zeros(n, dtype=np.float64)
+        if self.swe is None:
+            self.swe = np.zeros(n, dtype=np.float64)
+        if self.albedo is None:
+            self.albedo = np.full(n, 0.23, dtype=np.float64)  # Dry soil albedo
+        if self.zr is None:
+            self.zr = np.full(n, 0.1, dtype=np.float64)  # Minimum root depth
+        if self.kr is None:
+            self.kr = np.ones(n, dtype=np.float64)
+        if self.ks is None:
+            self.ks = np.ones(n, dtype=np.float64)
+        if self.irr_continue is None:
+            self.irr_continue = np.zeros(n, dtype=np.float64)
+        if self.next_day_irr is None:
+            self.next_day_irr = np.zeros(n, dtype=np.float64)
+
+    @classmethod
+    def from_spinup(
+        cls,
+        n_fields: int,
+        depl_root: NDArray[np.float64],
+        swe: NDArray[np.float64],
+        kr: NDArray[np.float64],
+        ks: NDArray[np.float64],
+        zr: NDArray[np.float64],
+        daw3: NDArray[np.float64] | None = None,
+        taw3: NDArray[np.float64] | None = None,
+        depl_ze: NDArray[np.float64] | None = None,
+        albedo: NDArray[np.float64] | None = None,
+    ) -> WaterBalanceState:
+        """Create state from spinup values.
+
+        Parameters
+        ----------
+        n_fields : int
+            Number of fields
+        depl_root : NDArray[np.float64]
+            Initial root zone depletion (mm)
+        swe : NDArray[np.float64]
+            Initial snow water equivalent (mm)
+        kr : NDArray[np.float64]
+            Initial evaporation reduction coefficient
+        ks : NDArray[np.float64]
+            Initial water stress coefficient
+        zr : NDArray[np.float64]
+            Initial root depth (m)
+        daw3 : NDArray[np.float64], optional
+            Initial layer 3 available water (mm)
+        taw3 : NDArray[np.float64], optional
+            Initial layer 3 total capacity (mm)
+        depl_ze : NDArray[np.float64], optional
+            Initial surface layer depletion (mm)
+        albedo : NDArray[np.float64], optional
+            Initial snow albedo
+
+        Returns
+        -------
+        WaterBalanceState
+            Initialized state container
+        """
+        state = cls(n_fields=n_fields)
+        state.depl_root = depl_root.copy()
+        state.swe = swe.copy()
+        state.kr = kr.copy()
+        state.ks = ks.copy()
+        state.zr = zr.copy()
+
+        if daw3 is not None:
+            state.daw3 = daw3.copy()
+        if taw3 is not None:
+            state.taw3 = taw3.copy()
+        if depl_ze is not None:
+            state.depl_ze = depl_ze.copy()
+        if albedo is not None:
+            state.albedo = albedo.copy()
+
+        return state
+
+    def copy(self) -> WaterBalanceState:
+        """Create a deep copy of the state."""
+        return WaterBalanceState(
+            n_fields=self.n_fields,
+            depl_root=self.depl_root.copy(),
+            depl_ze=self.depl_ze.copy(),
+            daw3=self.daw3.copy(),
+            taw3=self.taw3.copy(),
+            swe=self.swe.copy(),
+            albedo=self.albedo.copy(),
+            zr=self.zr.copy(),
+            kr=self.kr.copy(),
+            ks=self.ks.copy(),
+            irr_continue=self.irr_continue.copy(),
+            next_day_irr=self.next_day_irr.copy(),
+        )
+
+
+@dataclass
+class FieldProperties:
+    """Static soil and crop properties for each field.
+
+    All arrays have shape (n_fields,). These properties are read from
+    the HDF5 input file and do not change during simulation.
+
+    Attributes
+    ----------
+    n_fields : int
+        Number of fields/pixels
+    fids : NDArray
+        Field identifiers (string or int)
+    awc : NDArray[np.float64]
+        Available water capacity (mm/m)
+    ksat : NDArray[np.float64]
+        Saturated hydraulic conductivity (mm/hr)
+    rew : NDArray[np.float64]
+        Readily evaporable water (mm)
+    tew : NDArray[np.float64]
+        Total evaporable water (mm)
+    cn2 : NDArray[np.float64]
+        Curve number for average antecedent moisture (AMC II)
+    zr_max : NDArray[np.float64]
+        Maximum root depth (m)
+    zr_min : NDArray[np.float64]
+        Minimum root depth (m)
+    p_depletion : NDArray[np.float64]
+        Depletion fraction for stress onset
+    irr_status : NDArray[np.bool_]
+        Whether field is irrigated
+    perennial : NDArray[np.bool_]
+        Whether crop is perennial (affects root dynamics)
+    gw_status : NDArray[np.bool_]
+        Whether groundwater subsidy is available
+    """
+
+    n_fields: int
+    fids: NDArray = field(default=None)
+    awc: NDArray[np.float64] = field(default=None)
+    ksat: NDArray[np.float64] = field(default=None)
+    rew: NDArray[np.float64] = field(default=None)
+    tew: NDArray[np.float64] = field(default=None)
+    cn2: NDArray[np.float64] = field(default=None)
+    zr_max: NDArray[np.float64] = field(default=None)
+    zr_min: NDArray[np.float64] = field(default=None)
+    p_depletion: NDArray[np.float64] = field(default=None)
+    irr_status: NDArray[np.bool_] = field(default=None)
+    perennial: NDArray[np.bool_] = field(default=None)
+    gw_status: NDArray[np.bool_] = field(default=None)
+
+    def __post_init__(self):
+        """Initialize arrays with reasonable defaults if not provided."""
+        n = self.n_fields
+        if self.fids is None:
+            self.fids = np.arange(n)
+        if self.awc is None:
+            self.awc = np.full(n, 150.0, dtype=np.float64)  # mm/m
+        if self.ksat is None:
+            self.ksat = np.full(n, 10.0, dtype=np.float64)  # mm/hr
+        if self.rew is None:
+            self.rew = np.full(n, 9.0, dtype=np.float64)  # mm
+        if self.tew is None:
+            self.tew = np.full(n, 25.0, dtype=np.float64)  # mm
+        if self.cn2 is None:
+            self.cn2 = np.full(n, 75.0, dtype=np.float64)
+        if self.zr_max is None:
+            self.zr_max = np.full(n, 1.0, dtype=np.float64)  # m
+        if self.zr_min is None:
+            self.zr_min = np.full(n, 0.1, dtype=np.float64)  # m
+        if self.p_depletion is None:
+            self.p_depletion = np.full(n, 0.5, dtype=np.float64)
+        if self.irr_status is None:
+            self.irr_status = np.zeros(n, dtype=np.bool_)
+        if self.perennial is None:
+            self.perennial = np.zeros(n, dtype=np.bool_)
+        if self.gw_status is None:
+            self.gw_status = np.zeros(n, dtype=np.bool_)
+
+    def compute_taw(self, zr: NDArray[np.float64]) -> NDArray[np.float64]:
+        """Compute total available water for given root depth.
+
+        TAW = AWC * Zr
+
+        Parameters
+        ----------
+        zr : NDArray[np.float64]
+            Root depth (m)
+
+        Returns
+        -------
+        NDArray[np.float64]
+            Total available water (mm)
+        """
+        return self.awc * zr
+
+    def compute_raw(
+        self, taw: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        """Compute readily available water.
+
+        RAW = p * TAW
+
+        Parameters
+        ----------
+        taw : NDArray[np.float64]
+            Total available water (mm)
+
+        Returns
+        -------
+        NDArray[np.float64]
+            Readily available water (mm)
+        """
+        return self.p_depletion * taw
+
+
+@dataclass
+class CalibrationParameters:
+    """Parameters that can be modified by PEST++ multipliers.
+
+    All arrays have shape (n_fields,). These are the calibration
+    parameters that PEST++ adjusts via multiplier files.
+
+    Attributes
+    ----------
+    n_fields : int
+        Number of fields/pixels
+    kc_max : NDArray[np.float64]
+        Maximum crop coefficient
+    kc_min : NDArray[np.float64]
+        Minimum crop coefficient (bare soil)
+    ndvi_k : NDArray[np.float64]
+        Sigmoid steepness parameter for Kcb
+    ndvi_0 : NDArray[np.float64]
+        Sigmoid midpoint (inflection) NDVI
+    swe_alpha : NDArray[np.float64]
+        Snow melt radiation coefficient
+    swe_beta : NDArray[np.float64]
+        Snow melt degree-day coefficient
+    kr_damp : NDArray[np.float64]
+        Kr damping factor (0-1)
+    ks_damp : NDArray[np.float64]
+        Ks damping factor (0-1)
+    max_irr_rate : NDArray[np.float64]
+        Maximum daily irrigation rate (mm/day)
+    f_sub : NDArray[np.float64]
+        Groundwater subsidy fraction (0-1)
+    """
+
+    n_fields: int
+    kc_max: NDArray[np.float64] = field(default=None)
+    kc_min: NDArray[np.float64] = field(default=None)
+    ndvi_k: NDArray[np.float64] = field(default=None)
+    ndvi_0: NDArray[np.float64] = field(default=None)
+    swe_alpha: NDArray[np.float64] = field(default=None)
+    swe_beta: NDArray[np.float64] = field(default=None)
+    kr_damp: NDArray[np.float64] = field(default=None)
+    ks_damp: NDArray[np.float64] = field(default=None)
+    max_irr_rate: NDArray[np.float64] = field(default=None)
+    f_sub: NDArray[np.float64] = field(default=None)
+    ke_max: NDArray[np.float64] = field(default=None)
+
+    def __post_init__(self):
+        """Initialize arrays with default values if not provided."""
+        n = self.n_fields
+        if self.kc_max is None:
+            self.kc_max = np.full(n, 1.15, dtype=np.float64)
+        if self.kc_min is None:
+            self.kc_min = np.full(n, 0.15, dtype=np.float64)
+        if self.ndvi_k is None:
+            self.ndvi_k = np.full(n, 7.0, dtype=np.float64)
+        if self.ndvi_0 is None:
+            self.ndvi_0 = np.full(n, 0.4, dtype=np.float64)
+        if self.swe_alpha is None:
+            self.swe_alpha = np.full(n, 0.5, dtype=np.float64)
+        if self.swe_beta is None:
+            self.swe_beta = np.full(n, 2.0, dtype=np.float64)
+        if self.kr_damp is None:
+            self.kr_damp = np.full(n, 0.2, dtype=np.float64)
+        if self.ks_damp is None:
+            self.ks_damp = np.full(n, 0.2, dtype=np.float64)
+        if self.max_irr_rate is None:
+            self.max_irr_rate = np.full(n, 25.0, dtype=np.float64)
+        if self.f_sub is None:
+            self.f_sub = np.full(n, 1.0, dtype=np.float64)
+        if self.ke_max is None:
+            self.ke_max = np.full(n, 1.0, dtype=np.float64)
+
+    @classmethod
+    def from_base_with_multipliers(
+        cls,
+        base: CalibrationParameters,
+        multipliers: dict[str, NDArray[np.float64]],
+    ) -> CalibrationParameters:
+        """Create parameters by applying multipliers to base values.
+
+        Parameters
+        ----------
+        base : CalibrationParameters
+            Base parameter values
+        multipliers : dict
+            Parameter name -> multiplier array
+
+        Returns
+        -------
+        CalibrationParameters
+            New parameters with multipliers applied
+        """
+        params = cls(n_fields=base.n_fields)
+
+        # Copy base values
+        params.kc_max = base.kc_max.copy()
+        params.kc_min = base.kc_min.copy()
+        params.ndvi_k = base.ndvi_k.copy()
+        params.ndvi_0 = base.ndvi_0.copy()
+        params.swe_alpha = base.swe_alpha.copy()
+        params.swe_beta = base.swe_beta.copy()
+        params.kr_damp = base.kr_damp.copy()
+        params.ks_damp = base.ks_damp.copy()
+        params.max_irr_rate = base.max_irr_rate.copy()
+        params.f_sub = base.f_sub.copy()
+        params.ke_max = base.ke_max.copy()
+
+        # Apply multipliers
+        for param_name, mult in multipliers.items():
+            if hasattr(params, param_name):
+                arr = getattr(params, param_name)
+                arr *= mult
+
+        return params
+
+    def copy(self) -> CalibrationParameters:
+        """Create a deep copy of the parameters."""
+        params = CalibrationParameters(n_fields=self.n_fields)
+        params.kc_max = self.kc_max.copy()
+        params.kc_min = self.kc_min.copy()
+        params.ndvi_k = self.ndvi_k.copy()
+        params.ndvi_0 = self.ndvi_0.copy()
+        params.swe_alpha = self.swe_alpha.copy()
+        params.swe_beta = self.swe_beta.copy()
+        params.kr_damp = self.kr_damp.copy()
+        params.ks_damp = self.ks_damp.copy()
+        params.max_irr_rate = self.max_irr_rate.copy()
+        params.f_sub = self.f_sub.copy()
+        params.ke_max = self.ke_max.copy()
+        return params
