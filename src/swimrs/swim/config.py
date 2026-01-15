@@ -113,6 +113,9 @@ class ProjectConfig:
         with open(conf_file_path, 'r') as f:
             raw_config = toml.load(f)
 
+        # Store the config file path for later use (e.g., copying to pest directory)
+        self.config_path = os.path.abspath(conf_file_path)
+
         self.calibrate = calibrate
         self.forecast = forecast
         self.project_name = raw_config.get('project')

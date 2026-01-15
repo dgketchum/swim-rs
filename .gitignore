@@ -190,9 +190,7 @@ cython_debug/
 /examples/2_Fort_Peck/data/snodas/
 /examples/2_Fort_Peck/data/plot_timeseries/
 /examples/2_Fort_Peck/data/US-FPe_daily_data.csv
-/examples/2_Fort_Peck/pest/
-/examples/2_Fort_Peck/master/
-/examples/2_Fort_Peck/workers/
+/examples/2_Fort_Peck/data/pestrun/
 /examples/3_Crane/data/gis/flux_fields_gfid.json
 /examples/3_Crane/data/landsat/
 /examples/3_Crane/data/met_timeseries/
@@ -200,18 +198,14 @@ cython_debug/
 /examples/3_Crane/data/snodas/
 /examples/3_Crane/data/plot_timeseries/
 /examples/3_Crane/data/US-FPe_daily_data.csv
-/examples/3_Crane/pest/
-/examples/3_Crane/master/
-/examples/3_Crane/workers/
+/examples/3_Crane/data/pestrun/
 /examples/4_Flux_Network/data/snodas/
 /examples/4_Flux_Network/data/properties/
 /examples/4_Flux_Network/data/met_timeseries/
 /examples/4_Flux_Network/data/landsat/
 /examples/4_Flux_Network/data/plot_timeseries/
 /examples/4_Flux_Network/data/bias_correction_tif/
-/examples/4_Flux_Network/pest/
-/examples/4_Flux_Network/master/
-/examples/4_Flux_Network/workers/
+/examples/4_Flux_Network/data/pestrun/
 /examples/logs/
 
 examples/6_Flux_International/data/landsat/

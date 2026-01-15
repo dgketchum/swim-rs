@@ -65,7 +65,7 @@ kc_proxy = "etf"
 cover_proxy = "ndvi"
 
 [calibration]
-pest_run_dir = "{project_workspace}"
+pest_run_dir = "{project_workspace}/data/pestrun"
 etf_target_model = "ssebop"
 workers = 20
 realizations = 200
