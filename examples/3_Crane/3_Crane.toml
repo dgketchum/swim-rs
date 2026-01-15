@@ -50,8 +50,8 @@ refet_type = "eto"
 swb_mode = "cn"
 
 [date_range]
-start_date = "2003-01-01"
-end_date = "2007-12-31"
+start_date = "1987-01-01"
+end_date = "2022-12-31"
 
 [crop_coefficient]
 kc_proxy = "etf"
@@ -59,7 +59,8 @@ cover_proxy = "ndvi"
 
 [calibration]
 pest_run_dir = "{project_workspace}/data/pestrun"
-etf_target_model = "ssebop"
+etf_target_model = "ssebop"  # Primary model for calibration observations
+etf_ensemble_members = ["ptjpl", "sims", "ssebop", "geesebal"]  # OpenET ensemble models for comparison
 workers = 6
 realizations = 20
 calibration_dir = "{pest_run_dir}/pest/mult"
