@@ -2,6 +2,8 @@ import json
 import os
 import shutil
 from collections import OrderedDict
+from pathlib import Path
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -15,12 +17,32 @@ from swimrs.swim.sampleplots import SamplePlots
 
 class PestBuilder:
 
-    def __init__(self, config, use_existing=False, python_script=None, prior_constraint=None,
-                 conflicted_obs=None):
+    def __init__(self, config, container=None, use_existing=False, python_script=None,
+                 prior_constraint=None, conflicted_obs=None):
+        """
+        Initialize PestBuilder for PEST++ calibration.
 
+        Args:
+            config: ProjectConfig instance
+            container: SwimContainer instance or path to .swim directory.
+                       If provided, ETf and SWE data will be queried from
+                       the container instead of parquet files.
+            use_existing: If True, use existing PEST++ setup
+            python_script: Path to custom forward run script
+            prior_constraint: Prior constraint settings
+            conflicted_obs: Path to conflicted observations file
+        """
         self.config = config
         self.project_ws = config.project_ws
         self.pest_run_dir = config.pest_run_dir
+
+        # Initialize container if provided
+        self._container = None
+        self._container_path = None
+        self._owns_container = False
+
+        if container is not None:
+            self._init_container(container)
 
         if not os.path.isdir(self.pest_run_dir):
             os.mkdir(self.pest_run_dir)
@@ -68,6 +90,67 @@ class PestBuilder:
             self.overwrite_build = False
         else:
             self.overwrite_build = True
+
+    def _init_container(self, container):
+        """Initialize container from instance or path."""
+        from swimrs.container import SwimContainer
+
+        if isinstance(container, (str, Path)):
+            self._container_path = Path(container)
+            self._container = SwimContainer.open(self._container_path, mode='r')
+            self._owns_container = True
+        else:
+            self._container = container
+            self._owns_container = False
+
+    def _get_etf_data(self, fid: str, model: str = 'ssebop') -> pd.DataFrame:
+        """
+        Get ETf data for a field from container.
+
+        Returns DataFrame with columns like '{model}_etf_{mask}' for each mask.
+        """
+        if self._container is None:
+            raise ValueError("No container available. Pass container to PestBuilder.__init__")
+
+        result = pd.DataFrame(index=pd.date_range(
+            self.config.start_dt, self.config.end_dt, freq='D'
+        ))
+
+        for mask in ['irr', 'inv_irr']:
+            path = f"remote_sensing/etf/landsat/{model}/{mask}"
+            if path in self._container._root:
+                df = self._container.query.dataframe(path, fields=[fid])
+                if fid in df.columns:
+                    result[f'{model}_etf_{mask}'] = df[fid]
+
+        return result
+
+    def _get_swe_data(self, fid: str) -> pd.DataFrame:
+        """Get SWE data for a field from container."""
+        if self._container is None:
+            raise ValueError("No container available. Pass container to PestBuilder.__init__")
+
+        path = "snow/snodas/swe"
+        if path not in self._container._root:
+            raise ValueError(f"SWE data not found in container at {path}")
+
+        df = self._container.query.dataframe(path, fields=[fid])
+        result = pd.DataFrame(index=df.index)
+        result['swe'] = df[fid] if fid in df.columns else np.nan
+        return result
+
+    def close(self):
+        """Close container if we own it."""
+        if self._owns_container and self._container is not None:
+            self._container.close()
+            self._container = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
 
     def get_pest_builder_args(self):
 
@@ -383,10 +466,13 @@ class PestBuilder:
 
         for j, fid in enumerate(self.pest_args['targets']):
 
-            # only weight swe Nov - Apr
-            swe_df = pd.read_parquet(self.pest_args['inputs'][j])
-            swe_df = swe_df[[c for c in swe_df.columns if 'swe' in c[2]]]
-            swe_df.columns = ['swe']
+            # Get SWE data from container or parquet
+            if self._container is not None:
+                swe_df = self._get_swe_data(fid)
+            else:
+                swe_df = pd.read_parquet(self.pest_args['inputs'][j])
+                swe_df = swe_df[[c for c in swe_df.columns if 'swe' in c[2]]]
+                swe_df.columns = ['swe']
 
             self.pest.add_observations(self.pest_args['swe_obs']['file'][j],
                                        insfile=self.pest_args['swe_obs']['insfile'][j])
@@ -422,9 +508,13 @@ class PestBuilder:
 
         total_valid_obs = 0
         for i, fid in enumerate(self.pest_args['targets']):
-            etf = pd.read_parquet(self.pest_args['inputs'][i])
-            etf = etf[[c for c in etf.columns if 'etf' in c[2]]]
-            etf.columns = [f'{c[-2]}_etf_{c[-1]}' for c in etf.columns]
+            # Get ETf data from container or parquet
+            if self._container is not None:
+                etf = self._get_etf_data(fid, model=target)
+            else:
+                etf = pd.read_parquet(self.pest_args['inputs'][i])
+                etf = etf[[c for c in etf.columns if 'etf' in c[2]]]
+                etf.columns = [f'{c[-2]}_etf_{c[-1]}' for c in etf.columns]
 
             self.pest.add_observations(self.pest_args['etf_obs']['file'][i],
                                        insfile=self.pest_args['etf_obs']['insfile'][i])
