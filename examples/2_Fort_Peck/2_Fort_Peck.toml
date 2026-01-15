@@ -76,4 +76,4 @@ spinup = "{pest_run_dir}/spinup.json"
 python_script = "{project_workspace}/custom_forward_run.py"
 
 [forecast]
-forecast_parameters = "{pest_run_dir}/pest/{project}.3.par.csv"
+forecast_parameters = "{pest_run_dir}/pest/archive/{project}.3.par.csv"
