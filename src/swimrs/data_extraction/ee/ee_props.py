@@ -18,7 +18,16 @@ WEST_STATES = 'users/dgketchum/boundaries/western_11_union'
 EAST_STATES = 'users/dgketchum/boundaries/eastern_38_dissolved'
 
 
-def get_cdl(fields, desc, selector='FID', dest='drive', bucket=None, drive_folder='swim', file_prefix='swim', drive_categorize=False):
+def get_cdl(
+    fields: str | ee.FeatureCollection,
+    desc: str,
+    selector: str = 'FID',
+    dest: str = 'drive',
+    bucket: str | None = None,
+    drive_folder: str = 'swim',
+    file_prefix: str = 'swim',
+    drive_categorize: bool = False,
+) -> None:
     """Export per-feature CDL crop class mode by year to GCS.
 
     Parameters
@@ -80,7 +89,19 @@ def get_cdl(fields, desc, selector='FID', dest='drive', bucket=None, drive_folde
     print(desc)
 
 
-def get_irrigation(fields, desc, debug=False, selector='FID', select=None, lanid=False, dest='drive', bucket=None, drive_folder='swim', file_prefix='swim', drive_categorize=False):
+def get_irrigation(
+    fields: str | ee.FeatureCollection,
+    desc: str,
+    debug: bool = False,
+    selector: str = 'FID',
+    select: list[str] | None = None,
+    lanid: bool = False,
+    dest: str = 'drive',
+    bucket: str | None = None,
+    drive_folder: str = 'swim',
+    file_prefix: str = 'swim',
+    drive_categorize: bool = False,
+) -> None:
     """Export annual irrigation fraction per feature using IrrMapper (and LANID).
 
     Parameters
@@ -167,7 +188,18 @@ def get_irrigation(fields, desc, debug=False, selector='FID', select=None, lanid
     print(desc)
 
 
-def get_ssurgo(fields, desc, debug=False, selector='FID', select=None, dest='drive', bucket=None, drive_folder='swim', file_prefix='swim', drive_categorize=False):
+def get_ssurgo(
+    fields: str | ee.FeatureCollection,
+    desc: str,
+    debug: bool = False,
+    selector: str = 'FID',
+    select: list[str] | None = None,
+    dest: str = 'drive',
+    bucket: str | None = None,
+    drive_folder: str = 'swim',
+    file_prefix: str = 'swim',
+    drive_categorize: bool = False,
+) -> None:
     """Export SSURGO-derived soil attributes averaged per feature.
 
     Parameters
@@ -237,7 +269,19 @@ def get_ssurgo(fields, desc, debug=False, selector='FID', select=None, dest='dri
     print(desc)
 
 
-def get_hwsd(fields, desc, debug=False, selector='FID', out_fmt='CSV', local_file=None, dest='drive', bucket=None, drive_folder='swim', file_prefix='swim', drive_categorize=False):
+def get_hwsd(
+    fields: str | ee.FeatureCollection,
+    desc: str,
+    debug: bool = False,
+    selector: str = 'FID',
+    out_fmt: str = 'CSV',
+    local_file: str | None = None,
+    dest: str = 'drive',
+    bucket: str | None = None,
+    drive_folder: str = 'swim',
+    file_prefix: str = 'swim',
+    drive_categorize: bool = False,
+) -> None:
     """Export or save HWSD v2 soil property (AWC) per feature.
 
     Parameters
@@ -294,7 +338,20 @@ def get_hwsd(fields, desc, debug=False, selector='FID', out_fmt='CSV', local_fil
         print(desc)
 
 
-def get_landcover(fields, desc, debug=False, selector='FID', select=None, out_fmt='CSV', local_file=None, dest='drive', bucket=None, drive_folder='swim', file_prefix='swim', drive_categorize=False):
+def get_landcover(
+    fields: str | ee.FeatureCollection,
+    desc: str,
+    debug: bool = False,
+    selector: str = 'FID',
+    select: list[str] | None = None,
+    out_fmt: str = 'CSV',
+    local_file: str | None = None,
+    dest: str = 'drive',
+    bucket: str | None = None,
+    drive_folder: str = 'swim',
+    file_prefix: str = 'swim',
+    drive_categorize: bool = False,
+) -> None:
     """Export dominant landcover from MODIS and FROM-GLC10 per feature.
 
     Parameters

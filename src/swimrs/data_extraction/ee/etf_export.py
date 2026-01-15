@@ -38,7 +38,7 @@ STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
 WEST_STATES = 'users/dgketchum/boundaries/western_11_union'
 EAST_STATES = 'users/dgketchum/boundaries/eastern_38_dissolved'
 
-def get_utm_epsg(latitude, longitude):
+def get_utm_epsg(latitude: float, longitude: float) -> tuple[int, str]:
     """Return UTM EPSG code and zone string for a lat/lon.
 
     Parameters
@@ -59,7 +59,7 @@ def get_utm_epsg(latitude, longitude):
     return epsg_code, zone_hemisphere
 
 
-def get_flynn():
+def get_flynn() -> ee.FeatureCollection:
     """Return a sample polygon FeatureCollection for quick tests."""
     return ee.FeatureCollection(ee.Feature(ee.Geometry.Polygon([[-106.63372199162623, 46.235698473362476],
                                                                 [-106.49124304875514, 46.235698473362476],
@@ -69,7 +69,17 @@ def get_flynn():
                                            {'key': 'Flynn_Ex'}))
 
 
-def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_type='irr', dest='drive', drive_folder='swim', file_prefix='swim', drive_categorize=False):
+def export_etf_images(
+    feature_coll: ee.FeatureCollection,
+    year: int = 2015,
+    bucket: str | None = None,
+    debug: bool = False,
+    mask_type: str = 'irr',
+    dest: str = 'drive',
+    drive_folder: str = 'swim',
+    file_prefix: str = 'swim',
+    drive_categorize: bool = False,
+) -> None:
     """Export per-scene ET fraction images masked by irrigation to GCS.
 
     Parameters
@@ -145,10 +155,26 @@ def export_etf_images(feature_coll, year=2015, bucket=None, debug=False, mask_ty
         print(_name)
 
 
-def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None,
-                      feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3',
-                      model='ssebop', usgs_nhm=False, source=None, scale=None, dest='drive', drive_folder='swim',
-                      file_prefix='swim', drive_categorize=False):
+def sparse_sample_etf(
+    shapefile: str,
+    bucket: str | None = None,
+    debug: bool = False,
+    mask_type: str = 'irr',
+    check_dir: str | None = None,
+    feature_id: str = 'FID',
+    select: list[str] | None = None,
+    start_yr: int = 2000,
+    end_yr: int = 2024,
+    state_col: str = 'field_3',
+    model: str = 'ssebop',
+    usgs_nhm: bool = False,
+    source: str | None = None,
+    scale: float | None = None,
+    dest: str = 'drive',
+    drive_folder: str = 'swim',
+    file_prefix: str = 'swim',
+    drive_categorize: bool = False,
+) -> None:
     """Export per-field ET fraction (one CSV per field-year) from OpenET/USGS sources.
 
     Parameters
@@ -347,24 +373,26 @@ def sparse_sample_etf(shapefile, bucket=None, debug=False, mask_type='irr', chec
     print(f'ETf: Exported {exported}, skipped {skipped} files found in {check_dir}')
 
 
-def clustered_sample_etf(feature_coll,
-                         bucket=None,
-                         debug=False,
-                         mask_type='irr',
-                         check_dir=None,
-                         start_yr=2000,
-                         end_yr=2024,
-                         feature_id='FID',
-                         select=None,
-                         state_col='STATE',
-                         model='ssebop',
-                         usgs_nhm=False,
-                         source=None,
-                         scale=None,
-                         dest='drive',
-                         drive_folder='swim',
-                         file_prefix='swim',
-                         drive_categorize=False):
+def clustered_sample_etf(
+    feature_coll: str | ee.FeatureCollection,
+    bucket: str | None = None,
+    debug: bool = False,
+    mask_type: str = 'irr',
+    check_dir: str | None = None,
+    start_yr: int = 2000,
+    end_yr: int = 2024,
+    feature_id: str = 'FID',
+    select: list[str] | None = None,
+    state_col: str = 'STATE',
+    model: str = 'ssebop',
+    usgs_nhm: bool = False,
+    source: str | None = None,
+    scale: float | None = None,
+    dest: str = 'drive',
+    drive_folder: str = 'swim',
+    file_prefix: str = 'swim',
+    drive_categorize: bool = False,
+) -> None:
     """Export ET fraction for all features in a collection per year.
 
     Parameters
@@ -534,7 +562,15 @@ def clustered_sample_etf(feature_coll,
         print(desc)
 
 
-def export_to_cloud(images_txt, bucket=None, pathrows=None, dest='drive', drive_folder='swim', file_prefix='swim', drive_categorize=False):
+def export_to_cloud(
+    images_txt: str,
+    bucket: str | None = None,
+    pathrows: str | None = None,
+    dest: str = 'drive',
+    drive_folder: str = 'swim',
+    file_prefix: str = 'swim',
+    drive_categorize: bool = False,
+) -> None:
     """Export imagery by ID list as GeoTIFF + metadata to Drive or Cloud Storage.
 
     Parameters

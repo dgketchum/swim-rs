@@ -10,18 +10,16 @@ de_initial = 10.0
 
 TUNABLE_PARAMS = ['aw', 'ndvi_k', 'ndvi_0', 'mad', 'swe_alpha', 'swe_beta', 'ks_alpha', 'kr_alpha']
 
-# params not included here (e.g., 'tew') are taken from soils data
 # Values are centered within calibration bounds to avoid biasing initial runs
+# Note: rew and tew are derived from soils data, not tunable
 TUNABLE_DEFAULTS = {'aw': 250.0,         # center of 100-400
                     'kr_alpha': 0.5,     # center of 0.01-1.0
                     'ks_alpha': 0.5,     # center of 0.01-1.0
                     'mad': 0.5,          # center of 0.01-0.9
                     'ndvi_0': 0.4,       # center of 0.1-0.7
                     'ndvi_k': 7.0,       # center of 4.0-10.0
-                    'rew': 3.0,          # soil-derived but use round default
                     'swe_alpha': 0.3,    # center of -0.5-1.0
                     'swe_beta': 1.5,     # center of 0.5-2.5
-                    'tew': 15.0,         # soil-derived but use round default
                     }
 
 

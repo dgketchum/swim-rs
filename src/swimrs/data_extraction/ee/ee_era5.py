@@ -73,9 +73,17 @@ def _aggregate_hourly_to_daily(hourly_coll: ee.ImageCollection, day_str: str) ->
     return ee.Image([swe_mm, tmean_c, tmin_c, tmax_c, precip_mm, srad_wm2])
 
 
-def sample_era5_land_variables_daily(shapefile, bucket=None, debug=False, check_dir=None,
-                                     overwrite=False, start_yr=2004, end_yr=2023, feature_id_col='FID',
-                                     file_prefix='swim'):
+def sample_era5_land_variables_daily(
+    shapefile: str,
+    bucket: str | None = None,
+    debug: bool = False,
+    check_dir: str | None = None,
+    overwrite: bool = False,
+    start_yr: int = 2004,
+    end_yr: int = 2023,
+    feature_id_col: str = 'FID',
+    file_prefix: str = 'swim',
+) -> None:
     """Export daily ERA5-Land variables reduced over features, by month.
 
     Uses the ERA5-Land HOURLY collection with local-time day boundaries to match

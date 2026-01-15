@@ -27,19 +27,19 @@ from .common import (
 
 
 def export_geesebal_zonal_stats(
-    shapefile,
-    bucket,
-    feature_id='FID',
-    select=None,
-    start_yr=2000,
-    end_yr=2024,
-    mask_type='no_mask',
-    check_dir=None,
-    state_col='state',
-    buffer=None,
-    batch_size=15,
-    file_prefix='swim',
-):
+    shapefile: str,
+    bucket: str,
+    feature_id: str = 'FID',
+    select: list[str] | None = None,
+    start_yr: int = 2000,
+    end_yr: int = 2024,
+    mask_type: str = 'no_mask',
+    check_dir: str | None = None,
+    state_col: str = 'state',
+    buffer: float | None = None,
+    batch_size: int = 15,
+    file_prefix: str = 'swim',
+) -> None:
     """
     Export per-scene geeSEBAL ET fraction zonal means for polygons to GCS CSVs.
 

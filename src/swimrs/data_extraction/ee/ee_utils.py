@@ -48,7 +48,7 @@ SBAF_COEFFICIENTS = {
 }
 
 
-def harmonize_landsat_to_oli(image):
+def harmonize_landsat_to_oli(image: ee.Image) -> ee.Image:
     """Apply SBAF coefficients to harmonize Landsat TM/ETM+ to OLI reference.
 
     Adds RED_H and NIR_H bands with harmonized reflectance values. Landsat 8/9 (OLI)
@@ -89,7 +89,7 @@ def harmonize_landsat_to_oli(image):
     return image.addBands(red_h).addBands(nir_h)
 
 
-def harmonize_sentinel_to_oli(image):
+def harmonize_sentinel_to_oli(image: ee.Image) -> ee.Image:
     """Apply SBAF coefficients to harmonize Sentinel-2 MSI to OLI reference.
 
     Adds RED_H and NIR_H bands with harmonized reflectance values.
@@ -113,7 +113,7 @@ def harmonize_sentinel_to_oli(image):
     return image.addBands(red_h).addBands(nir_h)
 
 
-def sentinel2_sr(input_img):
+def sentinel2_sr(input_img: ee.Image) -> ee.Image:
     """Prepare Sentinel-2 SR image with basic scaling and cloud mask.
 
     Parameters
@@ -144,7 +144,11 @@ def sentinel2_sr(input_img):
     return image
 
 
-def sentinel2_masked(yr, roi, harmonize=True):
+def sentinel2_masked(
+    yr: int,
+    roi: ee.Geometry | ee.FeatureCollection,
+    harmonize: bool = True,
+) -> ee.ImageCollection:
     """Return a masked Sentinel-2 SR ImageCollection for a year and ROI.
 
     Parameters
@@ -170,7 +174,7 @@ def sentinel2_masked(yr, roi, harmonize=True):
     return s2_coll
 
 
-def landsat_c2_sr(input_img):
+def landsat_c2_sr(input_img: ee.Image) -> ee.Image:
     """Prepare Landsat Collection 2 SR image with scaling and cloud/saturation mask.
 
     Parameters
@@ -226,7 +230,11 @@ def landsat_c2_sr(input_img):
     return image
 
 
-def landsat_masked(yr, roi, harmonize=True):
+def landsat_masked(
+    yr: int,
+    roi: ee.Geometry | ee.FeatureCollection,
+    harmonize: bool = True,
+) -> ee.ImageCollection:
     """Return cloud-masked Landsat C2 SR ImageCollection merged across sensors.
 
     Parameters
@@ -260,7 +268,7 @@ def landsat_masked(yr, roi, harmonize=True):
     return lsSR_masked
 
 
-def export_openet_correction_surfaces(local_check):
+def export_openet_correction_surfaces(local_check: str | None) -> None:
     """Export monthly OpenET GridMET correction images to GCS.
 
     Exports both ETr and ETo ratios for each month to the `wudr` bucket, skipping
@@ -296,7 +304,7 @@ def export_openet_correction_surfaces(local_check):
             print(desc)
 
 
-def get_lanid():
+def get_lanid() -> ee.Image:
     """Build a multi-band LANID irrigation mask image for 1987–2024.
 
     Returns
@@ -331,7 +339,11 @@ def get_lanid():
     return bands
 
 
-def as_ee_feature_collection(fields, feature_id='FID', keep_props=None):
+def as_ee_feature_collection(
+    fields: str | ee.FeatureCollection,
+    feature_id: str = 'FID',
+    keep_props: list[str] | None = None,
+) -> ee.FeatureCollection:
     """Return an ee.FeatureCollection from an asset ID, ee object, or shapefile path.
 
     Parameters
@@ -386,7 +398,7 @@ def as_ee_feature_collection(fields, feature_id='FID', keep_props=None):
     return ee.FeatureCollection(fields)
 
 
-def is_authorized():
+def is_authorized() -> bool:
     """Initialize the Earth Engine client using the configured project.
 
     Raises a RuntimeError if initialization fails.

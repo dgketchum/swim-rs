@@ -35,7 +35,7 @@ WEST_STATES = 'users/dgketchum/boundaries/western_11_union'
 EAST_STATES = 'users/dgketchum/boundaries/eastern_38_dissolved'
 
 
-def get_flynn():
+def get_flynn() -> ee.FeatureCollection:
     """Return a small example polygon FeatureCollection.
 
     Useful for quick debugging of exports in a known area.
@@ -51,8 +51,17 @@ def get_flynn():
                                            {'key': 'Flynn_Ex'}))
 
 
-def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_type='irr', dest='drive',
-                       drive_folder='swim', file_prefix='swim', drive_categorize=False):
+def export_ndvi_images(
+    feature_coll: ee.FeatureCollection,
+    year: int = 2015,
+    bucket: str | None = None,
+    debug: bool = False,
+    mask_type: str = 'irr',
+    dest: str = 'drive',
+    drive_folder: str = 'swim',
+    file_prefix: str = 'swim',
+    drive_categorize: bool = False,
+) -> None:
     """Export per-scene NDVI images to Cloud Storage for a feature collection.
 
     Parameters
@@ -131,10 +140,23 @@ def export_ndvi_images(feature_coll, year=2015, bucket=None, debug=False, mask_t
         print(_name)
 
 
-def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', check_dir=None,
-                       feature_id='FID', select=None, start_yr=2000, end_yr=2024, state_col='field_3',
-                       satellite='landsat', dest='drive', drive_folder='swim', file_prefix='swim',
-                       drive_categorize=False):
+def sparse_sample_ndvi(
+    shapefile: str,
+    bucket: str | None = None,
+    debug: bool = False,
+    mask_type: str = 'irr',
+    check_dir: str | None = None,
+    feature_id: str = 'FID',
+    select: list[str] | None = None,
+    start_yr: int = 2000,
+    end_yr: int = 2024,
+    state_col: str = 'field_3',
+    satellite: str = 'landsat',
+    dest: str = 'drive',
+    drive_folder: str = 'swim',
+    file_prefix: str = 'swim',
+    drive_categorize: bool = False,
+) -> None:
     """Export per-field NDVI timeseries (one CSV per field-year) to GCS.
 
     Parameters
@@ -301,10 +323,23 @@ def sparse_sample_ndvi(shapefile, bucket=None, debug=False, mask_type='irr', che
     print(f'NDVI: Exported {exported}, skipped {skipped} files found in {check_dir}')
 
 
-def clustered_sample_ndvi(feature_coll, bucket=None, debug=False, mask_type='irr', check_dir=None,
-                          start_yr=2004, end_yr=2023, feature_id='FID', select=None, state_col='STATE',
-                          satellite='landsat', dest='drive', drive_folder='swim', file_prefix='swim',
-                          drive_categorize=False):
+def clustered_sample_ndvi(
+    feature_coll: str | ee.FeatureCollection,
+    bucket: str | None = None,
+    debug: bool = False,
+    mask_type: str = 'irr',
+    check_dir: str | None = None,
+    start_yr: int = 2004,
+    end_yr: int = 2023,
+    feature_id: str = 'FID',
+    select: list[str] | None = None,
+    state_col: str = 'STATE',
+    satellite: str = 'landsat',
+    dest: str = 'drive',
+    drive_folder: str = 'swim',
+    file_prefix: str = 'swim',
+    drive_categorize: bool = False,
+) -> None:
     """Export NDVI for all features in a collection, grouped per-year.
 
     Parameters

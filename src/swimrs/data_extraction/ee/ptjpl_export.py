@@ -33,19 +33,19 @@ PTJPL_ET_REF_RESAMPLE = 'bilinear'
 
 
 def export_ptjpl_zonal_stats(
-    shapefile,
-    bucket,
-    feature_id='FID',
-    select=None,
-    start_yr=2000,
-    end_yr=2024,
-    mask_type='no_mask',
-    check_dir=None,
-    state_col='state',
-    buffer=None,
-    batch_size=15,
-    file_prefix='swim',
-):
+    shapefile: str,
+    bucket: str,
+    feature_id: str = 'FID',
+    select: list[str] | None = None,
+    start_yr: int = 2000,
+    end_yr: int = 2024,
+    mask_type: str = 'no_mask',
+    check_dir: str | None = None,
+    state_col: str = 'state',
+    buffer: float | None = None,
+    batch_size: int = 60,
+    file_prefix: str = 'swim',
+) -> None:
     """
     Export per-scene PT-JPL ET fraction zonal means for polygons to GCS CSVs.
 
@@ -72,8 +72,8 @@ def export_ptjpl_zonal_stats(
     buffer : float, optional
         Buffer distance in meters to apply to geometries.
     batch_size : int, optional
-        Number of scenes to process per export batch (default: 15).
-        Smaller batches reduce server-side memory usage.
+        Number of scenes to process per export batch (default: 60).
+        PT-JPL runs fast so larger batches are efficient.
     file_prefix : str, optional
         Bucket path prefix, typically project name (default: 'swim').
     """

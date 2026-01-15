@@ -34,12 +34,16 @@ EAST_STATES_FC = 'users/dgketchum/boundaries/eastern_38_dissolved'
 LANID_ASSET = 'projects/ee-dgketchum/assets/lanid/LANID_V1'
 
 
-def get_lanid():
+def get_lanid() -> ee.Image:
     """Get the LANID irrigation dataset as an ee.Image."""
     return ee.Image(LANID_ASSET)
 
 
-def load_shapefile(shapefile, feature_id, buffer=None):
+def load_shapefile(
+    shapefile: str,
+    feature_id: str,
+    buffer: float | None = None,
+) -> gpd.GeoDataFrame:
     """
     Load and prepare a shapefile for processing.
 
@@ -70,7 +74,14 @@ def load_shapefile(shapefile, feature_id, buffer=None):
     return df
 
 
-def get_irrigation_mask(year, state, irr_coll, irr_min_yr_mask, lanid, east_fc):
+def get_irrigation_mask(
+    year: int,
+    state: str | None,
+    irr_coll: ee.ImageCollection,
+    irr_min_yr_mask: ee.Image,
+    lanid: ee.Image,
+    east_fc: ee.FeatureCollection,
+) -> tuple[ee.Image, ee.Image]:
     """
     Get irrigation mask for a given year and state.
 
@@ -110,7 +121,7 @@ def get_irrigation_mask(year, state, irr_coll, irr_min_yr_mask, lanid, east_fc):
     return irr, irr_mask
 
 
-def setup_irrigation_masks():
+def setup_irrigation_masks() -> tuple[ee.ImageCollection, ee.Image, ee.Image, ee.FeatureCollection]:
     """
     Initialize Earth Engine irrigation mask resources.
 
@@ -129,7 +140,11 @@ def setup_irrigation_masks():
     return irr_coll, irr_min_yr_mask, lanid, east_fc
 
 
-def build_feature_collection(polygon, fid, feature_id):
+def build_feature_collection(
+    polygon: ee.Geometry,
+    fid: str,
+    feature_id: str,
+) -> ee.FeatureCollection:
     """
     Build an ee.FeatureCollection from a polygon geometry.
 
@@ -149,7 +164,13 @@ def build_feature_collection(polygon, fid, feature_id):
     return ee.FeatureCollection(ee.Feature(polygon, {feature_id: fid}))
 
 
-def export_table_to_gcs(data, desc, bucket, fn_prefix, selectors):
+def export_table_to_gcs(
+    data: ee.FeatureCollection,
+    desc: str,
+    bucket: str,
+    fn_prefix: str,
+    selectors: list[str],
+) -> bool:
     """
     Export a FeatureCollection to Google Cloud Storage as CSV.
 
@@ -202,13 +223,18 @@ def export_table_to_gcs(data, desc, bucket, fn_prefix, selectors):
             raise
 
 
-def get_scene_ids(model_collection, start_date, end_date, polygon):
+def get_scene_ids(
+    model_collection: type,
+    start_date: str,
+    end_date: str,
+    polygon: ee.Geometry,
+) -> list[str]:
     """
     Get sorted list of Landsat scene IDs for a geometry and date range.
 
     Parameters
     ----------
-    model_collection : module
+    model_collection : type
         OpenET model collection class (e.g., ssebop.Collection).
     start_date : str
         Start date in YYYY-MM-DD format.
@@ -235,7 +261,7 @@ def get_scene_ids(model_collection, start_date, end_date, polygon):
     return scenes
 
 
-def parse_scene_name(img_id):
+def parse_scene_name(img_id: str) -> str:
     """
     Parse a Landsat scene ID to get the short name.
 

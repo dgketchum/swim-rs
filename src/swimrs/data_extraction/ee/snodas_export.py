@@ -5,20 +5,20 @@ from swimrs.data_extraction.ee.ee_utils import as_ee_feature_collection
 
 
 def sample_snodas_swe(
-    feature_coll,
-    bucket=None,
-    debug=False,
-    check_dir=None,
-    overwrite=False,
-    start_yr=2004,
-    end_yr=2023,
-    feature_id='FID',
-    select=None,
-    dest='drive',
-    drive_folder='swim',
-    file_prefix='swim',
-    drive_categorize=False,
-):
+    feature_coll: str | ee.FeatureCollection,
+    bucket: str | None = None,
+    debug: bool = False,
+    check_dir: str | None = None,
+    overwrite: bool = False,
+    start_yr: int = 2004,
+    end_yr: int = 2023,
+    feature_id: str = 'FID',
+    select: list[str] | None = None,
+    dest: str = 'drive',
+    drive_folder: str = 'swim',
+    file_prefix: str = 'swim',
+    drive_categorize: bool = False,
+) -> None:
     feature_coll = as_ee_feature_collection(feature_coll, feature_id=feature_id)
 
     # Optionally filter to a subset of features by ID
