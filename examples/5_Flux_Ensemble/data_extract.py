@@ -1,9 +1,5 @@
 import os
-import sys
 from pathlib import Path
-
-# Add this directory to path so etf package can be imported
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import geopandas as gpd
 
@@ -118,21 +114,19 @@ def extract_openet_etf(
     import ee
     ee.Initialize()
 
-    from etf import (
+    from swimrs.data_extraction.ee import (
         export_ptjpl_zonal_stats,
         export_sims_zonal_stats,
         export_ssebop_zonal_stats,
-        export_disalexi_zonal_stats,
         export_geesebal_zonal_stats,
     )
 
     # Map model names to export functions
     model_exporters = {
-        'ssebop': export_ssebop_zonal_stats,
-        # 'disalexi': export_disalexi_zonal_stats,
-        'geesebal': export_geesebal_zonal_stats,
         'ptjpl': export_ptjpl_zonal_stats,
         'sims': export_sims_zonal_stats,
+        'ssebop': export_ssebop_zonal_stats,
+        'geesebal': export_geesebal_zonal_stats,
     }
 
     if models is None:
