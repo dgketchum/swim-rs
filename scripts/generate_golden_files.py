@@ -250,6 +250,46 @@ def generate_golden_files(
         import shutil
         shutil.copy(prepped_path, output_dir / "prepped_input.json")
 
+        # 6. Generate spinup by running the model
+        logger.info("Generating spinup state by running model...")
+        try:
+            from swimrs.swim.config import ProjectConfig
+            from swimrs.swim.sampleplots import SamplePlots
+            from swimrs.model.obs_field_cycle import field_day_loop
+
+            # Create a minimal config for running the model
+            # We need to run with the prepped_input.json we just generated
+            config = ProjectConfig()
+
+            # Set minimal required attributes
+            config.prepped_input = str(prepped_path)
+            config.start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            config.end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+            config.fields_shapefile = str(shapefile)
+            config.feature_id_col = uid_column
+            config.refet_type = "eto"
+            config.irrigation_threshold = 0.3
+            config.swb_mode = "cn"
+            config.mode_forecast = False
+            config.mode_calib = False
+
+            # Initialize plots and run model
+            plots = SamplePlots()
+            plots.initialize_plot_data(config)
+            output = field_day_loop(config, plots, debug_flag=False)
+
+            # Extract final state for each field
+            spinup_data = {}
+            for field_id, field_df in output.items():
+                spinup_data[field_id] = field_df.iloc[-1].to_dict()
+
+            golden_outputs["spinup"] = spinup_data
+            logger.info(f"Generated spinup for {len(spinup_data)} field(s)")
+
+        except Exception as e:
+            logger.warning(f"Failed to generate spinup: {e}")
+            logger.warning("Spinup file will not be generated")
+
         container.close()
 
     # Save golden files

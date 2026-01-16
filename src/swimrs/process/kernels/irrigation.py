@@ -154,8 +154,8 @@ def groundwater_subsidy(
         Boolean flag for groundwater subsidy availability
     f_sub : (n_fields,)
         Fractional subsidy factor [0, 1]
-        1.0 = full subsidy back to RAW
-        0.5 = half the deficit is subsidized
+        Uses threshold logic: if f_sub > 0.2, full subsidy applied
+        (matches legacy model compute_field_et.py behavior)
 
     Returns
     -------
@@ -170,15 +170,21 @@ def groundwater_subsidy(
 
     The subsidy fills the root zone back to the RAW level, not to field
     capacity, as the water table rise is limited by capillary forces.
+
+    Legacy behavior: gwsub_status = 1 if f_sub > 0.2, and when active,
+    the full deficit is applied (not fractional).
     """
     n = depl_root.shape[0]
     gw_sim = np.empty(n, dtype=np.float64)
 
+    # Threshold for activating groundwater subsidy (matches legacy model)
+    FSUB_THRESHOLD = 0.2
+
     for i in prange(n):
-        if gw_status[i] and depl_root[i] > raw[i]:
-            # Deficit below RAW
-            deficit = depl_root[i] - raw[i]
-            gw_sim[i] = deficit * f_sub[i]
+        # Apply full subsidy if gw_status AND f_sub > threshold AND depletion > RAW
+        if gw_status[i] and f_sub[i] > FSUB_THRESHOLD and depl_root[i] > raw[i]:
+            # Full deficit applied (legacy behavior)
+            gw_sim[i] = depl_root[i] - raw[i]
         else:
             gw_sim[i] = 0.0
 

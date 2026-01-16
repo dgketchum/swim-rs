@@ -328,6 +328,7 @@ def build_swim_input(
     output_h5: Path | str,
     spinup_state: dict[str, NDArray[np.float64]] | None = None,
     spinup_json_path: Path | str | None = None,
+    calibrated_params_path: Path | str | None = None,
     start_date: str | datetime | None = None,
     end_date: str | datetime | None = None,
     swb_mode: str = "cn",
@@ -347,6 +348,9 @@ def build_swim_input(
     spinup_json_path : Path | str, optional
         Path to spinup JSON file (like old model's spinup.json).
         Takes precedence over spinup_state if both provided.
+    calibrated_params_path : Path | str, optional
+        Path to JSON file with calibrated parameters per field.
+        Format: {fid: {param_name: value, ...}, ...}
     start_date : str | datetime, optional
         Override start date (default: from time_series)
     end_date : str | datetime, optional
@@ -403,11 +407,16 @@ def build_swim_input(
             data=np.array(fids, dtype="S64"),
         )
 
-        # Properties
-        _write_properties(h5, data, fids, n_fields)
+        # Load calibrated parameters if provided
+        calibrated_params = None
+        if calibrated_params_path is not None:
+            calibrated_params = _load_calibrated_params(calibrated_params_path, fids)
+
+        # Properties (with optional calibrated aw/mad overrides)
+        _write_properties(h5, data, fids, n_fields, calibrated_params)
 
         # Parameters
-        _write_parameters(h5, data, fids, n_fields)
+        _write_parameters(h5, data, fids, n_fields, calibrated_params)
 
         # Time series
         _write_time_series(h5, data, fids, n_fields, n_days, start_date, refet_type)
@@ -431,27 +440,71 @@ def _write_properties(
     data: dict,
     fids: list[str],
     n_fields: int,
+    calibrated_params: dict[str, NDArray[np.float64]] | None = None,
 ):
-    """Write static field properties to HDF5."""
+    """Write static field properties to HDF5.
+
+    Parameters
+    ----------
+    calibrated_params : dict, optional
+        If provided, uses calibrated 'aw' for awc and 'mad' for p_depletion.
+    """
     props = h5.create_group("properties")
 
     # Extract from JSON props
     json_props = data["props"]
 
-    awc = np.array([json_props[fid].get("awc", 0.15) * 1000 for fid in fids])  # mm/m
+    # awc: use calibrated 'aw' if provided, otherwise compute from soil awc
+    if calibrated_params is not None and "aw" in calibrated_params:
+        awc = calibrated_params["aw"]
+    else:
+        awc = np.array([json_props[fid].get("awc", 0.15) * 1000 for fid in fids])  # mm/m
+
     ksat = np.array([json_props[fid].get("ksat", 10.0) for fid in fids])
-    zr_max = np.array([json_props[fid].get("root_depth", 1.0) for fid in fids])
-    zr_min = np.full(n_fields, 0.1)  # Default minimum root depth
+
+    # Perennial status: derived from lulc_code (same logic as tracker.py)
+    # crops = [12, 14], all other codes 1-17 are perennial
+    crops_codes = {12, 14}
+    def _get_perennial(fid):
+        lulc_code = json_props[fid].get("lulc_code", 0)
+        return lulc_code not in crops_codes and 1 <= lulc_code <= 17
+    perennial = np.array([_get_perennial(fid) for fid in fids])
+
+    # Apply zr_mult multiplier to root_depth if present
+    zr_max = np.array([
+        json_props[fid].get("root_depth", 1.0) * json_props[fid].get("zr_mult", 1.0)
+        for fid in fids
+    ])
+    # For perennials, zr_min = zr_max (roots don't shrink); for crops, zr_min = 0.1
+    zr_min = np.where(perennial, zr_max, 0.1)
 
     # Default values for properties not in JSON
-    rew = np.full(n_fields, 9.0)
-    tew = np.full(n_fields, 25.0)
-    cn2 = np.full(n_fields, 75.0)
-    p_depletion = np.full(n_fields, 0.5)
+    # Match legacy model defaults (tracker.py lines 99-100)
+    rew = np.full(n_fields, 3.0)
+    tew = np.full(n_fields, 18.0)
 
-    # Irrigation status from props
-    irr_status = np.array([json_props[fid].get("irr", 0) > 0 for fid in fids])
-    perennial = np.zeros(n_fields, dtype=bool)
+    # Derive curve number (CN2) from clay content (same as tracker.py)
+    # Hydrologic group based on clay percentage:
+    #   Coarse (A, clay < 15%): CN2 = 67
+    #   Medium (B, 15-30%):     CN2 = 77
+    #   Fine (C/D, > 30%):      CN2 = 85
+    clay = np.array([json_props[fid].get("clay", 20.0) for fid in fids])
+    cn2 = np.where(clay < 15.0, 67.0, np.where(clay > 30.0, 85.0, 77.0))
+
+    # p_depletion: use calibrated 'mad' if provided, otherwise default
+    if calibrated_params is not None and "mad" in calibrated_params:
+        p_depletion = calibrated_params["mad"]
+    else:
+        p_depletion = np.full(n_fields, 0.5)
+
+    # Irrigation status from props - can be a dict {year: fraction} or a single value
+    def _get_irr_status(fid):
+        irr = json_props[fid].get("irr", 0)
+        if isinstance(irr, dict):
+            # If any year has irrigation fraction > 0, consider irrigated
+            return any(v > 0 for v in irr.values())
+        return irr > 0
+    irr_status = np.array([_get_irr_status(fid) for fid in fids])
 
     # Groundwater status from gwsub_data
     gw_data = data.get("gwsub_data", {})
@@ -475,14 +528,27 @@ def _write_parameters(
     data: dict,
     fids: list[str],
     n_fields: int,
+    calibrated_params: dict[str, NDArray[np.float64]] | None = None,
 ):
-    """Write calibration parameters to HDF5."""
-    params = h5.create_group("parameters")
+    """Write calibration parameters to HDF5.
 
-    # Note: JSON's kc_max is observational (max ETf), not the model parameter.
-    # Use FAO-56 default of 1.0 for the model's kc_max parameter.
+    Parameters
+    ----------
+    calibrated_params : dict, optional
+        Dictionary with parameter arrays from calibration file.
+        Keys: 'aw', 'ndvi_k', 'ndvi_0', 'ks_damp', 'kr_damp', 'mad',
+              'swe_alpha', 'swe_beta'
+    """
+    params_group = h5.create_group("parameters")
+
+    # kc_max for model is typically 1.0-1.25, not the observational max ETf in JSON
     kc_max = np.full(n_fields, 1.0)
     kc_min = np.full(n_fields, 0.15)
+
+    # Load ke_max from JSON if available, else default to 1.0
+    # This caps soil evaporation coefficient Ke
+    json_ke_max = data.get("ke_max", {})
+    ke_max = np.array([json_ke_max.get(fid, 1.0) for fid in fids])
 
     # Default calibration parameter values
     ndvi_k = np.full(n_fields, 7.0)
@@ -494,19 +560,34 @@ def _write_parameters(
     max_irr_rate = np.full(n_fields, 25.0)
     f_sub = np.full(n_fields, 1.0)
 
-    ke_max = np.full(n_fields, 1.0)
+    # Override with calibrated values if provided
+    if calibrated_params is not None:
+        if "ndvi_k" in calibrated_params:
+            ndvi_k = calibrated_params["ndvi_k"]
+        if "ndvi_0" in calibrated_params:
+            ndvi_0 = calibrated_params["ndvi_0"]
+        if "swe_alpha" in calibrated_params:
+            swe_alpha = calibrated_params["swe_alpha"]
+        if "swe_beta" in calibrated_params:
+            swe_beta = calibrated_params["swe_beta"]
+        if "kr_damp" in calibrated_params:
+            kr_damp = calibrated_params["kr_damp"]
+        if "ks_damp" in calibrated_params:
+            ks_damp = calibrated_params["ks_damp"]
+        if "f_sub" in calibrated_params:
+            f_sub = calibrated_params["f_sub"]
 
-    params.create_dataset("kc_max", data=kc_max)
-    params.create_dataset("kc_min", data=kc_min)
-    params.create_dataset("ndvi_k", data=ndvi_k)
-    params.create_dataset("ndvi_0", data=ndvi_0)
-    params.create_dataset("swe_alpha", data=swe_alpha)
-    params.create_dataset("swe_beta", data=swe_beta)
-    params.create_dataset("kr_damp", data=kr_damp)
-    params.create_dataset("ks_damp", data=ks_damp)
-    params.create_dataset("max_irr_rate", data=max_irr_rate)
-    params.create_dataset("f_sub", data=f_sub)
-    params.create_dataset("ke_max", data=ke_max)
+    params_group.create_dataset("kc_max", data=kc_max)
+    params_group.create_dataset("kc_min", data=kc_min)
+    params_group.create_dataset("ndvi_k", data=ndvi_k)
+    params_group.create_dataset("ndvi_0", data=ndvi_0)
+    params_group.create_dataset("swe_alpha", data=swe_alpha)
+    params_group.create_dataset("swe_beta", data=swe_beta)
+    params_group.create_dataset("kr_damp", data=kr_damp)
+    params_group.create_dataset("ks_damp", data=ks_damp)
+    params_group.create_dataset("max_irr_rate", data=max_irr_rate)
+    params_group.create_dataset("f_sub", data=f_sub)
+    params_group.create_dataset("ke_max", data=ke_max)
 
 
 def _write_time_series(
@@ -523,8 +604,26 @@ def _write_time_series(
     ts_data = data["time_series"]
     json_props = data["props"]
 
-    # Determine irrigation status for each field
-    irr_status = np.array([json_props[fid].get("irr", 0) > 0 for fid in fids])
+    # Build year-specific irrigation status for NDVI selection
+    # Returns dict: {year: np.array of bool for each field}
+    def _build_year_irr_status():
+        result = {}
+        # Determine years from start/end date
+        years = list(range(start_date.year, start_date.year + (n_days // 365) + 2))
+        for year in years:
+            year_status = []
+            for fid in fids:
+                irr = json_props[fid].get("irr", 0)
+                if isinstance(irr, dict):
+                    # Get irrigation fraction for this specific year
+                    frac = irr.get(str(year), 0)
+                    year_status.append(frac > 0)
+                else:
+                    year_status.append(irr > 0)
+            result[year] = np.array(year_status)
+        return result
+
+    year_irr_status = _build_year_irr_status()
 
     # Variables to extract (simple ones without irr/non-irr variants)
     variables = {
@@ -584,13 +683,17 @@ def _write_time_series(
                 ndvi_irr = day_data.get("ndvi_irr", [np.nan] * n_fields)
                 ndvi_inv = day_data.get("ndvi_inv_irr", [np.nan] * n_fields)
 
+                # Get year-specific irrigation status
+                year = date.year
+                irr_status_year = year_irr_status.get(year, np.zeros(n_fields, dtype=bool))
+
                 for fid_idx in range(n_fields):
-                    if irr_status[fid_idx]:
-                        # Irrigated field - use ndvi_irr
+                    if irr_status_year[fid_idx]:
+                        # Irrigated field this year - use ndvi_irr
                         if fid_idx < len(ndvi_irr):
                             ndvi_arr[day_idx, fid_idx] = ndvi_irr[fid_idx]
                     else:
-                        # Non-irrigated field - use ndvi_inv_irr
+                        # Non-irrigated field this year - use ndvi_inv_irr
                         if fid_idx < len(ndvi_inv):
                             ndvi_arr[day_idx, fid_idx] = ndvi_inv[fid_idx]
 
@@ -757,3 +860,60 @@ def _write_spinup(
         spinup.create_dataset("kr", data=np.ones(n_fields))
         spinup.create_dataset("ks", data=np.ones(n_fields))
         spinup.create_dataset("zr", data=np.full(n_fields, 0.1))
+
+
+def _load_calibrated_params(
+    params_path: Path | str,
+    fids: list[str],
+) -> dict[str, NDArray[np.float64]]:
+    """Load calibrated parameters from JSON file.
+
+    Parameters
+    ----------
+    params_path : Path | str
+        Path to calibrated parameters JSON file.
+        Format: {fid: {param_name: value, ...}, ...}
+    fids : list[str]
+        Field IDs in order
+
+    Returns
+    -------
+    dict
+        Dictionary with parameter arrays indexed by parameter name.
+        Keys: ndvi_k, ndvi_0, ks_damp, kr_damp, swe_alpha, swe_beta, aw, mad
+    """
+    params_path = Path(params_path)
+    n_fields = len(fids)
+
+    with open(params_path) as f:
+        params_data = json.load(f)
+
+    # Map from calibration file names to internal names
+    name_map = {
+        "ks_alpha": "ks_damp",
+        "kr_alpha": "kr_damp",
+        "ndvi_k": "ndvi_k",
+        "ndvi_0": "ndvi_0",
+        "swe_alpha": "swe_alpha",
+        "swe_beta": "swe_beta",
+        "aw": "aw",
+        "mad": "mad",
+        "f_sub": "f_sub",
+    }
+
+    # Initialize result with empty arrays
+    result: dict[str, NDArray[np.float64]] = {}
+    for internal_name in name_map.values():
+        result[internal_name] = np.zeros(n_fields, dtype=np.float64)
+
+    # Fill arrays from calibration data
+    for fid_idx, fid in enumerate(fids):
+        if fid not in params_data:
+            continue
+
+        field_params = params_data[fid]
+        for file_name, internal_name in name_map.items():
+            if file_name in field_params:
+                result[internal_name][fid_idx] = field_params[file_name]
+
+    return result

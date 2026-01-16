@@ -323,21 +323,15 @@ def step_day(
     )
     state.zr = zr_new
 
-    # 8. Irrigation demand
-    irr_sim, irr_cont_new, next_irr_new = irrigation_demand(
-        state.depl_root, raw, params.max_irr_rate,
-        irr_flag, temp_avg,
-        state.irr_continue, state.next_day_irr
-    )
-    state.irr_continue = irr_cont_new
-    state.next_day_irr = next_irr_new
+    # 8. Update surface layer (Ze) with water inputs
+    # Matches legacy model compute_field_et.py line 64:
+    # swb.depl_ze = swb.depl_ze - (swb.melt + swb.rain + swb.irr_sim)
+    # Note: uses previous day's irr_sim (stored in state.prev_irr_sim)
+    prev_irr = state.prev_irr_sim if hasattr(state, 'prev_irr_sim') else np.zeros(n)
+    state.depl_ze = state.depl_ze - (actual_melt + rain + prev_irr)
+    state.depl_ze = np.maximum(state.depl_ze, 0.0)  # Can't be negative
 
-    # 9. Groundwater subsidy
-    gw_sim = groundwater_subsidy(
-        state.depl_root, raw, props.gw_status, params.f_sub
-    )
-
-    # 10. Calculate base Kr and Ks
+    # 9. Calculate base Kr and Ks (using current depletion)
     kr_base = kr_reduction(props.tew, state.depl_ze, props.rew)
     ks_base = ks_stress(taw, state.depl_root, raw)
 
@@ -348,38 +342,83 @@ def step_day(
     state.kr = kr_new
     state.ks = ks_new
 
-    # 11. Calculate evaporation coefficient
-    # ke_coefficient(kr, kc_max, kcb, few, ke_max)
+    # 10. Calculate evaporation coefficient
     ke = ke_coefficient(kr_new, params.kc_max, kcb, few, params.ke_max)
 
-    # 12. Calculate actual ET
-    # actual_et(ks, kcb, fc, ke, kc_max, refet)
+    # 11. Calculate actual ET and evaporation
     kc_act, eta = actual_et(ks_new, kcb, fc, ke, params.kc_max, etr)
+    evap = ke * etr  # Soil evaporation component
+
+    # 12. Update Ze with evaporation
+    # Matches legacy model compute_field_et.py lines 97-107
+    depl_ze_prev = state.depl_ze.copy()
+    state.depl_ze = depl_ze_prev + evap
+    state.depl_ze = np.maximum(state.depl_ze, 0.0)
+
+    # Cap evaporation at TEW and adjust if exceeded
+    if np.any(state.depl_ze > props.tew):
+        potential_e = state.depl_ze - depl_ze_prev
+        potential_e = np.maximum(potential_e, 1e-4)
+        e_factor = 1.0 - (state.depl_ze - props.tew) / potential_e
+        e_factor = np.clip(e_factor, 0.0, 1.0)
+        evap = evap * e_factor
+        # Recalculate ET with adjusted evaporation
+        state.depl_ze = np.where(
+            state.depl_ze > props.tew,
+            np.maximum(depl_ze_prev, 0.0) + evap,
+            state.depl_ze
+        )
 
     # Calculate ETf
     etf = np.where(etr > 0, eta / etr, 0.0)
 
-    # 13. Update root zone depletion
-    # root_zone_depletion(depl_root_prev, etc_act, ppt_inf, irr_sim, gw_sim)
-    depl_new = root_zone_depletion(
-        state.depl_root, eta, infiltration, irr_sim, gw_sim
+    # 13. First update depletion with ET and infiltration ONLY
+    # This matches legacy model compute_field_et.py line 114:
+    # swb.depl_root += swb.etc_act - swb.ppt_inf
+    depl_after_et = state.depl_root + eta - infiltration
+
+    # 14. Irrigation demand (based on UPDATED depletion)
+    irr_sim, irr_cont_new, next_irr_new = irrigation_demand(
+        depl_after_et, raw, params.max_irr_rate,
+        irr_flag, temp_avg,
+        state.irr_continue, state.next_day_irr
+    )
+    state.irr_continue = irr_cont_new
+    state.next_day_irr = next_irr_new
+
+    # 15. Groundwater subsidy (based on UPDATED depletion)
+    # Matches legacy model compute_field_et.py lines 150-152
+    gw_sim = groundwater_subsidy(
+        depl_after_et, raw, props.gw_status, params.f_sub
     )
 
-    # 14. Deep percolation (excess water)
-    dperc, depl_after_perc = deep_percolation(depl_new)
-    state.depl_root = depl_after_perc
+    # 16. Apply irrigation and groundwater subsidy
+    # Matches legacy model compute_field_et.py line 156:
+    # swb.depl_root -= (swb.irr_sim + swb.gw_sim)
+    depl_new = depl_after_et - irr_sim - gw_sim
 
-    # 15. Layer 3 storage update
+    # 17. Deep percolation (excess water when depl < 0)
+    dperc, depl_after_perc = deep_percolation(depl_new)
+
+    # 18. Cap depletion at TAW (can't deplete more than available)
+    # Matches legacy model compute_field_et.py line 163:
+    # swb.depl_root = np.where(swb.depl_root > swb.taw, swb.taw, swb.depl_root)
+    state.depl_root = np.minimum(depl_after_perc, taw)
+
+    # 19. Layer 3 storage update with gross deep percolation
+    # Matches legacy model compute_field_et.py line 165:
+    # gross_dperc = swb.dperc + (0.1 * swb.irr_sim)
+    gross_dperc = dperc + 0.1 * irr_sim
+
     if state.taw3 is not None and np.any(state.taw3 > 0):
         state.daw3, dperc_out = layer3_storage(
-            state.daw3, state.taw3, dperc
+            state.daw3, state.taw3, gross_dperc
         )
     else:
-        dperc_out = dperc
+        dperc_out = gross_dperc
 
-    # 16. Update surface layer depletion (simplified - track with root zone)
-    # In FAO-56, Ze is a separate layer, but we simplify here
-    state.depl_ze = np.minimum(state.depl_root, props.tew)
+    # 20. Store irr_sim for next day's Ze update
+    state.prev_irr_sim = irr_sim.copy()
 
     # Return daily outputs
     return {
