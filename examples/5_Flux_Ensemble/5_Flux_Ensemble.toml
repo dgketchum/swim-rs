@@ -17,11 +17,6 @@ container = "{data}/{project}.swim"
 
 # Remote sensing
 landsat = "{data}/remote_sensing/landsat"
-landsat_tables = "{landsat}/tables"
-remote_sensing_tables = "{data}/rs_tables"
-
-# Intermediate files (data_prep.py workflow)
-joined_timeseries = "{data}/plot_timeseries"
 
 [paths.conus]
 met = "{data}/meteorology/gridmet"

@@ -10,9 +10,7 @@ container = "{data}/{project}.swim"
 
 remote_sensing = "{data}/remote_sensing"
 landsat = "{remote_sensing}/landsat"
-landsat_tables = "{landsat}/tables"
 sentinel = "{remote_sensing}/sentinel"
-sentinel_tables = "{sentinel}/tables"
 
 met = "{root}/data/met"
 gis = "{root}/data/gis"
@@ -29,8 +27,6 @@ lulc = "{root}/data/properties/lulc.csv"
 properties_json = "{root}/data/properties/properties.json"
 snodas_in = "{data}/snow/snodas/extracts"
 
-remote_sensing_tables = "{root}/data/rs_tables"
-joined_timeseries = "{root}/data/plot_timeseries"
 dynamics_data = "{root}/data/dynamics.json"
 prepped_input = "{root}/data/prepped_input.json"
 
