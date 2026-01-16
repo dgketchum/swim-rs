@@ -24,6 +24,52 @@ src/swimrs/process/
 
 ---
 
+## Core Dataclasses
+
+The process package uses five main dataclasses to organize simulation data.
+All array attributes have shape `(n_fields,)` unless otherwise noted.
+
+### SwimInput
+
+The top-level container that packages everything needed for a simulation run.
+It wraps an HDF5 file and provides lazy access to time series data. We build
+it once from `prepped_input.json` and distribute the resulting `.h5` file to
+PEST++ workers. It holds references to the three dataclasses below plus
+methods to retrieve daily forcing data by index.
+
+### FieldProperties
+
+Static soil and crop properties that do not change during simulation. These
+come from soil surveys (AWC, Ksat), land cover databases (root depth, crop
+type), and observation-derived values (ke_max from bare-soil ETf, f_sub from
+ET/precipitation ratios). Examples: available water capacity, curve number,
+maximum root depth, irrigation status, perennial flag.
+
+### CalibrationParameters
+
+Parameters that PEST++ adjusts during inverse modeling. These control the
+NDVI-to-Kcb relationship (ndvi_k, ndvi_0), snow melt rates (swe_alpha,
+swe_beta), stress response damping (ks_damp, kr_damp), and irrigation
+behavior (max_irr_rate). The `from_base_with_multipliers()` method applies
+PEST++ multiplier files to base values.
+
+### WaterBalanceState
+
+Mutable state that evolves each day. The simulation loop reads and writes
+these arrays in place. Key variables: root zone depletion (depl_root),
+surface layer depletion (depl_ze), snow water equivalent (swe), current
+root depth (zr), and the damped stress coefficients (ks, kr). Initialized
+from spinup values at simulation start.
+
+### DailyOutput
+
+Accumulator for simulation results. Shape is `(n_days, n_fields)` for all
+arrays. Stores actual ET, crop coefficients, runoff, irrigation, and other
+diagnostics. Created by `run_daily_loop()` and populated incrementally as
+the simulation advances through each day.
+
+---
+
 ## Data Flow Diagram
 
 Shows how data moves from input files through the simulation loop to outputs.

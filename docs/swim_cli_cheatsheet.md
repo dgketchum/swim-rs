@@ -2,6 +2,25 @@
 
 Fast reference for the `swim` CLI. Default order: extract → prep → calibrate → evaluate. Run `swim --help` or `swim <command> --help` for full detail.
 
+## Example: Fort Peck (Example 2)
+```
+# Data are shipped in the repo for this example; you can skip extract unless you need fresh EE/GridMET pulls.
+# If refreshing, authenticate EE first (https://earthengine.google.com/), e.g.:
+#   earthengine authenticate
+# CLI docs: https://developers.google.com/earth-engine/guides/command_line
+# Then run:
+#   swim extract examples/2_Fort_Peck/2_Fort_Peck.toml --etf-models ptjpl
+
+# 2) Prep model inputs
+swim prep examples/2_Fort_Peck/2_Fort_Peck.toml
+
+# 3) Calibrate with defaults
+swim calibrate examples/2_Fort_Peck/2_Fort_Peck.toml
+
+# 4) Evaluate (debug CSVs)
+swim evaluate examples/2_Fort_Peck/2_Fort_Peck.toml --metrics-out /tmp/fort_peck_metrics
+```
+
 ## Common Flags
 - `config`: Path to project TOML (required for extract/prep/calibrate/evaluate).
 - `--out-dir`: Override output root (defaults to directory containing the TOML).

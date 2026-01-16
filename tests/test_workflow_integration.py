@@ -90,7 +90,7 @@ feature_id = "FID"
 irrigation_threshold = 0.3
 elev_units = "m"
 refet_type = "eto"
-swb_mode = "cn"
+runoff_process = "cn"
 
 [date_range]
 start_date = "2020-01-01"

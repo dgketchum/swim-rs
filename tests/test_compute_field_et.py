@@ -9,8 +9,8 @@ from swimrs.model import k_dynamics as kd
 
 class DummyConfig:
     """Mock configuration object."""
-    def __init__(self, swb_mode=None):
-        self.swb_mode = swb_mode
+    def __init__(self, runoff_process=None):
+        self.runoff_process = runoff_process
         self.calibrate = False
         self.forecast = False
 
@@ -42,9 +42,9 @@ class DummyDayData:
 
 class DummyTracker:
     """Mock SampleTracker with water balance state for N fields."""
-    def __init__(self, n_fields=2, swb_mode=None):
+    def __init__(self, n_fields=2, runoff_process=None):
         self.size = n_fields
-        self.conf = DummyConfig(swb_mode=swb_mode)
+        self.conf = DummyConfig(runoff_process=runoff_process)
 
         # Crop coefficients
         self.kc_bas = np.ones((1, n_fields)) * 0.8
@@ -632,7 +632,7 @@ class TestCurveNumberMode:
 
     def test_cn_mode_computes_runoff(self):
         """CN mode should compute runoff using curve number method."""
-        swb = DummyTracker(n_fields=1, swb_mode='cn')
+        swb = DummyTracker(n_fields=1, runoff_process='cn')
         day_data = DummyDayData(n_fields=1)
 
         swb.cn2 = np.array([[80.0]])

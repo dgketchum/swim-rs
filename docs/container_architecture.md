@@ -33,9 +33,60 @@ src/swimrs/container/
 
 ---
 
+## Core Classes
+
+The container package uses a main container class with four functional
+components that share a common state object.
+
+### SwimContainer
+
+The top-level class that represents a `.swim` file. It provides factory
+methods (`create()`, `open()`) and delegates work to its component objects.
+Opening a container in read mode (`'r'`) prevents modifications; write mode
+(`'r+'`) allows updates. The container manages the storage backend lifecycle
+and coordinates saves.
+
+### ContainerState
+
+Centralized state shared by all components. It holds the zarr root group,
+field UIDs, time index, provenance log, and inventory tracker. Provides an
+xarray Dataset view of the data for vectorized operations. Components read
+and write through this object to maintain consistency.
+
+### Ingestor (`container.ingest`)
+
+Handles data ingestion from external sources. Methods like `ndvi()`,
+`gridmet()`, `snodas()`, and `properties()` parse source files (CSVs,
+NetCDFs) and write them to the appropriate zarr paths. Each ingest operation
+records its source, parameters, and timestamp in the provenance log.
+
+### Calculator (`container.compute`)
+
+Performs derived computations on ingested data. Examples: merging NDVI from
+multiple instruments (`merged_ndvi()`), fusing NDVI time series
+(`fused_ndvi()`), and computing irrigation windows and crop dynamics
+(`dynamics()`). Results are written to `derived/` paths in the container.
+
+### Exporter (`container.export`)
+
+Exports container data to formats needed by downstream tools. Key method
+`prepped_input_json()` produces the JSON file consumed by the process
+package. Also supports CSV exports, shapefiles, and direct conversion to
+xarray Datasets or pandas DataFrames.
+
+### Query (`container.query`)
+
+Read-only data access and validation. The `status()` method reports data
+coverage; `validate()` checks for missing or invalid data. Provides
+`xarray()`, `dataframe()`, and `geodataframe()` methods for extracting
+subsets. Used to inspect container contents without modification.
+
+---
+
 ## Data Flow Diagram
 
-Shows how data flows from external sources through ingestion, computation, and export.
+Shows how data flows from external sources through ingestion, computation,
+and export.
 
 ```mermaid
 flowchart TB
