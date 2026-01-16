@@ -1,0 +1,42 @@
+site_name: SWIM-RS
+site_description: Soil Water Inverse Modeling with Remote Sensing
+site_url: https://swim-rs.readthedocs.io
+repo_url: https://github.com/dgketchum/swim-rs
+repo_name: dgketchum/swim-rs
+
+theme:
+  name: material
+  palette:
+    primary: blue
+    accent: light blue
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+
+markdown_extensions:
+  - tables
+  - fenced_code
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.arithmatex:
+      generic: true
+  - admonition
+  - toc:
+      permalink: true
+
+extra_javascript:
+  - https://unpkg.com/mermaid@10/dist/mermaid.min.js
+
+nav:
+  - Home: index.md
+  - Algorithm Description: algorithm_description.md
+  - Architecture:
+      - Process Package: process_architecture.md
+      - Container: container_architecture.md
+  - CLI Cheat Sheet: swim_cli_cheatsheet.md
