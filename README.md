@@ -155,7 +155,7 @@ Each project uses a TOML with a small, consistent set of keys. These are the req
   - `irrigation_threshold` (float)
   - `elev_units` (string)
   - `refet_type` (string): `eto` or `etr`
-  - `swb_mode` (string): `cn` or `ier` (enables NLDAS hours)
+  - `runoff_process` (string): `cn` or `ier` (enables NLDAS hours)
 
 - `[date_range]` (required)
   - `start_date`, `end_date` (YYYY-MM-DD)

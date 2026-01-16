@@ -45,9 +45,9 @@ state_col = "STATE"
 irrigation_threshold = 0.3
 elev_units = "m"
 refet_type = "eto"
-# swb_mode: "cn" = Curve Number (default, uses GridMET daily precip)
+# runoff_process: "cn" = Curve Number (default, uses GridMET daily precip)
 #           "ier" = Infiltration-Excess Runoff (requires NLDAS-2 hourly precip via pynldas2)
-swb_mode = "cn"
+runoff_process = "cn"
 
 [date_range]
 start_date = "2004-01-01"

@@ -58,7 +58,7 @@ state_col = "state"       # state code (for irrigation masking)
 irrigation_threshold = 0.3
 elev_units = "m"
 refet_type = "eto"   # eto | etr
-swb_mode = "cn"      # cn (SCS Curve Number) | ier (Infiltration excess runoff exceeding Ksat rate)
+runoff_process = "cn"      # cn (SCS Curve Number) | ier (Infiltration excess runoff exceeding Ksat rate)
 
 [date_range]
 start_date = "1987-01-01"

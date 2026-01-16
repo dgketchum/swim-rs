@@ -269,7 +269,7 @@ def generate_golden_files(
             config.feature_id_col = uid_column
             config.refet_type = "eto"
             config.irrigation_threshold = 0.3
-            config.swb_mode = "cn"
+            config.runoff_process = "cn"
             config.mode_forecast = False
             config.mode_calib = False
 

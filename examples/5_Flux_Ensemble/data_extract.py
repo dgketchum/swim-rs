@@ -169,23 +169,36 @@ def extract_openet_etf(
 
 
 def extract_gridmet(cfg: ProjectConfig, sites=None) -> None:
-    from swimrs.data_extraction.gridmet.gridmet import assign_gridmet_and_corrections, download_gridmet
-
-    nldas_needed = (cfg.swb_mode == "ier")
-
-    assign_gridmet_and_corrections(
-        fields=cfg.fields_shapefile,
-        gridmet_points=cfg.gridmet_centroids,
-        gridmet_ras=cfg.correction_tifs,
-        fields_join=cfg.gridmet_mapping_shp,
-        factors_js=cfg.gridmet_factors,
-        feature_id=cfg.feature_id_col,
-        field_select=sites,
+    from swimrs.data_extraction.gridmet.gridmet import (
+        assign_gridmet_ids,
+        download_gridmet,
+        sample_gridmet_corrections,
     )
 
+    nldas_needed = (cfg.runoff_process == "ier")
+    join_path = cfg.gridmet_mapping_shp
+    factors_path = cfg.gridmet_factors
+
+    assign_gridmet_ids(
+        fields=cfg.fields_shapefile,
+        fields_join=join_path,
+        gridmet_points=cfg.gridmet_centroids,
+        field_select=sites,
+        feature_id=cfg.feature_id_col,
+        gridmet_id_col=cfg.gridmet_id_col,
+    )
+
+    if cfg.correction_tifs:
+        sample_gridmet_corrections(
+            fields_join=join_path,
+            gridmet_ras=cfg.correction_tifs,
+            factors_js=factors_path,
+            gridmet_id_col=cfg.gridmet_id_col,
+        )
+
     download_gridmet(
-        cfg.gridmet_mapping_shp,
-        cfg.gridmet_factors,
+        join_path,
+        factors_path,
         cfg.met_dir,
         start=str(cfg.start_dt.date()),
         end=str(cfg.end_dt.date()),
@@ -194,6 +207,7 @@ def extract_gridmet(cfg: ProjectConfig, sites=None) -> None:
         use_nldas=nldas_needed,
         feature_id=cfg.gridmet_mapping_index_col,
         target_fields=sites,
+        gridmet_id_col=cfg.gridmet_id_col,
     )
 
 
@@ -217,4 +231,3 @@ if __name__ == "__main__":
         models=['ptjpl', 'sims', 'ssebop','geesebal'],
         mask_types=['irr'],
     )
-

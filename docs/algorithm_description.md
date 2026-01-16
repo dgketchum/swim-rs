@@ -117,9 +117,9 @@ melt = (1 - albedo) × srad × swe_alpha + max(T_avg - 1.8, 0) × swe_beta
 
 ### Step 3: Runoff Calculation
 
-Two methods are available, selected via `swb_mode`:
+Two methods are available, selected via `runoff_process`:
 
-**Curve Number (CN) Method** (`swb_mode = "cn"`):
+**Curve Number (CN) Method** (`runoff_process = "cn"`):
 
 We adjust CN for antecedent moisture based on surface layer depletion:
 - Wet conditions (low depletion): CN → CN_III (higher runoff)
@@ -136,7 +136,7 @@ Q = (P - Ia)² / (P - Ia + S)  when P > Ia
 For irrigated fields, we smooth runoff using a 4-day average of S values
 to reduce irrigation-induced variability.
 
-**Infiltration-Excess Method** (`swb_mode = "ier"`):
+**Infiltration-Excess Method** (`runoff_process = "ier"`):
 
 Uses hourly precipitation vs. infiltration capacity:
 
