@@ -7,41 +7,45 @@ calling physics kernels in the correct sequence.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 import numpy as np
 
+from swimrs.process.kernels.cover import exposed_soil_fraction, fractional_cover
 from swimrs.process.kernels.crop_coefficient import kcb_sigmoid
-from swimrs.process.kernels.cover import fractional_cover, exposed_soil_fraction
-from swimrs.process.kernels.evaporation import kr_reduction, kr_damped, ke_coefficient
-from swimrs.process.kernels.transpiration import ks_stress, ks_damped
-from swimrs.process.kernels.runoff import scs_runoff
-from swimrs.process.kernels.snow import (
-    partition_precip,
-    albedo_decay,
-    degree_day_melt,
-    snow_water_equivalent,
-)
-from swimrs.process.kernels.water_balance import (
-    deep_percolation,
-    layer3_storage,
-    root_zone_depletion,
-    actual_et,
-)
+from swimrs.process.kernels.evaporation import ke_coefficient, kr_damped, kr_reduction
+from swimrs.process.kernels.irrigation import groundwater_subsidy, irrigation_demand
 from swimrs.process.kernels.root_growth import (
     root_depth_from_kcb,
     root_water_redistribution,
 )
-from swimrs.process.kernels.irrigation import irrigation_demand, groundwater_subsidy
+from swimrs.process.kernels.runoff import (
+    curve_number_adjust,
+    infiltration_excess,
+    scs_runoff,
+    scs_runoff_smoothed,
+)
+from swimrs.process.kernels.snow import (
+    albedo_decay,
+    degree_day_melt,
+    partition_precip,
+    snow_water_equivalent,
+)
+from swimrs.process.kernels.transpiration import ks_damped, ks_stress
+from swimrs.process.kernels.water_balance import (
+    actual_et,
+    deep_percolation,
+    layer3_storage,
+)
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
     from swimrs.process.input import SwimInput
     from swimrs.process.state import (
-        WaterBalanceState,
-        FieldProperties,
         CalibrationParameters,
+        FieldProperties,
+        WaterBalanceState,
     )
 
 __all__ = ["run_daily_loop", "DailyOutput", "step_day"]
@@ -165,6 +169,10 @@ def run_daily_loop(
     n_days = swim_input.n_days
     n_fields = swim_input.n_fields
     props = swim_input.properties
+    runoff_process = getattr(swim_input, "runoff_process", None) or "cn"
+
+    # Check if hourly precip is available for IER mode
+    has_hourly_prcp = swim_input.has_hourly_precip()
 
     # Initialize state from spinup
     state = swim_input.spinup_state.copy()
@@ -183,7 +191,10 @@ def run_daily_loop(
         srad = swim_input.get_time_series("srad", day_idx)
         irr_flag = swim_input.get_irr_flag(day_idx)
 
-        temp_avg = (tmin + tmax) / 2.0
+        # Get hourly precip if IER mode and available
+        prcp_hr = None
+        if runoff_process == "ier" and has_hourly_prcp:
+            prcp_hr = swim_input.get_hourly_precip(day_idx)
 
         # Step the simulation
         day_out = step_day(
@@ -197,6 +208,8 @@ def run_daily_loop(
             tmax=tmax,
             srad=srad,
             irr_flag=irr_flag,
+            runoff_process=runoff_process,
+            prcp_hr=prcp_hr,
         )
 
         # Store outputs
@@ -229,6 +242,8 @@ def step_day(
     tmax: NDArray[np.float64],
     srad: NDArray[np.float64],
     irr_flag: NDArray[np.bool_],
+    runoff_process: str = "cn",
+    prcp_hr: NDArray[np.float64] | None = None,
 ) -> dict[str, NDArray[np.float64]]:
     """Execute a single daily time step.
 
@@ -257,6 +272,10 @@ def step_day(
         Solar radiation (MJ/m²/day)
     irr_flag : (n_fields,)
         Irrigation flag for this day
+    runoff_process : str
+        Runoff mode: 'cn' for Curve Number or 'ier' for infiltration-excess
+    prcp_hr : (24, n_fields,), optional
+        Hourly precipitation (mm/hr), required for IER mode
 
     Returns
     -------
@@ -287,10 +306,36 @@ def step_day(
     # Effective precipitation (rain + melt)
     precip_eff = rain + actual_melt
 
-    # 2. Runoff calculation (SCS Curve Number)
-    # Note: scs_runoff_smoothed requires historical S values
-    # For simplicity, use standard SCS runoff for all fields
-    runoff, s = scs_runoff(precip_eff, props.cn2)
+    # 2. Runoff calculation based on runoff_process
+    if runoff_process == "ier" and prcp_hr is not None:
+        # Infiltration-excess method (Hortonian runoff)
+        # prcp_hr expected shape: (24, n_fields)
+        ksat_hourly = props.ksat / 24.0
+        runoff = infiltration_excess(prcp_hr, ksat_hourly)
+    else:
+        # SCS Curve Number with antecedent moisture adjustment
+        cn_adj = curve_number_adjust(
+            props.cn2, state.depl_ze, props.rew, props.tew
+        )
+
+        if np.any(props.irr_status):
+            # Irrigated fields: use smoothed runoff over 4-day S history
+            runoff_std, s_new = scs_runoff(precip_eff, cn_adj)
+            runoff_smooth = scs_runoff_smoothed(
+                precip_eff, state.s1, state.s2, state.s3, state.s4
+            )
+            runoff = np.where(props.irr_status, runoff_smooth, runoff_std)
+
+            # Shift S history (newest to oldest: s -> s1 -> s2 -> s3 -> s4)
+            state.s4 = state.s3.copy()
+            state.s3 = state.s2.copy()
+            state.s2 = state.s1.copy()
+            state.s1 = state.s.copy()
+            state.s = s_new
+        else:
+            # Non-irrigated: standard SCS runoff
+            runoff, s_new = scs_runoff(precip_eff, cn_adj)
+            state.s = s_new
 
     # Net infiltration
     infiltration = precip_eff - runoff
@@ -302,7 +347,8 @@ def step_day(
     fc = fractional_cover(kcb, params.kc_min, params.kc_max)
     few = exposed_soil_fraction(fc)
 
-    # 5. Root growth
+    # 5. Calculate new root depth from kcb (but don't apply redistribution yet)
+    # Legacy model: root growth is applied at END of daily loop
     zr_prev = state.zr.copy()
     zr_new = root_depth_from_kcb(
         kcb, params.kc_min, params.kc_max,
@@ -312,18 +358,12 @@ def step_day(
     # For perennials, keep root depth constant at max
     zr_new = np.where(props.perennial, props.zr_max, zr_new)
 
-    # 6. Compute TAW and RAW
-    taw = props.compute_taw(zr_new)
+    # 6. Compute TAW and RAW using PREVIOUS day's root depth (matches legacy)
+    # Legacy model compute_field_et.py line 76-79 uses swb.zr (not updated yet)
+    taw = props.compute_taw(state.zr)  # Use previous zr, not zr_new
     raw = props.compute_raw(taw)
 
-    # 7. Water redistribution for root growth
-    state.depl_root, state.daw3, state.taw3 = root_water_redistribution(
-        zr_new, zr_prev, props.zr_max, props.awc,
-        state.depl_root, state.daw3
-    )
-    state.zr = zr_new
-
-    # 8. Update surface layer (Ze) with water inputs
+    # 7. Update surface layer (Ze) with water inputs
     # Matches legacy model compute_field_et.py line 64:
     # swb.depl_ze = swb.depl_ze - (swb.melt + swb.rain + swb.irr_sim)
     # Note: uses previous day's irr_sim (stored in state.prev_irr_sim)
@@ -343,7 +383,7 @@ def step_day(
     state.ks = ks_new
 
     # 10. Calculate evaporation coefficient
-    ke = ke_coefficient(kr_new, params.kc_max, kcb, few, params.ke_max)
+    ke = ke_coefficient(kr_new, params.kc_max, kcb, few, props.ke_max)
 
     # 11. Calculate actual ET and evaporation
     kc_act, eta = actual_et(ks_new, kcb, fc, ke, params.kc_max, etr)
@@ -389,7 +429,7 @@ def step_day(
     # 15. Groundwater subsidy (based on UPDATED depletion)
     # Matches legacy model compute_field_et.py lines 150-152
     gw_sim = groundwater_subsidy(
-        depl_after_et, raw, props.gw_status, params.f_sub
+        depl_after_et, raw, props.gw_status, props.f_sub
     )
 
     # 16. Apply irrigation and groundwater subsidy
@@ -417,7 +457,16 @@ def step_day(
     else:
         dperc_out = gross_dperc
 
-    # 20. Store irr_sim for next day's Ze update
+    # 20. Root growth water redistribution (at END of daily loop, matches legacy)
+    # Legacy model grow_root.py is called at line 202 of compute_field_et.py,
+    # after all ET/irrigation/dperc calculations
+    state.depl_root, state.daw3, state.taw3 = root_water_redistribution(
+        zr_new, zr_prev, props.zr_max, props.awc,
+        state.depl_root, state.daw3
+    )
+    state.zr = zr_new
+
+    # 21. Store irr_sim for next day's Ze update
     state.prev_irr_sim = irr_sim.copy()
 
     # Return daily outputs

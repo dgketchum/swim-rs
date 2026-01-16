@@ -20,9 +20,7 @@ class ProjectConfig:
         # Paths
         self.data_dir = None
         self.landsat_dir = None
-        self.landsat_tables_dir = None
         self.sentinel_dir = None
-        self.sentinel_tables_dir = None
         self.met_dir = None
         self.gis_dir = None
         self.fields_shapefile = None
@@ -37,8 +35,6 @@ class ProjectConfig:
         self.properties_json = None
         self.snodas_in_dir = None
         self.snodas_out_json = None
-        self.remote_sensing_tables_dir = None
-        self.joined_timeseries_dir = None
         self.dynamics_data_json = None
         self.prepped_input = None
 
@@ -56,11 +52,11 @@ class ProjectConfig:
         self.irr_threshold = None
         self.elev_units = None
         self.refet_type = None
+        self.runoff_process = None  # "cn" | "ier"
         self.start_dt = None
         self.end_dt = None
         self.kc_proxy = None
         self.cover_proxy = None
-        self.swb_mode = None
 
         # Calibration / Forecast
         self.pest_run_dir = None
@@ -162,9 +158,7 @@ class ProjectConfig:
 
         # Data roots
         self.landsat_dir = paths_conf.get('landsat')
-        self.landsat_tables_dir = paths_conf.get('landsat_tables')
         self.sentinel_dir = paths_conf.get('sentinel')
-        self.sentinel_tables_dir = paths_conf.get('sentinel_tables')
         # Met dir: check nested sections first, then flat
         self.met_dir = (paths_conus_conf.get('met') or
                         paths_era5_conf.get('met') or
@@ -197,11 +191,8 @@ class ProjectConfig:
         # SNODAS from nested [paths.conus]
         self.snodas_in_dir = paths_conus_conf.get('snodas_in') or paths_conf.get('snodas_in')
         self.snodas_out_json = paths_conus_conf.get('snodas_out') or paths_conf.get('snodas_out')
-        self.remote_sensing_tables_dir = paths_conf.get('remote_sensing_tables')
-        self.joined_timeseries_dir = paths_conf.get('joined_timeseries')
         self.dynamics_data_json = paths_conf.get('dynamics_data')
         self.input_data = paths_conf.get('prepped_input')
-        self.plot_timeseries = self.joined_timeseries_dir
 
         # Earth Engine
         self.ee_bucket = ee_conf.get('bucket')
@@ -237,7 +228,8 @@ class ProjectConfig:
         self.irr_threshold = self.irrigation_threshold
         self.elev_units = misc_conf.get('elev_units', 'm')
         self.refet_type = misc_conf.get('refet_type')
-        self.swb_mode = misc_conf.get('swb_mode')
+        # Runoff process selection: "cn" (Curve Number) or "ier" (infiltration-excess)
+        self.runoff_process = misc_conf.get('runoff_process', 'cn')
 
         # Dates
         sdt_str = date_range_conf.get('start_date')

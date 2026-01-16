@@ -158,18 +158,21 @@ def root_water_redistribution(
             daw3_new[i] = daw3[i]
         elif delta_zr > 0.0:
             # Roots growing deeper - capture water from layer 3
+            #
+            # Legacy formula (grow_root.py lines 28-31):
+            #   depl_new = depl_old + (delta_zr * aw) - (daw3 * delta_zr / (zr_max - zr_new + eps))
+            #   daw3_new = daw3 - (daw3 * delta_zr / (zr_max - zr_new + eps))
+            #
+            # Key: uses NEW layer 3 depth (zr_max - zr_new) in denominator, not previous
 
-            # Calculate fraction of layer 3 being absorbed
-            layer3_prev_depth = zr_max[i] - zr_prev[i]
-            if layer3_prev_depth < 1e-6:
-                frac_absorbed = 0.0
+            # Calculate water transfer using NEW layer 3 depth
+            layer3_new_depth = zr_max[i] - zr_new[i]
+            if layer3_new_depth < 1e-6:
+                # Layer 3 completely absorbed - take all remaining water
+                water_from_layer3 = daw3[i]
             else:
-                frac_absorbed = delta_zr / layer3_prev_depth
-                if frac_absorbed > 1.0:
-                    frac_absorbed = 1.0
-
-            # Water transferred from layer 3 to root zone
-            water_from_layer3 = daw3[i] * frac_absorbed
+                # Legacy formula: daw3 * delta_zr / (zr_max - zr_new + eps)
+                water_from_layer3 = daw3[i] * delta_zr / (layer3_new_depth + 1e-6)
 
             # Adjust root zone depletion (adding soil volume with its water)
             # New capacity = aw * delta_zr, water added = water_from_layer3
@@ -177,7 +180,7 @@ def root_water_redistribution(
             added_depletion = added_capacity - water_from_layer3
             depl_root_new[i] = depl_root[i] + added_depletion
 
-            # Reduce layer 3 water
+            # Reduce layer 3 water (same formula as depletion)
             daw3_new[i] = daw3[i] - water_from_layer3
             if daw3_new[i] < 0.0:
                 daw3_new[i] = 0.0

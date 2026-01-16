@@ -59,6 +59,11 @@ class WaterBalanceState:
         Irrigation continuation flag (1.0 if continuing from previous day)
     next_day_irr : NDArray[np.float64]
         Carryover irrigation amount for next day (mm)
+    s : NDArray[np.float64]
+        Current day S retention parameter (mm) for CN runoff
+    s1, s2, s3, s4 : NDArray[np.float64]
+        S history from 1-4 days ago (mm), used for smoothed runoff
+        on irrigated fields
     """
 
     n_fields: int
@@ -73,6 +78,12 @@ class WaterBalanceState:
     ks: NDArray[np.float64] = field(default=None)
     irr_continue: NDArray[np.float64] = field(default=None)
     next_day_irr: NDArray[np.float64] = field(default=None)
+    # S history for smoothed CN runoff (irrigated fields)
+    s: NDArray[np.float64] = field(default=None)      # Current day S retention
+    s1: NDArray[np.float64] = field(default=None)     # 1 day ago
+    s2: NDArray[np.float64] = field(default=None)     # 2 days ago
+    s3: NDArray[np.float64] = field(default=None)     # 3 days ago
+    s4: NDArray[np.float64] = field(default=None)     # 4 days ago
 
     def __post_init__(self):
         """Initialize arrays with zeros if not provided."""
@@ -99,6 +110,18 @@ class WaterBalanceState:
             self.irr_continue = np.zeros(n, dtype=np.float64)
         if self.next_day_irr is None:
             self.next_day_irr = np.zeros(n, dtype=np.float64)
+        # S history: initialize with default S value from CN2=75 => S=84.7 mm
+        default_s = 84.7
+        if self.s is None:
+            self.s = np.full(n, default_s, dtype=np.float64)
+        if self.s1 is None:
+            self.s1 = np.full(n, default_s, dtype=np.float64)
+        if self.s2 is None:
+            self.s2 = np.full(n, default_s, dtype=np.float64)
+        if self.s3 is None:
+            self.s3 = np.full(n, default_s, dtype=np.float64)
+        if self.s4 is None:
+            self.s4 = np.full(n, default_s, dtype=np.float64)
 
     @classmethod
     def from_spinup(
@@ -113,6 +136,11 @@ class WaterBalanceState:
         taw3: NDArray[np.float64] | None = None,
         depl_ze: NDArray[np.float64] | None = None,
         albedo: NDArray[np.float64] | None = None,
+        s: NDArray[np.float64] | None = None,
+        s1: NDArray[np.float64] | None = None,
+        s2: NDArray[np.float64] | None = None,
+        s3: NDArray[np.float64] | None = None,
+        s4: NDArray[np.float64] | None = None,
     ) -> WaterBalanceState:
         """Create state from spinup values.
 
@@ -138,6 +166,10 @@ class WaterBalanceState:
             Initial surface layer depletion (mm)
         albedo : NDArray[np.float64], optional
             Initial snow albedo
+        s : NDArray[np.float64], optional
+            Current S retention (mm)
+        s1, s2, s3, s4 : NDArray[np.float64], optional
+            S history from 1-4 days ago (mm)
 
         Returns
         -------
@@ -159,6 +191,16 @@ class WaterBalanceState:
             state.depl_ze = depl_ze.copy()
         if albedo is not None:
             state.albedo = albedo.copy()
+        if s is not None:
+            state.s = s.copy()
+        if s1 is not None:
+            state.s1 = s1.copy()
+        if s2 is not None:
+            state.s2 = s2.copy()
+        if s3 is not None:
+            state.s3 = s3.copy()
+        if s4 is not None:
+            state.s4 = s4.copy()
 
         return state
 
@@ -177,6 +219,11 @@ class WaterBalanceState:
             ks=self.ks.copy(),
             irr_continue=self.irr_continue.copy(),
             next_day_irr=self.next_day_irr.copy(),
+            s=self.s.copy(),
+            s1=self.s1.copy(),
+            s2=self.s2.copy(),
+            s3=self.s3.copy(),
+            s4=self.s4.copy(),
         )
 
 
@@ -215,6 +262,12 @@ class FieldProperties:
         Whether crop is perennial (affects root dynamics)
     gw_status : NDArray[np.bool_]
         Whether groundwater subsidy is available
+    ke_max : NDArray[np.float64]
+        Maximum soil evaporation coefficient, derived from ETf observations
+        where NDVI < 0.3 (90th percentile of bare soil ETf)
+    f_sub : NDArray[np.float64]
+        Groundwater subsidy fraction (0-1), derived from ETa/PPT ratio
+        where f_sub = (ratio - 1) / ratio when ratio > 1
     """
 
     n_fields: int
@@ -230,6 +283,8 @@ class FieldProperties:
     irr_status: NDArray[np.bool_] = field(default=None)
     perennial: NDArray[np.bool_] = field(default=None)
     gw_status: NDArray[np.bool_] = field(default=None)
+    ke_max: NDArray[np.float64] = field(default=None)
+    f_sub: NDArray[np.float64] = field(default=None)
 
     def __post_init__(self):
         """Initialize arrays with reasonable defaults if not provided."""
@@ -258,11 +313,19 @@ class FieldProperties:
             self.perennial = np.zeros(n, dtype=np.bool_)
         if self.gw_status is None:
             self.gw_status = np.zeros(n, dtype=np.bool_)
+        if self.ke_max is None:
+            self.ke_max = np.full(n, 1.0, dtype=np.float64)  # Default: no cap
+        if self.f_sub is None:
+            self.f_sub = np.zeros(n, dtype=np.float64)  # Default: no GW subsidy
 
     def compute_taw(self, zr: NDArray[np.float64]) -> NDArray[np.float64]:
         """Compute total available water for given root depth.
 
         TAW = AWC * Zr
+
+        Guards are applied to prevent:
+        - Division by zero (TAW >= 0.001)
+        - Early stress with shallow roots (TAW >= TEW)
 
         Parameters
         ----------
@@ -274,7 +337,13 @@ class FieldProperties:
         NDArray[np.float64]
             Total available water (mm)
         """
-        return self.awc * zr
+        taw = self.awc * zr
+        # Prevent division by zero in stress calculations
+        taw = np.maximum(taw, 0.001)
+        # TAW should be at least as large as surface layer (TEW)
+        # to prevent early stress onset with shallow roots
+        taw = np.maximum(taw, self.tew)
+        return taw
 
     def compute_raw(
         self, taw: NDArray[np.float64]
@@ -325,8 +394,6 @@ class CalibrationParameters:
         Ks damping factor (0-1)
     max_irr_rate : NDArray[np.float64]
         Maximum daily irrigation rate (mm/day)
-    f_sub : NDArray[np.float64]
-        Groundwater subsidy fraction (0-1)
     """
 
     n_fields: int
@@ -339,8 +406,6 @@ class CalibrationParameters:
     kr_damp: NDArray[np.float64] = field(default=None)
     ks_damp: NDArray[np.float64] = field(default=None)
     max_irr_rate: NDArray[np.float64] = field(default=None)
-    f_sub: NDArray[np.float64] = field(default=None)
-    ke_max: NDArray[np.float64] = field(default=None)
 
     def __post_init__(self):
         """Initialize arrays with default values if not provided."""
@@ -363,10 +428,6 @@ class CalibrationParameters:
             self.ks_damp = np.full(n, 0.2, dtype=np.float64)
         if self.max_irr_rate is None:
             self.max_irr_rate = np.full(n, 25.0, dtype=np.float64)
-        if self.f_sub is None:
-            self.f_sub = np.full(n, 1.0, dtype=np.float64)
-        if self.ke_max is None:
-            self.ke_max = np.full(n, 1.0, dtype=np.float64)
 
     @classmethod
     def from_base_with_multipliers(
@@ -400,8 +461,6 @@ class CalibrationParameters:
         params.kr_damp = base.kr_damp.copy()
         params.ks_damp = base.ks_damp.copy()
         params.max_irr_rate = base.max_irr_rate.copy()
-        params.f_sub = base.f_sub.copy()
-        params.ke_max = base.ke_max.copy()
 
         # Apply multipliers
         for param_name, mult in multipliers.items():
@@ -423,6 +482,4 @@ class CalibrationParameters:
         params.kr_damp = self.kr_damp.copy()
         params.ks_damp = self.ks_damp.copy()
         params.max_irr_rate = self.max_irr_rate.copy()
-        params.f_sub = self.f_sub.copy()
-        params.ke_max = self.ke_max.copy()
         return params

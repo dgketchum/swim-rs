@@ -14,16 +14,16 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import h5py
 import numpy as np
 import pandas as pd
 
 from swimrs.process.state import (
-    WaterBalanceState,
-    FieldProperties,
     CalibrationParameters,
+    FieldProperties,
+    WaterBalanceState,
 )
 
 if TYPE_CHECKING:
@@ -54,8 +54,8 @@ class SwimInput:
         Number of fields/pixels
     fids : list[str]
         Field identifiers
-    swb_mode : str
-        Soil water balance runoff mode ('cn' or 'ier')
+    runoff_process : str
+        Runoff mode ('cn' Curve Number or 'ier' infiltration-excess)
     refet_type : str
         Reference ET type ('eto' or 'etr')
     properties : FieldProperties
@@ -72,7 +72,7 @@ class SwimInput:
     n_days: int = field(default=0)
     n_fields: int = field(default=0)
     fids: list = field(default_factory=list)
-    swb_mode: str = field(default="cn")
+    runoff_process: str = field(default="cn")
     refet_type: str = field(default="eto")
     properties: FieldProperties = field(default=None)
     parameters: CalibrationParameters = field(default=None)
@@ -93,7 +93,7 @@ class SwimInput:
         config = json.loads(h5.attrs["config"])
         self.start_date = datetime.fromisoformat(config["start_date"])
         self.end_date = datetime.fromisoformat(config["end_date"])
-        self.swb_mode = config.get("swb_mode", "cn")
+        self.runoff_process = config.get("runoff_process", "cn")
         self.refet_type = config.get("refet_type", "eto")
 
         # Load field info
@@ -128,6 +128,8 @@ class SwimInput:
             irr_status=props["irr_status"][:].astype(bool),
             perennial=props["perennial"][:].astype(bool),
             gw_status=props["gw_status"][:].astype(bool),
+            ke_max=props["ke_max"][:] if "ke_max" in props else None,
+            f_sub=props["f_sub"][:] if "f_sub" in props else None,
         )
 
     def _load_parameters(self, h5: h5py.File) -> CalibrationParameters:
@@ -144,8 +146,6 @@ class SwimInput:
             kr_damp=params["kr_damp"][:],
             ks_damp=params["ks_damp"][:],
             max_irr_rate=params["max_irr_rate"][:],
-            f_sub=params["f_sub"][:],
-            ke_max=params["ke_max"][:] if "ke_max" in params else None,
         )
 
     def _load_spinup(self, h5: h5py.File) -> WaterBalanceState:
@@ -162,6 +162,11 @@ class SwimInput:
             taw3=spinup["taw3"][:] if "taw3" in spinup else None,
             depl_ze=spinup["depl_ze"][:] if "depl_ze" in spinup else None,
             albedo=spinup["albedo"][:] if "albedo" in spinup else None,
+            s=spinup["s"][:] if "s" in spinup else None,
+            s1=spinup["s1"][:] if "s1" in spinup else None,
+            s2=spinup["s2"][:] if "s2" in spinup else None,
+            s3=spinup["s3"][:] if "s3" in spinup else None,
+            s4=spinup["s4"][:] if "s4" in spinup else None,
         )
 
     def close(self):
@@ -230,6 +235,43 @@ class SwimInput:
             return irr[day_idx, :].astype(bool)
         return irr[:].astype(bool)
 
+    def has_hourly_precip(self) -> bool:
+        """Check if hourly precipitation data is available.
+
+        Returns
+        -------
+        bool
+            True if prcp_hr dataset exists in time_series group
+        """
+        if self._h5_file is None:
+            return False
+        return "prcp_hr" in self._h5_file["time_series"]
+
+    def get_hourly_precip(self, day_idx: int) -> NDArray[np.float64] | None:
+        """Get hourly precipitation for a specific day.
+
+        Parameters
+        ----------
+        day_idx : int
+            Day index
+
+        Returns
+        -------
+        NDArray[np.float64] | None
+            Hourly precip array of shape (24, n_fields), transposed from
+            storage format (n_fields, 24). Returns None if not available.
+        """
+        if self._h5_file is None:
+            raise RuntimeError("HDF5 file not open")
+
+        if "prcp_hr" not in self._h5_file["time_series"]:
+            return None
+
+        # Storage format is (n_days, n_fields, 24)
+        # Return (24, n_fields) for infiltration_excess kernel
+        prcp_hr = self._h5_file["time_series/prcp_hr"][day_idx, :, :]
+        return prcp_hr.T  # Transpose to (24, n_fields)
+
     def get_date(self, day_idx: int) -> datetime:
         """Get date for a given day index."""
         from datetime import timedelta
@@ -284,7 +326,7 @@ class SwimInput:
             # Find fid by looking for match in self.fids
             param_name = None
             fid = None
-            for i, potential_fid in enumerate(self.fids):
+            for _i, potential_fid in enumerate(self.fids):
                 # Check if filename contains this fid
                 fid_idx = mult_file.stem.find(f"_{potential_fid}_")
                 if fid_idx > 0:
@@ -331,7 +373,7 @@ def build_swim_input(
     calibrated_params_path: Path | str | None = None,
     start_date: str | datetime | None = None,
     end_date: str | datetime | None = None,
-    swb_mode: str = "cn",
+    runoff_process: str = "cn",
     refet_type: str = "eto",
 ) -> SwimInput:
     """Build HDF5 input file from prepped_input.json.
@@ -355,7 +397,7 @@ def build_swim_input(
         Override start date (default: from time_series)
     end_date : str | datetime, optional
         Override end date (default: from time_series)
-    swb_mode : str
+    runoff_process : str
         Runoff mode: 'cn' (curve number) or 'ier' (infiltration excess)
     refet_type : str
         Reference ET: 'eto' (grass) or 'etr' (alfalfa)
@@ -395,7 +437,7 @@ def build_swim_input(
         config = {
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
-            "swb_mode": swb_mode,
+            "runoff_process": runoff_process,
             "refet_type": refet_type,
         }
         h5.attrs["config"] = json.dumps(config)
@@ -447,7 +489,14 @@ def _write_properties(
     Parameters
     ----------
     calibrated_params : dict, optional
-        If provided, uses calibrated 'aw' for awc and 'mad' for p_depletion.
+        If provided, uses calibrated 'aw' for awc, 'mad' for p_depletion,
+        and 'f_sub' for groundwater subsidy fraction.
+
+    Notes
+    -----
+    ke_max and f_sub are observation-derived properties (not tunable params):
+    - ke_max: 90th percentile of ETf where NDVI < 0.3 (bare soil evaporation cap)
+    - f_sub: derived from ETa/PPT ratio where f_sub = (ratio - 1) / ratio
     """
     props = h5.create_group("properties")
 
@@ -510,6 +559,34 @@ def _write_properties(
     gw_data = data.get("gwsub_data", {})
     gw_status = np.array([fid in gw_data and bool(gw_data[fid]) for fid in fids])
 
+    # ke_max: derived from observations (90th percentile ETf where NDVI < 0.3)
+    # This is a property, not a calibration parameter
+    json_ke_max = data.get("ke_max", {})
+    ke_max = np.array([json_ke_max.get(fid, 1.0) for fid in fids])
+
+    # f_sub: derived from ETa/PPT ratio, use calibrated if provided
+    # f_sub = (ratio - 1) / ratio where ratio > 1
+    if calibrated_params is not None and "f_sub" in calibrated_params:
+        f_sub = calibrated_params["f_sub"]
+    else:
+        # Default: derive from gwsub_data if available
+        # gwsub_data structure: {fid: {year: {"f_sub": float, ...}}} or {fid: bool}
+        gwsub = data.get("gwsub_data", {})
+        f_sub_values = []
+        for fid in fids:
+            fid_gw = gwsub.get(fid, {})
+            if isinstance(fid_gw, dict) and fid_gw:
+                # Average f_sub across years for this field
+                yearly_fsub = [yr_data.get("f_sub", 0.0) for yr_data in fid_gw.values()
+                               if isinstance(yr_data, dict)]
+                if yearly_fsub:
+                    f_sub_values.append(np.mean(yearly_fsub))
+                else:
+                    f_sub_values.append(0.0)
+            else:
+                f_sub_values.append(0.0)
+        f_sub = np.array(f_sub_values)
+
     props.create_dataset("awc", data=awc)
     props.create_dataset("ksat", data=ksat)
     props.create_dataset("rew", data=rew)
@@ -521,6 +598,8 @@ def _write_properties(
     props.create_dataset("irr_status", data=irr_status.astype(np.uint8))
     props.create_dataset("perennial", data=perennial.astype(np.uint8))
     props.create_dataset("gw_status", data=gw_status.astype(np.uint8))
+    props.create_dataset("ke_max", data=ke_max)
+    props.create_dataset("f_sub", data=f_sub)
 
 
 def _write_parameters(
@@ -545,11 +624,6 @@ def _write_parameters(
     kc_max = np.full(n_fields, 1.0)
     kc_min = np.full(n_fields, 0.15)
 
-    # Load ke_max from JSON if available, else default to 1.0
-    # This caps soil evaporation coefficient Ke
-    json_ke_max = data.get("ke_max", {})
-    ke_max = np.array([json_ke_max.get(fid, 1.0) for fid in fids])
-
     # Default calibration parameter values
     ndvi_k = np.full(n_fields, 7.0)
     ndvi_0 = np.full(n_fields, 0.4)
@@ -558,7 +632,6 @@ def _write_parameters(
     kr_damp = np.full(n_fields, 0.2)
     ks_damp = np.full(n_fields, 0.2)
     max_irr_rate = np.full(n_fields, 25.0)
-    f_sub = np.full(n_fields, 1.0)
 
     # Override with calibrated values if provided
     if calibrated_params is not None:
@@ -574,8 +647,6 @@ def _write_parameters(
             kr_damp = calibrated_params["kr_damp"]
         if "ks_damp" in calibrated_params:
             ks_damp = calibrated_params["ks_damp"]
-        if "f_sub" in calibrated_params:
-            f_sub = calibrated_params["f_sub"]
 
     params_group.create_dataset("kc_max", data=kc_max)
     params_group.create_dataset("kc_min", data=kc_min)
@@ -586,8 +657,6 @@ def _write_parameters(
     params_group.create_dataset("kr_damp", data=kr_damp)
     params_group.create_dataset("ks_damp", data=ks_damp)
     params_group.create_dataset("max_irr_rate", data=max_irr_rate)
-    params_group.create_dataset("f_sub", data=f_sub)
-    params_group.create_dataset("ke_max", data=ke_max)
 
 
 def _write_time_series(
@@ -700,7 +769,7 @@ def _write_time_series(
     ts_group.create_dataset("ndvi", data=ndvi_arr, compression="gzip")
 
     # Add hourly precip for IER mode
-    if any(f"prcp_hr_00" in ts_data.get(d, {}) for d in list(ts_data.keys())[:10]):
+    if any("prcp_hr_00" in ts_data.get(d, {}) for d in list(ts_data.keys())[:10]):
         prcp_hr = np.zeros((n_days, n_fields, 24), dtype=np.float64)
 
         for day_idx in range(n_days):
@@ -788,6 +857,8 @@ def _load_spinup_json(
         spinup_data = json.load(f)
 
     # Initialize arrays with defaults
+    # Default S value from CN2=75 => S=84.7 mm
+    default_s = 84.7
     spinup_state = {
         "depl_root": np.zeros(n_fields),
         "swe": np.zeros(n_fields),
@@ -798,6 +869,11 @@ def _load_spinup_json(
         "taw3": np.zeros(n_fields),
         "depl_ze": np.zeros(n_fields),
         "albedo": np.full(n_fields, 0.45),
+        "s": np.full(n_fields, default_s),
+        "s1": np.full(n_fields, default_s),
+        "s2": np.full(n_fields, default_s),
+        "s3": np.full(n_fields, default_s),
+        "s4": np.full(n_fields, default_s),
     }
 
     # Map spinup JSON keys to our state keys
@@ -811,6 +887,11 @@ def _load_spinup_json(
         "taw3": "taw3",
         "depl_ze": "depl_ze",
         "albedo": "albedo",
+        "s": "s",
+        "s1": "s1",
+        "s2": "s2",
+        "s3": "s3",
+        "s4": "s4",
     }
 
     # Fill arrays from spinup JSON
@@ -853,6 +934,17 @@ def _write_spinup(
             spinup.create_dataset("depl_ze", data=spinup_state["depl_ze"])
         if "albedo" in spinup_state:
             spinup.create_dataset("albedo", data=spinup_state["albedo"])
+        # S history for smoothed CN runoff
+        if "s" in spinup_state:
+            spinup.create_dataset("s", data=spinup_state["s"])
+        if "s1" in spinup_state:
+            spinup.create_dataset("s1", data=spinup_state["s1"])
+        if "s2" in spinup_state:
+            spinup.create_dataset("s2", data=spinup_state["s2"])
+        if "s3" in spinup_state:
+            spinup.create_dataset("s3", data=spinup_state["s3"])
+        if "s4" in spinup_state:
+            spinup.create_dataset("s4", data=spinup_state["s4"])
     else:
         # Default initialization
         spinup.create_dataset("depl_root", data=np.zeros(n_fields))

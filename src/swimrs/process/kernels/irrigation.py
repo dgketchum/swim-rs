@@ -29,8 +29,8 @@ def irrigation_demand(
     Calculate irrigation demand and simulated application.
 
     Irrigation is triggered when:
-    1. It's an irrigation day (irr_flag = True)
-    2. Root zone depletion exceeds RAW (readily available water)
+    1. It's an irrigation day (irr_flag = True) AND depletion > RAW, OR
+    2. There is carryover irrigation from previous day (irr_continue > 0)
     3. Temperature is above threshold (no irrigation when frozen)
 
     Physical constraints:
@@ -70,9 +70,11 @@ def irrigation_demand(
 
     Notes
     -----
-    The continuation logic handles cases where the required irrigation
-    exceeds the daily maximum rate. In such cases, irrigation continues
-    over multiple days until the demand is satisfied.
+    The continuation logic matches legacy model behavior:
+    - Continuation is set when irr_flag AND target_amount > max_irr_rate
+      (independent of whether depl > RAW)
+    - This allows irrigation to continue over multiple days even after
+      depletion drops below RAW
 
     The refill_factor (typically 1.1) ensures a small buffer above field
     capacity to account for immediate drainage and provide a margin.
@@ -91,37 +93,45 @@ def irrigation_demand(
         if temp_avg[i] < temp_threshold:
             continue
 
-        # Check if irrigation is needed
+        # Check if new irrigation is needed (depl > RAW on irrigation day)
         needs_irrigation = irr_flag[i] and (depl_root[i] > raw[i])
         has_carryover = irr_continue[i] > 0.0
 
-        if needs_irrigation or has_carryover:
-            # Calculate total irrigation needed
-            if has_carryover:
-                # Use carryover amount
-                irr_waiting = next_day_irr[i]
-                potential_irr = irr_waiting
-                if potential_irr > max_irr_rate[i]:
-                    potential_irr = max_irr_rate[i]
-            else:
-                # Calculate new irrigation demand
-                target_amount = depl_root[i] * refill_factor
-                potential_irr = target_amount
-                if potential_irr > max_irr_rate[i]:
-                    potential_irr = max_irr_rate[i]
+        # Calculate target refill amount
+        target_amount = depl_root[i] * refill_factor
 
+        # First, handle carryover from previous day
+        # (Legacy: reduce next_day_irr if it exceeds max_irr_rate)
+        irr_waiting = next_day_irr[i]
+        if irr_waiting > max_irr_rate[i]:
+            next_day_irr_new[i] = irr_waiting - max_irr_rate[i]
+        else:
+            next_day_irr_new[i] = 0.0
+
+        # Then, check if new irrigation creates carryover
+        # (Legacy: irr_day AND depl > raw AND target > max_irr_rate)
+        if needs_irrigation and target_amount > max_irr_rate[i]:
+            next_day_irr_new[i] = target_amount - max_irr_rate[i]
+
+        # Calculate irrigation amount
+        if has_carryover:
+            # Apply carryover irrigation (regardless of current depletion)
+            potential_irr = irr_waiting
+            if potential_irr > max_irr_rate[i]:
+                potential_irr = max_irr_rate[i]
+            irr_sim[i] = potential_irr
+        elif needs_irrigation:
+            # Apply new irrigation
+            potential_irr = target_amount
+            if potential_irr > max_irr_rate[i]:
+                potential_irr = max_irr_rate[i]
             irr_sim[i] = potential_irr
 
-            # Check if we need continuation
-            target_amount = depl_root[i] * refill_factor
-            if needs_irrigation and target_amount > max_irr_rate[i]:
-                # Need to continue tomorrow
-                irr_continue_new[i] = 1.0
-                next_day_irr_new[i] = target_amount - max_irr_rate[i]
-            elif has_carryover and next_day_irr[i] > max_irr_rate[i]:
-                # Still have carryover to apply
-                irr_continue_new[i] = 1.0
-                next_day_irr_new[i] = next_day_irr[i] - max_irr_rate[i]
+        # Set continuation flag for next day
+        # Legacy behavior: irr_flag AND (max_irr_rate < depl_root * refill_factor)
+        # This is independent of whether depl > RAW!
+        if irr_flag[i] and (max_irr_rate[i] < target_amount):
+            irr_continue_new[i] = 1.0
 
     return irr_sim, irr_continue_new, next_day_irr_new
 

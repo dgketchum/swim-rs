@@ -77,30 +77,18 @@ def _compute_lat_lon_from_centroids(gdf_5071):
     return wgs84.y.values, wgs84.x.values
 
 
-def assign_gridmet_and_corrections(fields,
-                                   gridmet_ras,
-                                   fields_join,
-                                   factors_js,
-                                   gridmet_points=None,
-                                   field_select=None,
-                                   feature_id='FID',
-                                   gridmet_id_col='GFID'):
-    """Map fields to GridMET and write correction factors.
-
-    - If `gridmet_points` provided, assigns the nearest GridMET centroid via spatial join.
-    - Otherwise, assigns a unique GFID per field and samples at field centroids.
-
-    Outputs:
-    - Writes `fields_join` with GFID, LAT, LON, ELEV.
-    - Writes `factors_js` JSON keyed by GFID with monthly 'etr'/'eto' factors and lat/lon.
-    """
-    print('Find field-gridmet joins')
+def assign_gridmet_ids(fields,
+                       fields_join,
+                       gridmet_points=None,
+                       field_select=None,
+                       feature_id='FID',
+                       gridmet_id_col='GFID'):
+    """Map fields to GridMET IDs (optionally via provided centroids) and write join shapefile."""
+    print('Assign field -> GridMET IDs')
 
     fields = gpd.read_file(fields)
     if fields.crs is None:
         fields.set_crs('EPSG:5071', inplace=True)
-
-    rasters = _build_raster_list(gridmet_ras)
 
     fields_cent = fields.copy()
     fields_cent['geometry'] = fields_cent.geometry.centroid
@@ -112,8 +100,6 @@ def assign_gridmet_and_corrections(fields,
         mask = fields[feature_id].astype(str).isin(set(field_select))
         fields = fields.loc[mask].copy()
         fields_cent = fields_cent.loc[mask].copy()
-
-    gridmet_targets = {}
 
     if gridmet_points is not None:
         pts = gpd.read_file(gridmet_points)
@@ -131,47 +117,15 @@ def assign_gridmet_and_corrections(fields,
         fields[gridmet_id_col] = joined[gridmet_id_col].values
         fields['STATION_ID'] = fields[gridmet_id_col]
 
-        unique_ids = pd.unique(fields[gridmet_id_col].values)
         pts_indexed = pts.set_index(gridmet_id_col)
-
-        for gfid in unique_ids:
-            if pd.isna(gfid):
-                continue
-            gfid_int = int(gfid)
-            geom = pts_indexed.loc[gfid_int, 'geometry']
-            gdf = gpd.GeoDataFrame({'geometry': [geom]}, crs=fields_cent.crs)
-            gridmet_targets[gfid_int] = {str(m): {} for m in range(1, 13)}
-            if 'lat' in pts_indexed.columns and 'lon' in pts_indexed.columns:
-                plat = float(pts_indexed.loc[gfid_int, 'lat'])
-                plon = float(pts_indexed.loc[gfid_int, 'lon'])
-            else:
-                wgs_pt = gpd.GeoSeries([geom], crs=fields_cent.crs).to_crs('EPSG:4326')
-                plat, plon = wgs_pt.iloc[0].y, wgs_pt.iloc[0].x
-
-            gridmet_targets[gfid_int]['lat'] = plat
-            gridmet_targets[gfid_int]['lon'] = plon
-
-            for r in rasters:
-                splt = r.split('_')
-                _var, month = splt[-2], splt[-1].replace('.tif', '')
-                stats = zonal_stats(gdf, r, stats=['mean'], nodata=np.nan)[0]['mean']
-                gridmet_targets[gfid_int][month].update({_var: stats})
+        # Fill lat/lon from centroids if provided on pts
+        for gfid, row in pts_indexed.iterrows():
+            if 'lat' in row and 'lon' in row:
+                fields.loc[fields[gridmet_id_col] == gfid, 'LAT'] = float(row['lat'])
+                fields.loc[fields[gridmet_id_col] == gfid, 'LON'] = float(row['lon'])
     else:
         fields[gridmet_id_col] = range(len(fields))
-        for i, field in tqdm(fields.iterrows(), desc='Assigning GridMET IDs', total=fields.shape[0]):
-            gfid_int = int(fields.at[i, gridmet_id_col])
-            geom = fields_cent.at[i, 'geometry']
-            gdf = gpd.GeoDataFrame({'geometry': [geom]}, crs=fields_cent.crs)
-            plat, plon = fields.at[i, 'LAT'], fields.at[i, 'LON']
-
-            gridmet_targets[gfid_int] = {str(m): {} for m in range(1, 13)}
-            gridmet_targets[gfid_int]['lat'] = plat
-            gridmet_targets[gfid_int]['lon'] = plon
-            for r in rasters:
-                splt = r.split('_')
-                _var, month = splt[-2], splt[-1].replace('.tif', '')
-                stats = zonal_stats(gdf, r, stats=['mean'], nodata=np.nan)[0]['mean']
-                gridmet_targets[gfid_int][month].update({_var: stats})
+        fields['STATION_ID'] = fields[gridmet_id_col]
 
     for i, field in tqdm(fields.iterrows(), desc='Fetching elevations', total=fields.shape[0]):
         g = GridMet('elev', lat=fields.at[i, 'LAT'], lon=fields.at[i, 'LON'])
@@ -183,6 +137,37 @@ def assign_gridmet_and_corrections(fields,
     print(f'Writing {fields.shape[0]} of {oshape} input features')
     fields[gridmet_id_col] = fields[gridmet_id_col].fillna(-1).astype(int)
     fields.to_file(fields_join, crs=fields.crs or 'EPSG:5071', engine='fiona')
+    return fields
+
+
+def sample_gridmet_corrections(fields_join,
+                               gridmet_ras,
+                               factors_js,
+                               gridmet_id_col='GFID'):
+    """Sample correction rasters and write factors JSON keyed by GFID."""
+    fields = gpd.read_file(fields_join)
+    if fields.crs is None:
+        fields.set_crs('EPSG:5071', inplace=True)
+
+    rasters = _build_raster_list(gridmet_ras)
+    gridmet_targets = {}
+
+    for i, field in tqdm(fields.iterrows(), desc='Sampling correction rasters', total=fields.shape[0]):
+        gfid_int = int(fields.at[i, gridmet_id_col])
+        geom = fields.at[i, 'geometry']
+        gdf = gpd.GeoDataFrame({'geometry': [geom]}, crs=fields.crs)
+        plat, plon = fields.at[i, 'LAT'], fields.at[i, 'LON']
+
+        if gfid_int not in gridmet_targets:
+            gridmet_targets[gfid_int] = {str(m): {} for m in range(1, 13)}
+            gridmet_targets[gfid_int]['lat'] = plat
+            gridmet_targets[gfid_int]['lon'] = plon
+
+        for r in rasters:
+            splt = r.split('_')
+            _var, month = splt[-2], splt[-1].replace('.tif', '')
+            stats = zonal_stats(gdf, r, stats=['mean'], nodata=np.nan)[0]['mean']
+            gridmet_targets[gfid_int][month].update({_var: stats})
 
     with open(factors_js, 'w') as fp:
         json.dump(gridmet_targets, fp, indent=4)
@@ -191,7 +176,7 @@ def assign_gridmet_and_corrections(fields,
 
 def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=None, overwrite=False,
                      append=False, target_fields=None, feature_id='FID', return_df=False,
-                     use_nldas=False):
+                     use_nldas=False, gridmet_id_col='GFID'):
     """Download GridMET time series and optionally NLDAS-2 hourly precipitation.
 
     Downloads one parquet file per unique GFID (GridMET cell). Each file contains
@@ -224,8 +209,10 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
     fields = gpd.read_file(fields)
     fields.index = fields[feature_id]
 
-    with open(gridmet_factors, 'r') as f:
-        gridmet_factors_dict = json.load(f)
+    gridmet_factors_dict = {}
+    if gridmet_factors and os.path.exists(gridmet_factors):
+        with open(gridmet_factors, 'r') as f:
+            gridmet_factors_dict = json.load(f)
 
     hr_cols = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
 
@@ -235,9 +222,9 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
         target_fields_set = set(str(f) for f in target_fields)
         mask = fields.index.astype(str).isin(target_fields_set)
         filtered_fields = fields[mask]
-        unique_gfids = filtered_fields['GFID'].dropna().unique()
+        unique_gfids = filtered_fields[gridmet_id_col].dropna().unique()
     else:
-        unique_gfids = fields['GFID'].dropna().unique()
+        unique_gfids = fields[gridmet_id_col].dropna().unique()
 
     unique_gfids = [str(int(g)) for g in unique_gfids]
     print(f'Downloading {len(unique_gfids)} unique GridMET cells')
@@ -269,13 +256,13 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
                     dl_start = missing_dates[0].strftime('%Y-%m-%d')
                     dl_end = missing_dates[-1].strftime('%Y-%m-%d')
 
-            # Get lat/lon from factors
-            if g_fid not in gridmet_factors_dict:
-                print(f'GFID {g_fid} not found in factors file')
-                continue
-
-            r = gridmet_factors_dict[g_fid]
-            lat, lon = r['lat'], r['lon']
+            # Get lat/lon
+            if g_fid in gridmet_factors_dict:
+                r = gridmet_factors_dict[g_fid]
+                lat, lon = r['lat'], r['lon']
+            else:
+                lat = fields.at[fields[gridmet_id_col] == int(g_fid), 'LAT'].values[0]
+                lon = fields.at[fields[gridmet_id_col] == int(g_fid), 'LON'].values[0]
 
             # Download data from THREDDS
             df = pd.DataFrame()
@@ -340,11 +327,12 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
             df['ea'] = ea_kpa.copy()
 
             # Apply bias corrections for ETo and ETr
-            for variable in ['etr', 'eto']:
-                for month in range(1, 13):
-                    corr_factor = gridmet_factors_dict[g_fid][str(month)][variable]
-                    idx = [i for i in df.index if i.month == month]
-                    df.loc[idx, f'{variable}_corr'] = df.loc[idx, variable] * corr_factor
+            if g_fid in gridmet_factors_dict:
+                for variable in ['etr', 'eto']:
+                    for month in range(1, 13):
+                        corr_factor = gridmet_factors_dict[g_fid][str(month)][variable]
+                        idx = [i for i in df.index if i.month == month]
+                        df.loc[idx, f'{variable}_corr'] = df.loc[idx, variable] * corr_factor
 
             # Convert temperatures from Kelvin to Celsius
             df['tmax'] = df['tmax'] - 273.15
