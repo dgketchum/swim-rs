@@ -50,8 +50,10 @@ include = ["swimrs*"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-select = ["E","F","I","UP","B"]
 src = ["src","tests"]
+
+[tool.ruff.lint]
+select = ["E","F","I","UP","B"]
 
 [tool.black]
 line-length = 100
