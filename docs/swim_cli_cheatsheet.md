@@ -27,7 +27,7 @@ swim evaluate examples/2_Fort_Peck/2_Fort_Peck.toml --metrics-out /tmp/fort_peck
 - `--sites siteA,siteB`: Restrict to specific site IDs.
 - `--workers N`: Parallel workers for multi-site steps (dynamics, calibration).
 
-## Extract (Earth Engine + GridMET)
+## Extract (Earth Engine + GridMET/ERA5)
 ```
 swim extract path/to/project.toml \
   --export drive|bucket \
@@ -35,16 +35,20 @@ swim extract path/to/project.toml \
   --file-prefix swim/runs \   # bucket key prefix
   --add-sentinel \            # include Sentinel-2 NDVI
   --etf-models ssebop,ptjpl \
-  --no-snodas --no-properties --no-rs --no-gridmet  # skip pieces as needed
+  --no-snodas --no-properties --no-rs --no-met      # skip pieces as needed
+  --use-gridmet-centroids \     # optional: map GridMET via provided centroids
+  --gridmet-correction          # optional: apply ETo/ETr bias correction rasters
 ```
 Outputs: EE exports (Drive or bucket), GridMET parquet, properties extracts.
 
-## Prep (Tables → Parquet/JSON)
+## Prep (Container ingest → prepped_input.json)
 ```
 swim prep path/to/project.toml \
-  --add-sentinel            # merge Sentinel-2 NDVI when present
+  --add-sentinel            # ingest Sentinel-2 NDVI if available
+  --overwrite               # overwrite existing container data
+  --no-ndvi --no-etf --no-met --no-snow  # skip parts as needed
 ```
-Does: orchestrate local preparation of model inputs—ingest fetched data, compute dynamics, and emit model-ready `prepped_input.json` plus supporting JSON outputs (properties, SNODAS, dynamics). Avoids legacy prep-module parquet workflows.
+Does: create/open the `.swim` container, ingest properties/NDVI/ETf/met/SNODAS, compute merged NDVI and dynamics, and export model-ready `prepped_input.json`. This replaces the legacy prep-module parquet workflow.
 
 ## Calibrate (PEST++ IES)
 ```
@@ -80,5 +84,6 @@ swim evaluate examples/1_Boulder/1_Boulder.toml --sites US-Bo1 --out-dir /tmp/sw
 ## Tips
 - Authenticate EE before `extract` (`earthengine authenticate`).
 - For bucket exports, set `--bucket` or `config.ee_bucket`.
+- Met source is set in `[data_sources]` (`met_source = "gridmet"` or `"era5"`); `--no-met` skips met downloads.
 - Use `--sites` to shorten turnaround while debugging.
 - Use `--workers` to speed multi-site dynamics/calibration on multi-core machines.
