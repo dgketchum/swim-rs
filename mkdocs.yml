@@ -79,4 +79,5 @@ nav:
   - Architecture:
       - Process Package: process_architecture.md
       - Container: container_architecture.md
+  - API Reference: api.md
   - CLI Cheat Sheet: swim_cli_cheatsheet.md
