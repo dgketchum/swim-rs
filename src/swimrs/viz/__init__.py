@@ -1,3 +1,13 @@
+"""
+Visualization utilities for SWIM-RS model outputs.
+
+Provides color maps and plotting utilities for displaying model results.
+
+Attributes:
+    COLOR_MAP: Dictionary mapping variable names to matplotlib colors.
+        Used for consistent styling across plots.
+"""
+
 COLOR_MAP = {
     'et_act': 'blue', 'etref': 'green', 'kc_act': 'lightsalmon', 'kc_bas': 'purple',
     'ks': 'yellow', 'ke': 'purple', 'melt': 'lightblue', 'rain': 'lightpink',
