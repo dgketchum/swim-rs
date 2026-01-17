@@ -7,6 +7,7 @@ This is the complete API reference for SWIM-RS (Soil Water Inverse Modeling with
 - [Container Package](#container) - Zarr-based data management
 - [Process Package](#process) - Physics engine and daily loop
 - [Swim Package](#swim) - Configuration and data containers
+- [TOML Requirements](#toml-requirements) - Minimal/optional project config template
 - [Calibrate Package](#calibrate) - PEST++ integration
 - [Data Extraction](#data-extraction) - Earth Engine and GridMET
 
@@ -137,6 +138,12 @@ Configuration and data containers for SWIM-RS projects.
 ::: swimrs.swim.ContainerPlots
     options:
       show_source: false
+
+---
+
+## TOML Requirements
+
+See the minimal and optional project configuration template (Fort Peck example) in [docs/toml_requirements.md](toml_requirements.md). It outlines required keys and optional settings such as GridMET/ERA5 met sources, snow source selection, GridMET mapping/corrections, and legacy `prepped_input` export.
 
 ---
 
