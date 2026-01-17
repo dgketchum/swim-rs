@@ -5,6 +5,34 @@ from pyemu import os_utils
 
 
 def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, verbose=True, cleanup=True):
+    """Run PEST++ calibration with parallel workers.
+
+    Launches the PEST++ master and worker processes using pyemu's os_utils.
+    Workers execute the forward model in parallel across multiple cores.
+
+    Args:
+        _dir: Directory containing the .pst control file.
+        _cmd: PEST++ executable command (e.g., 'pestpp-ies').
+        pst_file: Name of the .pst control file.
+        num_workers: Number of parallel worker processes.
+        worker_root: Directory for worker process files.
+        master_dir: Directory for master process output. Defaults to None.
+        verbose: Print progress messages. Defaults to True.
+        cleanup: Clean up worker directories on completion. Defaults to True.
+
+    Raises:
+        ValueError: If the pest directory does not exist.
+
+    Example:
+        >>> run_pst(
+        ...     _dir='/path/to/pest',
+        ...     _cmd='pestpp-ies',
+        ...     pst_file='project.pst',
+        ...     num_workers=4,
+        ...     worker_root='/path/to/workers',
+        ...     master_dir='/path/to/master'
+        ... )
+    """
     try:
         os.chdir(worker_root)
         [print('rmtree: {}'.format(os.path.join(worker_root, d))) for d in os.listdir(worker_root)]

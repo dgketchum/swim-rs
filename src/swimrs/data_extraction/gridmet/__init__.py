@@ -25,6 +25,10 @@ Example:
     >>> data = gm.get_point_timeseries()
 """
 
+from swimrs.data_extraction.gridmet.thredds import GridMet
+
+__all__ = ['GridMet']
+
 if __name__ == '__main__':
     pass
 # ========================= EOF ====================================================================

@@ -513,7 +513,20 @@ class GridMet(Thredds):
                 return subset
 
     def get_point_timeseries(self):
+        """Retrieve daily time series for a point location.
 
+        Downloads meteorological data for the point specified by lat/lon
+        coordinates over the date range defined at initialization.
+
+        Returns:
+            DataFrame with datetime index and single column for the variable.
+
+        Example:
+            >>> gm = GridMet(variable='etr', lat=45.5, lon=-116.5,
+            ...              start='2020-01-01', end='2020-12-31')
+            >>> df = gm.get_point_timeseries()
+            >>> print(df.head())
+        """
         url = self._build_url()
         url = url + '#fillmismatch'
         xray = open_dataset(url)

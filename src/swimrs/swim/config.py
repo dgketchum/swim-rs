@@ -7,7 +7,35 @@ from pprint import pprint
 
 
 class ProjectConfig:
+    """Configuration manager for SWIM-RS projects.
+
+    Loads and resolves project configuration from TOML files, handling path
+    resolution, parameter validation, and mode-specific setup for calibration
+    and forecasting workflows.
+
+    Attributes:
+        project_name: Name of the project from TOML config.
+        root_path: Resolved root directory path.
+        project_ws: Project workspace directory.
+        fields_shapefile: Path to the fields geometry shapefile.
+        start_dt: Simulation start date.
+        end_dt: Simulation end date.
+        calibrate: Whether calibration mode is enabled.
+        forecast: Whether forecast mode is enabled.
+        met_source: Meteorology data source ('gridmet' or 'era5').
+        runoff_process: Runoff method ('cn' for Curve Number, 'ier' for infiltration-excess).
+
+    Example:
+        >>> config = ProjectConfig()
+        >>> config.read_config("project.toml")
+        >>> print(config.project_name)
+        'my_project'
+        >>> print(config.start_dt)
+        Timestamp('2020-01-01 00:00:00')
+    """
+
     def __init__(self):
+        """Initialize ProjectConfig with default None values for all attributes."""
         super().__init__()
         # Metadata / resolution
         self.resolved_config = {}
@@ -106,6 +134,29 @@ class ProjectConfig:
 
     def read_config(self, conf_file_path, project_root_override=None, calibrate=False, forecast=False,
                     calibration_dir_override=None, parameter_set_json=None, forecast_param_csv=None):
+        """Load and parse a TOML configuration file.
+
+        Reads the configuration file, resolves path templates (e.g., {root}, {project}),
+        validates required fields, and sets up mode-specific parameters for calibration
+        or forecasting.
+
+        Args:
+            conf_file_path: Path to the TOML configuration file.
+            project_root_override: Override the root path from the TOML file.
+            calibrate: Enable calibration mode.
+            forecast: Enable forecast mode.
+            calibration_dir_override: Override the calibration directory path.
+            parameter_set_json: Path to JSON file with parameter values.
+            forecast_param_csv: Path to CSV file with forecast parameters.
+
+        Raises:
+            ValueError: If required configuration keys are missing.
+            FileNotFoundError: If the configuration file doesn't exist.
+
+        Example:
+            >>> config = ProjectConfig()
+            >>> config.read_config("project.toml", calibrate=True)
+        """
         with open(conf_file_path, 'r') as f:
             raw_config = toml.load(f)
 
@@ -306,8 +357,19 @@ class ProjectConfig:
             self.read_forecast_parameters()
 
     def read_calibration_parameters(self, sites=None):
+        """Load calibration parameter files from the calibration directory.
 
-            self.calibrate = True
+        Reads the initial values CSV and sets up the mapping from parameter
+        names to their multiplier files in the calibration directory.
+
+        Args:
+            sites: Optional list of site IDs to filter parameters. If provided,
+                only parameters containing these site IDs will be loaded.
+
+        Raises:
+            FileNotFoundError: If the initial values CSV doesn't exist.
+        """
+        self.calibrate = True
 
             if self.calibration_dir_override:
                 self.calibration_dir = self.calibration_dir_override
@@ -329,7 +391,19 @@ class ProjectConfig:
                                       for k, f in zip(self.calibrated_parameters, _files)}
 
     def read_forecast_parameters(self):
+        """Load forecast parameters from CSV or JSON file.
 
+        Reads parameter distributions from forecast_param_csv, forecast_parameters_csv,
+        or parameter_set_json and computes mean values for each parameter.
+
+        Sets:
+            forecast_parameters: pandas Series of mean parameter values.
+            parameter_list: List of parameter names.
+            forecast_parameter_groups: Parameter groupings (if loaded from JSON).
+
+        Raises:
+            ValueError: If no forecast parameter source is configured.
+        """
         self.calibration_dir = None
 
         if self.forecast_param_csv:

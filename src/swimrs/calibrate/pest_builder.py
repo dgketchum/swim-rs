@@ -16,6 +16,37 @@ from swimrs.swim.sampleplots import SamplePlots
 
 
 class PestBuilder:
+    """Builder for PEST++ IES calibration control files.
+
+    Constructs PEST++ control files, observation files, and parameter templates
+    for calibrating SWIM-RS model parameters against ET fraction and SWE observations.
+
+    The builder handles:
+    - Parameter setup with prior information from soil and vegetation data
+    - Observation file generation from remote sensing ET and SNODAS SWE
+    - Localization matrix construction for ensemble methods
+    - Forward run script generation
+
+    Attributes:
+        config: ProjectConfig instance with calibration settings.
+        pest_run_dir: Root directory for PEST++ files.
+        pest_dir: Directory containing the .pst control file.
+        master_dir: Directory for PEST++ master process.
+        pst_file: Path to the generated .pst control file.
+
+    Example:
+        >>> from swimrs.swim import ProjectConfig
+        >>> from swimrs.calibrate import PestBuilder
+        >>>
+        >>> config = ProjectConfig()
+        >>> config.read_config("project.toml", calibrate=True)
+        >>>
+        >>> with PestBuilder(config) as builder:
+        ...     builder.spinup()
+        ...     builder.build_pest(target_etf='ssebop')
+        ...     builder.build_localizer()
+        ...     builder.write_control_settings(noptmax=4, reals=250)
+    """
 
     def __init__(self, config, container=None, use_existing=False, python_script=None,
                  prior_constraint=None, conflicted_obs=None):
@@ -257,7 +288,19 @@ class PestBuilder:
         return dct
 
     def build_pest(self, target_etf='openet', members=None):
+        """Build the PEST++ control file and supporting files.
 
+        Creates the .pst control file, observation files, parameter templates,
+        and forward run script in the pest directory.
+
+        Args:
+            target_etf: ET model to use as calibration target ('ssebop', 'ptjpl', etc.).
+            members: Optional list of ensemble member models for uncertainty weighting.
+                If provided, observation weights are computed from inter-model spread.
+
+        Raises:
+            NotImplementedError: If use_existing=True was set in constructor.
+        """
         if self.overwrite_build is False:
             raise NotImplementedError('Use of exising Pest++ project was specified, '
                                       'running "build_pest" will overwrite it.')
@@ -332,7 +375,14 @@ if __name__ == '__main__':
             f.write(script_content)
 
     def build_localizer(self):
+        """Build the localization matrix for ensemble Kalman methods.
 
+        Creates a sparse matrix that restricts parameter-observation correlations
+        to physically meaningful relationships. ET observations only update
+        ET-related parameters, SWE observations only update snow parameters.
+
+        Writes loc.mat and localizer_summary.json to the pest directory.
+        """
         et_params = ['aw', 'ndvi_k', 'ndvi_0', 'mad', 'kr_alpha', 'ks_alpha']
         snow_params = ['swe_alpha', 'swe_beta']
 
@@ -408,6 +458,13 @@ if __name__ == '__main__':
         pst.write(self.pst_file, version=2)
 
     def write_control_settings(self, noptmax=-2, reals=250):
+        """Write PEST++ IES control settings to the .pst file.
+
+        Args:
+            noptmax: Maximum optimization iterations. Use -2 for parameter
+                estimation mode, positive values for optimization.
+            reals: Number of realizations in the ensemble.
+        """
         pst = Pst(self.pst_file)
         pst.pestpp_options["ies_localizer"] = "loc.mat"
         pst.pestpp_options["ies_num_reals"] = reals
@@ -476,7 +533,14 @@ if __name__ == '__main__':
             run_ossystem(cmd, wd, verbose=False)
 
     def spinup(self, overwrite=False):
+        """Run model spinup to initialize state variables.
 
+        Runs the model with initial parameters and saves the final state
+        to the spinup JSON file for warm-starting calibration runs.
+
+        Args:
+            overwrite: If True, regenerate spinup even if file exists.
+        """
         if not os.path.exists(self.config.spinup) or overwrite:
             print('RUNNING SPINUP')
 
