@@ -371,24 +371,24 @@ class ProjectConfig:
         """
         self.calibrate = True
 
-            if self.calibration_dir_override:
-                self.calibration_dir = self.calibration_dir_override
+        if self.calibration_dir_override:
+            self.calibration_dir = self.calibration_dir_override
 
-            initial_values_csv_path = self.initial_values_csv
-            if not os.path.isabs(initial_values_csv_path) and self.project_ws:
-                initial_values_csv_path = os.path.join(self.project_ws, initial_values_csv_path)
-            param_init = pd.read_csv(initial_values_csv_path, index_col=0)
-            if sites:
-                applicable_params = []
-                for site in sites:
-                    idx = [i for i in param_init.index if site in i]
-                    applicable_params.extend(idx)
-                param_init = param_init.loc[applicable_params]
+        initial_values_csv_path = self.initial_values_csv
+        if not os.path.isabs(initial_values_csv_path) and self.project_ws:
+            initial_values_csv_path = os.path.join(self.project_ws, initial_values_csv_path)
+        param_init = pd.read_csv(initial_values_csv_path, index_col=0)
+        if sites:
+            applicable_params = []
+            for site in sites:
+                idx = [i for i in param_init.index if site in i]
+                applicable_params.extend(idx)
+            param_init = param_init.loc[applicable_params]
 
-            self.calibrated_parameters = param_init.index
-            _files = list(param_init['mult_name'])
-            self.calibration_files = {k: os.path.join(self.calibration_dir, f)
-                                      for k, f in zip(self.calibrated_parameters, _files)}
+        self.calibrated_parameters = param_init.index
+        _files = list(param_init['mult_name'])
+        self.calibration_files = {k: os.path.join(self.calibration_dir, f)
+                                  for k, f in zip(self.calibrated_parameters, _files)}
 
     def read_forecast_parameters(self):
         """Load forecast parameters from CSV or JSON file.
