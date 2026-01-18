@@ -378,7 +378,8 @@ def cmd_prep(args: argparse.Namespace) -> int:
         return 1
 
     sites = _parse_sites_arg(args.sites)
-    masks = ("irr", "inv_irr")
+    use_lulc = bool(args.use_lulc_irr or args.international)
+    masks = ("no_mask",) if use_lulc else ("irr", "inv_irr")
     instruments = ["landsat"]
 
     try:
@@ -409,7 +410,7 @@ def cmd_prep(args: argparse.Namespace) -> int:
                         overwrite=args.overwrite,
                     )
                     print(f"Ingested Landsat NDVI ({mask})")
-                if args.add_sentinel:
+                if args.add_sentinel and not args.landsat_only_ndvi:
                     s2_dir = os.path.join(config.sentinel_dir or "", "extracts", "ndvi", mask)
                     if os.path.isdir(s2_dir):
                         container.ingest.ndvi(
@@ -497,8 +498,8 @@ def cmd_prep(args: argparse.Namespace) -> int:
                 irr_threshold=config.irrigation_threshold or 0.1,
                 masks=masks,
                 instruments=tuple(instruments),
-                use_mask=True,
-                use_lulc=False,
+                use_mask=not use_lulc,
+                use_lulc=use_lulc,
                 met_source=getattr(config, "met_source", "gridmet"),
                 fields=sites,
                 overwrite=args.overwrite,
@@ -519,6 +520,7 @@ def cmd_prep(args: argparse.Namespace) -> int:
                 fields=sites,
                 irr_threshold=config.irrigation_threshold or 0.1,
                 include_switched_etf=True,
+                use_merged_ndvi=not args.landsat_only_ndvi,
             )
             print(f"Wrote {export_path}")
         except Exception as e:
@@ -724,10 +726,15 @@ def build_parser() -> argparse.ArgumentParser:
     add_common(pp)
     pp.add_argument('--overwrite', action='store_true', help='Overwrite existing datasets in the container')
     pp.add_argument('--no-ndvi', action='store_true', help='Skip NDVI ingestion')
+    pp.add_argument('--landsat-only-ndvi', action='store_true', help='Force Landsat-only NDVI (skip Sentinel even if present and export uses Landsat NDVI)')
     pp.add_argument('--no-etf', action='store_true', help='Skip ETf ingestion')
     pp.add_argument('--no-met', action='store_true', help='Skip meteorology ingestion')
     pp.add_argument('--no-snow', action='store_true', help='Skip SNODAS ingestion')
     pp.add_argument('--add-sentinel', action='store_true', help='Ingest Sentinel-2 NDVI if available')
+    pp.add_argument('--use-lulc-irr', action='store_true',
+                    help='Use LULC-based irrigation detection (no masks) instead of mask-based (CONUS)')
+    pp.add_argument('--international', action='store_true',
+                    help='Alias for LULC-based irrigation detection with no-mask NDVI/ETf (non-CONUS workflows)')
     pp.set_defaults(func=cmd_prep)
 
     # calibrate

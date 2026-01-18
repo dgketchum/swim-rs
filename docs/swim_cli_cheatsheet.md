@@ -46,6 +46,9 @@ Outputs: EE exports (Drive or bucket), GridMET parquet, properties extracts.
 swim prep path/to/project.toml \
   --add-sentinel            # ingest Sentinel-2 NDVI if available
   --overwrite               # overwrite existing container data
+  --landsat-only-ndvi       # skip Sentinel and export Landsat-only NDVI
+  --use-lulc-irr            # use LULC-based irrigation detection (no masks)
+  --international           # alias for LULC mode with no-mask NDVI/ETf
   --no-ndvi --no-etf --no-met --no-snow  # skip parts as needed
 ```
 Does: create/open the `.swim` container, ingest properties/NDVI/ETf/met/SNODAS, compute merged NDVI and dynamics, and export model-ready `prepped_input.json`. This replaces the legacy prep-module parquet workflow.
