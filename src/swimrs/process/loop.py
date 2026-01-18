@@ -180,8 +180,20 @@ def run_daily_loop(
     # Initialize output
     output = DailyOutput(n_days=n_days, n_fields=n_fields)
 
+    # Track year-specific f_sub for groundwater subsidy
+    has_year_gwsub = swim_input.has_year_specific_gwsub()
+    current_year = None
+    current_f_sub = None
+
     # Daily loop
     for day_idx in range(n_days):
+        # Get year-specific f_sub if available (matches legacy day_data.py behavior)
+        if has_year_gwsub:
+            current_date = swim_input.get_date(day_idx)
+            if current_date.year != current_year:
+                current_year = current_date.year
+                current_f_sub = swim_input.get_f_sub_for_year(current_year)
+
         # Get daily inputs
         ndvi = swim_input.get_time_series("ndvi", day_idx)
         etr = swim_input.get_time_series("etr", day_idx)
@@ -210,6 +222,7 @@ def run_daily_loop(
             irr_flag=irr_flag,
             runoff_process=runoff_process,
             prcp_hr=prcp_hr,
+            f_sub=current_f_sub,
         )
 
         # Store outputs
@@ -244,6 +257,7 @@ def step_day(
     irr_flag: NDArray[np.bool_],
     runoff_process: str = "cn",
     prcp_hr: NDArray[np.float64] | None = None,
+    f_sub: NDArray[np.float64] | None = None,
 ) -> dict[str, NDArray[np.float64]]:
     """Execute a single daily time step.
 
@@ -276,6 +290,9 @@ def step_day(
         Runoff mode: 'cn' for Curve Number or 'ier' for infiltration-excess
     prcp_hr : (24, n_fields,), optional
         Hourly precipitation (mm/hr), required for IER mode
+    f_sub : (n_fields,), optional
+        Year-specific groundwater subsidy fraction. If provided, overrides
+        props.f_sub for this time step.
 
     Returns
     -------
@@ -428,8 +445,10 @@ def step_day(
 
     # 15. Groundwater subsidy (based on UPDATED depletion)
     # Matches legacy model compute_field_et.py lines 150-152
+    # Use year-specific f_sub if provided, otherwise fall back to props.f_sub
+    f_sub_to_use = f_sub if f_sub is not None else props.f_sub
     gw_sim = groundwater_subsidy(
-        depl_after_et, raw, props.gw_status, props.f_sub
+        depl_after_et, raw, props.gw_status, f_sub_to_use
     )
 
     # 16. Apply irrigation and groundwater subsidy

@@ -78,6 +78,7 @@ class SwimInput:
     parameters: CalibrationParameters = field(default=None)
     spinup_state: WaterBalanceState = field(default=None)
     _h5_file: h5py.File = field(default=None, repr=False)
+    _gwsub_years: dict = field(default_factory=dict, repr=False)
 
     def __post_init__(self):
         """Open HDF5 file and load metadata if path exists."""
@@ -110,6 +111,31 @@ class SwimInput:
 
         # Load spinup state
         self.spinup_state = self._load_spinup(h5)
+
+        # Load year-specific groundwater subsidy data
+        self._gwsub_years = self._load_gwsub_years(h5)
+
+    def _load_gwsub_years(self, h5: h5py.File) -> dict[int, NDArray[np.float64]]:
+        """Load year-specific f_sub data from HDF5.
+
+        Returns
+        -------
+        dict[int, NDArray[np.float64]]
+            Mapping of year -> f_sub array (n_fields,)
+        """
+        result = {}
+        if "gwsub" not in h5:
+            return result
+
+        gwsub_group = h5["gwsub"]
+        for year_str in gwsub_group.keys():
+            try:
+                year = int(year_str)
+                result[year] = gwsub_group[year_str][:]
+            except (ValueError, TypeError):
+                continue
+
+        return result
 
     def _load_properties(self, h5: h5py.File) -> FieldProperties:
         """Load field properties from HDF5."""
@@ -280,6 +306,32 @@ class SwimInput:
     def get_day_idx(self, date: datetime) -> int:
         """Get day index for a given date."""
         return (date - self.start_date).days
+
+    def get_f_sub_for_year(self, year: int) -> NDArray[np.float64]:
+        """Get year-specific groundwater subsidy fraction.
+
+        Parameters
+        ----------
+        year : int
+            The year for which to get f_sub values
+
+        Returns
+        -------
+        NDArray[np.float64]
+            f_sub array of shape (n_fields,) for the specified year.
+            Falls back to static properties.f_sub if year-specific data
+            is not available.
+        """
+        if self._gwsub_years and year in self._gwsub_years:
+            return self._gwsub_years[year]
+        # Fall back to static f_sub from properties
+        if self.properties is not None and self.properties.f_sub is not None:
+            return self.properties.f_sub
+        return np.zeros(self.n_fields, dtype=np.float64)
+
+    def has_year_specific_gwsub(self) -> bool:
+        """Check if year-specific groundwater subsidy data is available."""
+        return bool(self._gwsub_years)
 
     def apply_multipliers(
         self,
@@ -600,6 +652,68 @@ def _write_properties(
     props.create_dataset("gw_status", data=gw_status.astype(np.uint8))
     props.create_dataset("ke_max", data=ke_max)
     props.create_dataset("f_sub", data=f_sub)
+
+    # Write year-specific groundwater subsidy data
+    _write_gwsub_years(h5, data, fids, n_fields, calibrated_params)
+
+
+def _write_gwsub_years(
+    h5: h5py.File,
+    data: dict,
+    fids: list[str],
+    n_fields: int,
+    calibrated_params: dict[str, NDArray[np.float64]] | None = None,
+):
+    """Write year-specific groundwater subsidy (f_sub) data to HDF5.
+
+    Creates a /gwsub group with one dataset per year containing f_sub values.
+    This enables year-specific groundwater subsidy handling in the simulation.
+
+    Parameters
+    ----------
+    h5 : h5py.File
+        Open HDF5 file handle
+    data : dict
+        JSON input data containing gwsub_data
+    fids : list[str]
+        Field IDs in order
+    n_fields : int
+        Number of fields
+    calibrated_params : dict, optional
+        Calibrated parameters (not used here, for consistency)
+    """
+    gwsub_data = data.get("gwsub_data", {})
+    if not gwsub_data:
+        return
+
+    # Collect all years from gwsub_data
+    all_years = set()
+    for fid in fids:
+        fid_gw = gwsub_data.get(fid, {})
+        if isinstance(fid_gw, dict):
+            for year_str in fid_gw.keys():
+                try:
+                    all_years.add(int(year_str))
+                except ValueError:
+                    continue
+
+    if not all_years:
+        return
+
+    gwsub_group = h5.create_group("gwsub")
+
+    for year in sorted(all_years):
+        year_str = str(year)
+        f_sub_year = np.zeros(n_fields, dtype=np.float64)
+
+        for i, fid in enumerate(fids):
+            fid_gw = gwsub_data.get(fid, {})
+            if isinstance(fid_gw, dict) and year_str in fid_gw:
+                year_data = fid_gw[year_str]
+                if isinstance(year_data, dict):
+                    f_sub_year[i] = year_data.get("f_sub", 0.0)
+
+        gwsub_group.create_dataset(year_str, data=f_sub_year)
 
 
 def _write_parameters(
