@@ -22,16 +22,19 @@ The container package provides unified data management using Zarr storage.
 ::: swimrs.container.open_container
     options:
       show_source: false
+      show_signature_annotations: true
 
 ::: swimrs.container.create_container
     options:
       show_source: false
+      show_signature_annotations: true
 
 ### SwimContainer
 
 ::: swimrs.container.SwimContainer
     options:
       show_source: false
+      show_signature_annotations: true
       members:
         - create
         - open
@@ -46,36 +49,48 @@ The container package provides unified data management using Zarr storage.
 ::: swimrs.container.Ingestor
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
 
 ::: swimrs.container.Calculator
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
 
 ::: swimrs.container.Exporter
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
 
 ::: swimrs.container.Query
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
 
 ### Schema and Enums
 
 ::: swimrs.container.SwimSchema
     options:
       show_source: false
+      members: true
 
 ::: swimrs.container.Instrument
     options:
       show_source: false
+      members: true
 
 ::: swimrs.container.MaskType
     options:
       show_source: false
+      members: true
 
 ::: swimrs.container.ETModel
     options:
       show_source: false
+      members: true
 
 ---
 
@@ -88,38 +103,55 @@ The process package provides the physics engine for soil water balance modeling.
 ::: swimrs.process.run_daily_loop
     options:
       show_source: false
+      show_signature_annotations: true
 
 ::: swimrs.process.step_day
     options:
       show_source: false
+      show_signature_annotations: true
 
 ::: swimrs.process.DailyOutput
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
 
 ### State Containers
 
 ::: swimrs.process.WaterBalanceState
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
+      merge_init_into_class: true
 
 ::: swimrs.process.FieldProperties
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
+      merge_init_into_class: true
 
 ::: swimrs.process.CalibrationParameters
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
+      merge_init_into_class: true
 
 ### Input Management
 
 ::: swimrs.process.SwimInput
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
+      merge_init_into_class: true
 
 ::: swimrs.process.build_swim_input
     options:
       show_source: false
+      show_signature_annotations: true
 
 ---
 
@@ -130,14 +162,20 @@ Configuration and data containers for SWIM-RS projects.
 ::: swimrs.swim.ProjectConfig
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
 
 ::: swimrs.swim.SamplePlots
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
 
 ::: swimrs.swim.ContainerPlots
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
 
 ---
 
@@ -154,14 +192,19 @@ PEST++ integration for parameter estimation and inverse modeling.
 ::: swimrs.calibrate.PestBuilder
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
 
 ::: swimrs.calibrate.PestResults
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
 
 ::: swimrs.calibrate.run_pst
     options:
       show_source: false
+      show_signature_annotations: true
 
 ---
 
@@ -174,24 +217,30 @@ Functions for exporting ET fraction data from Google Earth Engine.
 ::: swimrs.data_extraction.ee.export_ptjpl_zonal_stats
     options:
       show_source: false
+      show_signature_annotations: true
 
 ::: swimrs.data_extraction.ee.export_ssebop_zonal_stats
     options:
       show_source: false
+      show_signature_annotations: true
 
 ::: swimrs.data_extraction.ee.export_sims_zonal_stats
     options:
       show_source: false
+      show_signature_annotations: true
 
 ::: swimrs.data_extraction.ee.export_geesebal_zonal_stats
     options:
       show_source: false
+      show_signature_annotations: true
 
 ### GridMET
 
 ::: swimrs.data_extraction.gridmet.GridMet
     options:
       show_source: false
+      members: true
+      show_signature_annotations: true
 
 ---
 

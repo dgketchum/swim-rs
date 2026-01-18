@@ -4,7 +4,16 @@ import shutil
 from pyemu import os_utils
 
 
-def run_pst(_dir, _cmd, pst_file, num_workers, worker_root, master_dir=None, verbose=True, cleanup=True):
+def run_pst(
+    _dir: str,
+    _cmd: str,
+    pst_file: str,
+    num_workers: int,
+    worker_root: str,
+    master_dir: str | None = None,
+    verbose: bool = True,
+    cleanup: bool = True,
+) -> None:
     """Run PEST++ calibration with parallel workers.
 
     Launches the PEST++ master and worker processes using pyemu's os_utils.

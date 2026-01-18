@@ -1,9 +1,9 @@
-import os
 import json
+import os
 import subprocess
-import toml
+
 import pandas as pd
-from pprint import pprint
+import toml
 
 
 class ProjectConfig:
@@ -132,8 +132,16 @@ class ProjectConfig:
         self.forecast_parameters = None
         self.forecast_parameter_groups = None
 
-    def read_config(self, conf_file_path, project_root_override=None, calibrate=False, forecast=False,
-                    calibration_dir_override=None, parameter_set_json=None, forecast_param_csv=None):
+    def read_config(
+        self,
+        conf_file_path: str,
+        project_root_override: str | None = None,
+        calibrate: bool = False,
+        forecast: bool = False,
+        calibration_dir_override: str | None = None,
+        parameter_set_json: str | None = None,
+        forecast_param_csv: str | None = None,
+    ) -> None:
         """Load and parse a TOML configuration file.
 
         Reads the configuration file, resolves path templates (e.g., {root}, {project}),
@@ -356,7 +364,7 @@ class ProjectConfig:
                 raise ValueError('Forecast config missing: forecast.forecast_parameters (CSV) or parameter_set_json')
             self.read_forecast_parameters()
 
-    def read_calibration_parameters(self, sites=None):
+    def read_calibration_parameters(self, sites: list[str] | None = None) -> None:
         """Load calibration parameter files from the calibration directory.
 
         Reads the initial values CSV and sets up the mapping from parameter
@@ -390,7 +398,7 @@ class ProjectConfig:
         self.calibration_files = {k: os.path.join(self.calibration_dir, f)
                                   for k, f in zip(self.calibrated_parameters, _files)}
 
-    def read_forecast_parameters(self):
+    def read_forecast_parameters(self) -> None:
         """Load forecast parameters from CSV or JSON file.
 
         Reads parameter distributions from forecast_param_csv, forecast_parameters_csv,
@@ -439,7 +447,7 @@ class ProjectConfig:
             self.forecast_parameters = pd.Series(index=k_list, data=v_list)
             self.parameter_list = self.forecast_parameters.index.to_list()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return (
             f"ProjectConfig:\n"
             f"  Project Name: {self.project_name}\n"
@@ -453,9 +461,10 @@ class ProjectConfig:
             f"  Forecast Mode: {self.forecast}"
         )
 
-    def sync_from_bucket(self, dry_run=False, subdirs=None):
-        """
-        Sync Earth Engine exports from GCS bucket to local filesystem.
+    def sync_from_bucket(
+        self, dry_run: bool = False, subdirs: list[str] | None = None
+    ) -> subprocess.CompletedProcess | list[subprocess.CompletedProcess]:
+        """Sync Earth Engine exports from GCS bucket to local filesystem.
 
         Uses gsutil rsync to mirror the bucket structure to local data directory.
         Bucket structure: gs://{bucket}/{project}/remote_sensing/...
@@ -533,7 +542,7 @@ class ProjectConfig:
         return results[0] if len(results) == 1 else results
 
     @staticmethod
-    def _resolve_paths(raw_config, base_format_vars):
+    def _resolve_paths(raw_config: dict, base_format_vars: dict) -> dict:
         config = json.loads(json.dumps(raw_config))
         format_vars = {k: (os.path.expanduser(v) if isinstance(v, str) else v)
                        for k, v in base_format_vars.items()}

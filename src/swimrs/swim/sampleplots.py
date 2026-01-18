@@ -38,14 +38,14 @@ class SamplePlots:
         >>> df = plots.input_to_dataframe("field_001")
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize SamplePlots with empty data containers."""
         super().__init__()
         self.input = None
         self.output = None
         self.spinup = None
 
-    def initialize_plot_data(self, config):
+    def initialize_plot_data(self, config) -> None:
         """Load field data from the prepped input JSON file.
 
         Reads the JSON file specified in config.input_data and populates
@@ -69,7 +69,7 @@ class SamplePlots:
             with open(f, 'r') as fp:
                 self.input = json.load(fp)
 
-    def initialize_spinup(self, config):
+    def initialize_spinup(self, config) -> None:
         """Load spinup state from a JSON file.
 
         Spinup state allows warm-starting simulations from a previous model
@@ -88,7 +88,7 @@ class SamplePlots:
         else:
             raise FileNotFoundError(f'Spinup file {config.spinup} not found')
 
-    def input_to_dataframe(self, feature_id):
+    def input_to_dataframe(self, feature_id: str) -> pd.DataFrame:
         """Convert a field's time series data to a pandas DataFrame.
 
         Extracts all time series variables for a single field and returns
@@ -124,7 +124,7 @@ class SamplePlots:
         df_.index = pd.DatetimeIndex(dates)
         return df_
 
-    def reconcile_with_parameters(self, config):
+    def reconcile_with_parameters(self, config) -> tuple[list[str], list[str], list[str]]:
         """Reconcile plots data with config parameters, keeping only common fields.
 
         In forecast or calibration mode, this method identifies fields that exist
@@ -206,7 +206,7 @@ class SamplePlots:
 
         return common_fields, dropped_from_plots, dropped_from_params
 
-    def _filter_to_fields(self, field_list):
+    def _filter_to_fields(self, field_list: list[str]) -> None:
         """Filter plots input data to only include specified fields.
 
         Parameters
@@ -280,14 +280,17 @@ class ContainerPlots:
         df_dct = field_day_loop(config, plots, debug_flag=True)
     """
 
-    def __init__(self, container, etf_model: str = "ssebop",
-                 masks: tuple = ("irr", "inv_irr"),
-                 met_source: str = None,
-                 instrument: str = "landsat",
-                 fields: list = None,
-                 use_fused_ndvi: bool = True):
-        """
-        Initialize ContainerPlots from a SwimContainer.
+    def __init__(
+        self,
+        container,
+        etf_model: str = "ssebop",
+        masks: tuple[str, ...] = ("irr", "inv_irr"),
+        met_source: str | None = None,
+        instrument: str = "landsat",
+        fields: list[str] | None = None,
+        use_fused_ndvi: bool = True,
+    ) -> None:
+        """Initialize ContainerPlots from a SwimContainer.
 
         Args:
             container: SwimContainer instance (opened for reading)
@@ -326,7 +329,7 @@ class ContainerPlots:
 
         self._build_input_dict()
 
-    def _build_input_dict(self):
+    def _build_input_dict(self) -> None:
         """Build the input dict structure expected by SampleTracker."""
         self.input = {
             'order': self._fields,
@@ -476,7 +479,7 @@ class ContainerPlots:
 
         return time_series
 
-    def _load_json_dynamics(self, param: str) -> dict:
+    def _load_json_dynamics(self, param: str) -> dict[str, dict]:
         """Load JSON-encoded dynamics parameter (irr_data or gwsub_data)."""
         import json
 
@@ -502,7 +505,7 @@ class ContainerPlots:
 
         return result
 
-    def _load_scalar_dynamics(self, param: str, default: float) -> dict:
+    def _load_scalar_dynamics(self, param: str, default: float) -> dict[str, float]:
         """Load scalar dynamics parameter (ke_max or kc_max)."""
         c = self.container
         path = f"derived/dynamics/{param}"
@@ -522,16 +525,15 @@ class ContainerPlots:
 
         return result
 
-    def initialize_plot_data(self, config):
-        """
-        Compatibility method - data is already loaded from container.
+    def initialize_plot_data(self, config) -> None:
+        """Compatibility method - data is already loaded from container.
 
         This method exists for API compatibility with SamplePlots.
         When using ContainerPlots, data is loaded in __init__.
         """
         pass  # Already initialized from container
 
-    def initialize_spinup(self, config):
+    def initialize_spinup(self, config) -> None:
         """Load spinup state from config (same as SamplePlots)."""
         import os
         import json
@@ -543,7 +545,7 @@ class ContainerPlots:
         else:
             raise FileNotFoundError(f'Spinup file {config.spinup} not found')
 
-    def input_to_dataframe(self, feature_id):
+    def input_to_dataframe(self, feature_id: str) -> pd.DataFrame:
         """Convert a field's time series to DataFrame (same as SamplePlots)."""
         idx = self.input['order'].index(feature_id)
 
@@ -564,9 +566,8 @@ class ContainerPlots:
         df_.index = pd.DatetimeIndex(dates)
         return df_
 
-    def reconcile_with_parameters(self, config):
-        """
-        Reconcile plots data with config parameters (same as SamplePlots).
+    def reconcile_with_parameters(self, config) -> tuple[list[str], list[str], list[str]]:
+        """Reconcile plots data with config parameters (same as SamplePlots).
 
         In forecast or calibration mode, this method identifies fields that exist
         in both the plots data and the parameter set, filters the plots data to
@@ -624,7 +625,7 @@ class ContainerPlots:
 
         return common_fields, dropped_from_plots, dropped_from_params
 
-    def _filter_to_fields(self, field_list):
+    def _filter_to_fields(self, field_list: list[str]) -> None:
         """Filter plots input data to only include specified fields."""
         if self.input is None:
             return

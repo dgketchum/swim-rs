@@ -146,13 +146,15 @@ def groundwater_subsidy(
     """
     Calculate groundwater subsidy to root zone.
 
-    For fields with shallow water tables, groundwater can supply water
-    to the root zone when depletion exceeds RAW.
+    For fields with shallow water tables, groundwater equilibrates depletion
+    to the RAW level. This can be positive (water added) when depl > raw,
+    or negative (water drained) when depl < raw due to rainfall.
 
-    Physical constraints:
-        - gw_sim >= 0
-        - gw_sim only applied when depl_root > RAW
-        - gw_sim fills back to RAW level (not full capacity)
+    Legacy behavior (compute_field_et.py lines 151-153):
+        - If any field has depl > raw AND gwsub_status is true globally
+        - Then for all fields with gwsub_status AND f_sub > 0.2:
+          gw_sim = depl_root - raw (can be negative when depl < raw)
+        - This effectively maintains depletion at exactly RAW level
 
     Parameters
     ----------
@@ -164,38 +166,62 @@ def groundwater_subsidy(
         Boolean flag for groundwater subsidy availability
     f_sub : (n_fields,)
         Fractional subsidy factor [0, 1]
-        Uses threshold logic: if f_sub > 0.2, full subsidy applied
+        Uses threshold logic: if f_sub > 0.2, subsidy is applied
         (matches legacy model compute_field_et.py behavior)
 
     Returns
     -------
     gw_sim : (n_fields,)
-        Groundwater subsidy amount (mm)
+        Groundwater subsidy amount (mm). Can be negative when depl < raw,
+        which means excess rain is drained to groundwater to maintain
+        depletion at RAW level.
 
     Notes
     -----
-    Groundwater subsidy represents capillary rise from a shallow water
-    table. It's typically applied in areas with high water tables where
-    crops can access groundwater directly.
+    This behavior effectively models a field with a shallow, stable water
+    table that buffers soil moisture at the RAW level. When ET exceeds
+    rain, groundwater provides the deficit. When rain exceeds ET,
+    excess water drains back to groundwater.
 
-    The subsidy fills the root zone back to the RAW level, not to field
-    capacity, as the water table rise is limited by capillary forces.
-
-    Legacy behavior: gwsub_status = 1 if f_sub > 0.2, and when active,
-    the full deficit is applied (not fractional).
+    The legacy model applies this when ANY subsidized field has depl > raw,
+    which triggers the subsidy logic for ALL subsidized fields. We match
+    this by checking if ANY active field (gw_status AND f_sub > 0.2) has
+    depl > raw, then applying gw_sim = depl - raw to all active fields.
     """
     n = depl_root.shape[0]
-    gw_sim = np.empty(n, dtype=np.float64)
+    gw_sim = np.zeros(n, dtype=np.float64)
 
     # Threshold for activating groundwater subsidy (matches legacy model)
     FSUB_THRESHOLD = 0.2
 
-    for i in prange(n):
-        # Apply full subsidy if gw_status AND f_sub > threshold AND depletion > RAW
-        if gw_status[i] and f_sub[i] > FSUB_THRESHOLD and depl_root[i] > raw[i]:
-            # Full deficit applied (legacy behavior)
-            gw_sim[i] = depl_root[i] - raw[i]
-        else:
-            gw_sim[i] = 0.0
+    # Legacy behavior (compute_field_et.py lines 151-153):
+    # if np.any(day_data.gwsub_status) and np.any((swb.depl_root > swb.raw)):
+    #     gw_subsidy = np.where(day_data.gwsub_status, swb.depl_root - swb.raw, 0.0)
+    #
+    # This means:
+    # 1. Check if ANY field has gwsub_status = 1 (f_sub > 0.2)
+    # 2. Check if ANY field (not necessarily same one!) has depl > raw
+    # 3. If both true, apply gw_sim = depl - raw for ALL fields with gwsub_status
+
+    # Step 1: Check if any field has active subsidy (gwsub_status = 1)
+    any_has_gwsub = False
+    for i in range(n):
+        if gw_status[i] and f_sub[i] > FSUB_THRESHOLD:
+            any_has_gwsub = True
+            break
+
+    # Step 2: Check if any field has depl > raw
+    any_depl_above_raw = False
+    for i in range(n):
+        if depl_root[i] > raw[i]:
+            any_depl_above_raw = True
+            break
+
+    # Step 3: If both conditions met, apply subsidy to all fields with gwsub_status
+    if any_has_gwsub and any_depl_above_raw:
+        # gw_sim = depl_root - raw (can be negative!)
+        for i in prange(n):
+            if gw_status[i] and f_sub[i] > FSUB_THRESHOLD:
+                gw_sim[i] = depl_root[i] - raw[i]
 
     return gw_sim

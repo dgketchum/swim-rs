@@ -6,6 +6,7 @@ from tempfile import mkdtemp
 from datetime import datetime
 from urllib.parse import urlunparse
 
+import numpy as np
 from numpy import empty, float32, datetime64, timedelta64, argmin, abs, array
 from rasterio import open as rasopen
 from rasterio.crs import CRS
@@ -25,7 +26,7 @@ class Thredds:
     """
 
     def __init__(self, start=None, end=None, date=None,
-                 bounds=None, target_profile=None, lat=None, lon=None, clip_feature=None):
+                 bounds=None, target_profile=None, lat=None, lon=None, clip_feature=None) -> None:
         self.start = start
         self.end = end
         self.date = date
@@ -39,7 +40,7 @@ class Thredds:
         self.clip_feature = clip_feature
         self._is_masked = False
 
-    def conform(self, subset, out_file=None):
+    def conform(self, subset, out_file: str | None = None) -> np.ndarray:
         if subset.dtype != float32:
             subset = array(subset, dtype=float32)
         self._project(subset)
@@ -50,7 +51,7 @@ class Thredds:
             self.save_raster(result, self.target_profile, output_filename=out_file)
         return result
 
-    def _project(self, subset):
+    def _project(self, subset) -> None:
 
         proj_path = os.path.join(self.temp_dir, 'tiled_proj.tif')
         setattr(self, 'projection', proj_path)
@@ -81,7 +82,7 @@ class Thredds:
         with rasopen(proj_path, 'w', **profile) as dst:
             dst.write(subset)
 
-    def _warp(self):
+    def _warp(self) -> None:
 
         reproj_path = os.path.join(self.temp_dir, 'reproj.tif')
         setattr(self, 'reprojection', reproj_path)
@@ -116,7 +117,7 @@ class Thredds:
 
             dst.write(dst_array)
 
-    def _mask(self):
+    def _mask(self) -> None:
 
         mask_path = os.path.join(self.temp_dir, 'masked.tif')
         with rasopen(self.reprojection) as src:
@@ -136,7 +137,7 @@ class Thredds:
 
         setattr(self, 'mask', mask_path)
 
-    def _resample(self):
+    def _resample(self) -> np.ndarray:
 
         # home = os.path.expanduser('~')
         # resample_path = os.path.join(home, 'images', 'sandbox', 'thredds', 'resamp_twx_{}.tif'.format(var))
@@ -189,7 +190,6 @@ class Thredds:
 
     def _date_index(self):
         date_ind = date_range(self.start, self.end, freq='d')
-
         return date_ind
 
     @staticmethod
@@ -198,7 +198,7 @@ class Thredds:
         return dtnumpy
 
     @staticmethod
-    def save_raster(arr, geometry, output_filename):
+    def save_raster(arr, geometry, output_filename: str) -> None:
         try:
             arr = arr.reshape(1, arr.shape[1], arr.shape[2])
         except IndexError:
@@ -228,7 +228,7 @@ class TopoWX(Thredds):
     :param bounds: met.misc.BBox object representing spatial bounds, default to conterminous US
     :return: numpy.ndarray """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         Thredds.__init__(self)
 
         self.temp_dir = mkdtemp()
@@ -246,8 +246,13 @@ class TopoWX(Thredds):
 
         self.year = self.start.year
 
-    def get_data_subset(self, grid_conform=False, var='tmax',
-                        out_file=None, temp_units_out='C'):
+    def get_data_subset(
+        self,
+        grid_conform: bool = False,
+        var: str = 'tmax',
+        out_file: str | None = None,
+        temp_units_out: str = 'C',
+    ) -> np.ndarray | None:
 
         if var not in self.variables:
             raise TypeError('Must choose from "tmax" or "tmin"..')
@@ -301,7 +306,7 @@ class TopoWX(Thredds):
 
             return conformed_array
 
-    def _build_url(self, var):
+    def _build_url(self, var: str) -> str:
 
         # ParseResult('scheme', 'netloc', 'path', 'params', 'query', 'fragment')
         url = urlunparse([self.scheme, self.service,
@@ -354,8 +359,18 @@ class GridMet(Thredds):
 
     """
 
-    def __init__(self, variable=None, date=None, start=None, end=None, bbox=None,
-                 target_profile=None, clip_feature=None, lat=None, lon=None):
+    def __init__(
+        self,
+        variable: str | None = None,
+        date=None,
+        start=None,
+        end=None,
+        bbox=None,
+        target_profile=None,
+        clip_feature=None,
+        lat: float | None = None,
+        lon: float | None = None,
+    ) -> None:
         Thredds.__init__(self)
 
         self.date = date
@@ -427,7 +442,7 @@ class GridMet(Thredds):
         if not self.bbox and not self.lat:
             raise AttributeError('No bbox or coordinates given')
 
-    def subset_daily_tif(self, out_filename=None):
+    def subset_daily_tif(self, out_filename: str | None = None) -> np.ndarray:
 
         url = self._build_url()
         url = url + '#fillmismatch'
@@ -470,7 +485,7 @@ class GridMet(Thredds):
             rmtree(self.temp_dir)
             return arr
 
-    def subset_nc(self, out_filename=None, return_array=False):
+    def subset_nc(self, out_filename: str | None = None, return_array: bool = False):
 
         url = self._build_url()
         url = url + '#fillmismatch'
@@ -512,7 +527,7 @@ class GridMet(Thredds):
             if return_array:
                 return subset
 
-    def get_point_timeseries(self):
+    def get_point_timeseries(self) -> DataFrame:
         """Retrieve daily time series for a point location.
 
         Downloads meteorological data for the point specified by lat/lon
@@ -541,7 +556,7 @@ class GridMet(Thredds):
         df.columns = [self.variable]
         return df
 
-    def get_point_elevation(self):
+    def get_point_elevation(self) -> float:
 
         url = self._build_url()
         url = url + '#fillmismatch'
@@ -550,7 +565,7 @@ class GridMet(Thredds):
         elev = subset.get('elevation').values[0]
         return elev
 
-    def _build_url(self):
+    def _build_url(self) -> str:
 
         # ParseResult('scheme', 'netloc', 'path', 'params', 'query', 'fragment')
         if self.variable == 'elev':
@@ -564,7 +579,7 @@ class GridMet(Thredds):
 
         return url
 
-    def write_netcdf(self, outputroot):
+    def write_netcdf(self, outputroot: str) -> None:
         url = self._build_url()
         xray = open_dataset(url)
         if self.variable != 'elev':
@@ -576,7 +591,7 @@ class GridMet(Thredds):
 
 
 class BBox(object):
-    def __init__(self, west, east, north, south):
+    def __init__(self, west: float, east: float, north: float, south: float) -> None:
         self.west = west
         self.east = east
         self.north = north

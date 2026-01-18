@@ -32,8 +32,6 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-
 import numpy as np
 import pandas as pd
 
@@ -108,7 +106,7 @@ class PestResults:
                 self._rec_content = ''
         return self._rec_content
 
-    def _read_phi_data(self) -> Optional[pd.DataFrame]:
+    def _read_phi_data(self) -> pd.DataFrame | None:
         """Read and cache phi measurement data."""
         if self._phi_data is None:
             phi_file = self.master_dir / f'{self.project_name}.phi.meas.csv'
@@ -119,7 +117,7 @@ class PestResults:
                     self._phi_data = pd.DataFrame()
         return self._phi_data
 
-    def _get_noptmax(self) -> Optional[int]:
+    def _get_noptmax(self) -> int | None:
         """Extract noptmax from control file or record."""
         if self._noptmax is not None:
             return self._noptmax
@@ -146,7 +144,7 @@ class PestResults:
 
         return None
 
-    def _get_par_files(self) -> List[Path]:
+    def _get_par_files(self) -> list[Path]:
         """Get all parameter CSV files sorted by iteration."""
         par_files = list(self.master_dir.glob(f'{self.project_name}.*.par.csv'))
         # Sort by iteration number
@@ -155,12 +153,11 @@ class PestResults:
             return int(match.group(1)) if match else -1
         return sorted(par_files, key=get_iter)
 
-    def is_successful(self) -> Tuple[bool, List[str]]:
-        """
-        Check if calibration succeeded.
+    def is_successful(self) -> tuple[bool, list[str]]:
+        """Check if calibration succeeded.
 
         Returns:
-            Tuple of (success: bool, issues: List[str])
+            Tuple of (success, issues) where:
             - success: True if all primary criteria pass
             - issues: List of problems found (empty if successful)
         """
@@ -221,12 +218,11 @@ class PestResults:
         success = len(issues) == 0
         return success, issues
 
-    def get_summary(self) -> Dict:
-        """
-        Extract key metrics from calibration results.
+    def get_summary(self) -> dict:
+        """Extract key metrics from calibration results.
 
         Returns:
-            Dictionary with summary metrics
+            Dictionary with summary metrics.
         """
         summary = {
             'project': self.project_name,
@@ -291,12 +287,11 @@ class PestResults:
 
         return summary
 
-    def get_final_parameters(self) -> Optional[pd.DataFrame]:
-        """
-        Get final calibrated parameter ensemble.
+    def get_final_parameters(self) -> pd.DataFrame | None:
+        """Get final calibrated parameter ensemble.
 
         Returns:
-            DataFrame with parameter values, or None if not found
+            DataFrame with parameter values, or None if not found.
         """
         par_files = self._get_par_files()
         if par_files:
@@ -317,20 +312,19 @@ class PestResults:
 
     def cleanup(
         self,
-        archive_dir: Optional[str] = None,
+        archive_dir: str | None = None,
         keep_debug: bool = False,
         dry_run: bool = False,
-    ) -> Dict:
-        """
-        Clean up calibration files based on success status.
+    ) -> dict:
+        """Clean up calibration files based on success status.
 
         Args:
-            archive_dir: Directory to archive important files (None = pest_dir/archive)
-            keep_debug: Force keeping debug files even on success
-            dry_run: If True, report what would be done without doing it
+            archive_dir: Directory to archive important files (None = pest_dir/archive).
+            keep_debug: Force keeping debug files even on success.
+            dry_run: If True, report what would be done without doing it.
 
         Returns:
-            Dictionary with cleanup report
+            Dictionary with cleanup report.
         """
         success, issues = self.is_successful()
         report = {
@@ -421,7 +415,7 @@ class PestResults:
 
         return report
 
-    def _get_recommendations(self, issues: List[str]) -> List[str]:
+    def _get_recommendations(self, issues: list[str]) -> list[str]:
         """Generate debugging recommendations based on issues."""
         recommendations = []
 
@@ -457,7 +451,7 @@ class PestResults:
 
         return recommendations
 
-    def print_summary(self):
+    def print_summary(self) -> None:
         """Print a formatted summary to stdout."""
         summary = self.get_summary()
 
@@ -505,7 +499,7 @@ class PestResults:
         print(f"{'='*60}\n")
 
 
-def main():
+def main() -> int:
     """Command-line interface."""
     parser = argparse.ArgumentParser(
         description='PEST++ results cleanup and summary',

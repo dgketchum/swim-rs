@@ -1,9 +1,7 @@
 import json
 import os
-import shutil
 from collections import OrderedDict
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -48,10 +46,16 @@ class PestBuilder:
         ...     builder.write_control_settings(noptmax=4, reals=250)
     """
 
-    def __init__(self, config, container=None, use_existing=False, python_script=None,
-                 prior_constraint=None, conflicted_obs=None):
-        """
-        Initialize PestBuilder for PEST++ calibration.
+    def __init__(
+        self,
+        config,
+        container=None,
+        use_existing: bool = False,
+        python_script: str | None = None,
+        prior_constraint: dict | None = None,
+        conflicted_obs: str | None = None,
+    ) -> None:
+        """Initialize PestBuilder for PEST++ calibration.
 
         Args:
             config: ProjectConfig instance
@@ -122,7 +126,7 @@ class PestBuilder:
         else:
             self.overwrite_build = True
 
-    def _init_container(self, container):
+    def _init_container(self, container) -> None:
         """Initialize container from instance or path."""
         from swimrs.container import SwimContainer
 
@@ -170,20 +174,20 @@ class PestBuilder:
         result['swe'] = df[fid] if fid in df.columns else np.nan
         return result
 
-    def close(self):
+    def close(self) -> None:
         """Close container if we own it."""
         if self._owns_container and self._container is not None:
             self._container.close()
             self._container = None
 
-    def __enter__(self):
+    def __enter__(self) -> "PestBuilder":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
         self.close()
         return False
 
-    def get_pest_builder_args(self):
+    def get_pest_builder_args(self) -> dict:
 
         targets = self.plot_order
 
@@ -287,7 +291,7 @@ class PestBuilder:
 
         return dct
 
-    def build_pest(self, target_etf='openet', members=None):
+    def build_pest(self, target_etf: str = 'openet', members: list[str] | None = None) -> None:
         """Build the PEST++ control file and supporting files.
 
         Creates the .pst control file, observation files, parameter templates,
@@ -331,7 +335,7 @@ class PestBuilder:
 
         print('Configured PEST++ for {} targets, '.format(len(self.pest_args['targets'])))
 
-    def _write_forward_run_script(self):
+    def _write_forward_run_script(self) -> None:
         """Generate custom_forward_run.py with embedded absolute paths.
 
         This approach embeds all necessary paths directly in the script,
@@ -374,7 +378,7 @@ if __name__ == '__main__':
         with open(script_path, 'w') as f:
             f.write(script_content)
 
-    def build_localizer(self):
+    def build_localizer(self) -> None:
         """Build the localization matrix for ensemble Kalman methods.
 
         Creates a sparse matrix that restricts parameter-observation correlations
@@ -457,7 +461,7 @@ if __name__ == '__main__':
 
         pst.write(self.pst_file, version=2)
 
-    def write_control_settings(self, noptmax=-2, reals=250):
+    def write_control_settings(self, noptmax: int = -2, reals: int = 250) -> None:
         """Write PEST++ IES control settings to the .pst file.
 
         Args:
@@ -478,7 +482,7 @@ if __name__ == '__main__':
         pst.write(self.pst_file, version=2)
         print(f'writing {self.pst_file} with noptmax={noptmax}, {reals} realizations')
 
-    def initial_parameter_dict(self):
+    def initial_parameter_dict(self) -> OrderedDict:
 
         p = OrderedDict({
 
@@ -524,7 +528,7 @@ if __name__ == '__main__':
 
         return p
 
-    def dry_run(self, exe='pestpp-ies'):
+    def dry_run(self, exe: str = 'pestpp-ies') -> None:
         cmd = ' '.join([exe, os.path.join(self.pest_dir, self.pst_file)])
         wd = self.pest_dir
         try:
@@ -532,7 +536,7 @@ if __name__ == '__main__':
         except Exception:
             run_ossystem(cmd, wd, verbose=False)
 
-    def spinup(self, overwrite=False):
+    def spinup(self, overwrite: bool = False) -> None:
         """Run model spinup to initialize state variables.
 
         Runs the model with initial parameters and saves the final state
@@ -558,7 +562,7 @@ if __name__ == '__main__':
         else:
             print('SPINUP exists, skipping')
 
-    def _write_params(self):
+    def _write_params(self) -> None:
         _file = None
 
         for k, v in self.pest_args['pars'].items():
@@ -572,7 +576,7 @@ if __name__ == '__main__':
                 transform = 'log'
             self.pest.add_parameters(_file, 'constant', transform=transform, alt_inst_str='{}_'.format(k), **v)
 
-    def _write_swe_obs(self, count):
+    def _write_swe_obs(self, count: int) -> None:
         obsnme_str = 'oname:obs_swe_{}_otype:arr_i:{}_j:0'
 
         for j, fid in enumerate(self.pest_args['targets']):
@@ -611,7 +615,7 @@ if __name__ == '__main__':
 
             self.pest.obs_dfs[j + count] = d
 
-    def _write_etf_obs(self, target, members):
+    def _write_etf_obs(self, target: str, members: list[str] | None) -> int:
         obsnme_str = 'oname:obs_etf_{}_otype:arr_i:{}_j:0'
 
         if members is not None:
@@ -719,10 +723,11 @@ if __name__ == '__main__':
 
         return i
 
-    def _finalize_obs(self):
-        """
-        We *should* be able to write std to the observations dataframes, in the etf and swe writers, but they are
-        lost in the pest build call, so are written here.
+    def _finalize_obs(self) -> None:
+        """Write std to observations dataframes.
+
+        We *should* be able to write std to the observations dataframes in the etf
+        and swe writers, but they are lost in the pest build call, so are written here.
         """
         pst = Pst(self.pst_file)
         obs = pst.observation_data
@@ -749,7 +754,7 @@ if __name__ == '__main__':
 
         pst.write(pst.filename, version=2)
 
-    def add_regularization(self):
+    def add_regularization(self) -> None:
         pst = Pst(self.pst_file)
 
         for pargp, values in self.initial_parameter_dict().items():
@@ -779,7 +784,7 @@ if __name__ == '__main__':
 
         pst.write(self.pst_file, version=2)
 
-    def _drop_conflicts(self, i, fid):
+    def _drop_conflicts(self, i: int, fid: str) -> None:
 
         pdc = pd.read_csv(self.conflicted_obs, index_col=0)
 
