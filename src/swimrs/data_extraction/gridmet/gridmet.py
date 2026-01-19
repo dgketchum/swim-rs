@@ -152,11 +152,15 @@ def sample_gridmet_corrections(fields_join,
     rasters = _build_raster_list(gridmet_ras)
     gridmet_targets = {}
 
+    # Handle case-insensitive lat/lon column names
+    lat_col = 'LAT' if 'LAT' in fields.columns else 'lat'
+    lon_col = 'LON' if 'LON' in fields.columns else 'lon'
+
     for i, field in tqdm(fields.iterrows(), desc='Sampling correction rasters', total=fields.shape[0]):
         gfid_int = int(fields.at[i, gridmet_id_col])
         geom = fields.at[i, 'geometry']
         gdf = gpd.GeoDataFrame({'geometry': [geom]}, crs=fields.crs)
-        plat, plon = fields.at[i, 'LAT'], fields.at[i, 'LON']
+        plat, plon = fields.at[i, lat_col], fields.at[i, lon_col]
 
         if gfid_int not in gridmet_targets:
             gridmet_targets[gfid_int] = {str(m): {} for m in range(1, 13)}
@@ -189,8 +193,8 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
         - Columns: Simple names like 'tmin', 'tmax', 'eto', 'eto_corr', 'prcp', etc.
 
     Args:
-        fields: Path to shapefile with GFID column (from assign_gridmet_and_corrections)
-        gridmet_factors: Path to JSON with correction factors (from assign_gridmet_and_corrections)
+        fields: Path to shapefile with GFID column (from assign_gridmet_ids)
+        gridmet_factors: Path to JSON with correction factors (from sample_gridmet_corrections)
         gridmet_csv_dir: Output directory for parquet files
         start: Start date (default: 1987-01-01)
         end: End date (default: 2021-12-31)
@@ -330,7 +334,10 @@ def download_gridmet(fields, gridmet_factors, gridmet_csv_dir, start=None, end=N
             if g_fid in gridmet_factors_dict:
                 for variable in ['etr', 'eto']:
                     for month in range(1, 13):
-                        corr_factor = gridmet_factors_dict[g_fid][str(month)][variable]
+                        corr_factor = gridmet_factors_dict[g_fid][str(month)].get(variable)
+                        # Use factor of 1.0 (no correction) if factor is missing or None
+                        if corr_factor is None:
+                            corr_factor = 1.0
                         idx = [i for i in df.index if i.month == month]
                         df.loc[idx, f'{variable}_corr'] = df.loc[idx, variable] * corr_factor
 
