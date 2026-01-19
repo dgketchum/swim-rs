@@ -1,5 +1,13 @@
 {%
    include-markdown "../README.md"
+   end="<!--img-placeholder-->"
+%}
+
+<img src="images/US-FPe_scatter.png" alt="SWIM vs PT-JPL comparison" width="600">
+
+{%
+   include-markdown "../README.md"
+   start="<!--img-placeholder-->"
    end="## Licensing"
 %}
 
