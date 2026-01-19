@@ -79,5 +79,12 @@ nav:
   - Architecture:
       - Process Package: process_architecture.md
       - Container: container_architecture.md
-  - API Reference: api.md
+  - API Reference:
+      - Overview: api/index.md
+      - Container: api/container.md
+      - Process: api/process.md
+      - Calibrate: api/calibrate.md
+      - Data Extraction: api/data_extraction.md
+      - Swim (Config): api/swim.md
+      - Legacy: api/legacy.md
   - CLI Cheat Sheet: swim_cli_cheatsheet.md

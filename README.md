@@ -2,118 +2,69 @@
 
 Soil Water balance Inverse Modeling using Remote Sensing
 
-swim-rs is an end-to-end toolkit for building field-scale soil water balance models with satellite remote sensing and meteorological forcing. It extracts inputs (NDVI, ET fraction, GridMET/ERA5-Land, SNODAS), prepares field properties, computes irrigation/gw-subsidy dynamics, runs a daily water balance model, calibrates parameters with PEST++ IES, and supports forecasting, analysis, and visualization.
+swim-rs is an end-to-end toolkit for building field-scale soil water balance models from satellite remote sensing and meteorological forcing. It ingests remote sensing (NDVI/ETf), meteorology, and properties into a unified container, computes irrigation and groundwater dynamics, runs a daily water balance, and supports calibration (PEST++ IES), forecasting, analysis, and visualization.
 
-## Quick Start
+**Modern workflow (container-first)**
 
-Run the full workflow from a project TOML using the `swim` CLI (see the Command-Line Interface section for details).
+```
+swim extract (EE + met) → swim prep (build .swim container) → build_swim_input (HDF5) → run_daily_loop / calibrate
+```
 
-1) Install (editable recommended during development):
-   - `pip install -e .`
+The legacy `prep/` and `model/` packages are deprecated; the container (`src/swimrs/container`) plus process engine (`src/swimrs/process`) are the canonical path. `prepped_input.json` is retained for compatibility (see `DEPRECATION_PLAN.md`).
 
-2) Extract data (Earth Engine + GridMET):
-   - `swim extract examples/5_Flux_Ensemble/5_Flux_Ensemble.toml --add-sentinel`
+## Quick start (shipped data, no EE required)
 
-3) Prepare inputs:
-   - `swim prep examples/5_Flux_Ensemble/5_Flux_Ensemble.toml --add-sentinel`
+Use the Fort Peck example included in the repo:
 
-4) Calibrate (PEST++ IES):
-   - `swim calibrate examples/5_Flux_Ensemble/5_Flux_Ensemble.toml --workers 8 --realizations 300`
+```bash
+pip install -e .
 
-5) Evaluate and compute metrics (optional):
-   - `swim evaluate examples/5_Flux_Ensemble/5_Flux_Ensemble.toml --flux-dir <data>/daily_flux_files --openet-dir <data>/openet_flux --metrics-out <results>/metrics`
+# Ingest shipped data into a container and export model inputs
+swim prep examples/2_Fort_Peck/2_Fort_Peck.toml
 
-Notes
-- Earth Engine: ensure you are authenticated and the configured bucket/assets are accessible.
-- PEST++: `pestpp-ies` must be on PATH.
-- Metrics: OpenET daily/monthly CSVs should exist under the `--openet-dir` directories.
+# Debug run and per-site CSVs
+swim evaluate examples/2_Fort_Peck/2_Fort_Peck.toml --out-dir /tmp/swim_fp
+```
 
-## What It Does
+To refresh data from Earth Engine and GridMET, authenticate EE and run `swim extract <config.toml> --add-sentinel` before `swim prep`.
 
-- Data extraction (Google Earth Engine): Landsat/Sentinel NDVI, ET fraction from OpenET/USGS-NHM, CDL/LANID irrigation, SSURGO/HWSD, ERA5-Land daily variables.
-- GridMET/NLDAS integration: daily refET, temperature, precip, radiation; monthly correction factors for ETo/ETr.
-- Preprocessing: per-field Parquet panels, property tables, irrigation windows, groundwater subsidy, NDVI quantile mapping (Sentinel→Landsat).
-- Modeling: daily SWB with snow, runoff (infiltration-excess or SCS Curve Number), NDVI→Kcb sigmoid, dynamic Ke/Ks, irrigation scheduling, root growth.
+## Why swim-rs
+
+- Unified data container: Zarr-backed `.swim` files with provenance, coverage, and validation.
+- High-performance physics: numba kernels and typed state via `swimrs.process`.
+- PEST++ IES integration: parameter estimation with spinup/localization helpers.
+- Remote sensing + met: Landsat/Sentinel NDVI, OpenET ETf, GridMET/ERA5-Land, SNODAS.
+- Forecast/analysis: NDVI analog forecasts; metrics vs flux/OpenET; Plotly visualizations.
+
+## Repository map
+
+- `src/swimrs/container` — Zarr container (ingest/compute/export/query)
+- `src/swimrs/process` — Simulation engine, HDF5 `SwimInput`, daily loop
+- `src/swimrs/cli.py` — `swim` CLI (extract, prep, calibrate, evaluate, inspect)
+- `src/swimrs/calibrate` — PEST++ builders/runners
+- `src/swimrs/data_extraction` — Earth Engine + meteorology utilities
+- `src/swimrs/swim` — config parsing and legacy helpers
+- Deprecated: `src/swimrs/prep`, `src/swimrs/model` (see `DEPRECATION_PLAN.md`)
+- `examples/` — configs, notebooks, and small data snippets
+
+## CLI overview (container-first)
+
+- `swim extract <config.toml>` — Earth Engine + GridMET/ERA5 exports (Drive or bucket)
+- `swim prep <config.toml>` — ingest into `.swim`, compute dynamics, export model inputs
+- `swim calibrate <config.toml>` — build/run PEST++ IES (requires container)
+- `swim evaluate <config.toml>` — debug run, per-site CSVs, optional metrics vs flux/OpenET
+- `swim inspect <container.swim>` — container coverage/provenance report
+
+Common flags: `--out-dir` (override project root), `--sites` (restrict IDs), `--workers` (parallel steps), `--add-sentinel`, `--use-lulc-irr` / `--international` (no-mask workflows).
+
+## What it does
+
+- Data extraction (EE): Landsat/Sentinel NDVI, ET fraction from OpenET/USGS-NHM, CDL/LANID irrigation, SSURGO/HWSD, ERA5-Land daily variables.
+- Meteorology: GridMET or ERA5-Land daily forcing; optional bias corrections.
+- Container compute: merged NDVI, irrigation windows, groundwater subsidy, crop dynamics.
+- Modeling: daily SWB with snow, runoff (CN or infiltration-excess), NDVI→Kcb, dynamic Ke/Ks, irrigation scheduling, root growth.
 - Calibration: PEST++ IES via pyemu; writes obs/preds and manages worker/master runs.
-- Forecasting/analysis/viz: NDVI analog forecasts with probabilities; metrics vs flux towers; interactive time-series plots.
-
-## Repository Structure
-
-- `src/swimrs/` — Python package source
-  - `swim/` — core config and input container
-    - `config.py` — parses TOML, resolves paths, sets modes (calibrate/forecast)
-    - `sampleplots.py` — loads/serves line-delimited model input JSON
-  - `data_extraction/` — Earth Engine and meteorological data routines
-    - `ee/` — NDVI/ETf exporters, irrigation/landcover/soils queries, helpers
-    - `gridmet/` — GridMET mapping, factor building, daily downloads (optional NLDAS-2)
-    - `snodas/` — SWE CSV → JSON converter
-  - `prep/` — preprocessing & feature engineering
-  - `model/` — daily SWB components and loop
-  - `calibrate/` — PEST++ builders/runners
-  - `forecast/` — NDVI analog prediction and plotting
-  - `analysis/` — metrics vs flux and OpenET
-  - `viz/` — Plotly visualizations
-- `examples/` — example projects, configs, notebooks, small data snippets
-
-## Typical Workflow
-
-1. Configure a project TOML (paths, dates, Earth Engine assets, calibration/forecast sections).
-2. Extract remote sensing & met data:
-   - EE exporters in `data_extraction/ee/` for NDVI/ETf/properties.
-   - Build GridMET correction factors and daily series in `data_extraction/gridmet/`.
-   - Optional SNODAS and ERA5-Land extractions.
-3. Build per-field RS Parquet: `prep/remote_sensing.py`.
-4. Build field properties: `prep/field_properties.py`.
-5. Join daily time-series: `prep/field_timeseries.py`.
-6. Derive dynamics (irrigation windows, gw subsidy, ke/kc): `prep/dynamics.py`.
-7. Assemble `prepped_input.json`: `prep/prep_plots.py`.
-8. Run the model loop or calibrate:
-   - Direct run: `model/obs_field_cycle.py` (returns ETf/SWE or debug DataFrames).
-   - Calibration: `calibrate/pest_builder.py` + `run_pest.py` (PEST++ IES via pyemu).
-9. Optional forecasting: `forecast/ndvi_forecast.py` (analog-based NDVI forecast with KDE probabilities).
-10. Analyze & visualize: `analysis/metrics.py`, `viz/*`.
-
-## Command-Line Interface
-
-Install the package (editable or standard) and use the `swim` CLI to run the end-to-end workflow from a project TOML.
-
-- Global flags (all subcommands)
-  - `--workers` (default 6): parallelism for steps that support it.
-  - `--out-dir`: overrides the project root; defaults to the directory containing the TOML.
-  - `--sites`: comma-separated site IDs to restrict processing.
-
-- Extract data
-  - `swim extract <config.toml> [--add-sentinel] [--etf-models ssebop,ptjpl,...] [--no-snodas] [--no-properties] [--no-rs] [--no-gridmet] [--export drive|bucket] [--bucket BUCKET] [--drive-categorize] [--file-prefix PATH] [--sites ...] [--workers N] [--out-dir PATH]`
-  - Exports SNODAS, CDL/irrigation/soils/landcover, NDVI (Landsat and optional Sentinel-2), optional ETF models, and GridMET time series.
-  - By default exports to Google Drive (`--export drive`). Use `--drive-categorize` to place outputs into per-category Drive folders (e.g., `swim_properties`, `swim_ndvi`, `swim_etf`). To export to Cloud Storage, use `--export bucket --bucket <name>`. Use `--file-prefix` (default `swim`) to organize outputs under a project path in the bucket (e.g., `--file-prefix swim/projects/flux`).
-
-- Prepare inputs
-  - `swim prep <config.toml> [--add-sentinel] [--sites ...] [--workers N] [--out-dir PATH]`
-  - Converts EE extracts to Parquet, joins per-station panels, writes properties and SNODAS JSON, builds daily time series and dynamics, and writes `prepped_input.json` and observation arrays.
-
-- Calibrate with PEST++ IES
-  - `swim calibrate <config.toml> [--realizations N] [--workers N] [--out-dir PATH]`
-  - Builds a PEST++ project, runs spinup (noptmax=0), then IES (noptmax=3). Uses `pestpp-ies` on PATH.
-
-- Evaluate model and compute metrics
-  - `swim evaluate <config.toml> [--sites ...] [--forecast-params CSV] [--spinup JSON] [--flux-dir DIR] [--openet-dir DIR] [--metrics-out DIR] [--out-dir PATH]`
-  - Runs the model (debug detail) and writes per-site CSVs. When `--flux-dir` and `--openet-dir` are provided, computes daily/overpass/monthly metrics vs flux and OpenET, writing `metrics_by_site.json` and `metrics_monthly.csv` to `--metrics-out` (defaults to `--out-dir`).
-
-Examples
-- Extract and prep for the Flux Ensemble example (with Sentinel-2 NDVI):
-  - `swim extract examples/5_Flux_Ensemble/5_Flux_Ensemble.toml --add-sentinel`
-  - `swim prep examples/5_Flux_Ensemble/5_Flux_Ensemble.toml --add-sentinel`
-
-- Calibrate with 8 workers and 300 realizations:
-  - `swim calibrate examples/5_Flux_Ensemble/5_Flux_Ensemble.toml --workers 8 --realizations 300`
-
-- Evaluate and write metrics (assuming OpenET/flux dirs under the data path):
-  - `swim evaluate examples/5_Flux_Ensemble/5_Flux_Ensemble.toml --flux-dir <data>/daily_flux_files --openet-dir <data>/openet_flux --metrics-out <results>/metrics`
-
-Prerequisites
-- Earth Engine: authenticated account and access to configured assets/bucket.
-- PEST++: `pestpp-ies` on PATH and `pyemu` installed.
-- OpenET comparison (optional): OpenET daily/monthly CSVs available in the directories passed to `--openet-dir`.
+- Forecasting/analysis/viz: NDVI analog forecasts; metrics vs flux and OpenET; Plotly visualizations.
 
 ## Config Schema
 
@@ -210,6 +161,7 @@ The software uses third-party libraries subject to their own licenses (e.g., Apa
 ---
 
 Disclaimer: The licensing information is for informational purposes only. Consult the full license texts and seek legal advice for specific questions about licensing or compliance.
+
 ### EE Exporter Tips
 
 - Prefer `clustered_sample_etf` / `clustered_sample_ndvi` when your fields are geographically clustered; use `sparse_sample_*` when fields are widely dispersed.

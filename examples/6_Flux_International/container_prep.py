@@ -190,6 +190,25 @@ def compute_dynamics(container: SwimContainer, cfg: ProjectConfig):
     print("  Dynamics computation complete")
 
 
+def export_model_inputs(container: SwimContainer, cfg: ProjectConfig, output_path: str = None):
+    """Export data in prepped_input.json format for model consumption."""
+    print("Exporting model inputs...")
+
+    if output_path is None:
+        output_path = cfg.input_data
+
+    container.export.prepped_input_json(
+        output_path=output_path,
+        etf_model=cfg.etf_target_model,
+        masks=("no_mask",),
+        met_source="era5",
+        instrument="landsat",
+        use_fused_ndvi=True,
+    )
+
+    print(f"  Exported to: {output_path}")
+
+
 def run_full_pipeline(overwrite: bool = False):
     """Run the complete container preparation pipeline."""
     cfg = _load_config()
@@ -214,6 +233,9 @@ def run_full_pipeline(overwrite: bool = False):
         # Compute derived products
         compute_fused_ndvi(container, cfg)
         compute_dynamics(container, cfg)
+
+        # Export model inputs
+        export_model_inputs(container, cfg)
 
         # Save
         print("Saving container...")

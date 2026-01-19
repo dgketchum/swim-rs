@@ -1,6 +1,6 @@
 # Process Package Architecture
 
-The `swimrs.process` package provides a restructured, high-performance implementation of the SWIM-RS water balance model using typed dataclasses and Numba-compiled kernels.
+The `swimrs.process` package provides a restructured, high-performance implementation of the SWIM-RS water balance model using typed dataclasses and Numba-compiled kernels. It consumes HDF5 inputs built from a `.swim` container (legacy `prepped_input.json` is supported only for compatibility).
 
 ## Package Structure
 
@@ -32,10 +32,10 @@ All array attributes have shape `(n_fields,)` unless otherwise noted.
 ### SwimInput
 
 The top-level container that packages everything needed for a simulation run.
-It wraps an HDF5 file and provides lazy access to time series data. We build
-it once from `prepped_input.json` and distribute the resulting `.h5` file to
-PEST++ workers. It holds references to the three dataclasses below plus
-methods to retrieve daily forcing data by index.
+It wraps an HDF5 file and provides lazy access to time series data. Build it
+from a `.swim` container via `build_swim_input` (legacy: from `prepped_input.json`),
+then distribute the `.h5` file to PEST++ workers. It holds references to the
+three dataclasses below plus methods to retrieve daily forcing data by index.
 
 ### FieldProperties
 
@@ -77,9 +77,11 @@ Shows how data moves from input files through the simulation loop to outputs.
 ```mermaid
 flowchart TB
     subgraph Input["Input Layer"]
-        JSON["prepped_input.json"]
+        SWIM["project.swim<br/>(container)"]
+        JSON["prepped_input.json<br/>(legacy)"]
         HDF5["project.h5"]
-        JSON --> |build_swim_input| HDF5
+        SWIM --> |build_swim_input| HDF5
+        JSON -. legacy .-> HDF5
     end
 
     subgraph Container["SwimInput Container"]

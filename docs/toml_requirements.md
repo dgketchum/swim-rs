@@ -1,6 +1,6 @@
 # SWIM-RS Project TOML Requirements
 
-Minimal settings needed to run the extract → prep → calibrate workflow for a site, with Fort Peck (Example 2) as a concrete template. Inline comments highlight options and which entries are optional.
+Minimal settings needed to run the container-first extract → prep → calibrate workflow for a site, with Fort Peck (Example 2) as a concrete template. The `.swim` container is the canonical artifact; `prepped_input.json` is legacy/compatibility only. Inline comments highlight options and which entries are optional.
 
 > Tip: Paths use `{root}` / `{project_workspace}` / `{data}` substitution. By default, `--out-dir` sets `{root}` to the directory containing the TOML.
 
@@ -57,7 +57,7 @@ properties_json = "{properties_dir}/{project}_properties.json"
 snodas_in = "{paths.data}/snow/snodas/extracts"  # SNODAS extracts (optional if no snow)
 
 [paths.outputs]
-prepped_input = "{paths.data}/prepped_input.json"  # Deprecated legacy output; use container export instead.
+prepped_input = "{paths.data}/prepped_input.json"  # Deprecated/compatibility; container+HDF5 is preferred.
 
 [earth_engine]
 bucket = "wudr"  # only needed for EE bucket exports; drive exports don’t require this

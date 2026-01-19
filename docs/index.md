@@ -2,52 +2,42 @@
 
 **S**oil **W**ater **I**nverse **M**odeling with **R**emote **S**ensing
 
-SWIM-RS is an end-to-end toolkit for building field-scale soil water balance
-models with satellite remote sensing and meteorological forcing. It extracts
-inputs (NDVI, ET fraction, GridMET/ERA5-Land, SNODAS), prepares field
-properties, computes irrigation and groundwater dynamics, runs a daily water
-balance model, and calibrates parameters with PEST++ IES.
+swim-rs ingests remote sensing (NDVI/ETf), meteorology, and properties into a unified container, computes irrigation/groundwater dynamics, runs a daily soil water balance, and supports calibration (PEST++ IES), forecasting, analysis, and visualization.
+
+## Modern workflow
+
+```
+swim extract (EE + met) → swim prep (build .swim container) → build_swim_input (HDF5) → run_daily_loop / calibrate
+```
+
+`prep/` and `model/` are deprecated; the container (`swimrs.container`) and process engine (`swimrs.process`) are canonical. `prepped_input.json` remains for compatibility (see `DEPRECATION_PLAN.md`).
+
+## Quick start (shipped data)
+
+```bash
+pip install -e .
+swim prep examples/2_Fort_Peck/2_Fort_Peck.toml
+swim evaluate examples/2_Fort_Peck/2_Fort_Peck.toml --out-dir /tmp/swim_fp
+```
+
+For fresh EE/GridMET pulls, run `swim extract <config.toml> --add-sentinel` first (EE auth required).
+
+## Highlights
+
+- Zarr-backed `.swim` containers with provenance and coverage checks.
+- Numba-powered physics via `swimrs.process`.
+- PEST++ IES calibration with spinup/localization helpers.
+- Remote sensing + met: Landsat/Sentinel NDVI, OpenET ETf, GridMET/ERA5-Land, SNODAS.
+- Forecast/analysis: NDVI analog forecasts, metrics vs flux/OpenET, Plotly viz.
 
 ## Documentation
 
-- [Algorithm Description](algorithm_description.md) — Detailed walkthrough of
-  the FAO-56 dual crop coefficient model and all physics components
-- [Process Package](process_architecture.md) — Architecture of the daily
-  simulation loop, dataclasses, and Numba kernels
-- [Container Package](container_architecture.md) — Zarr-based data container
-  for unified project data management
-- [CLI Cheat Sheet](swim_cli_cheatsheet.md) — Quick reference for command-line
-  usage
-
-## Quick Start
-
-```bash
-# Install
-pip install -e .
-
-# Extract data (Earth Engine + GridMET)
-swim extract project.toml --add-sentinel
-
-# Prepare inputs
-swim prep project.toml --add-sentinel
-
-# Calibrate (PEST++ IES)
-swim calibrate project.toml --workers 8 --realizations 300
-```
-
-## Key Features
-
-- **Data extraction**: Landsat/Sentinel NDVI, OpenET ET fraction, CDL/LANID
-  irrigation mapping, SSURGO soils
-- **Meteorology**: GridMET or ERA5-Land daily forcing with optional bias
-  correction
-- **Modeling**: Daily soil water balance with snow dynamics, SCS runoff,
-  NDVI-driven crop coefficients, irrigation scheduling
-- **Calibration**: PEST++ IES integration via pyemu for parameter estimation
-- **Analysis**: Metrics vs flux towers, NDVI analog forecasting
+- Architecture: container / process
+- CLI: extract, prep, calibrate, evaluate, inspect
+- API reference: per-package pages with legacy section
+- Config templates: TOML requirements, flags for mask/LULC/met
 
 ## Links
 
-- [GitHub Repository](https://github.com/dgketchum/swim-rs)
-- [License](https://github.com/dgketchum/swim-rs/blob/main/LICENSE_CC-BY-NC-4.0.txt)
-  (CC-BY-NC-4.0)
+- GitHub: https://github.com/dgketchum/swim-rs
+- License: CC-BY-NC-4.0 (see `LICENSE_CC-BY-NC-4.0.txt`)

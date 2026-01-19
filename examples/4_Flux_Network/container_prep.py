@@ -235,7 +235,7 @@ def compute_fused_ndvi(container: SwimContainer, overwrite: bool = False):
     """
     print("\n=== Computing Fused NDVI ===")
 
-    container.compute_fused_ndvi(
+    container.compute.fused_ndvi(
         masks=("irr", "inv_irr"),
         min_pairs=20,
         window_days=1,
@@ -256,7 +256,7 @@ def compute_dynamics(container: SwimContainer, cfg: ProjectConfig, overwrite: bo
     """
     print("\n=== Computing Dynamics ===")
 
-    container.compute_dynamics(
+    container.compute.dynamics(
         etf_model=cfg.etf_target_model,
         masks=("irr", "inv_irr"),
         irr_threshold=cfg.irrigation_threshold or 0.1,
@@ -283,7 +283,7 @@ def export_model_inputs(container: SwimContainer, cfg: ProjectConfig, output_pat
     if output_path is None:
         output_path = cfg.input_data
 
-    container.export_prepped_input_json(
+    container.export.prepped_input_json(
         output_path=output_path,
         etf_model=cfg.etf_target_model,
         masks=("irr", "inv_irr"),

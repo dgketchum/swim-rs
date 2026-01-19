@@ -1,6 +1,6 @@
 # SWIM CLI Cheatsheet
 
-Fast reference for the `swim` CLI. Default order: extract → prep → calibrate → evaluate. Run `swim --help` or `swim <command> --help` for full detail.
+Fast reference for the `swim` CLI. Default order (container-first): extract → prep (.swim) → calibrate/evaluate. Run `swim --help` or `swim <command> --help` for full detail.
 
 ## Example: Fort Peck (Example 2)
 ```
@@ -11,7 +11,7 @@ Fast reference for the `swim` CLI. Default order: extract → prep → calibrate
 # Then run:
 #   swim extract examples/2_Fort_Peck/2_Fort_Peck.toml --etf-models ptjpl
 
-# 2) Prep model inputs
+# 2) Prep model inputs (build .swim and export HDF5/json)
 swim prep examples/2_Fort_Peck/2_Fort_Peck.toml
 
 # 3) Calibrate with defaults
@@ -51,7 +51,7 @@ swim prep path/to/project.toml \
   --international           # alias for LULC mode with no-mask NDVI/ETf
   --no-ndvi --no-etf --no-met --no-snow  # skip parts as needed
 ```
-Does: create/open the `.swim` container, ingest properties/NDVI/ETf/met/SNODAS, compute merged NDVI and dynamics, and export model-ready `prepped_input.json`. This replaces the legacy prep-module parquet workflow.
+Does: create/open the `.swim` container, ingest properties/NDVI/ETf/met/SNODAS, compute merged NDVI and dynamics, and export model-ready inputs (HDF5/JSON). This replaces the legacy prep-module parquet workflow.
 
 ## Calibrate (PEST++ IES)
 ```
@@ -59,7 +59,7 @@ swim calibrate path/to/project.toml \
   --realizations 300 \      # override config
   --python-script custom_forward.py
 ```
-Does: build PEST project, run spinup (noptmax=0), run IES (default noptmax=3). Outputs PEST files, calibrated params.
+Does: build PEST project, run spinup (noptmax=0), run IES (default noptmax=3). Uses the `.swim` container as the data source. Outputs PEST files and calibrated params.
 
 ## Evaluate (Debug run + CSV)
 ```
