@@ -57,9 +57,9 @@ download_gridmet = _try_import(
 PestBuilder = _try_import('swimrs.calibrate.pest_builder', 'src.swimrs.calibrate.pest_builder', 'PestBuilder')
 run_pst = _try_import('swimrs.calibrate.run_pest', 'src.swimrs.calibrate.run_pest', 'run_pst')
 
-# Evaluate
-SamplePlots = _try_import('swimrs.swim.sampleplots', 'src.swimrs.swim.sampleplots', 'SamplePlots')
-field_day_loop = _try_import('swimrs.model.obs_field_cycle', 'src.swimrs.model.obs_field_cycle', 'field_day_loop')
+# Evaluate (process package)
+build_swim_input = _try_import('swimrs.process.input', 'src.swimrs.process.input', 'build_swim_input')
+run_daily_loop = _try_import('swimrs.process.loop', 'src.swimrs.process.loop', 'run_daily_loop')
 compare_etf_estimates = _try_import('swimrs.analysis.metrics', 'src.swimrs.analysis.metrics', 'compare_etf_estimates')
 SwimContainer = _try_import('swimrs.container', 'src.swimrs.container', 'SwimContainer')
 
@@ -554,71 +554,162 @@ def cmd_inspect(args: argparse.Namespace) -> int:
 
 
 def cmd_evaluate(args: argparse.Namespace) -> int:
+    """Run simulation and write per-site output CSVs using the process package."""
+    import tempfile
+    import pandas as pd
+
     conf_path = args.config
     out_root = _resolve_project_root(conf_path, args.out_dir)
 
     config = ProjectConfig()
     config.read_config(conf_path, project_root_override=out_root, forecast=True)
 
-    # Optional overrides for forecast params and spinup
-    if args.forecast_params:
-        config.forecast_param_csv = args.forecast_params
-    if args.spinup:
-        config.spinup = args.spinup
-    config.read_forecast_parameters()
+    # Resolve container path
+    container_path = getattr(config, "container_path", None)
+    if not container_path:
+        data_root = config.data_dir or out_root or os.path.dirname(os.path.abspath(conf_path))
+        container_path = os.path.join(data_root, f"{config.project_name or 'swim'}.swim")
 
-    # Load input and run model at debug granularity; write per-site CSV
-    plots = SamplePlots()
-    plots.initialize_plot_data(config)
-
-    os.makedirs(out_root, exist_ok=True)
-    targets = plots.input.get('order', [])
-    if args.sites:
-        requested = set(_parse_sites_arg(args.sites) or [])
-        targets = [t for t in targets if t in requested]
-
-    try:
-        result = field_day_loop(config, plots, debug_flag=True)
-    except Exception as e:
-        print(f"Evaluation run failed: {e}")
+    if not os.path.exists(container_path):
+        print(f"Container not found: {container_path}")
+        print("Run 'swim prep' first to create the container.")
         return 1
 
-    metrics_by_site = {}
-    for fid in targets:
-        try:
-            df = result[fid]
-        except Exception:
-            continue
-        out_csv = os.path.join(out_root, f'{fid}.csv')
-        try:
-            df.to_csv(out_csv)
-            print(f'Wrote {out_csv}')
-        except Exception as e:
-            print(f'Failed to write {out_csv}: {e}')
+    # Optional spinup override
+    spinup_path = args.spinup or getattr(config, 'spinup', None)
 
-        # Optional metrics vs OpenET
-        if args.flux_dir and args.openet_dir:
+    # Optional forecast params (CSV) - convert to JSON format for build_swim_input
+    calibrated_params_path = None
+    if args.forecast_params:
+        config.forecast_param_csv = args.forecast_params
+        config.read_forecast_parameters()
+        # Convert forecast_parameters Series to JSON dict format
+        if hasattr(config, 'forecast_parameters') and config.forecast_parameters is not None:
+            calibrated_params_path = _convert_forecast_params_to_json(
+                config.forecast_parameters, out_root
+            )
+
+    os.makedirs(out_root, exist_ok=True)
+
+    # Open container and build SwimInput
+    try:
+        container = SwimContainer.open(container_path)
+    except Exception as e:
+        print(f"Failed to open container: {e}")
+        return 1
+
+    # Create temporary HDF5 for SwimInput
+    temp_h5_fd, temp_h5_path = tempfile.mkstemp(suffix='.h5', prefix='swim_eval_')
+    os.close(temp_h5_fd)
+
+    try:
+        # Filter fields if requested
+        fields = _parse_sites_arg(args.sites)
+
+        # Build SwimInput
+        swim_input = build_swim_input(
+            container,
+            output_h5=temp_h5_path,
+            spinup_json_path=spinup_path,
+            calibrated_params_path=calibrated_params_path,
+            runoff_process=getattr(config, 'runoff_process', 'cn'),
+            etf_model=getattr(config, 'etf_target_model', 'ssebop'),
+            met_source=getattr(config, 'met_source', 'gridmet'),
+            fields=fields,
+        )
+
+        targets = swim_input.fids
+        n_fields = swim_input.n_fields
+        n_days = swim_input.n_days
+
+        # Run simulation
+        output, final_state = run_daily_loop(swim_input)
+
+        # Get time series data for DataFrame columns
+        dates = pd.date_range(swim_input.start_date, periods=n_days, freq='D')
+        etr = swim_input.get_time_series('etr')
+        prcp = swim_input.get_time_series('prcp')
+        tmin = swim_input.get_time_series('tmin')
+        tmax = swim_input.get_time_series('tmax')
+
+        # Build per-field DataFrames and write CSVs
+        metrics_by_site = {}
+        for i, fid in enumerate(targets):
+            # Build DataFrame with available columns
+            df_data = {
+                'et_act': output.eta[:, i],
+                'etref': etr[:, i],
+                'kc_act': output.etf[:, i],
+                'kc_bas': output.kcb[:, i],
+                'ks': output.ks[:, i],
+                'ke': output.ke[:, i],
+                'melt': output.melt[:, i],
+                'rain': output.rain[:, i],
+                'depl_root': output.depl_root[:, i],
+                'dperc': output.dperc[:, i],
+                'runoff': output.runoff[:, i],
+                'swe': output.swe[:, i],
+                'ppt': prcp[:, i],
+                'tmin': tmin[:, i],
+                'tmax': tmax[:, i],
+                'tavg': (tmin[:, i] + tmax[:, i]) / 2.0,
+                'irrigation': output.irr_sim[:, i],
+                'gw_sim': output.gw_sim[:, i],
+            }
+            df = pd.DataFrame(df_data, index=dates)
+
+            out_csv = os.path.join(out_root, f'{fid}.csv')
             try:
-                flux_file = os.path.join(args.flux_dir, f'{fid}_daily_data.csv')
-                openet_daily = os.path.join(args.openet_dir, 'daily_data', f'{fid}.csv')
-                openet_monthly = os.path.join(args.openet_dir, 'monthly_data', f'{fid}.csv')
-                irr = (plots.input.get('irr_data') or {}).get(fid, {})
-                daily, overpass, monthly = compare_etf_estimates(
-                    combined_output_path=df,
-                    flux_data_path=flux_file,
-                    openet_daily_path=openet_daily,
-                    openet_monthly_path=openet_monthly,
-                    irr=irr,
-                    target_model=getattr(config, 'etf_target_model', 'ssebop'),
-                    gap_tolerance=5,
-                )
-                metrics_by_site[fid] = {
-                    'daily': daily or {},
-                    'overpass': overpass or {},
-                    'monthly': monthly or {},
-                }
+                df.to_csv(out_csv)
+                print(f'Wrote {out_csv}')
             except Exception as e:
-                print(f'Metrics failed for {fid}: {e}')
+                print(f'Failed to write {out_csv}: {e}')
+
+            # Optional metrics vs OpenET
+            if args.flux_dir and args.openet_dir:
+                try:
+                    flux_file = os.path.join(args.flux_dir, f'{fid}_daily_data.csv')
+                    openet_daily = os.path.join(args.openet_dir, 'daily_data', f'{fid}.csv')
+                    openet_monthly = os.path.join(args.openet_dir, 'monthly_data', f'{fid}.csv')
+                    # Get irrigation data from container
+                    irr = container.query.irrigation_schedule(fid) if hasattr(container.query, 'irrigation_schedule') else {}
+                    daily, overpass, monthly = compare_etf_estimates(
+                        combined_output_path=df,
+                        flux_data_path=flux_file,
+                        openet_daily_path=openet_daily,
+                        openet_monthly_path=openet_monthly,
+                        irr=irr,
+                        target_model=getattr(config, 'etf_target_model', 'ssebop'),
+                        gap_tolerance=5,
+                    )
+                    metrics_by_site[fid] = {
+                        'daily': daily or {},
+                        'overpass': overpass or {},
+                        'monthly': monthly or {},
+                    }
+                except Exception as e:
+                    print(f'Metrics failed for {fid}: {e}')
+
+        swim_input.close()
+
+    except Exception as e:
+        print(f"Evaluation run failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    finally:
+        container.close()
+        # Clean up temp HDF5
+        try:
+            os.remove(temp_h5_path)
+        except Exception:
+            pass
+        # Clean up temp calibrated params JSON if created
+        if calibrated_params_path and os.path.exists(calibrated_params_path):
+            try:
+                os.remove(calibrated_params_path)
+            except Exception:
+                pass
 
     # Write metrics summary if requested
     if metrics_by_site:
@@ -638,7 +729,6 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 
         # Also emit a flat CSV of monthly RMSE/R2 if available
         try:
-            import pandas as _pd
             rows = []
             for site, d in metrics_by_site.items():
                 monthly = d.get('monthly') or {}
@@ -647,13 +737,41 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
                     row.update({k: v for k, v in monthly.items()})
                     rows.append(row)
             if rows:
-                dfm = _pd.DataFrame(rows)
+                dfm = pd.DataFrame(rows)
                 dfm.to_csv(os.path.join(metrics_dir, 'metrics_monthly.csv'), index=False)
                 print(f"Wrote {os.path.join(metrics_dir, 'metrics_monthly.csv')}")
         except Exception as e:
             print(f'Failed to write metrics CSV: {e}')
 
     return 0
+
+
+def _convert_forecast_params_to_json(forecast_params, out_dir: str) -> str:
+    """Convert forecast_parameters Series to JSON format for build_swim_input.
+
+    The forecast_parameters Series has index like 'kc_max_FID1', 'ndvi_k_FID1', etc.
+    We convert to: {FID1: {kc_max: val, ndvi_k: val, ...}, ...}
+    """
+    import json
+    import tempfile
+
+    params_by_fid = {}
+    for param_name in forecast_params.index:
+        # Parse param name: expect format like 'kc_max_FID1' or 'ndvi_k_FID1'
+        parts = param_name.rsplit('_', 1)
+        if len(parts) == 2:
+            base_param, fid = parts
+            if fid not in params_by_fid:
+                params_by_fid[fid] = {}
+            params_by_fid[fid][base_param] = float(forecast_params[param_name])
+
+    # Write to temp JSON file
+    fd, json_path = tempfile.mkstemp(suffix='.json', prefix='calib_params_', dir=out_dir)
+    os.close(fd)
+    with open(json_path, 'w') as f:
+        json.dump(params_by_fid, f)
+
+    return json_path
 
 
 def build_parser() -> argparse.ArgumentParser:
