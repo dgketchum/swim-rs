@@ -58,3 +58,19 @@ select = ["E","F","I","UP","B"]
 [tool.black]
 line-length = 100
 target-version = ["py311"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: Fast, isolated unit tests (physics kernels, pure functions)",
+    "integration: Tests requiring multiple modules, network, or external services",
+    "regression: Golden file comparison tests",
+    "parity: Legacy compatibility tests (container vs legacy implementations)",
+    "slow: Tests taking > 5 seconds",
+    "requires_ee: Tests requiring Earth Engine authentication (skip with default, run with --run-ee)",
+    "pest: Tests requiring PEST++ binaries",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+addopts = "-v --tb=short"

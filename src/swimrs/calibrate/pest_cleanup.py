@@ -37,7 +37,30 @@ import pandas as pd
 
 
 class PestResults:
-    """Parse, summarize, and clean up PEST++ IES results."""
+    """Parse, summarize, and clean up PEST++ IES calibration results.
+
+    Provides utilities for checking calibration success, extracting summary
+    metrics, and cleaning up intermediate files after PEST++ runs.
+
+    Attributes:
+        pest_dir: Path to the pest/ directory containing .pst and master/.
+        master_dir: Path to the master/ directory with output files.
+        project_name: Name of the project (matches .pst filename stem).
+
+    Example:
+        >>> from swimrs.calibrate import PestResults
+        >>>
+        >>> results = PestResults("./pest_run/pest", "my_project")
+        >>> success, issues = results.is_successful()
+        >>>
+        >>> if success:
+        ...     summary = results.get_summary()
+        ...     print(f"Phi reduction: {summary['phi_reduction_pct']:.1f}%")
+        ...     results.cleanup(archive_dir="./archive")
+        ... else:
+        ...     for issue in issues:
+        ...         print(f"Issue: {issue}")
+    """
 
     # Files to always archive on success
     ARCHIVE_FILES = [
