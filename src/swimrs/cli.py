@@ -1,7 +1,16 @@
 import argparse
 import os
+import shutil
 import sys
+import warnings
 from typing import List, Optional
+
+# Suppress noisy pyemu legacy warning about flopy (not needed for current workflow)
+warnings.filterwarnings(
+    "ignore",
+    message="Failed to import legacy module.*flopy",
+    category=UserWarning,
+)
 
 
 # Import helpers: support both installed (swimrs.*) and in-repo (src.swimrs.*)
@@ -59,7 +68,7 @@ run_pst = _try_import('swimrs.calibrate.run_pest', 'src.swimrs.calibrate.run_pes
 
 # Evaluate (process package)
 build_swim_input = _try_import('swimrs.process.input', 'src.swimrs.process.input', 'build_swim_input')
-run_daily_loop = _try_import('swimrs.process.loop', 'src.swimrs.process.loop', 'run_daily_loop')
+run_daily_loop = _try_import('swimrs.process.loop_fast', 'src.swimrs.process.loop_fast', 'run_daily_loop_fast')
 compare_etf_estimates = _try_import('swimrs.analysis.metrics', 'src.swimrs.analysis.metrics', 'compare_etf_estimates')
 SwimContainer = _try_import('swimrs.container', 'src.swimrs.container', 'SwimContainer')
 
@@ -75,6 +84,36 @@ def _resolve_project_root(default_config_path: str, override: Optional[str]) -> 
         return os.path.abspath(override)
     # default: directory containing the TOML
     return os.path.dirname(os.path.abspath(default_config_path))
+
+
+def _ensure_shapefile(fields_path: str, conf_path: str, out_root: Optional[str]) -> Optional[str]:
+    """Ensure the shapefile exists, copying from TOML-relative data/gis if needed."""
+    if fields_path and os.path.exists(fields_path):
+        return fields_path
+
+    basename = os.path.basename(fields_path) if fields_path else None
+    if not basename:
+        return None
+
+    conf_dir = os.path.dirname(os.path.abspath(conf_path))
+    source_dir = os.path.join(conf_dir, "data", "gis")
+    source_files = {ext: os.path.join(source_dir, f"{os.path.splitext(basename)[0]}.{ext}") for ext in ("shp", "shx", "dbf", "prj", "cpg")}
+
+    # Only proceed if the source .shp exists
+    if not os.path.exists(source_files["shp"]):
+        return None
+
+    # Copy into out_root/data/gis if out_root provided; otherwise copy alongside config
+    target_root = out_root or conf_dir
+    target_dir = os.path.join(target_root, "data", "gis")
+    os.makedirs(target_dir, exist_ok=True)
+
+    target_base = os.path.join(target_dir, os.path.splitext(basename)[0])
+    for ext, src in source_files.items():
+        if os.path.exists(src):
+            shutil.copy2(src, f"{target_base}.{ext}")
+
+    return f"{target_base}.shp"
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
@@ -380,6 +419,14 @@ def cmd_prep(args: argparse.Namespace) -> int:
     config = ProjectConfig()
     config.read_config(conf_path, project_root_override=out_root)
 
+    # Ensure shapefile exists (copy from TOML-relative data/gis if missing under out-dir)
+    resolved_shp = _ensure_shapefile(config.fields_shapefile, conf_path, out_root)
+    if resolved_shp is None or not os.path.exists(resolved_shp):
+        print(f"Fields shapefile not found: {config.fields_shapefile}")
+        print("Place the shapefile under the configured root or alongside the TOML at data/gis/.")
+        return 1
+    config.fields_shapefile = resolved_shp
+
     container_path = getattr(config, "container_path", None)
     if not container_path:
         data_root = config.data_dir or out_root or os.path.dirname(os.path.abspath(conf_path))
@@ -532,24 +579,6 @@ def cmd_prep(args: argparse.Namespace) -> int:
         except Exception as e:
             print(f"Dynamics compute skipped/failed: {e}")
 
-        # Export prepped input
-        export_path = config.input_data or config.prepped_input or os.path.join(out_root or ".", "prepped_input.json")
-        try:
-            container.export.prepped_input_json(
-                export_path,
-                etf_model=config.etf_target_model or "ssebop",
-                masks=masks,
-                met_source=getattr(config, "met_source", "gridmet"),
-                instrument=instruments[0] if instruments else "landsat",
-                fields=sites,
-                irr_threshold=config.irrigation_threshold or 0.1,
-                include_switched_etf=True,
-                use_merged_ndvi=not args.landsat_only_ndvi,
-            )
-            print(f"Wrote {export_path}")
-        except Exception as e:
-            print(f"Prepped input export failed: {e}")
-
     finally:
         try:
             container.close()
@@ -586,7 +615,8 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     out_root = _resolve_project_root(conf_path, args.out_dir)
 
     config = ProjectConfig()
-    config.read_config(conf_path, project_root_override=out_root, forecast=True)
+    forecast_flag = bool(args.forecast_params)
+    config.read_config(conf_path, project_root_override=out_root, forecast=forecast_flag)
 
     # Resolve container path
     container_path = getattr(config, "container_path", None)
@@ -606,12 +636,14 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     calibrated_params_path = None
     if args.forecast_params:
         config.forecast_param_csv = args.forecast_params
-        config.read_forecast_parameters()
-        # Convert forecast_parameters Series to JSON dict format
-        if hasattr(config, 'forecast_parameters') and config.forecast_parameters is not None:
-            calibrated_params_path = _convert_forecast_params_to_json(
-                config.forecast_parameters, out_root
-            )
+        if os.path.isfile(config.forecast_param_csv):
+            config.read_forecast_parameters()
+            if hasattr(config, 'forecast_parameters') and config.forecast_parameters is not None:
+                calibrated_params_path = _convert_forecast_params_to_json(
+                    config.forecast_parameters, out_root
+                )
+        else:
+            print(f"Forecast parameter CSV not found: {config.forecast_param_csv}")
 
     os.makedirs(out_root, exist_ok=True)
 
@@ -647,6 +679,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         n_days = swim_input.n_days
 
         # Run simulation
+        print(f"Running daily loop for {n_fields} site(s) over {n_days} day(s)...")
         output, final_state = run_daily_loop(swim_input)
 
         # Get time series data for DataFrame columns
