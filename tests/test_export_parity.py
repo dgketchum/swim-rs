@@ -14,6 +14,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
+# Mark entire module: regression (golden file), slow (data loading), integration (external data)
+pytestmark = [pytest.mark.regression, pytest.mark.slow, pytest.mark.integration]
+
 
 # =============================================================================
 # Test Configuration

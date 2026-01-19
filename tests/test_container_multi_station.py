@@ -18,6 +18,9 @@ from typing import Any, Dict, List
 import numpy as np
 import pytest
 
+# Mark entire module as regression and slow
+pytestmark = [pytest.mark.regression, pytest.mark.slow]
+
 from conftest import (
     compare_json_with_tolerance,
     compare_scalars_with_tolerance,

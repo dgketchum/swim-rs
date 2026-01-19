@@ -1,6 +1,11 @@
 import subprocess
 import sys
 
+import pytest
+
+# Mark entire module as unit (fast, no external deps)
+pytestmark = pytest.mark.unit
+
 
 def test_cli_help_module():
     # Ensure the module entrypoint runs and prints help
