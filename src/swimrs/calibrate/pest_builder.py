@@ -166,6 +166,8 @@ class PestBuilder:
         Get ETf data for a field from container.
 
         Returns DataFrame with columns like '{model}_etf_{mask}' for each mask.
+
+        If model='ensemble', computes the mean across all available ETf models.
         """
         if self._container is None:
             raise ValueError("No container available. Pass container to PestBuilder.__init__")
@@ -174,14 +176,49 @@ class PestBuilder:
             self.config.start_dt, self.config.end_dt, freq='D'
         ))
 
-        for mask in ['irr', 'inv_irr']:
-            path = f"remote_sensing/etf/landsat/{model}/{mask}"
-            if path in self._container.state.root:
-                df = self._container.query.dataframe(path, fields=[fid])
-                if fid in df.columns:
-                    result[f'{model}_etf_{mask}'] = df[fid]
+        if model == 'ensemble':
+            # Find all available ETf models in the container
+            available_models = self._discover_etf_models()
+            if not available_models:
+                return result
+
+            for mask in ['irr', 'inv_irr']:
+                mask_data = []
+                for m in available_models:
+                    path = f"remote_sensing/etf/landsat/{m}/{mask}"
+                    if path in self._container.state.root:
+                        df = self._container.query.dataframe(path, fields=[fid])
+                        if fid in df.columns:
+                            mask_data.append(df[fid])
+
+                if mask_data:
+                    # Compute mean across all models
+                    combined = pd.concat(mask_data, axis=1)
+                    result[f'ensemble_etf_{mask}'] = combined.mean(axis=1)
+        else:
+            for mask in ['irr', 'inv_irr']:
+                path = f"remote_sensing/etf/landsat/{model}/{mask}"
+                if path in self._container.state.root:
+                    df = self._container.query.dataframe(path, fields=[fid])
+                    if fid in df.columns:
+                        result[f'{model}_etf_{mask}'] = df[fid]
 
         return result
+
+    def _discover_etf_models(self) -> list[str]:
+        """Discover available ETf models in the container."""
+        known_models = ['ssebop', 'ptjpl', 'sims', 'geesebal', 'eemetric', 'disalexi']
+        available = []
+
+        for model in known_models:
+            # Check if at least one mask exists for this model
+            for mask in ['irr', 'inv_irr']:
+                path = f"remote_sensing/etf/landsat/{model}/{mask}"
+                if path in self._container.state.root:
+                    available.append(model)
+                    break
+
+        return available
 
     def _get_swe_data(self, fid: str) -> pd.DataFrame:
         """Get SWE data for a field from container."""
@@ -218,8 +255,6 @@ class PestBuilder:
         aw = [self.plot_properties.get(t, {}).get('awc', np.nan) for t in targets]
         ke_max = [self.ke_max.get(t, 1.0) for t in targets]
         kc_max = [self.kc_max.get(t, 1.0) for t in targets]
-
-        input_csv = [os.path.join(self.config.plot_timeseries, '{}.parquet'.format(fid)) for fid in targets]
 
         et_ins = ['etf_{}.ins'.format(fid) for fid in targets]
         swe_ins = ['swe_{}.ins'.format(fid) for fid in targets]
@@ -304,7 +339,6 @@ class PestBuilder:
         swe_obs_files = ['obs/obs_swe_{}.np'.format(fid) for fid in targets]
 
         dct = {'targets': targets,
-               'inputs': input_csv,
                'etf_obs': {'file': etf_obs_files,
                            'insfile': et_ins},
                'swe_obs': {'file': swe_obs_files,
@@ -335,7 +369,28 @@ class PestBuilder:
             raise NotImplementedError('Use of exising Pest++ project was specified, '
                                       'running "build_pest" will overwrite it.')
 
-        self.pest = PstFrom(self.pest_run_dir, self.pest_dir, remove_existing=True)
+        # Create minimal template directory for PstFrom
+        # (Avoids copying workers/master/pest dirs which causes recursive copying)
+        import shutil
+        template_dir = os.path.join(self.pest_run_dir, '_template')
+        if os.path.exists(template_dir):
+            shutil.rmtree(template_dir)
+        os.makedirs(template_dir)
+
+        # Copy only the files PstFrom needs (params.csv, obs files)
+        # Update self.params_file to point to template location for PstFrom
+        if os.path.exists(self.params_file):
+            shutil.copy2(self.params_file, template_dir)
+            self.params_file = os.path.join(template_dir, 'params.csv')
+            # Update parameter dicts to use the new path
+            for k, v in self.pest_args['pars'].items():
+                if 'file' in v:
+                    v['file'] = self.params_file
+
+        if os.path.exists(self.obs_dir):
+            shutil.copytree(self.obs_dir, os.path.join(template_dir, 'obs'))
+
+        self.pest = PstFrom(template_dir, self.pest_dir, remove_existing=True)
 
         self._write_params()
 
@@ -358,6 +413,10 @@ class PestBuilder:
         self._write_forward_run_script()
 
         self._finalize_obs()
+
+        # Clean up template directory
+        if os.path.exists(template_dir):
+            shutil.rmtree(template_dir)
 
         print('Configured PEST++ for {} targets, '.format(len(self.pest_args['targets'])))
 
@@ -388,7 +447,7 @@ def run():
     start_time = time.time()
 
     from swimrs.process.input import SwimInput
-    from swimrs.process.loop import run_daily_loop
+    from swimrs.process.loop_fast import run_daily_loop_fast
     from swimrs.process.state import (
         CalibrationParameters,
         load_pest_mult_properties,
@@ -418,8 +477,8 @@ def run():
         base_props=swim_input.properties,
     )
 
-    # Run the model
-    output, _ = run_daily_loop(
+    # Run the model (uses fast JIT-compiled loop)
+    output, _ = run_daily_loop_fast(
         swim_input=swim_input,
         properties=props,
         parameters=params,
@@ -608,10 +667,14 @@ if __name__ == "__main__":
         Runs the model with initial parameters and saves the final state
         to the spinup JSON file for warm-starting calibration runs.
 
+        This method also creates the initial swim_input.h5 file (without spinup
+        state). After spinup completes, _build_swim_input() rebuilds the h5
+        with the spinup state baked in.
+
         Args:
             overwrite: If True, regenerate spinup even if file exists.
         """
-        from swimrs.process.loop import run_daily_loop
+        from swimrs.process.loop_fast import run_daily_loop_fast
 
         if not os.path.exists(self.config.spinup) or overwrite:
             print('RUNNING SPINUP')
@@ -622,18 +685,19 @@ if __name__ == "__main__":
                 except FileNotFoundError:
                     pass
 
-            # Build temporary HDF5 for spinup (no existing spinup state)
-            spinup_h5 = os.path.join(self.pest_dir, 'spinup_temp.h5')
+            # Build swim_input.h5 for spinup (no existing spinup state)
+            # This file will be rebuilt with spinup state by _build_swim_input()
+            h5_path = os.path.join(self.pest_dir, 'swim_input.h5')
             swim_input = build_swim_input(
                 container=self._container,
-                output_h5=spinup_h5,
+                output_h5=h5_path,
                 start_date=self.config.start_dt,
                 end_date=self.config.end_dt,
                 runoff_process=getattr(self.config, 'runoff_process', 'cn'),
             )
 
-            # Run simulation to generate spinup state
-            output, final_state = run_daily_loop(swim_input)
+            # Run simulation to generate spinup state (uses fast JIT loop)
+            output, final_state = run_daily_loop_fast(swim_input)
             swim_input.close()
 
             # Save final state as spinup JSON
@@ -659,39 +723,40 @@ if __name__ == "__main__":
             with open(self.config.spinup, 'w') as f:
                 json.dump(spn_dct, f, indent=2)
 
-            # Clean up temp file
-            os.remove(spinup_h5)
             print(f'Spinup saved to {self.config.spinup}')
 
         else:
             print('SPINUP exists, skipping')
 
-    def _build_swim_input(self, overwrite: bool = False) -> str:
-        """Build portable swim_input.h5 file for workers.
+    def _build_swim_input(self) -> str:
+        """Build portable swim_input.h5 file for workers with spinup state.
 
         Creates a self-contained HDF5 file with all input data needed
-        for model execution. This file is copied to each PEST++ worker,
-        enabling fully isolated execution without shared storage.
+        for model execution, including spinup state if available. This file
+        is copied to each PEST++ worker for isolated execution.
 
-        Args:
-            overwrite: If True, regenerate even if file exists.
+        If spinup() was called first, this rebuilds the h5 with spinup state
+        baked in. The rebuild is necessary because spinup creates the h5
+        without spinup state (since it's generating it).
 
         Returns:
             str: Path to the created swim_input.h5 file.
         """
         h5_path = os.path.join(self.pest_dir, 'swim_input.h5')
 
-        if os.path.exists(h5_path) and not overwrite:
-            print(f'swim_input.h5 exists at {h5_path}, skipping')
-            return h5_path
-
-        print('Building portable swim_input.h5...')
-
         # Get spinup path if available
         spinup_path = None
         if hasattr(self.config, 'spinup') and self.config.spinup:
             if os.path.exists(self.config.spinup):
                 spinup_path = self.config.spinup
+
+        # If h5 exists but no spinup, keep as-is (no spinup available)
+        # If h5 exists and spinup exists, rebuild to bake in spinup state
+        if os.path.exists(h5_path) and spinup_path is None:
+            print(f'swim_input.h5 exists at {h5_path} (no spinup), skipping')
+            return h5_path
+
+        print('Building portable swim_input.h5 with spinup state...')
 
         # Build the HDF5 file from container
         build_swim_input(
@@ -804,7 +869,9 @@ if __name__ == "__main__":
                     etf_std[member] = pd.DataFrame(etf[mask_cols].mean(axis=1))
 
                     if irr_index:
-                        etf_std.loc[irr_index, member] = etf.loc[irr_index, f'{member}_etf_irr']
+                        irr_col = f'{member}_etf_irr'
+                        if irr_col in etf.columns:
+                            etf_std.loc[irr_index, member] = etf.loc[irr_index, irr_col]
 
                 valid_members = [m for m in members_and_target if m in etf_std.columns]
 

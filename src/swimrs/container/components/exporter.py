@@ -806,17 +806,45 @@ class Exporter(Component):
                 paths["swe"] = swe_path
                 break
 
-        # ETf for each mask
-        for mask in masks:
-            etf_path = f"remote_sensing/etf/{instrument}/{etf_model}/{mask}"
-            if etf_path in self._state.root:
-                paths[f"etf_{mask}"] = etf_path
+        # ETf for each mask (handle 'ensemble' by computing mean of available models)
+        ensemble_etf = {}
+        if etf_model == "ensemble":
+            # Find all available ETf models and compute mean
+            known_models = ["ssebop", "ptjpl", "sims", "geesebal", "eemetric", "disalexi"]
+            for mask in masks:
+                mask_data = []
+                for model in known_models:
+                    etf_path = f"remote_sensing/etf/{instrument}/{model}/{mask}"
+                    if etf_path in self._state.root:
+                        mask_data.append(self._state.get_xarray(etf_path, fields=fields))
+                if mask_data:
+                    import xarray as xr
+                    combined = xr.concat(mask_data, dim="model")
+                    ensemble_etf[mask] = combined.mean(dim="model")
+        else:
+            for mask in masks:
+                etf_path = f"remote_sensing/etf/{instrument}/{etf_model}/{mask}"
+                if etf_path in self._state.root:
+                    paths[f"etf_{mask}"] = etf_path
 
-        if not paths:
+        if not paths and not ensemble_etf:
             return None
 
         # Load base dataset (met, snow, ETf)
-        ds = self._state.get_dataset(paths, fields=fields)
+        ds = self._state.get_dataset(paths, fields=fields) if paths else None
+
+        # Add ensemble ETf if computed
+        if ensemble_etf:
+            import xarray as xr
+            if ds is None:
+                # Create dataset from first ensemble ETf
+                first_mask = list(ensemble_etf.keys())[0]
+                ds = xr.Dataset({f"etf_{first_mask}": ensemble_etf[first_mask]})
+                for mask in list(ensemble_etf.keys())[1:]:
+                    ds[f"etf_{mask}"] = ensemble_etf[mask]
+            else:
+                for mask, da in ensemble_etf.items():
+                    ds[f"etf_{mask}"] = da
 
         # NDVI: keep separate variables per mask (model expects ndvi_irr, ndvi_inv_irr)
         # Interpolate sparse observations to create continuous time series (matches legacy prep)
