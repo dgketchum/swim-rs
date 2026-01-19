@@ -75,7 +75,7 @@ Outputs:
 - `examples/2_Fort_Peck/US-FPe_timeseries.png` — ET time series vs flux tower
 - `examples/2_Fort_Peck/US-FPe_scatter.png` — scatter plot with R² and RMSE
 
-<img src="examples/2_Fort_Peck/US-FPe_scatter.png" alt="SWIM vs PT-JPL comparison" width="600">
+<img src="docs/images/US-FPe_scatter.png" alt="SWIM vs PT-JPL comparison" width="600">
 
 SWIM-RS uses remote sensing ET to calibrate a process-based model rather than drive it directly — the result is daily ET 
 estimates that outperform the satellite retrievals they were trained on. Here, SWIM-RS *calibrated on PT-JPL* achieves 
