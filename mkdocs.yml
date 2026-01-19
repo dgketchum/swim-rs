@@ -75,6 +75,8 @@ extra_javascript:
 
 nav:
   - Home: index.md
+  - Installation: installation.md
+  - Data Extraction Guide: data_extraction.md
   - Algorithm Description: algorithm_description.md
   - Architecture:
       - Process Package: process_architecture.md
