@@ -1178,12 +1178,17 @@ def _load_calibrated_params(
     for internal_name in name_map.values():
         result[internal_name] = np.zeros(n_fields, dtype=np.float64)
 
+    # Create case-insensitive lookup for params_data
+    # (PEST++ lowercases parameter names, so field IDs may be lowercase)
+    params_data_lower = {k.lower(): v for k, v in params_data.items()}
+
     # Fill arrays from calibration data
     for fid_idx, fid in enumerate(fids):
-        if fid not in params_data:
+        fid_lower = fid.lower()
+        if fid_lower not in params_data_lower:
             continue
 
-        field_params = params_data[fid]
+        field_params = params_data_lower[fid_lower]
         for file_name, internal_name in name_map.items():
             if file_name in field_params:
                 result[internal_name][fid_idx] = field_params[file_name]
