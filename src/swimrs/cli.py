@@ -311,9 +311,22 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     config = ProjectConfig()
     config.read_config(conf_path, project_root_override=out_root, calibrate=True)
 
-    # Calibration now expects prepped_input.json to exist (built via container workflow).
-    if not os.path.isfile(config.input_data):
-        print(f"Missing prepped input: {config.input_data}. Build it via SwimContainer export before calibrating.")
+    # Resolve container path (same pattern as cmd_prep/cmd_evaluate)
+    container_path = getattr(config, "container_path", None)
+    if not container_path:
+        data_root = config.data_dir or out_root or os.path.dirname(os.path.abspath(conf_path))
+        container_path = os.path.join(data_root, f"{config.project_name or 'swim'}.swim")
+
+    if not os.path.exists(container_path):
+        print(f"Container not found: {container_path}")
+        print("Run 'swim prep' first to create the container.")
+        return 1
+
+    # Open container (read-only is sufficient for calibration data access)
+    try:
+        container = SwimContainer.open(container_path, mode='r')
+    except Exception as e:
+        print(f"Failed to open container: {e}")
         return 1
 
     # Build and run PEST++
@@ -321,7 +334,13 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
         # Allow CLI override of python script
         if args.python_script:
             config.python_script = args.python_script
-        builder = PestBuilder(config, use_existing=False, python_script=getattr(config, 'python_script', None))
+
+        builder = PestBuilder(
+            config,
+            container,
+            use_existing=False,
+            python_script=getattr(config, 'python_script', None),
+        )
         builder.build_pest(target_etf=config.etf_target_model, members=config.etf_ensemble_members)
         builder.build_localizer()
 
@@ -344,6 +363,11 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"Calibration run failed: {e}")
         return 1
+    finally:
+        try:
+            container.close()
+        except Exception:
+            pass
 
     return 0
 
