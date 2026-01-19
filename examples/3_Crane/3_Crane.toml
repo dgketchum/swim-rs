@@ -55,7 +55,7 @@ cover_proxy = "ndvi"
 
 [calibration]
 pest_run_dir = "{project_workspace}/data/pestrun"
-etf_target_model = "ssebop"  # Primary model for calibration observations
+etf_target_model = "ensemble"  # Primary model for calibration observations
 etf_ensemble_members = ["ptjpl", "sims", "ssebop", "geesebal"]  # OpenET ensemble models for comparison
 workers = 6
 realizations = 20
