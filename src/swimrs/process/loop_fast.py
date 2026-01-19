@@ -15,6 +15,7 @@ from numba import njit
 
 if TYPE_CHECKING:
     from swimrs.process.input import SwimInput
+    from swimrs.process.state import CalibrationParameters, FieldProperties
 
 from swimrs.process.loop import DailyOutput
 from swimrs.process.state import WaterBalanceState
@@ -485,6 +486,8 @@ def _run_loop_jit(
 
 def run_daily_loop_fast(
     swim_input: "SwimInput",
+    parameters: "CalibrationParameters | None" = None,
+    properties: "FieldProperties | None" = None,
 ) -> tuple[DailyOutput, WaterBalanceState]:
     """Run daily water balance simulation using JIT-compiled loop.
 
@@ -499,6 +502,11 @@ def run_daily_loop_fast(
     ----------
     swim_input : SwimInput
         Input data container (HDF5-backed)
+    parameters : CalibrationParameters, optional
+        Calibration parameters. If not provided, uses swim_input.parameters.
+    properties : FieldProperties, optional
+        Field properties. If not provided, uses swim_input.properties.
+        Pass custom properties to use PEST++ calibrated values (awc, mad).
 
     Returns
     -------
@@ -509,8 +517,8 @@ def run_daily_loop_fast(
     """
     n_days = swim_input.n_days
     n_fields = swim_input.n_fields
-    props = swim_input.properties
-    params = swim_input.parameters
+    props = properties if properties is not None else swim_input.properties
+    params = parameters if parameters is not None else swim_input.parameters
     spinup = swim_input.spinup_state
 
     # Pre-load all time series (this is fast - single HDF5 read per variable)
