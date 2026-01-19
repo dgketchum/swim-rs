@@ -11,13 +11,14 @@ lulc = "{properties}/{project}_landcover.csv"
 hwsd = "{properties}/{project}_hwsd.csv"
 properties_json = "{properties}/{project}_properties.json"
 
-# Remote sensing extracts only (no tables - processed in SwimContainer)
-landsat = "{data}/remote_sensing/landsat"
-sentinel = "{data}/remote_sensing/sentinel"
-ecostress = "{data}/remote_sensing/ecostress"
+# Remote sensing (Landsat + Sentinel for international sites)
+remote_sensing = "{data}/remote_sensing"
+landsat = "{remote_sensing}/landsat"
+sentinel = "{remote_sensing}/sentinel"
+ecostress = "{remote_sensing}/ecostress"
 
-# Container output
-container = "{project_workspace}/{project}.swim"
+prepped_input = "{data}/prepped_input.json"
+container = "{data}/{project}.swim"
 
 [paths.era5]
 met = "{data}/meteorology/era5_land"

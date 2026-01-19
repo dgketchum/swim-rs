@@ -10,25 +10,23 @@ container = "{data}/{project}.swim"
 
 remote_sensing = "{data}/remote_sensing"
 landsat = "{remote_sensing}/landsat"
-sentinel = "{remote_sensing}/sentinel"
 
-met = "{root}/data/met"
-gis = "{root}/data/gis"
-fields_shapefile = "{root}/data/gis/flux_fields.shp"
-gridmet_centroids = "{root}/data/gis/gridmet_centroids.shp"
-gridmet_mapping = "{root}/data/gis/flux_fields_gfid.shp"
-correction_tifs = "{root}/data/corrections"
-gridmet_factors = "{root}/data/gridmet_factors.json"
+met = "{data}/met"
+gis = "{data}/gis"
+fields_shapefile = "{gis}/flux_fields.shp"
+gridmet_centroids = "{gis}/gridmet_centroids.shp"
+gridmet_mapping = "{gis}/flux_fields_gfid.shp"
+correction_tifs = "{data}/corrections"
+gridmet_factors = "{data}/gridmet_factors.json"
 
-properties = "{root}/data/properties"
-irr = "{root}/data/properties/irr.csv"
-ssurgo = "{root}/data/properties/ssurgo.csv"
-lulc = "{root}/data/properties/lulc.csv"
-properties_json = "{root}/data/properties/properties.json"
+properties = "{data}/properties"
+irr = "{properties}/irr.csv"
+ssurgo = "{properties}/ssurgo.csv"
+lulc = "{properties}/lulc.csv"
+properties_json = "{properties}/properties.json"
 snodas_in = "{data}/snow/snodas/extracts"
 
-dynamics_data = "{root}/data/dynamics.json"
-prepped_input = "{root}/data/prepped_input.json"
+prepped_input = "{data}/prepped_input.json"
 
 [earth_engine]
 bucket = "wudr"
@@ -38,6 +36,12 @@ feature_id = "site_id"  # Station identifier column in master shapefile
 gridmet_join_id = "GFID"
 gridmet_id = "GFID"  # Column name for GridMET cell ID in mapping shapefile
 state_col = "state"  # Column containing US state codes for irrigation masking
+
+[data_sources]
+met_source = "gridmet"
+snow_source = "snodas"
+soil_source = "ssurgo"
+mask_mode = "irrigation"
 
 [misc]
 irrigation_threshold = 0.3

@@ -11,12 +11,12 @@ fields_shapefile = "{gis}/flux_stations.shp"
 properties = "{data}/properties"
 lulc = "{properties}/{project}_landcover.csv"
 properties_json = "{properties}/{project}_properties.json"
-dynamics_data = "{data}/{project}_dynamics.json"
 prepped_input = "{data}/prepped_input.json"
 container = "{data}/{project}.swim"
 
 # Remote sensing
-landsat = "{data}/remote_sensing/landsat"
+remote_sensing = "{data}/remote_sensing"
+landsat = "{remote_sensing}/landsat"
 
 [paths.conus]
 met = "{data}/meteorology/gridmet"

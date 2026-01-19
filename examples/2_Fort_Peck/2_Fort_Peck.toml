@@ -11,7 +11,6 @@ container = "{data}/{project}.swim"
 
 remote_sensing = "{data}/remote_sensing"
 landsat = "{remote_sensing}/landsat"
-sentinel = "{remote_sensing}/sentinel"
 
 met = "{data}/met_timeseries/gridmet"
 
@@ -31,7 +30,6 @@ properties_json = "{properties}/{project}_properties.json"
 
 snodas_in = "{data}/snow/snodas/extracts"
 
-dynamics_data = "{data}/{project}_dynamics.json"
 prepped_input = "{data}/prepped_input.json"
 
 [earth_engine]
@@ -42,6 +40,12 @@ feature_id = "site_id"  # Station identifier column in master shapefile
 gridmet_join_id = "GFID"
 gridmet_id = "GFID"  # Column name for GridMET cell ID in mapping shapefile
 state_col = "state"  # Column containing US state codes for irrigation masking
+
+[data_sources]
+met_source = "gridmet"
+snow_source = "snodas"
+soil_source = "ssurgo"
+mask_mode = "irrigation"
 
 [misc]
 irrigation_threshold = 0.3
