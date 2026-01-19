@@ -23,6 +23,7 @@ __all__ = [
     "WaterBalanceState",
     "FieldProperties",
     "CalibrationParameters",
+    "load_pest_mult_properties",
 ]
 
 
@@ -483,3 +484,141 @@ class CalibrationParameters:
         params.ks_damp = self.ks_damp.copy()
         params.max_irr_rate = self.max_irr_rate.copy()
         return params
+
+    @classmethod
+    def from_pest_mult(
+        cls,
+        mult_dir: str,
+        fids: list[str],
+        base: CalibrationParameters | None = None,
+    ) -> CalibrationParameters:
+        """Load parameters from PEST++ multiplier CSV files.
+
+        PEST++ writes parameter multiplier files in the format:
+            mult/p_{param}_{fid}_0_constant.csv
+
+        The CSV has a header row and the value is in the last column ('1').
+
+        Parameters
+        ----------
+        mult_dir : str
+            Path to the mult/ directory containing CSV files
+        fids : list[str]
+            Field IDs in simulation order
+        base : CalibrationParameters, optional
+            Base parameters to start from. If None, uses defaults.
+
+        Returns
+        -------
+        CalibrationParameters
+            Parameters loaded from mult files
+        """
+        import pandas as pd
+        from pathlib import Path
+
+        mult_path = Path(mult_dir)
+        n_fields = len(fids)
+
+        # Start from base or defaults
+        if base is not None:
+            params = base.copy()
+        else:
+            params = cls(n_fields=n_fields)
+
+        # Map PEST param names to CalibrationParameters attribute names
+        # Also track which params go to FieldProperties (returned separately)
+        param_map = {
+            "ndvi_k": "ndvi_k",
+            "ndvi_0": "ndvi_0",
+            "swe_alpha": "swe_alpha",
+            "swe_beta": "swe_beta",
+            "kr_alpha": "kr_damp",  # PEST uses alpha, we use damp
+            "ks_alpha": "ks_damp",
+        }
+
+        # Read each parameter file
+        for pest_name, attr_name in param_map.items():
+            for i, fid in enumerate(fids):
+                # PEST++ file naming convention
+                csv_file = mult_path / f"p_{pest_name}_{fid}_0_constant.csv"
+                if csv_file.exists():
+                    try:
+                        df = pd.read_csv(csv_file, index_col=0, header=0)
+                        # Value is in the column named '1' (last column)
+                        value = float(df.iloc[0]["1"])
+                        arr = getattr(params, attr_name)
+                        arr[i] = value
+                    except Exception:
+                        pass  # Use default if file can't be read
+
+        return params
+
+
+def load_pest_mult_properties(
+    mult_dir: str,
+    fids: list[str],
+    base_props: FieldProperties,
+) -> FieldProperties:
+    """Update FieldProperties with values from PEST++ mult files.
+
+    PEST tunes 'aw' (awc) and 'mad' (p_depletion) which are stored
+    in FieldProperties, not CalibrationParameters.
+
+    Parameters
+    ----------
+    mult_dir : str
+        Path to the mult/ directory containing CSV files
+    fids : list[str]
+        Field IDs in simulation order
+    base_props : FieldProperties
+        Base properties to update
+
+    Returns
+    -------
+    FieldProperties
+        Updated properties with PEST values applied
+    """
+    import pandas as pd
+    from pathlib import Path
+
+    mult_path = Path(mult_dir)
+    n_fields = len(fids)
+
+    # Copy base properties
+    props = FieldProperties(
+        n_fields=n_fields,
+        fids=base_props.fids.copy() if base_props.fids is not None else None,
+        awc=base_props.awc.copy(),
+        ksat=base_props.ksat.copy(),
+        rew=base_props.rew.copy(),
+        tew=base_props.tew.copy(),
+        cn2=base_props.cn2.copy(),
+        zr_max=base_props.zr_max.copy(),
+        zr_min=base_props.zr_min.copy(),
+        p_depletion=base_props.p_depletion.copy(),
+        irr_status=base_props.irr_status.copy(),
+        perennial=base_props.perennial.copy(),
+        gw_status=base_props.gw_status.copy(),
+        ke_max=base_props.ke_max.copy(),
+        f_sub=base_props.f_sub.copy(),
+    )
+
+    # Property params from PEST
+    property_params = {
+        "aw": "awc",
+        "mad": "p_depletion",
+    }
+
+    for pest_name, attr_name in property_params.items():
+        for i, fid in enumerate(fids):
+            csv_file = mult_path / f"p_{pest_name}_{fid}_0_constant.csv"
+            if csv_file.exists():
+                try:
+                    df = pd.read_csv(csv_file, index_col=0, header=0)
+                    value = float(df.iloc[0]["1"])
+                    arr = getattr(props, attr_name)
+                    arr[i] = value
+                except Exception:
+                    pass  # Use default if file can't be read
+
+    return props
