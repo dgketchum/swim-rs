@@ -7,6 +7,50 @@ This module provides:
 - Utilities for creating test containers
 """
 
+# =============================================================================
+# Earth Engine Mock Setup (MUST be before any swimrs imports)
+# =============================================================================
+# Mock the 'ee' module for tests that don't require actual EE authentication.
+# This prevents import errors when swimrs modules use ee type hints at module level.
+import sys
+import types
+
+def _setup_mock_ee():
+    """Create a mock ee module that supports type hints and basic operations."""
+    mock_ee = types.SimpleNamespace()
+    # These must be types (not SimpleNamespace) to support union type hints
+    # like ee.Geometry | ee.FeatureCollection
+    mock_ee.Image = type('Image', (), {})
+    mock_ee.ImageCollection = type('ImageCollection', (), {})
+    mock_ee.FeatureCollection = type('FeatureCollection', (), {})
+    mock_ee.Feature = type('Feature', (), {})
+    mock_ee.Geometry = type('Geometry', (), {'Point': type('Point', (), {})})
+    mock_ee.String = type('String', (), {})
+    mock_ee.Number = type('Number', (), {})
+    mock_ee.List = type('List', (), {})
+    mock_ee.Dictionary = type('Dictionary', (), {})
+    mock_ee.Date = type('Date', (), {})
+    mock_ee.Filter = type('Filter', (), {})
+    mock_ee.Algorithms = types.SimpleNamespace()
+    mock_ee.Reducer = types.SimpleNamespace()
+    mock_ee.Initialize = lambda *args, **kwargs: None
+    mock_ee.Authenticate = lambda *args, **kwargs: None
+    return mock_ee
+
+# Always set up/update the mock to ensure it has all required attributes
+# (previous partial mocks from other test files might be incomplete)
+if 'ee' not in sys.modules:
+    sys.modules['ee'] = _setup_mock_ee()
+else:
+    # Update existing mock to ensure it has all required type attributes
+    existing_ee = sys.modules['ee']
+    # Only update if it looks like our mock (has no real ee methods)
+    if not hasattr(existing_ee, 'data') or isinstance(existing_ee, types.SimpleNamespace):
+        sys.modules['ee'] = _setup_mock_ee()
+
+# =============================================================================
+# Standard imports
+# =============================================================================
 import json
 import os
 from pathlib import Path
@@ -408,3 +452,28 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "parity: marks parity tests comparing container vs legacy implementations"
     )
+    config.addinivalue_line(
+        "markers", "requires_ee: marks tests requiring Earth Engine authentication (run with --run-ee)"
+    )
+
+
+def pytest_addoption(parser):
+    """Add custom command line options."""
+    parser.addoption(
+        "--run-ee",
+        action="store_true",
+        default=False,
+        help="Run tests that require Earth Engine authentication",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip tests based on markers and command line options."""
+    if config.getoption("--run-ee"):
+        # --run-ee specified: don't skip EE tests
+        return
+
+    skip_ee = pytest.mark.skip(reason="need --run-ee option to run")
+    for item in items:
+        if "requires_ee" in item.keywords:
+            item.add_marker(skip_ee)
