@@ -10,11 +10,6 @@ packaged into `.swim` containers with provenance and coverage checks.
 The process engine uses numba-accelerated FAO-56 kernels; calibration is field-level via PEST++ IES (ensemble ETf optional). 
 A 40-year run on a single field completes in under a second; shipped examples run end-to-end with a few commands.
 
-What you get
-- Per-field ET and irrigation diagnostics from fused RS + met forcing
-- Containerized data with provenance/coverage checks for reproducible runs
-- PEST++-calibrated parameters and fast kernels (ensemble ETf optional)
-
 **Modern workflow (container-first)**
 
 ```
@@ -80,8 +75,11 @@ Outputs:
 <!--/img-placeholder-->
 
 SWIM-RS uses remote sensing ET to calibrate a process-based model rather than drive it directly — the result is daily ET 
-estimates that outperform the satellite retrievals they were trained on. Here, SWIM-RS *calibrated on PT-JPL* achieves 
-R² = 0.63 vs PT-JPL's 0.55 against flux tower observations.
+estimates that outperform the satellite retrievals they were trained on. Here, SWIM-RS, *itself calibrated on PT-JPL*, achieves 
+R² = 0.63 vs PT-JPL's 0.55 against flux tower observations, a 10% improvement in the estimate of water use.
+
+Further, we automatically get estimates of snow accumulation and melt, groundwater recharge, runoff, and consumption of 
+irrigation-applied water (in cases where irrigation is detected, see Example 3 - Crane, OR).
 
 Flux data from [Volk et al., 2023](https://www.sciencedirect.com/science/article/pii/S0168192323000011).
 
