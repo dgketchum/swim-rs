@@ -183,6 +183,22 @@ def run_daily_loop(
     # Initialize output
     output = DailyOutput(n_days=n_days, n_fields=n_fields)
 
+    # Pre-load all time series data to avoid per-day HDF5 reads
+    # This dramatically improves performance (7 reads instead of 7*n_days)
+    all_ndvi = swim_input.get_time_series("ndvi")  # (n_days, n_fields)
+    all_etr = swim_input.get_time_series("etr")
+    all_prcp = swim_input.get_time_series("prcp")
+    all_tmin = swim_input.get_time_series("tmin")
+    all_tmax = swim_input.get_time_series("tmax")
+    all_srad = swim_input.get_time_series("srad")
+    all_irr_flag = swim_input.get_irr_flag()  # (n_days, n_fields)
+
+    # Pre-load hourly precip if needed
+    all_prcp_hr = None
+    if runoff_process == "ier" and has_hourly_prcp:
+        # Load full array: (n_days, n_fields, 24)
+        all_prcp_hr = swim_input._h5_file["time_series/prcp_hr"][:]
+
     # Track year-specific f_sub for groundwater subsidy
     has_year_gwsub = swim_input.has_year_specific_gwsub()
     current_year = None
@@ -197,19 +213,19 @@ def run_daily_loop(
                 current_year = current_date.year
                 current_f_sub = swim_input.get_f_sub_for_year(current_year)
 
-        # Get daily inputs
-        ndvi = swim_input.get_time_series("ndvi", day_idx)
-        etr = swim_input.get_time_series("etr", day_idx)
-        prcp = swim_input.get_time_series("prcp", day_idx)
-        tmin = swim_input.get_time_series("tmin", day_idx)
-        tmax = swim_input.get_time_series("tmax", day_idx)
-        srad = swim_input.get_time_series("srad", day_idx)
-        irr_flag = swim_input.get_irr_flag(day_idx)
+        # Get daily inputs from pre-loaded arrays
+        ndvi = all_ndvi[day_idx, :]
+        etr = all_etr[day_idx, :]
+        prcp = all_prcp[day_idx, :]
+        tmin = all_tmin[day_idx, :]
+        tmax = all_tmax[day_idx, :]
+        srad = all_srad[day_idx, :]
+        irr_flag = all_irr_flag[day_idx, :]
 
         # Get hourly precip if IER mode and available
         prcp_hr = None
-        if runoff_process == "ier" and has_hourly_prcp:
-            prcp_hr = swim_input.get_hourly_precip(day_idx)
+        if all_prcp_hr is not None:
+            prcp_hr = all_prcp_hr[day_idx, :, :].T  # Transpose to (24, n_fields)
 
         # Step the simulation
         day_out = step_day(

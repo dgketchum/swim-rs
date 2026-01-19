@@ -16,6 +16,7 @@ from swimrs.process.state import (
 )
 from swimrs.process.input import SwimInput, build_swim_input
 from swimrs.process.loop import run_daily_loop, DailyOutput, step_day
+from swimrs.process.loop_fast import run_daily_loop_fast
 
 __all__ = [
     "kernels",
@@ -25,6 +26,7 @@ __all__ = [
     "SwimInput",
     "build_swim_input",
     "run_daily_loop",
+    "run_daily_loop_fast",
     "DailyOutput",
     "step_day",
 ]
