@@ -14,7 +14,7 @@ Key differences from CONUS examples:
     - ETf from PT-JPL only
 
 Usage:
-    python run.py
+    python run.py --site SITE_ID [--output-dir PATH]
 """
 import os
 import time
@@ -155,11 +155,34 @@ def run_flux_site(fid: str, cfg: ProjectConfig, container: SwimContainer,
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run SWIM model for an international flux site using the process package API"
+    )
+    parser.add_argument(
+        "--site",
+        type=str,
+        required=True,
+        help="Site ID to run (required)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Output directory (default: {project_ws}/testrun)",
+    )
+    args = parser.parse_args()
+
     project_dir = Path(__file__).resolve().parent
     conf = project_dir / "6_Flux_International.toml"
 
     cfg = ProjectConfig()
     cfg.read_config(str(conf))
+
+    # Override output directory in run_flux_site if specified
+    if args.output_dir:
+        cfg.project_ws = args.output_dir
 
     # Open container
     container_path = cfg.container_path
@@ -172,12 +195,6 @@ if __name__ == "__main__":
     container = SwimContainer.open(container_path, mode='r')
 
     try:
-        # Run for first available site as example
-        # In practice, specify the site ID you want to run
-        first_site = container.field_uids[0] if container.field_uids else None
-        if first_site:
-            run_flux_site(first_site, cfg, container, overwrite_input=True)
-        else:
-            print("No sites found in container")
+        run_flux_site(args.site, cfg, container, overwrite_input=True)
     finally:
         container.close()

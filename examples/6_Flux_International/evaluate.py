@@ -11,7 +11,7 @@ Key differences from CONUS examples:
     - ETf from PT-JPL only
 
 Usage:
-    python evaluate.py
+    python evaluate.py [--output-dir PATH] [--sites SITE1,SITE2,...] [--gap-tolerance N]
 """
 import os
 import time
@@ -194,6 +194,31 @@ def compare_with_flux(fid: str, model_output: str, flux_file: str,
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Evaluate SWIM model against flux tower observations for international sites"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Output directory (default: {project_ws}/results)",
+    )
+    parser.add_argument(
+        "--sites",
+        type=str,
+        default=None,
+        help="Comma-separated site IDs to evaluate (default: all)",
+    )
+    parser.add_argument(
+        "--gap-tolerance",
+        type=int,
+        default=5,
+        help="Gap tolerance for evaluation (default: 5)",
+    )
+    args = parser.parse_args()
+
     project_dir = Path(__file__).resolve().parent
     conf = project_dir / "6_Flux_International.toml"
 
@@ -203,15 +228,27 @@ if __name__ == "__main__":
     # Try to load station metadata if available
     station_metadata = os.path.join(cfg.data_dir, "station_metadata.csv")
     if os.path.exists(station_metadata):
-        sites, sdf = get_flux_sites(station_metadata, crop_only=False, return_df=True)
+        all_sites, sdf = get_flux_sites(station_metadata, crop_only=False, return_df=True)
     else:
         # Use all sites from container
-        sites = None
+        all_sites = None
         sdf = None
+
+    # Filter sites if specified
+    if args.sites:
+        sites = [s.strip() for s in args.sites.split(",")]
+    elif all_sites is not None:
+        sites = all_sites
+    else:
+        sites = None  # Will be populated from container
 
     flux_dir = os.path.join(cfg.data_dir, "daily_flux_files")
 
-    run_dir = os.path.join(cfg.project_ws, "results", "tight")
+    # Use output-dir if specified, otherwise default to project_ws/results
+    if args.output_dir:
+        run_dir = args.output_dir
+    else:
+        run_dir = os.path.join(cfg.project_ws, "results")
     os.makedirs(run_dir, exist_ok=True)
 
     # Open container
@@ -224,7 +261,7 @@ if __name__ == "__main__":
 
     container = SwimContainer.open(container_path, mode='r')
 
-    # If no sites from metadata, use container field UIDs
+    # If no sites from metadata or CLI, use container field UIDs
     if sites is None:
         sites = container.field_uids
 

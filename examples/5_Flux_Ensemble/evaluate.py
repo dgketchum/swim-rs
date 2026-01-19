@@ -5,7 +5,7 @@ This module runs the model for all flux sites and compares against
 OpenET ensemble and flux tower observations.
 
 Usage:
-    python evaluate.py
+    python evaluate.py [--output-dir PATH] [--sites SITE1,SITE2,...] [--gap-tolerance N]
 """
 import os
 import time
@@ -153,23 +153,55 @@ def compare_openet(fid: str, flux_file: str, model_output: str, openet_dir: str,
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Evaluate SWIM model against flux tower observations"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Output directory (default: {project_ws}/results)",
+    )
+    parser.add_argument(
+        "--sites",
+        type=str,
+        default=None,
+        help="Comma-separated site IDs to evaluate (default: all)",
+    )
+    parser.add_argument(
+        "--gap-tolerance",
+        type=int,
+        default=5,
+        help="Gap tolerance for evaluation (default: 5)",
+    )
+    args = parser.parse_args()
+
     project_dir = Path(__file__).resolve().parent
     conf = project_dir / "5_Flux_Ensemble.toml"
 
     cfg = ProjectConfig()
-    if os.path.isdir("/data/ssd2/swim"):
-        cfg.read_config(str(conf))
-    else:
-        cfg.read_config(str(conf), project_root_override=str(project_dir.parent))
+    cfg.read_config(str(conf))
 
     station_metadata = os.path.join(cfg.data_dir, "station_metadata.csv")
-    sites, sdf = get_flux_sites(station_metadata, crop_only=False, return_df=True,
-                                western_only=True, header=1)
+    all_sites, sdf = get_flux_sites(station_metadata, crop_only=False, return_df=True,
+                                    western_only=True, header=1)
+
+    # Filter sites if specified
+    if args.sites:
+        sites = [s.strip() for s in args.sites.split(",")]
+    else:
+        sites = all_sites
 
     openet_dir = os.path.join(cfg.data_dir, "openet_flux")
     flux_dir = os.path.join(cfg.data_dir, "daily_flux_files")
 
-    run_dir = os.path.join(cfg.project_ws, "results", "tight")
+    # Use output-dir if specified, otherwise default to project_ws/results
+    if args.output_dir:
+        run_dir = args.output_dir
+    else:
+        run_dir = os.path.join(cfg.project_ws, "results")
     os.makedirs(run_dir, exist_ok=True)
 
     # Open container
@@ -210,7 +242,7 @@ if __name__ == "__main__":
                 continue
 
             _ = compare_openet(site_id, flux_file, out_csv, openet_dir, irr_data,
-                               return_comparison=True, gap_tolerance=5)
+                               return_comparison=True, gap_tolerance=args.gap_tolerance)
             complete.append(site_id)
 
         print(f"complete: {complete}")

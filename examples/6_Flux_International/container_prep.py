@@ -5,7 +5,7 @@ This replaces the data_prep.py workflow with direct container ingestion.
 All processed data is stored in the .swim zarr file instead of intermediate files.
 
 Usage:
-    python container_prep.py
+    python container_prep.py [--overwrite] [--sites SITE1,SITE2,...] [--skip-sentinel]
 """
 
 import os
@@ -70,8 +70,16 @@ def create_container(cfg: ProjectConfig, overwrite: bool = False) -> SwimContain
     return container
 
 
-def ingest_ndvi(container: SwimContainer, cfg: ProjectConfig):
-    """Ingest NDVI data from Landsat and Sentinel."""
+def ingest_ndvi(container: SwimContainer, cfg: ProjectConfig,
+                sites: list = None, add_sentinel: bool = True):
+    """Ingest NDVI data from Landsat and Sentinel.
+
+    Args:
+        container: SwimContainer instance
+        cfg: ProjectConfig instance
+        sites: Optional list of site IDs to include
+        add_sentinel: If True, also ingest Sentinel NDVI
+    """
     # Landsat NDVI
     landsat_ndvi_dir = Path(cfg.landsat_dir) / "extracts" / "ndvi" / "no_mask"
     if landsat_ndvi_dir.exists():
@@ -81,22 +89,25 @@ def ingest_ndvi(container: SwimContainer, cfg: ProjectConfig):
             uid_column=cfg.feature_id_col,
             instrument="landsat",
             mask="no_mask",
+            fields=sites,
         )
     else:
         print(f"  WARNING: Landsat NDVI directory not found: {landsat_ndvi_dir}")
 
     # Sentinel NDVI
-    sentinel_ndvi_dir = Path(cfg.sentinel_dir) / "extracts" / "ndvi" / "no_mask"
-    if sentinel_ndvi_dir.exists():
-        print(f"Ingesting Sentinel NDVI from: {sentinel_ndvi_dir}")
-        container.ingest.ndvi(
-            source_dir=str(sentinel_ndvi_dir),
-            uid_column=cfg.feature_id_col,
-            instrument="sentinel",
-            mask="no_mask",
-        )
-    else:
-        print(f"  WARNING: Sentinel NDVI directory not found: {sentinel_ndvi_dir}")
+    if add_sentinel:
+        sentinel_ndvi_dir = Path(cfg.sentinel_dir) / "extracts" / "ndvi" / "no_mask"
+        if sentinel_ndvi_dir.exists():
+            print(f"Ingesting Sentinel NDVI from: {sentinel_ndvi_dir}")
+            container.ingest.ndvi(
+                source_dir=str(sentinel_ndvi_dir),
+                uid_column=cfg.feature_id_col,
+                instrument="sentinel",
+                mask="no_mask",
+                fields=sites,
+            )
+        else:
+            print(f"  WARNING: Sentinel NDVI directory not found: {sentinel_ndvi_dir}")
 
 
 def ingest_etf(container: SwimContainer, cfg: ProjectConfig):
@@ -209,8 +220,15 @@ def export_model_inputs(container: SwimContainer, cfg: ProjectConfig, output_pat
     print(f"  Exported to: {output_path}")
 
 
-def run_full_pipeline(overwrite: bool = False):
-    """Run the complete container preparation pipeline."""
+def run_full_pipeline(overwrite: bool = False, sites: list = None,
+                      add_sentinel: bool = True):
+    """Run the complete container preparation pipeline.
+
+    Args:
+        overwrite: If True, overwrite existing container
+        sites: Optional list of site IDs to process
+        add_sentinel: If True, include Sentinel NDVI ingestion
+    """
     cfg = _load_config()
 
     print("=" * 60)
@@ -225,7 +243,7 @@ def run_full_pipeline(overwrite: bool = False):
 
     try:
         # Ingest data
-        ingest_ndvi(container, cfg)
+        ingest_ndvi(container, cfg, sites=sites, add_sentinel=add_sentinel)
         ingest_etf(container, cfg)
         ingest_meteorology(container, cfg)
         ingest_properties(container, cfg)
@@ -263,7 +281,27 @@ if __name__ == "__main__":
         action="store_true",
         help="Overwrite existing container if it exists",
     )
+    parser.add_argument(
+        "--sites",
+        type=str,
+        default=None,
+        help="Comma-separated site IDs to process (default: all)",
+    )
+    parser.add_argument(
+        "--skip-sentinel",
+        action="store_true",
+        help="Skip Sentinel NDVI ingestion",
+    )
     args = parser.parse_args()
 
-    run_full_pipeline(overwrite=args.overwrite)
+    # Parse sites argument
+    select_sites = None
+    if args.sites:
+        select_sites = [s.strip() for s in args.sites.split(",")]
+
+    run_full_pipeline(
+        overwrite=args.overwrite,
+        sites=select_sites,
+        add_sentinel=not args.skip_sentinel,
+    )
 

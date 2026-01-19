@@ -15,7 +15,7 @@ The container workflow:
     8. Export prepped_input.json for model consumption
 
 Usage:
-    python container_prep.py
+    python container_prep.py [--overwrite] [--sites SITE1,SITE2,...] [--skip-sentinel]
 
     # Or use functions directly:
     from prep_container import create_project_container, prep_all
@@ -36,10 +36,7 @@ def _load_config() -> ProjectConfig:
     conf = project_dir / "4_Flux_Network.toml"
 
     cfg = ProjectConfig()
-    if os.path.isdir("/data/ssd2/swim"):
-        cfg.read_config(str(conf))
-    else:
-        cfg.read_config(str(conf), project_root_override=str(project_dir.parent))
+    cfg.read_config(str(conf))
     return cfg
 
 
@@ -334,15 +331,48 @@ def prep_all(container: SwimContainer, cfg: ProjectConfig = None, sites: list = 
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Container-based data preparation for 4_Flux_Network"
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing container",
+    )
+    parser.add_argument(
+        "--sites",
+        type=str,
+        default=None,
+        help="Comma-separated site IDs to process (default: all)",
+    )
+    parser.add_argument(
+        "--skip-sentinel",
+        action="store_true",
+        help="Skip Sentinel NDVI ingestion",
+    )
+    args = parser.parse_args()
+
+    # Parse sites argument
+    select_sites = None
+    if args.sites:
+        select_sites = [s.strip() for s in args.sites.split(",")]
+
     # Load configuration
     config = _load_config()
-    select_sites = None  # Set to list of site IDs to process subset
 
     # Create or open container
-    container = create_project_container(config, overwrite=True)
+    container = create_project_container(config, overwrite=args.overwrite)
 
     # Run full preparation workflow
-    prep_all(container, config, sites=select_sites, overwrite=True, add_sentinel=True)
+    prep_all(
+        container,
+        config,
+        sites=select_sites,
+        overwrite=args.overwrite,
+        add_sentinel=not args.skip_sentinel,
+    )
 
     # Close container to ensure data is saved
     container.close()

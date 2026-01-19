@@ -8,7 +8,7 @@ This module uses the modern container-based workflow:
     4. Convert output to DataFrame
 
 Usage:
-    python run.py
+    python run.py --site SITE_ID [--output-dir PATH]
 """
 import os
 import time
@@ -148,17 +148,40 @@ def run_flux_site(fid: str, cfg: ProjectConfig, container: SwimContainer,
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run SWIM model for a flux site using the process package API"
+    )
+    parser.add_argument(
+        "--site",
+        type=str,
+        required=True,
+        help="Site ID to run (required)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Output directory (default: {project_ws}/testrun)",
+    )
+    args = parser.parse_args()
+
     project_dir = Path(__file__).resolve().parent
     conf = project_dir / "5_Flux_Ensemble.toml"
 
     cfg = ProjectConfig()
-    if os.path.isdir("/data/ssd2/swim"):
-        cfg.read_config(str(conf))
-    else:
-        cfg.read_config(str(conf), project_root_override=str(project_dir.parent))
+    cfg.read_config(str(conf))
 
-    # Open container
-    container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}.swim")
+    # Store original data_dir for container path
+    original_data_dir = cfg.data_dir
+
+    # Override output directory in run_flux_site if specified
+    if args.output_dir:
+        cfg.project_ws = args.output_dir
+
+    # Open container (always from original data directory)
+    container_path = os.path.join(original_data_dir, f"{cfg.project_name}.swim")
     if not os.path.exists(container_path):
         raise FileNotFoundError(
             f"Container not found at {container_path}. "
@@ -168,6 +191,6 @@ if __name__ == "__main__":
     container = SwimContainer.open(container_path, mode='r')
 
     try:
-        run_flux_site("B_01", cfg, container, overwrite_input=True)
+        run_flux_site(args.site, cfg, container, overwrite_input=True)
     finally:
         container.close()
