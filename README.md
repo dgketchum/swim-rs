@@ -1,30 +1,19 @@
 # SWIM-RS
 
-Soil Water balance Inverse Modeling using Remote Sensing
+**S**oil **W**ater balance **I**nverse **M**odeling using **R**emote **S**ensing
 
 SWIM-RS combines the desirable qualities of remote sensing and hydrological modeling into an easy-to-use, rigorous
-water use modeling system. The model is a modified FAO-56 soil water balance that uses tunable parameters 
-sensitive to remote sensing detections of crop and non-crop behavior. The drivers are commonly
-available remote sensing (Landsat and Sentinel satellite) and gridded meteorological data (from GridMET or ERA5-Land). 
-Calibration is conducted on a field-by-field basis using state-of-the-art inverse modeling software (PEST++ Iterative Ensemble Smoother; IES). The
-calibration procedure uses a custom SWIM-RS module that allows setup and optimization to run in the background, 
-saving users from having to orchestrate a complicated calibration procedure.
+water use modeling system.
 
-SWIM-RS makes the most of the data it is given, using inverse modeling to glean as much useful information from
-the data it is provided as possible. It can ingest irrigation masks, but will infer irrigation (or groundwater subsidy)
-without them.
+SWIM-RS is a container-first toolkit for field-scale soil water balance: Landsat/Sentinel NDVI/ETf + GridMET/ERA5 meteorology, 
+packaged into `.swim` containers with provenance and coverage checks. 
+The process engine uses numba-accelerated FAO-56 kernels; calibration is field-level via PEST++ IES (ensemble ETf optional). 
+A 40-year run on a single field completes in under a second; shipped examples run end-to-end with a few commands.
 
-SWIM-RS is modular. This early version of the software simulates irrigation in an eager and simple fashion, but is 
-designed such that an irrigation scenario or pre-determined shedule can easily be used.
-
-SWIM-RS uses modern Python software, reducing the cognitive load on users to keep track of project files, monitor project
-state, and investigate how and when results were produced. It has a set of easy to use tools that automatically
-record the provenance of data, provide an easy command line interface to check the project inventory, status,
-and results, and keep the file system simple. 
-
-SWIM-RS is fast. The core modeling logic uses a fully enclosed, NUMBA-based just-in-time compiler, giving machine
-language speed but maintaining algorithm exposure in simple Python functions. A 40-year model run on a single field
-takes less than a second. 
+What you get
+- Per-field ET and irrigation diagnostics from fused RS + met forcing
+- Containerized data with provenance/coverage checks for reproducible runs
+- PEST++-calibrated parameters and fast kernels (ensemble ETf optional)
 
 **Modern workflow (container-first)**
 
@@ -34,74 +23,97 @@ swim extract (EE + met) → swim prep (build .swim container) → build_swim_inp
 
 The legacy `prep/` and `model/` packages are deprecated; the container (`src/swimrs/container`) plus process engine (`src/swimrs/process`) are the canonical path. `prepped_input.json` is retained for compatibility (see `DEPRECATION_PLAN.md`).
 
-## Quick start (shipped data, no EE required)
+```mermaid
+flowchart LR
+    EE["EE exports<br/>NDVI/ETf"] --> C[".swim container"]
+    Met["GridMET/ERA5"] --> C
+    Props["SSURGO/CDL/LANID"] --> C
+    C --> H5["SwimInput (HDF5)"]
+    H5 --> Loop["run_daily_loop / PEST++"]
+```
 
-Use the Fort Peck example included in the repo:
+If diagrams don't render in your viewer, the flow is: EE/met/properties → `.swim` container → `SwimInput (HDF5)` → `run_daily_loop` / PEST++.
+
+## Installation
+
+See the [Installation Guide](docs/installation.md) for detailed setup instructions including conda, PEST++, and Earth Engine authentication.
+
+**Quick install** (assumes conda and Python 3.11+):
+```bash
+conda create -n swim python=3.11 -y && conda activate swim
+conda install -c conda-forge pestpp geopandas rasterio -y
+pip install git+https://github.com/dgketchum/swim-rs.git
+```
+
+## Quick start (Fort Peck, Montana)
 
 ```bash
 pip install -e .
 
-# Ingest shipped data into a container and export model inputs
-swim prep examples/2_Fort_Peck/2_Fort_Peck.toml
+# Optional: refresh EE/GridMET (EE sign-up/auth: https://earthengine.google.com/; task manager: https://code.earthengine.google.com/tasks),
+# rebuild project shapefile from examples/data. Already included; so --overwrite:
+# swim extract examples/2_Fort_Peck/2_Fort_Peck.toml --overwrite
 
-# Debug run and per-site CSVs
-swim evaluate examples/2_Fort_Peck/2_Fort_Peck.toml --out-dir /tmp/swim_fp
+# Build container from shipped data
+swim prep examples/2_Fort_Peck/2_Fort_Peck.toml --overwrite
+
+# Run model and write output CSV
+swim evaluate examples/2_Fort_Peck/2_Fort_Peck.toml
+
+# Visualize vs flux tower (saves plots to examples/2_Fort_Peck/)
+python examples/2_Fort_Peck/viz.py --results examples/2_Fort_Peck --site US-FPe --save examples/2_Fort_Peck
+
+# To run calibration (requires PEST++, ~ min):
+swim calibrate examples/2_Fort_Peck/2_Fort_Peck.toml --workers 6 --realizations 20
+
+# Visualize the SWIM-RS against the normal PT-JPL remote sensing ET model
+python examples/2_Fort_Peck/viz.py --results examples/2_Fort_Peck --site US-FPe --save examples/2_Fort_Peck
 ```
 
-To refresh data from Earth Engine and GridMET, authenticate EE and run `swim extract <config.toml> --add-sentinel` before `swim prep`.
+Outputs:
+- `examples/2_Fort_Peck/US-FPe.csv` — daily model output
+- `examples/2_Fort_Peck/US-FPe_timeseries.png` — ET time series vs flux tower
+- `examples/2_Fort_Peck/US-FPe_scatter.png` — scatter plot with R² and RMSE
 
-## Why swim-rs
+<img src="examples/2_Fort_Peck/US-FPe_scatter.png" alt="SWIM vs PT-JPL comparison" width="600">
 
-- Unified data container: Zarr-backed `.swim` files with provenance, coverage, and validation.
-- High-performance physics: numba kernels and typed state via `swimrs.process`.
-- PEST++ IES integration: parameter estimation with spinup/localization helpers.
-- Remote sensing + met: Landsat/Sentinel NDVI, OpenET ETf, GridMET/ERA5-Land, SNODAS.
-- Forecast/analysis: NDVI analog forecasts; metrics vs flux/OpenET; Plotly visualizations.
+SWIM-RS uses remote sensing ET to calibrate a process-based model rather than drive it directly — the result is daily ET 
+estimates that outperform the satellite retrievals they were trained on. Here, SWIM-RS *calibrated on PT-JPL* achieves 
+R² = 0.63 vs PT-JPL's 0.55 against flux tower observations.
+
+Flux data from [Volk et al., 2023](https://www.sciencedirect.com/science/article/pii/S0168192323000011).
 
 ## Scientific and Software Innovations
 
 ### Scientific Innovation
 
-- **Unified Framework Combining Remote Sensing Coverage with Hydrologic Process Fidelity**
-  Bridges the spatial coverage and observational power of satellite data with the temporal and physical rigor of process-based soil water balance modeling — enabling field-scale estimation of ET, soil moisture, and irrigation dynamics.
+- **Unified Framework Combining Remote Sensing Coverage with Hydrologic Process Fidelity** — Bridges the spatial coverage and observational power of satellite data with the temporal and physical rigor of process-based soil water balance modeling, enabling field-scale estimation of ET, soil moisture, and irrigation dynamics.
 
-- **Seamless Fusion of Remote Sensing and Water Balance Simulation**
-  Dynamically integrates NDVI (Landsat, Sentinel-2) and ET fraction (OpenET/PT-JPL, SSEBop, SIMS) into a FAO-56 dual crop coefficient framework — allowing remote sensing to inform both transpiration and evaporation components on a daily basis.
+- **Seamless Fusion of Remote Sensing and Water Balance Simulation** — Dynamically integrates NDVI (Landsat, Sentinel-2) and ET fraction (OpenET/PT-JPL, SSEBop, SIMS) into a FAO-56 dual crop coefficient framework, allowing remote sensing to inform both transpiration and evaporation components on a daily basis.
 
-- **OpenET Ensemble Integration for Calibration and Benchmarking**
-  Uses multi-model OpenET ensembles (PT-JPL, SSEBop, SIMS, geeSEBAL) for calibration targets and evaluation metrics, supporting robust comparison across algorithms and against ground truth.
+- **OpenET Ensemble Integration for Calibration and Benchmarking** — Uses multimodel, open source OpenET ensemble members (PT-JPL, SSEBop, SIMS, geeSEBAL) for calibration targets and evaluation metrics, supporting robust comparison across algorithms and against ground truth.
 
-- **Flexible Workflows: Irrigation Classification or LULC-Only Modes**
-  Supports both irrigation-mask workflows (e.g., via LANID/IrrMapper in CONUS) and non-mask modes suitable for international contexts using only land cover and NDVI time series.
+- **Flexible Workflows: Irrigation Classification or LULC-Only Modes** — Supports both irrigation-mask workflows (e.g., via LANID/IrrMapper in CONUS) and non-mask modes suitable for international contexts using only land cover and NDVI time series.
 
-- **Physically-Bounded Kernels for Hydrologic Processes**
-  Implements all major components — snowmelt, infiltration, runoff (curve number and infiltration excess), root dynamics, evaporation, and transpiration — using physically consistent and testable numerical kernels.
+- **Physically-Bounded Kernels for Hydrologic Processes** — Implements all major components (snowmelt, infiltration, runoff via curve number and infiltration excess, root dynamics, evaporation, and transpiration) using physically consistent and testable numerical kernels.
 
-- **Validation Across 160+ Flux Tower Sites**
-  Field-scale results benchmarked against observed ET from eddy covariance towers, with daily and monthly comparisons to SSEBop and OpenET ensembles. RMSE and R² logged per site/month with automatic diagnostics.
+- **Validation Across 160+ Flux Tower Sites** — Field-scale results benchmarked against observed ET from eddy covariance towers, with daily and monthly comparisons to SSEBop and OpenET ensembles. RMSE and R² logged per site/month with automatic diagnostics.
 
 ### Modern Scientific Software Architecture
 
-- **Container-Based Data Management with Built-In Provenance**
-  All inputs (remote sensing, met, soils, snow, derived features) are stored in a single Zarr-based `.swim` file, with audit logging, coverage tracking, and spatial indexing — enabling traceable and reproducible modeling workflows.
+- **Container-Based Data Management with Built-In Provenance** — All inputs (remote sensing, met, soils, snow, derived features) are stored in a single Zarr-based `.swim` file, with audit logging, coverage tracking, and spatial indexing, enabling traceable and reproducible modeling workflows.
 
-- **Portable HDF5 Inputs for Simulation and Calibration**
-  A single HDF5 file (`swim_input.h5`) is generated per project or worker and contains all data needed to run simulations or calibrations independently of the original container or filesystem.
+- **Portable HDF5 Inputs for Simulation and Calibration** — A single HDF5 file (`swim_input.h5`) is generated per project or worker and contains all data needed to run simulations or calibrations independently of the original container or filesystem.
 
-- **Fast, Modular Simulation Engine Using Numba JIT**
-  Implements core model kernels as Numba-accelerated functions, achieving 5–10× speedups over standard NumPy code and enabling daily simulations over years for thousands of fields.
+- **Fast, Modular Simulation Engine Using Numba JIT** — Implements core model kernels as Numba-accelerated functions, achieving 5–10× speedups over standard NumPy code and enabling daily simulations over decades for thousands of fields in seconds.
 
-- **End-to-End Integration with PEST++ IES**
-  Includes built-in support for spinup, control file generation, localization, and parameter bounds for Iterative Ensemble Smoother–based calibration, directly from container inputs.
+- **End-to-End Integration with PEST++ IES** — Includes built-in support for spinup, control file generation, localization, and parameter bounds for Iterative Ensemble Smoother–based calibration, directly from container inputs.
 
-- **CLI-Driven Workflow with TOML Configs**
-  Unified command-line interface (`swim`) supports data extraction, container building, simulation, calibration, and evaluation — all driven by compact and versioned TOML config files.
+- **CLI-Driven Workflow with TOML Configs** — Unified command-line interface (`swim`) supports data extraction, container building, simulation, calibration, and evaluation, all driven by compact and versioned TOML config files.
 
-- **Full Audit Trail and Inventory**
-  Every ingest and compute step records metadata, input source, time, and affected fields. Combined with inventory validation and xarray-backed data views, this supports complete transparency from source to output.
+- **Full Audit Trail and Inventory** — Every ingest and compute step records metadata, input source, time, and affected fields. Combined with inventory validation and xarray-backed data views, this supports complete transparency from source to output.
 
-- **Structured, Extensible, and Tested Codebase**
-  Test-driven design with explicit deprecation handling, parity checks, and typed dataclasses for state, parameters, and properties. Easily extensible for future snow, ET, or runoff modules or input sources.
+- **Structured, Extensible, and Tested Codebase** — Test-driven design with explicit deprecation handling, parity checks, and typed dataclasses for state, parameters, and properties. Easily extensible for future snow, ET, or runoff modules or input sources.
 
 ## Repository map
 
@@ -112,9 +124,17 @@ To refresh data from Earth Engine and GridMET, authenticate EE and run `swim ext
 - `src/swimrs/data_extraction` — Earth Engine + meteorology utilities
 - `src/swimrs/swim` — config parsing and legacy helpers
 - Deprecated: `src/swimrs/prep`, `src/swimrs/model` (see `DEPRECATION_PLAN.md`)
-- `examples/` — configs, notebooks, and small data snippets
-  - `examples/4_Flux_Network/README.md` — full CONUS flux network workflow
-  - `examples/5_Flux_Ensemble/README.md` — cropland flux ensemble workflow
+
+## Examples
+
+| Example | Description | README |
+|---------|-------------|--------|
+| **1_Boulder** | End-to-end tutorial demonstrating the SwimContainer API for data ingestion, computation, and model execution using a small study area near Boulder, Montana. Includes 5 notebooks covering container creation, data extraction, ingestion, dynamics computation, and model runs. Works with or without Earth Engine access. | [README](examples/1_Boulder/README.md) |
+| **2_Fort_Peck** | Single-site calibration tutorial for the US-FPe flux tower (unirrigated grassland). Demonstrates uncalibrated model runs, PEST++ IES calibration using PT-JPL ETf and SNODAS SWE, and validation against flux tower observations. Shipped data included — no EE required. | [README](examples/2_Fort_Peck/README.md) |
+| **3_Crane** | Irrigated site calibration tutorial for an alfalfa field at Crane, Oregon. Similar workflow to Fort Peck but demonstrates irrigation dynamics, crop coefficient calibration, and ensemble ETf targets. | [README](examples/3_Crane/README.md) |
+| **4_Flux_Network** | Full CONUS flux network workflow (~160 stations). Production-scale container build, calibration, and evaluation using Landsat NDVI, SSEBop ETf, GridMET, SNODAS, and SSURGO. Includes scripts for group calibration and flux/SSEBop comparisons. | [README](examples/4_Flux_Network/README.md) |
+| **5_Flux_Ensemble** | Cropland subset (~60 stations) with OpenET ensemble calibration. Compares SWIM against SSEBop, PT-JPL, and SIMS ensemble targets. Includes OpenET evaluation scripts and cropland filtering utilities. | [README](examples/5_Flux_Ensemble/README.md) |
+| **6_Flux_International** | International flux sites using ERA5-Land meteorology, HWSD soils, and Landsat+Sentinel NDVI fusion. Demonstrates non-CONUS workflows with `mask_mode = "none"` and global data sources. | — |
 
 ## CLI overview (container-first)
 
@@ -128,7 +148,7 @@ Common flags: `--out-dir` (override project root), `--sites` (restrict IDs), `--
 
 ## What it does
 
-- Data extraction (EE): Landsat/Sentinel NDVI, ET fraction from OpenET/USGS-NHM, CDL/LANID irrigation, SSURGO/HWSD, ERA5-Land daily variables.
+- Data extraction (EE): Landsat/Sentinel NDVI, ET fraction from OpenET/USGS-NHM, CDL/LANID irrigation, SSURGO/HWSD, ERA5-Land daily variables. See [Data Extraction Guide](docs/data_extraction.md) for API details.
 - Meteorology: GridMET or ERA5-Land daily forcing; optional bias corrections.
 - Container compute: merged NDVI, irrigation windows, groundwater subsidy, crop dynamics.
 - Modeling: daily SWB with snow, runoff (CN or infiltration-excess), NDVI→Kcb, dynamic Ke/Ks, irrigation scheduling, root growth.
@@ -230,34 +250,3 @@ The software uses third-party libraries subject to their own licenses (e.g., Apa
 ---
 
 Disclaimer: The licensing information is for informational purposes only. Consult the full license texts and seek legal advice for specific questions about licensing or compliance.
-
-### EE Exporter Tips
-
-- Prefer `clustered_sample_etf` / `clustered_sample_ndvi` when your fields are geographically clustered; use `sparse_sample_*` when fields are widely dispersed.
-- Both clustered functions accept a local shapefile path, an EE FeatureCollection asset ID, or an `ee.FeatureCollection` object; set `feature_id` to the identifier column. If your shapefile includes a state column (e.g., `STATE`), pass `state_col` so the exporters apply IrrMapper (west) or LANID (east) masks appropriately.
-- To limit extraction to a few fields, pass `select=[...]` with the desired feature IDs.
-
-Example (Python):
-
-```python
-from swimrs.data_extraction.ee.etf_export import clustered_sample_etf
-from swimrs.data_extraction.ee.ndvi_export import clustered_sample_ndvi
-
-select_fields = ['043_000130', '043_000128', '043_000161']
-shapefile_path = 'examples/1_Boulder/data/gis/mt_sid_boulder.shp'
-
-clustered_sample_etf(
-    shapefile_path,
-    mask_type='irr', start_yr=2004, end_yr=2023,
-    feature_id='FID_1', state_col='STATE', select=select_fields,
-    dest='drive', drive_folder='swim', drive_categorize=True,
-    model='ssebop', usgs_nhm=True,
-)
-
-clustered_sample_ndvi(
-    shapefile_path,
-    mask_type='irr', start_yr=2004, end_yr=2023,
-    feature_id='FID_1', state_col='STATE', select=select_fields,
-    satellite='landsat', dest='drive', drive_folder='swim', drive_categorize=True,
-)
-```
