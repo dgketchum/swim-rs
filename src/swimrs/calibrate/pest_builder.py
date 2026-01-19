@@ -176,7 +176,7 @@ class PestBuilder:
 
         for mask in ['irr', 'inv_irr']:
             path = f"remote_sensing/etf/landsat/{model}/{mask}"
-            if path in self._container._root:
+            if path in self._container.state.root:
                 df = self._container.query.dataframe(path, fields=[fid])
                 if fid in df.columns:
                     result[f'{model}_etf_{mask}'] = df[fid]
@@ -189,7 +189,7 @@ class PestBuilder:
             raise ValueError("No container available. Pass container to PestBuilder.__init__")
 
         path = "snow/snodas/swe"
-        if path not in self._container._root:
+        if path not in self._container.state.root:
             raise ValueError(f"SWE data not found in container at {path}")
 
         df = self._container.query.dataframe(path, fields=[fid])
@@ -724,14 +724,8 @@ if __name__ == "__main__":
         obsnme_str = 'oname:obs_swe_{}_otype:arr_i:{}_j:0'
 
         for j, fid in enumerate(self.pest_args['targets']):
-
-            # Get SWE data from container or parquet
-            if self._container is not None:
-                swe_df = self._get_swe_data(fid)
-            else:
-                swe_df = pd.read_parquet(self.pest_args['inputs'][j])
-                swe_df = swe_df[[c for c in swe_df.columns if 'swe' in c[2]]]
-                swe_df.columns = ['swe']
+            # Get SWE data from container
+            swe_df = self._get_swe_data(fid)
 
             self.pest.add_observations(self.pest_args['swe_obs']['file'][j],
                                        insfile=self.pest_args['swe_obs']['insfile'][j])
@@ -767,13 +761,8 @@ if __name__ == "__main__":
 
         total_valid_obs = 0
         for i, fid in enumerate(self.pest_args['targets']):
-            # Get ETf data from container or parquet
-            if self._container is not None:
-                etf = self._get_etf_data(fid, model=target)
-            else:
-                etf = pd.read_parquet(self.pest_args['inputs'][i])
-                etf = etf[[c for c in etf.columns if 'etf' in c[2]]]
-                etf.columns = [f'{c[-2]}_etf_{c[-1]}' for c in etf.columns]
+            # Get ETf data from container
+            etf = self._get_etf_data(fid, model=target)
 
             self.pest.add_observations(self.pest_args['etf_obs']['file'][i],
                                        insfile=self.pest_args['etf_obs']['insfile'][i])

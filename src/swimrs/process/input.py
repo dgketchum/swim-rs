@@ -2,8 +2,7 @@
 
 Provides portable data packaging for PEST++ worker distribution.
 The SwimInput class can:
-- Build HDF5 from prepped_input.json
-- Build HDF5 directly from SwimContainer
+- Build HDF5 from SwimContainer
 - Load from existing HDF5 (for workers)
 - Apply PEST++ multipliers from CSV files
 - Provide lazy access to time series data
@@ -69,19 +68,16 @@ class SwimInput:
 
     Example
     -------
-    Build from JSON and access data:
+    Build from container and access data:
 
+        >>> from swimrs.container import SwimContainer
         >>> from swimrs.process.input import build_swim_input, SwimInput
         >>>
-        >>> # Build HDF5 from prepped_input.json
-        >>> build_swim_input(
-        ...     json_path="data/prepped_input.json",
-        ...     output_h5="input.h5",
-        ...     spinup_json_path="spinup.json",
-        ... )
+        >>> # Build HDF5 from container
+        >>> container = SwimContainer.open("project.swim")
+        >>> swim_input = build_swim_input(container, output_h5="input.h5")
         >>>
-        >>> # Load and access data
-        >>> swim_input = SwimInput(h5_path="input.h5")
+        >>> # Access data
         >>> print(f"Fields: {swim_input.n_fields}, Days: {swim_input.n_days}")
         >>> ndvi = swim_input.get_time_series("ndvi", day_idx=0)
         >>> swim_input.close()
