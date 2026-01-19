@@ -1,35 +1,128 @@
+"""
+Evaluate SWIM model against flux tower observations using the process package API.
+
+This module runs the model for all flux sites and compares against
+OpenET ensemble and flux tower observations.
+
+Usage:
+    python evaluate.py
+"""
 import os
 import time
 from pathlib import Path
-from pprint import pprint
 
 import pandas as pd
 
 from openet_evaluation import evaluate_openet_site
-from swimrs.model.obs_field_cycle import field_day_loop
+from swimrs.container import SwimContainer
 from swimrs.prep import get_flux_sites
+from swimrs.process.input import build_swim_input
+from swimrs.process.loop import run_daily_loop
 from swimrs.swim.config import ProjectConfig
-from swimrs.swim.sampleplots import SamplePlots
 
 
-def run_flux_site(fid: str, cfg: ProjectConfig, plots: SamplePlots, outfile: str) -> None:
+def output_to_dataframe(output, swim_input, field_idx: int) -> pd.DataFrame:
+    """Convert DailyOutput arrays to DataFrame for a single field."""
+    dates = pd.date_range(swim_input.start_date, periods=output.n_days, freq='D')
+
+    df = pd.DataFrame({
+        'et_act': output.eta[:, field_idx],
+        'kc_act': output.etf[:, field_idx],
+        'kc_bas': output.kcb[:, field_idx],
+        'ke': output.ke[:, field_idx],
+        'ks': output.ks[:, field_idx],
+        'kr': output.kr[:, field_idx],
+        'runoff': output.runoff[:, field_idx],
+        'rain': output.rain[:, field_idx],
+        'melt': output.melt[:, field_idx],
+        'swe': output.swe[:, field_idx],
+        'depl_root': output.depl_root[:, field_idx],
+        'dperc': output.dperc[:, field_idx],
+        'irrigation': output.irr_sim[:, field_idx],
+        'soil_water': output.gw_sim[:, field_idx],
+    }, index=dates)
+
+    return df
+
+
+def input_to_dataframe(swim_input, field_idx: int) -> pd.DataFrame:
+    """Extract input time series for a field."""
+    dates = pd.date_range(swim_input.start_date, periods=swim_input.n_days, freq='D')
+
+    etr = swim_input.get_time_series('etr')
+    prcp = swim_input.get_time_series('prcp')
+    tmin = swim_input.get_time_series('tmin')
+    tmax = swim_input.get_time_series('tmax')
+
+    df = pd.DataFrame({
+        'etref': etr[:, field_idx],
+        'ppt': prcp[:, field_idx],
+        'tmin': tmin[:, field_idx],
+        'tmax': tmax[:, field_idx],
+    }, index=dates)
+
+    # Add ETf observations if available
+    try:
+        etf_irr = swim_input.get_time_series('etf_irr')
+        etf_inv_irr = swim_input.get_time_series('etf_inv_irr')
+        df['etf_irr'] = etf_irr[:, field_idx]
+        df['etf_inv_irr'] = etf_inv_irr[:, field_idx]
+    except (KeyError, ValueError):
+        pass
+
+    return df
+
+
+def run_flux_site(fid: str, cfg: ProjectConfig, container: SwimContainer,
+                  outfile: str) -> None:
+    """Run SWIM model for a single flux site and save output."""
     start_time = time.time()
-    df_dct = field_day_loop(cfg, plots, debug_flag=True)
+
+    # Build swim_input.h5 for this site (use temp location)
+    h5_path = outfile.replace('.csv', '.h5')
+
+    swim_input = build_swim_input(
+        container,
+        output_h5=h5_path,
+        spinup_json_path=None,
+        etf_model=cfg.etf_target_model,
+        met_source="gridmet",
+        fields=[fid],
+    )
+
+    # Run simulation
+    output, final_state = run_daily_loop(swim_input)
+
     print(f"\nExecution time: {time.time() - start_time:.2f} seconds\n")
 
-    df = df_dct[fid].copy()
-    in_df = plots.input_to_dataframe(fid)
-    df = pd.concat([df, in_df], axis=1, ignore_index=False)
+    # Convert to DataFrame
+    field_idx = swim_input.fids.index(fid)
+    out_df = output_to_dataframe(output, swim_input, field_idx)
+    in_df = input_to_dataframe(swim_input, field_idx)
+    df = pd.concat([out_df, in_df], axis=1)
+
+    # Filter to config date range
     df = df.loc[cfg.start_dt: cfg.end_dt]
     df.to_csv(outfile)
 
 
-def compare_openet(fid: str, flux_file: str, model_output: str, openet_dir: str, plots: SamplePlots,
-                   return_comparison: bool = False, gap_tolerance: int = 5):
+def get_irr_data_from_container(container: SwimContainer, fid: str) -> dict:
+    """Extract irrigation data for a field from container."""
+    try:
+        props = container.query.properties(fields=[fid])
+        if fid in props and 'irr' in props[fid]:
+            return props[fid]['irr']
+    except Exception:
+        pass
+    return {}
+
+
+def compare_openet(fid: str, flux_file: str, model_output: str, openet_dir: str,
+                   irr_data: dict, return_comparison: bool = False, gap_tolerance: int = 5):
     """Compare SWIM and OpenET ensemble against flux observations for a single site."""
     openet_daily = os.path.join(openet_dir, "daily_data", f"{fid}.csv")
     openet_monthly = os.path.join(openet_dir, "monthly_data", f"{fid}.csv")
-    irr_ = plots.input["irr_data"][fid]
+    irr_ = irr_data.get(fid, {})
     daily, overpass, monthly = evaluate_openet_site(
         model_output,
         flux_file,
@@ -70,7 +163,8 @@ if __name__ == "__main__":
         cfg.read_config(str(conf), project_root_override=str(project_dir.parent))
 
     station_metadata = os.path.join(cfg.data_dir, "station_metadata.csv")
-    sites, sdf = get_flux_sites(station_metadata, crop_only=False, return_df=True, western_only=True, header=1)
+    sites, sdf = get_flux_sites(station_metadata, crop_only=False, return_df=True,
+                                western_only=True, header=1)
 
     openet_dir = os.path.join(cfg.data_dir, "openet_flux")
     flux_dir = os.path.join(cfg.data_dir, "daily_flux_files")
@@ -78,28 +172,48 @@ if __name__ == "__main__":
     run_dir = os.path.join(cfg.project_ws, "results", "tight")
     os.makedirs(run_dir, exist_ok=True)
 
-    plots_ = SamplePlots()
-    plots_.initialize_plot_data(cfg)
+    # Open container
+    container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}.swim")
+    if not os.path.exists(container_path):
+        raise FileNotFoundError(
+            f"Container not found at {container_path}. "
+            "Run container_prep.py first to create the container."
+        )
+
+    container = SwimContainer.open(container_path, mode='r')
+
+    # Load irrigation data from container for all sites
+    irr_data = {}
+    try:
+        props = container.query.properties()
+        for fid in sites:
+            if fid in props and 'irr' in props[fid]:
+                irr_data[fid] = props[fid]['irr']
+    except Exception:
+        pass
 
     complete, incomplete = [], []
-    for i, site_id in enumerate(sites):
-        lulc = sdf.at[site_id, "General classification"]
-        print(f"\n{i} {site_id}: {lulc}")
 
-        flux_file = os.path.join(flux_dir, f"{site_id}_daily_data.csv")
-        out_csv = os.path.join(run_dir, f"{site_id}.csv")
+    try:
+        for i, site_id in enumerate(sites):
+            lulc = sdf.at[site_id, "General classification"]
+            print(f"\n{i} {site_id}: {lulc}")
 
-        try:
-            run_flux_site(site_id, cfg, plots_, out_csv)
-        except Exception as exc:
-            print(f"{site_id} error: {exc}")
-            incomplete.append(site_id)
-            continue
+            flux_file = os.path.join(flux_dir, f"{site_id}_daily_data.csv")
+            out_csv = os.path.join(run_dir, f"{site_id}.csv")
 
-        _ = compare_openet(site_id, flux_file, out_csv, openet_dir, plots_,
-                           return_comparison=True, gap_tolerance=5)
-        complete.append(site_id)
+            try:
+                run_flux_site(site_id, cfg, container, out_csv)
+            except Exception as exc:
+                print(f"{site_id} error: {exc}")
+                incomplete.append(site_id)
+                continue
 
-    print(f"complete: {complete}")
-    print(f"incomplete: {incomplete}")
+            _ = compare_openet(site_id, flux_file, out_csv, openet_dir, irr_data,
+                               return_comparison=True, gap_tolerance=5)
+            complete.append(site_id)
 
+        print(f"complete: {complete}")
+        print(f"incomplete: {incomplete}")
+    finally:
+        container.close()

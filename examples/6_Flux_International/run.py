@@ -1,56 +1,183 @@
+"""
+Run SWIM model for international flux sites using the process package API.
+
+This module uses the modern container-based workflow:
+    1. Open SwimContainer
+    2. Build SwimInput from container
+    3. Run simulation with run_daily_loop
+    4. Convert output to DataFrame
+
+Key differences from CONUS examples:
+    - Uses ERA5-Land meteorology (not GridMET)
+    - Uses HWSD soils (not SSURGO)
+    - No irrigation masking (mask_mode="none")
+    - ETf from PT-JPL only
+
+Usage:
+    python run.py
+"""
 import os
 import time
+from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
-from examples.calibrate_by_station import run_pest_sequence
-from swimrs.model.obs_field_cycle import field_day_loop
-from swimrs.prep import get_flux_sites
+from swimrs.container import SwimContainer
+from swimrs.process.input import build_swim_input
+from swimrs.process.loop import run_daily_loop
+from swimrs.swim.config import ProjectConfig
 
 
+def output_to_dataframe(output, swim_input, field_idx: int) -> pd.DataFrame:
+    """Convert DailyOutput arrays to DataFrame for a single field.
 
-project = '6_Flux_International'
+    Args:
+        output: DailyOutput from run_daily_loop()
+        swim_input: SwimInput used in simulation
+        field_idx: Index of field in swim_input.fids
 
-root = '/data/ssd2/swim'
-data = os.path.join(root, project, 'data')
-project_ws = os.path.join(root, project)
-config_file = os.path.join(project_ws, 'config.toml')
+    Returns:
+        DataFrame with daily outputs indexed by date
+    """
+    dates = pd.date_range(swim_input.start_date, periods=output.n_days, freq='D')
 
-prepped_input = os.path.join(data, 'prepped_input.json')
+    df = pd.DataFrame({
+        'et_act': output.eta[:, field_idx],
+        'kc_act': output.etf[:, field_idx],
+        'kc_bas': output.kcb[:, field_idx],
+        'ke': output.ke[:, field_idx],
+        'ks': output.ks[:, field_idx],
+        'kr': output.kr[:, field_idx],
+        'runoff': output.runoff[:, field_idx],
+        'rain': output.rain[:, field_idx],
+        'melt': output.melt[:, field_idx],
+        'swe': output.swe[:, field_idx],
+        'depl_root': output.depl_root[:, field_idx],
+        'dperc': output.dperc[:, field_idx],
+        'irrigation': output.irr_sim[:, field_idx],
+        'soil_water': output.gw_sim[:, field_idx],
+    }, index=dates)
 
-# ICOS 200m station buffer shapefile index
-FEATURE_ID = 'sid'
-
-# flux sites
-shapefile_path = os.path.join(data, 'gis', '6_Flux_International_150mBuf.shp')
-sites = get_flux_sites(shapefile_path, index_col=FEATURE_ID)
-
-results = os.path.join(project_ws, 'results', 'tight')
+    return df
 
 
-def run_flux_sites(fid, config, plot_data, outfile):
+def input_to_dataframe(swim_input, field_idx: int) -> pd.DataFrame:
+    """Extract input time series for a field.
+
+    Args:
+        swim_input: SwimInput container
+        field_idx: Index of field in swim_input.fids
+
+    Returns:
+        DataFrame with input time series indexed by date
+    """
+    dates = pd.date_range(swim_input.start_date, periods=swim_input.n_days, freq='D')
+
+    # ERA5 uses 'eto' as the reference ET variable
+    try:
+        etr = swim_input.get_time_series('eto')
+    except (KeyError, ValueError):
+        etr = swim_input.get_time_series('etr')
+
+    prcp = swim_input.get_time_series('prcp')
+    tmin = swim_input.get_time_series('tmin')
+    tmax = swim_input.get_time_series('tmax')
+
+    df = pd.DataFrame({
+        'etref': etr[:, field_idx],
+        'ppt': prcp[:, field_idx],
+        'tmin': tmin[:, field_idx],
+        'tmax': tmax[:, field_idx],
+    }, index=dates)
+
+    # Add ETf observations if available (no mask for international)
+    try:
+        etf = swim_input.get_time_series('etf_no_mask')
+        df['etf'] = etf[:, field_idx]
+    except (KeyError, ValueError):
+        pass
+
+    # Add NDVI observations if available
+    try:
+        ndvi = swim_input.get_time_series('ndvi_no_mask')
+        df['ndvi'] = ndvi[:, field_idx]
+    except (KeyError, ValueError):
+        pass
+
+    return df
+
+
+def run_flux_site(fid: str, cfg: ProjectConfig, container: SwimContainer,
+                  overwrite_input: bool = False) -> None:
+    """Run SWIM model for a single flux site.
+
+    Args:
+        fid: Field/site ID
+        cfg: ProjectConfig instance
+        container: SwimContainer with ingested data
+        overwrite_input: If True, rebuild swim_input.h5 (ignored, always rebuilds)
+    """
     start_time = time.time()
 
-    df_dct = obs_field_cycle.field_day_loop(config, plot_data, debug_flag=True)
+    target_dir = os.path.join(cfg.project_ws, "testrun", fid)
+    os.makedirs(target_dir, exist_ok=True)
 
-    end_time = time.time()
-    print('\nExecution time: {:.2f} seconds\n'.format(end_time - start_time))
+    # Build swim_input.h5 for this site
+    h5_path = os.path.join(target_dir, f"swim_input_{fid}.h5")
 
-    df = df_dct[fid].copy()
-    in_df = plot_data.input_to_dataframe(fid)
-    df = pd.concat([df, in_df], axis=1, ignore_index=False)
+    swim_input = build_swim_input(
+        container,
+        output_h5=h5_path,
+        spinup_json_path=None,  # Use default spinup
+        etf_model=cfg.etf_target_model,  # "ptjpl" for international
+        met_source="era5",  # ERA5-Land for international
+        fields=[fid],
+    )
 
-    df = df.loc[config.start_dt:config.end_dt]
+    # Run simulation
+    output, final_state = run_daily_loop(swim_input)
 
-    df.to_csv(outfile)
+    print(f"\nExecution time: {time.time() - start_time:.2f} seconds\n")
+
+    # Convert to DataFrame
+    field_idx = swim_input.fids.index(fid)
+    out_df = output_to_dataframe(output, swim_input, field_idx)
+    in_df = input_to_dataframe(swim_input, field_idx)
+    df = pd.concat([out_df, in_df], axis=1)
+
+    # Filter to config date range
+    df = df.loc[cfg.start_dt: cfg.end_dt]
+
+    out_csv = os.path.join(target_dir, f"{fid}.csv")
+    df.to_csv(out_csv)
+    print(f"run complete: {fid}, wrote {out_csv}")
 
 
-def run_calibration():
+if __name__ == "__main__":
+    project_dir = Path(__file__).resolve().parent
+    conf = project_dir / "6_Flux_International.toml"
 
-    run_pest_sequence(config_file, project_ws, workers=10, target='ptjpl', members=None,
-                      realizations=20, select_stations=sites, pdc_remove=True, overwrite=True)
+    cfg = ProjectConfig()
+    cfg.read_config(str(conf))
 
-if __name__ == '__main__':
-    run_calibration()
-    pass
-# ========================= EOF ====================================================================
+    # Open container
+    container_path = cfg.container_path
+    if not os.path.exists(container_path):
+        raise FileNotFoundError(
+            f"Container not found at {container_path}. "
+            "Run container_prep.py first to create the container."
+        )
+
+    container = SwimContainer.open(container_path, mode='r')
+
+    try:
+        # Run for first available site as example
+        # In practice, specify the site ID you want to run
+        first_site = container.field_uids[0] if container.field_uids else None
+        if first_site:
+            run_flux_site(first_site, cfg, container, overwrite_input=True)
+        else:
+            print("No sites found in container")
+    finally:
+        container.close()

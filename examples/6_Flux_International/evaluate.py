@@ -1,147 +1,266 @@
+"""
+Evaluate SWIM model against flux tower observations for international sites.
+
+This module runs the model for international flux sites and compares against
+flux tower observations.
+
+Key differences from CONUS examples:
+    - Uses ERA5-Land meteorology (not GridMET)
+    - Uses HWSD soils (not SSURGO)
+    - No irrigation masking (mask_mode="none")
+    - ETf from PT-JPL only
+
+Usage:
+    python evaluate.py
+"""
 import os
-import collections
-from datetime import datetime
-from pprint import pprint
+import time
+from pathlib import Path
+
+import numpy as np
 import pandas as pd
+from sklearn.metrics import mean_squared_error, r2_score
 
-from ssebop_evaluation import evaluate_ssebop_site
-from swimrs.model.initialize import initialize_data
+from swimrs.container import SwimContainer
 from swimrs.prep import get_flux_sites
-from run import run_flux_sites
-
-project = '6_Flux_International'
-
-root = '/data/ssd2/swim'
-data = os.path.join(root, project, 'data')
-project_ws_ = os.path.join(root, project)
-if not os.path.isdir(root):
-    root = '/home/dgketchum/code/swim-rs'
-    project_ws_ = os.path.join(root, 'examples', project)
-    data = os.path.join(project_ws_, 'data')
-
-config_file = os.path.join(project_ws_, 'config.toml')
-
-station_file = os.path.join(data, 'station_metadata.csv')
+from swimrs.process.input import build_swim_input
+from swimrs.process.loop import run_daily_loop
+from swimrs.swim.config import ProjectConfig
 
 
-def compare_ssebop(fid, flux_file, model_output, plot_data_,
-                   return_comparison=False, gap_tolerance=5):
-    """Compare SWIM and SSEBop against flux observations for a single site."""
-    irr_ = plot_data_.input['irr_data'][fid]
-    daily, overpass, monthly = evaluate_ssebop_site(
-        model_output, flux_file,
-        irr=irr_,
-        gap_tolerance=gap_tolerance
+def output_to_dataframe(output, swim_input, field_idx: int) -> pd.DataFrame:
+    """Convert DailyOutput arrays to DataFrame for a single field."""
+    dates = pd.date_range(swim_input.start_date, periods=output.n_days, freq='D')
+
+    df = pd.DataFrame({
+        'et_act': output.eta[:, field_idx],
+        'kc_act': output.etf[:, field_idx],
+        'kc_bas': output.kcb[:, field_idx],
+        'ke': output.ke[:, field_idx],
+        'ks': output.ks[:, field_idx],
+        'kr': output.kr[:, field_idx],
+        'runoff': output.runoff[:, field_idx],
+        'rain': output.rain[:, field_idx],
+        'melt': output.melt[:, field_idx],
+        'swe': output.swe[:, field_idx],
+        'depl_root': output.depl_root[:, field_idx],
+        'dperc': output.dperc[:, field_idx],
+        'irrigation': output.irr_sim[:, field_idx],
+        'soil_water': output.gw_sim[:, field_idx],
+    }, index=dates)
+
+    return df
+
+
+def input_to_dataframe(swim_input, field_idx: int) -> pd.DataFrame:
+    """Extract input time series for a field."""
+    dates = pd.date_range(swim_input.start_date, periods=swim_input.n_days, freq='D')
+
+    # ERA5 uses 'eto' as the reference ET variable
+    try:
+        etr = swim_input.get_time_series('eto')
+    except (KeyError, ValueError):
+        etr = swim_input.get_time_series('etr')
+
+    prcp = swim_input.get_time_series('prcp')
+    tmin = swim_input.get_time_series('tmin')
+    tmax = swim_input.get_time_series('tmax')
+
+    df = pd.DataFrame({
+        'etref': etr[:, field_idx],
+        'ppt': prcp[:, field_idx],
+        'tmin': tmin[:, field_idx],
+        'tmax': tmax[:, field_idx],
+    }, index=dates)
+
+    # Add ETf observations if available (no mask for international)
+    try:
+        etf = swim_input.get_time_series('etf_no_mask')
+        df['etf'] = etf[:, field_idx]
+    except (KeyError, ValueError):
+        pass
+
+    return df
+
+
+def run_flux_site(fid: str, cfg: ProjectConfig, container: SwimContainer,
+                  outfile: str) -> None:
+    """Run SWIM model for a single flux site and save output."""
+    start_time = time.time()
+
+    # Build swim_input.h5 for this site (use temp location)
+    h5_path = outfile.replace('.csv', '.h5')
+
+    swim_input = build_swim_input(
+        container,
+        output_h5=h5_path,
+        spinup_json_path=None,
+        etf_model=cfg.etf_target_model,  # "ptjpl" for international
+        met_source="era5",  # ERA5-Land for international
+        fields=[fid],
     )
 
-    if monthly is None:
+    # Run simulation
+    output, final_state = run_daily_loop(swim_input)
+
+    print(f"\nExecution time: {time.time() - start_time:.2f} seconds\n")
+
+    # Convert to DataFrame
+    field_idx = swim_input.fids.index(fid)
+    out_df = output_to_dataframe(output, swim_input, field_idx)
+    in_df = input_to_dataframe(swim_input, field_idx)
+    df = pd.concat([out_df, in_df], axis=1)
+
+    # Filter to config date range
+    df = df.loc[cfg.start_dt: cfg.end_dt]
+    df.to_csv(outfile)
+
+
+def compare_with_flux(fid: str, model_output: str, flux_file: str,
+                      return_comparison: bool = False):
+    """Compare model output against flux tower observations.
+
+    Args:
+        fid: Site ID
+        model_output: Path to model output CSV
+        flux_file: Path to flux tower data CSV
+        return_comparison: If True, return comparison dict
+
+    Returns:
+        Comparison dict if return_comparison=True, else None
+    """
+    if not os.path.exists(flux_file):
+        print(f"  Flux file not found: {flux_file}")
         return None
-
-    agg_comp = monthly.copy()
-    if len(agg_comp) < 3:
-        return None
-
-    rmse_values = {k.split('_')[1]: v for k, v in agg_comp.items() if k.startswith('rmse_')
-                   if 'swim' in k or 'ssebop' in k}
-
-    if len(rmse_values) == 0:
-        return None
-
-    lowest_rmse_model = min(rmse_values, key=rmse_values.get)
-    print(f"n Samples: {agg_comp['n_samples']}")
-    print('Lowest RMSE:', lowest_rmse_model)
-
-    if not return_comparison:
-        return lowest_rmse_model
 
     try:
-        print(f"Flux Mean: {agg_comp['mean_flux']}")
-        print(f"SWIM Mean: {agg_comp['mean_swim']}")
-        print(f"SSEBop NHM Mean: {agg_comp.get('mean_ssebop')}")
-        print(f"SWIM RMSE: {agg_comp['rmse_swim']}")
-        print(f"SSEBop NHM RMSE: {agg_comp.get('rmse_ssebop')}")
-        return lowest_rmse_model
+        # Load model output
+        model_df = pd.read_csv(model_output, index_col=0, parse_dates=True)
 
-    except KeyError as exc:
-        print(fid, exc)
+        # Load flux data (assumes 'ET' or 'LE' column exists)
+        flux_df = pd.read_csv(flux_file, index_col='date', parse_dates=True)
+
+        # Find common dates
+        common_idx = model_df.index.intersection(flux_df.index)
+        if len(common_idx) < 10:
+            print(f"  Insufficient overlapping data ({len(common_idx)} days)")
+            return None
+
+        # Get ET values (model uses 'et_act', flux may use 'ET' or 'LE_corr')
+        model_et = model_df.loc[common_idx, 'et_act']
+
+        if 'ET' in flux_df.columns:
+            flux_et = flux_df.loc[common_idx, 'ET']
+        elif 'LE_corr' in flux_df.columns:
+            # Convert latent heat flux to ET (mm/day)
+            # LE (W/m2) * 86400 / 2.45e6 = ET (mm/day)
+            flux_et = flux_df.loc[common_idx, 'LE_corr'] * 86400 / 2.45e6
+        else:
+            print(f"  No ET or LE column in flux file")
+            return None
+
+        # Drop NaN values
+        valid_mask = ~(model_et.isna() | flux_et.isna())
+        model_et = model_et[valid_mask]
+        flux_et = flux_et[valid_mask]
+
+        if len(model_et) < 10:
+            print(f"  Insufficient valid data ({len(model_et)} days)")
+            return None
+
+        # Calculate metrics
+        rmse = np.sqrt(mean_squared_error(flux_et, model_et))
+        r2 = r2_score(flux_et, model_et)
+        bias = (model_et - flux_et).mean()
+
+        comparison = {
+            'n_samples': len(model_et),
+            'rmse': rmse,
+            'r2': r2,
+            'bias': bias,
+            'mean_flux': flux_et.mean(),
+            'mean_model': model_et.mean(),
+        }
+
+        print(f"  n={comparison['n_samples']}, RMSE={rmse:.2f}, R2={r2:.3f}, Bias={bias:.2f}")
+
+        if return_comparison:
+            return comparison
+        return None
+
+    except Exception as exc:
+        print(f"  Error comparing {fid}: {exc}")
         return None
 
 
-def evaluate():
-    sites, sdf = get_flux_sites(station_file, crop_only=False, return_df=True)
+if __name__ == "__main__":
+    project_dir = Path(__file__).resolve().parent
+    conf = project_dir / "6_Flux_International.toml"
 
-    incomplete, complete, results = [], [], []
+    cfg = ProjectConfig()
+    cfg.read_config(str(conf))
 
-    overwrite_ = False
+    # Try to load station metadata if available
+    station_metadata = os.path.join(cfg.data_dir, "station_metadata.csv")
+    if os.path.exists(station_metadata):
+        sites, sdf = get_flux_sites(station_metadata, crop_only=False, return_df=True)
+    else:
+        # Use all sites from container
+        sites = None
+        sdf = None
 
-    cal_results = os.path.join(project_ws_, 'results')
+    flux_dir = os.path.join(cfg.data_dir, "daily_flux_files")
 
-    for ee, site_ in enumerate(sites):
+    run_dir = os.path.join(cfg.project_ws, "results", "tight")
+    os.makedirs(run_dir, exist_ok=True)
 
-        lulc = sdf.at[site_, 'General classification']
+    # Open container
+    container_path = cfg.container_path
+    if not os.path.exists(container_path):
+        raise FileNotFoundError(
+            f"Container not found at {container_path}. "
+            "Run container_prep.py first to create the container."
+        )
 
-        if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
-            continue
+    container = SwimContainer.open(container_path, mode='r')
 
-        print(f'\n{ee} {site_}: {lulc}')
+    # If no sites from metadata, use container field UIDs
+    if sites is None:
+        sites = container.field_uids
 
-        output_ = os.path.join(cal_results, site_)
+    complete, incomplete = [], []
+    results = []
 
-        prepped_input = os.path.join(output_, f'prepped_input.json')
-        spinup_ = os.path.join(output_, f'spinup.json')
+    try:
+        for i, site_id in enumerate(sites):
+            lulc = sdf.at[site_id, "General classification"] if sdf is not None else "Unknown"
+            print(f"\n{i} {site_id}: {lulc}")
 
-        if not os.path.exists(prepped_input):
-            prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
-            spinup_ = os.path.join(output_, f'spinup_{site_}.json')
+            flux_file = os.path.join(flux_dir, f"{site_id}_daily_data.csv")
+            out_csv = os.path.join(run_dir, f"{site_id}.csv")
 
-        flux_dir = os.path.join(project_ws_, 'data', 'daily_flux_files')
-        flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
+            try:
+                run_flux_site(site_id, cfg, container, out_csv)
+            except Exception as exc:
+                print(f"{site_id} error: {exc}")
+                incomplete.append(site_id)
+                continue
 
-        fcst_params = os.path.join(output_, f'{site_}.3.par.csv')
-        if not os.path.exists(fcst_params):
-            continue
+            result = compare_with_flux(site_id, out_csv, flux_file, return_comparison=True)
+            if result:
+                results.append((site_id, result))
+            complete.append(site_id)
 
-        modified_date = datetime.fromtimestamp(os.path.getmtime(fcst_params))
-        print(f'Calibration made {modified_date}')
-        if modified_date < pd.to_datetime('2025-04-20'):
-            continue
+        print(f"\n{'='*60}")
+        print(f"Complete: {len(complete)}")
+        print(f"Incomplete: {len(incomplete)}")
 
-        cal = os.path.join(project_ws_, f'tight_pest', 'mult')
+        if results:
+            print(f"\nSummary Statistics:")
+            rmses = [r[1]['rmse'] for r in results]
+            r2s = [r[1]['r2'] for r in results]
+            print(f"  Mean RMSE: {np.mean(rmses):.2f} mm/day")
+            print(f"  Mean R2: {np.mean(r2s):.3f}")
 
-        out_csv = os.path.join(output_, f'{site_}.csv')
-
-        config_, fields_ = initialize_data(config_file, project_ws_, input_data=prepped_input, spinup_data=spinup_,
-                                           forecast=True, forecast_file=fcst_params)
-
-        try:
-            if not os.path.exists(out_csv) or overwrite_:
-                run_flux_sites(site_, config_, fields_, out_csv)
-        except ValueError as exc:
-            print(f'{site_} error: {exc}')
-            continue
-
-        result = compare_ssebop(site_, flux_data, out_csv, fields_,
-                                return_comparison=True, gap_tolerance=5)
-
-        if result:
-            results.append((result, lulc))
-
-        complete.append(site_)
-
-        out_fig_dir_ = os.path.join(root, 'examples', project, 'figures', 'model_output', 'png')
-
-        flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model=model,
-                            members=['ssebop', 'disalexi', 'geesebal', 'eemetric', 'ptjpl', 'sims'])
-
-    pprint({s: [t[0] for t in results].count(s) for s in set(t[0] for t in results)})
-    pprint(
-        {category: [item[0] for item in collections.Counter(t[0] for t in results
-                                                            if t[1] == category).most_common(3)] for
-         category in set(t[1] for t in results)})
-    print(f'complete: {complete}')
-    print(f'incomplete: {incomplete}')
-
-
-if __name__ == '__main__':
-    pass
-# ========================= EOF ====================================================================
+    finally:
+        container.close()
