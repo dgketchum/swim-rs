@@ -1,21 +1,21 @@
 #!/usr/bin/env python
 """
-Fort Peck Data Extraction Script
-================================
+Crane (S2) Data Extraction Script
+=================================
 
-This script extracts all required input data for the Fort Peck (US-FPe) SWIM-RS
-example from Google Earth Engine and GridMET. Run this to reproduce or update
-the data used in the tutorial notebooks.
+This script extracts all required input data for the Crane (S2) SWIM-RS example
+from Google Earth Engine and GridMET. Run this to reproduce or update the data
+used in the tutorial notebooks.
 
 Requirements
 ------------
 - Earth Engine authentication: run `earthengine authenticate` first
-- Access to the 'wudr' GCS bucket, OR set USE_DRIVE=True to export to Google Drive
-- GridMET bias correction TIFs in data/bias_correction_tif/
+- Access to the 'wudr' GCS bucket, OR set --drive to export to Google Drive
+- GridMET bias correction TIFs in data/corrections/
 
 Data Extracted
 --------------
-- ETf (PT-JPL): Evapotranspiration fraction from OpenET PT-JPL algorithm
+- ETf: Evapotranspiration fraction from OpenET ensemble (PT-JPL, SIMS, SSEBop, geeSEBAL)
 - NDVI: Normalized difference vegetation index from Landsat
 - SNODAS SWE: Snow water equivalent
 - Irrigation status: From IrrMapper (west) and LANID (east)
@@ -25,31 +25,40 @@ Data Extracted
 
 Usage
 -----
-    # Extract all data for US-FPe to GCS bucket:
+    # Extract all data for S2 to GCS bucket:
     python extract_data.py
 
-    # Extract NDVI/SNODAS/properties to Google Drive (ETf always goes to bucket):
+    # Extract to Google Drive instead:
     python extract_data.py --drive
 
-    # Extract for all 161 flux sites:
+    # Extract for all flux sites in the shapefile:
     python extract_data.py --all-fields
+
+    # Extract only specific OpenET models:
+    python extract_data.py --models ptjpl ssebop
+
+    # Overwrite existing exported data:
+    python extract_data.py --overwrite
 
     # Rebuild local shapefile from master (writes provenance):
     python extract_data.py --build-shp
 
 After Earth Engine tasks complete, sync from bucket:
-    gsutil -m rsync -r gs://wudr/2_Fort_Peck/ ./
+    gsutil -m rsync -r gs://wudr/3_Crane/ ./
 
 Output Structure
 ----------------
     data/
     ├── remote_sensing/
     │   └── landsat/extracts/
-    │       ├── ptjpl_etf/     # ETf CSVs by year (PT-JPL algorithm)
-    │       └── ndvi/          # NDVI CSVs by year
+    │       ├── ptjpl_etf/{irr,inv_irr}/   # PT-JPL ETf CSVs by year
+    │       ├── sims_etf/{irr,inv_irr}/    # SIMS ETf CSVs by year
+    │       ├── ssebop_etf/{irr,inv_irr}/  # SSEBop ETf CSVs by year
+    │       ├── geesebal_etf/{irr,inv_irr}/ # geeSEBAL ETf CSVs by year
+    │       └── ndvi/{irr,inv_irr}/         # NDVI CSVs by year
     ├── snow/snodas/extracts/  # SWE CSVs by month
     ├── properties/            # Irrigation, landcover, soils CSVs
-    └── met_timeseries/gridmet/ # Meteorology parquet files
+    └── met/                   # Meteorology parquet files
 """
 
 import argparse
@@ -66,6 +75,9 @@ sys.path.insert(0, ROOT_DIR)
 
 from swimrs.swim.config import ProjectConfig
 from swimrs.data_extraction.ee.ptjpl_export import export_ptjpl_zonal_stats
+from swimrs.data_extraction.ee.sims_export import export_sims_zonal_stats
+from swimrs.data_extraction.ee.ssebop_export import export_ssebop_zonal_stats
+from swimrs.data_extraction.ee.geesebal_export import export_geesebal_zonal_stats
 from swimrs.data_extraction.ee.ndvi_export import sparse_sample_ndvi
 from swimrs.data_extraction.ee.snodas_export import sample_snodas_swe
 from swimrs.data_extraction.ee.ee_props import get_irrigation, get_ssurgo, get_landcover
@@ -73,10 +85,21 @@ from swimrs.data_extraction.ee.ee_utils import is_authorized
 from swimrs.data_extraction.gridmet.gridmet import assign_gridmet_ids, sample_gridmet_corrections, download_gridmet
 from swimrs.utils.flux_stations import extract_stations
 
+# OpenET ensemble models available for extraction
+OPENET_MODELS = ['ptjpl', 'sims', 'ssebop', 'geesebal']
+
+# Map model names to their export functions
+MODEL_EXPORTERS = {
+    'ptjpl': export_ptjpl_zonal_stats,
+    'sims': export_sims_zonal_stats,
+    'ssebop': export_ssebop_zonal_stats,
+    'geesebal': export_geesebal_zonal_stats,
+}
+
 sys.setrecursionlimit(5000)
 
-# Default: extract only US-FPe (Fort Peck)
-DEFAULT_FIELDS = ['US-FPe']
+# Default: extract only S2 (Crane irrigated alfalfa site)
+DEFAULT_FIELDS = ['S2']
 
 # Path to master flux stations shapefile
 MASTER_SHAPEFILE = os.path.abspath(os.path.join(ROOT_DIR, 'examples', 'gis', 'flux_stations.shp'))
@@ -93,7 +116,7 @@ def init_earth_engine():
 
 def load_config():
     """Load project configuration from TOML file."""
-    config_file = os.path.join(PROJECT_DIR, '2_Fort_Peck.toml')
+    config_file = os.path.join(PROJECT_DIR, '3_Crane.toml')
     cfg = ProjectConfig()
     cfg.read_config(config_file, project_root_override=PROJECT_DIR)
     return cfg
@@ -105,7 +128,7 @@ def setup_local_shapefile(select_fields, overwrite=False):
     Parameters
     ----------
     select_fields : list of str
-        Station IDs to extract (e.g., ['US-FPe'])
+        Station IDs to extract (e.g., ['S2'])
     overwrite : bool
         If True, overwrite existing shapefile
     """
@@ -133,11 +156,8 @@ def setup_local_shapefile(select_fields, overwrite=False):
     return local_shp
 
 
-def extract_etf(cfg, select_fields, mask_types=None, overwrite=False):
-    """Extract ETf (evapotranspiration fraction) from OpenET PT-JPL.
-
-    Uses the new export_ptjpl_zonal_stats function which builds PT-JPL images
-    directly from Landsat scenes and exports per-scene zonal means to GCS.
+def extract_openet_etf(cfg, select_fields, use_drive, models=None, mask_types=None, overwrite=False):
+    """Extract ETf (evapotranspiration fraction) from OpenET ensemble models.
 
     Parameters
     ----------
@@ -145,31 +165,49 @@ def extract_etf(cfg, select_fields, mask_types=None, overwrite=False):
         Project configuration object
     select_fields : list or None
         Field IDs to extract, or None for all fields
+    use_drive : bool
+        If True, export to Google Drive; otherwise to GCS bucket
+    models : list, optional
+        OpenET models to extract. Default: all models (ptjpl, sims, ssebop, geesebal)
     mask_types : list, optional
         Mask types to extract. Default: ['irr', 'inv_irr']
-    overwrite : bool, optional
-        If True, re-extract all data ignoring existing files. Default: False
+    overwrite : bool
+        If True, overwrite existing exported data
     """
+    if models is None:
+        models = OPENET_MODELS
     if mask_types is None:
         mask_types = ['irr', 'inv_irr']
 
-    for mask in mask_types:
-        print(f"\nExtracting ETf ({mask}) using PT-JPL...")
-        # Check local directory to skip already-extracted years (unless overwrite)
-        check_dir = None if overwrite else os.path.join(SCRIPT_DIR, 'remote_sensing', 'landsat', 'extracts', 'ptjpl_etf', mask)
+    # OpenET export functions only support GCS bucket export
+    if use_drive:
+        print("  Note: OpenET ETf exports only support GCS bucket, ignoring --drive flag")
+    bucket = cfg.ee_bucket
 
-        export_ptjpl_zonal_stats(
-            shapefile=cfg.fields_shapefile,
-            bucket=cfg.ee_bucket,
-            feature_id=cfg.feature_id_col,
-            select=select_fields,
-            start_yr=cfg.start_dt.year,
-            end_yr=cfg.end_dt.year,
-            mask_type=mask,
-            check_dir=check_dir,
-            state_col=cfg.state_col,
-            file_prefix=cfg.project_name,
-        )
+    for model in models:
+        if model not in MODEL_EXPORTERS:
+            print(f"  Warning: Unknown model '{model}', skipping. Available: {list(MODEL_EXPORTERS.keys())}")
+            continue
+
+        export_func = MODEL_EXPORTERS[model]
+        etf_base = os.path.join(SCRIPT_DIR, 'remote_sensing', 'landsat', 'extracts', f'{model}_etf')
+
+        for mask in mask_types:
+            print(f"\nExtracting {model.upper()} ETf ({mask})...")
+            check_dir = None if overwrite else os.path.join(etf_base, mask)
+
+            export_func(
+                cfg.fields_shapefile,
+                bucket=bucket,
+                feature_id=cfg.feature_id_col,
+                select=select_fields,
+                start_yr=cfg.start_dt.year,
+                end_yr=cfg.end_dt.year,
+                mask_type=mask,
+                check_dir=check_dir,
+                state_col=cfg.state_col,
+                file_prefix=cfg.project_name,
+            )
 
 
 def extract_ndvi(cfg, select_fields, use_drive, satellite='landsat', mask_types=None, overwrite=False):
@@ -187,8 +225,8 @@ def extract_ndvi(cfg, select_fields, use_drive, satellite='landsat', mask_types=
         'landsat' or 'sentinel'
     mask_types : list, optional
         Mask types to extract. Default: ['irr', 'inv_irr']
-    overwrite : bool, optional
-        If True, re-extract all data ignoring existing files. Default: False
+    overwrite : bool
+        If True, overwrite existing exported data
     """
     if mask_types is None:
         mask_types = ['irr', 'inv_irr']
@@ -197,10 +235,12 @@ def extract_ndvi(cfg, select_fields, use_drive, satellite='landsat', mask_types=
     bucket = None if use_drive else cfg.ee_bucket
     drive_folder = cfg.resolved_config.get('earth_engine', {}).get('drive_folder', cfg.project_name)
 
+    # Check directory for existing exports
+    ndvi_base = os.path.join(SCRIPT_DIR, 'remote_sensing', 'landsat', 'extracts', 'ndvi')
+
     for mask in mask_types:
         print(f"\nExtracting {satellite} NDVI ({mask})...")
-        # Check local directory to skip already-extracted years (unless overwrite)
-        check_dir = None if overwrite else os.path.join(SCRIPT_DIR, 'remote_sensing', satellite, 'extracts', 'ndvi', mask)
+        check_dir = None if overwrite else os.path.join(ndvi_base, mask)
         sparse_sample_ndvi(
             cfg.fields_shapefile,
             bucket=bucket,
@@ -231,22 +271,23 @@ def extract_snodas(cfg, select_fields, use_drive, overwrite=False):
         Field IDs to extract, or None for all fields
     use_drive : bool
         If True, export to Google Drive; otherwise to GCS bucket
-    overwrite : bool, optional
-        If True, re-extract all data ignoring existing files. Default: False
+    overwrite : bool
+        If True, overwrite existing exported data
     """
     print("\nExtracting SNODAS SWE...")
     dest = 'drive' if use_drive else 'bucket'
     bucket = None if use_drive else cfg.ee_bucket
     drive_folder = cfg.resolved_config.get('earth_engine', {}).get('drive_folder', cfg.project_name)
 
-    # Check local directory to skip already-extracted months (unless overwrite)
+    # Check directory for existing exports
     check_dir = None if overwrite else os.path.join(SCRIPT_DIR, 'snow', 'snodas', 'extracts')
+
     sample_snodas_swe(
         cfg.fields_shapefile,
         bucket=bucket,
         debug=False,
         check_dir=check_dir,
-        overwrite=False,
+        overwrite=overwrite,
         feature_id=cfg.feature_id_col,
         select=select_fields,
         dest=dest,
@@ -256,8 +297,21 @@ def extract_snodas(cfg, select_fields, use_drive, overwrite=False):
     )
 
 
-def extract_properties(cfg, select_fields, use_drive):
-    """Extract irrigation, land cover, and soil properties."""
+def extract_properties(cfg, select_fields, use_drive, overwrite=False):
+    """Extract irrigation, land cover, and soil properties.
+
+    Parameters
+    ----------
+    cfg : ProjectConfig
+        Project configuration object
+    select_fields : list or None
+        Field IDs to extract, or None for all fields
+    use_drive : bool
+        If True, export to Google Drive; otherwise to GCS bucket
+    overwrite : bool
+        If True, overwrite existing exported data (currently unused for properties)
+    """
+    _ = overwrite  # Properties don't have check_dir, always re-export
     dest = 'drive' if use_drive else 'bucket'
     bucket = None if use_drive else cfg.ee_bucket
     drive_folder = cfg.resolved_config.get('earth_engine', {}).get('drive_folder', cfg.project_name)
@@ -307,14 +361,24 @@ def extract_properties(cfg, select_fields, use_drive):
 
 
 def extract_gridmet(cfg, select_fields, overwrite=False):
-    """Assign GridMET cells and download meteorology data."""
+    """Assign GridMET cells and download meteorology data.
+
+    Parameters
+    ----------
+    cfg : ProjectConfig
+        Project configuration object
+    select_fields : list or None
+        Field IDs to extract, or None for all fields
+    overwrite : bool
+        If True, overwrite existing meteorology data
+    """
     print("\nAssigning GridMET cells...")
     assign_gridmet_ids(
         fields=cfg.fields_shapefile,
         fields_join=cfg.gridmet_mapping_shp,
         gridmet_points=cfg.gridmet_centroids,
-        feature_id=cfg.feature_id_col,
         field_select=select_fields,
+        feature_id=cfg.feature_id_col,
     )
 
     print("\nExtracting bias correction factors...")
@@ -334,7 +398,7 @@ def extract_gridmet(cfg, select_fields, overwrite=False):
         end=cfg.end_dt.strftime('%Y-%m-%d'),
         target_fields=select_fields,
         overwrite=overwrite,
-        feature_id=cfg.feature_id_col,
+        feature_id=cfg.feature_id_col
     )
 
 
@@ -357,11 +421,14 @@ def print_summary(use_drive, cfg):
     print("=" * 60)
     print("""
 Expected output directories:
-  remote_sensing/landsat/extracts/ptjpl_etf/  - ETf CSVs (PT-JPL)
-  remote_sensing/landsat/extracts/ndvi/       - NDVI CSVs
-  snow/snodas/extracts/                       - SWE CSVs
-  properties/                                 - Irrigation, landcover, soils
-  met_timeseries/gridmet/                     - Meteorology parquet files
+  remote_sensing/landsat/extracts/ptjpl_etf/   - PT-JPL ETf CSVs
+  remote_sensing/landsat/extracts/sims_etf/    - SIMS ETf CSVs
+  remote_sensing/landsat/extracts/ssebop_etf/  - SSEBop ETf CSVs
+  remote_sensing/landsat/extracts/geesebal_etf/ - geeSEBAL ETf CSVs
+  remote_sensing/landsat/extracts/ndvi/        - NDVI CSVs
+  snow/snodas/extracts/                        - SWE CSVs
+  properties/                                  - Irrigation, landcover, soils
+  met/                                         - Meteorology parquet files
 
 Next steps:
 1. Monitor Earth Engine tasks: https://code.earthengine.google.com/tasks
@@ -382,17 +449,20 @@ def main():
         epilog=__doc__
     )
     parser.add_argument('--drive', action='store_true',
-                        help='Export NDVI/SNODAS/properties to Google Drive (ETf always uses bucket)')
+                        help='Export to Google Drive instead of GCS bucket')
     parser.add_argument('--all-fields', action='store_true',
-                        help='Extract all 161 flux sites (default: US-FPe only)')
+                        help='Extract all flux sites (default: S2 only)')
     parser.add_argument('--fields', nargs='+', default=None,
                         help='Specific field IDs to extract')
+    parser.add_argument('--models', nargs='+', default=None,
+                        choices=OPENET_MODELS,
+                        help=f'OpenET models to extract (default: all). Choices: {OPENET_MODELS}')
     parser.add_argument('--skip-ee', action='store_true',
                         help='Skip Earth Engine exports (GridMET only)')
     parser.add_argument('--sync-only', action='store_true',
                         help='Only sync from bucket, no new exports')
-    parser.add_argument('--overwrite', action='store_true', default=False,
-                        help='Re-extract all data, ignoring existing files (default: False)')
+    parser.add_argument('--overwrite', action='store_true',
+                        help='Overwrite existing exported data')
     parser.add_argument('--build-shp', action='store_true',
                         help='Only rebuild local shapefile from master and exit (writes provenance)')
     args = parser.parse_args()
@@ -432,12 +502,14 @@ def main():
         init_earth_engine()
         print(f"Bucket: {cfg.ee_bucket}")
         print(f"Destination: {'Google Drive' if args.drive else 'GCS bucket'}")
+        etf_models = args.models if args.models else OPENET_MODELS
+        print(f"ETf models: {etf_models}")
         # Remote sensing extractions (Earth Engine)
         print("\n" + "=" * 60)
         print("PART A: Remote Sensing Extraction (Earth Engine)")
         print("=" * 60)
 
-        extract_etf(cfg, select_fields, overwrite=args.overwrite)
+        extract_openet_etf(cfg, select_fields, args.drive, models=etf_models, overwrite=args.overwrite)
         extract_ndvi(cfg, select_fields, args.drive, overwrite=args.overwrite)
 
         # Properties and snow
@@ -446,7 +518,7 @@ def main():
         print("=" * 60)
 
         extract_snodas(cfg, select_fields, args.drive, overwrite=args.overwrite)
-        extract_properties(cfg, select_fields, args.drive)
+        extract_properties(cfg, select_fields, args.drive, overwrite=args.overwrite)
 
     # GridMET (local processing)
     print("\n" + "=" * 60)
