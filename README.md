@@ -76,8 +76,8 @@ Outputs:
 - `examples/2_Fort_Peck/US-FPe_scatter.png` — scatter plot with R² and RMSE
 
 <!--img-placeholder-->
-<img src="https://raw.githubusercontent.com/dgketchum/swim-rs/main/docs/images/US-FPe_scatter.png" alt="SWIM vs PT-JPL comparison" width="600">
-<!--img-placeholder-->
+<img src="https://raw.githubusercontent.com/dgketchum/swim-rs/reform-data-container/docs/images/US-FPe_scatter.png" alt="SWIM vs PT-JPL comparison" width="600">
+<!--/img-placeholder-->
 
 SWIM-RS uses remote sensing ET to calibrate a process-based model rather than drive it directly — the result is daily ET 
 estimates that outperform the satellite retrievals they were trained on. Here, SWIM-RS *calibrated on PT-JPL* achieves 

@@ -1,13 +1,14 @@
 {%
    include-markdown "../README.md"
+   start="# SWIM-RS"
    end="<!--img-placeholder-->"
 %}
 
-<img src="images/US-FPe_scatter.png" alt="SWIM vs PT-JPL comparison" width="600">
+![SWIM vs PT-JPL comparison](images/US-FPe_scatter.png)
 
 {%
    include-markdown "../README.md"
-   start="<!--img-placeholder-->"
+   start="<!--/img-placeholder-->"
    end="## Licensing"
 %}
 
