@@ -3,6 +3,7 @@
 Provides portable data packaging for PEST++ worker distribution.
 The SwimInput class can:
 - Build HDF5 from prepped_input.json
+- Build HDF5 directly from SwimContainer
 - Load from existing HDF5 (for workers)
 - Apply PEST++ multipliers from CSV files
 - Provide lazy access to time series data
@@ -14,7 +15,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import h5py
 import numpy as np
@@ -28,6 +29,7 @@ from swimrs.process.state import (
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+    from swimrs.container import SwimContainer
 
 __all__ = ["SwimInput", "build_swim_input"]
 
@@ -64,6 +66,25 @@ class SwimInput:
         Calibration parameters (base values)
     spinup_state : WaterBalanceState
         Initial state from spinup
+
+    Example
+    -------
+    Build from JSON and access data:
+
+        >>> from swimrs.process.input import build_swim_input, SwimInput
+        >>>
+        >>> # Build HDF5 from prepped_input.json
+        >>> build_swim_input(
+        ...     json_path="data/prepped_input.json",
+        ...     output_h5="input.h5",
+        ...     spinup_json_path="spinup.json",
+        ... )
+        >>>
+        >>> # Load and access data
+        >>> swim_input = SwimInput(h5_path="input.h5")
+        >>> print(f"Fields: {swim_input.n_fields}, Days: {swim_input.n_days}")
+        >>> ndvi = swim_input.get_time_series("ndvi", day_idx=0)
+        >>> swim_input.close()
     """
 
     h5_path: Path
@@ -418,7 +439,7 @@ class SwimInput:
 
 
 def build_swim_input(
-    json_path: Path | str,
+    container: "SwimContainer",
     output_h5: Path | str,
     spinup_state: dict[str, NDArray[np.float64]] | None = None,
     spinup_json_path: Path | str | None = None,
@@ -426,14 +447,16 @@ def build_swim_input(
     start_date: str | datetime | None = None,
     end_date: str | datetime | None = None,
     runoff_process: str = "cn",
-    refet_type: str = "eto",
+    etf_model: str = "ssebop",
+    met_source: str = "gridmet",
+    fields: list[str] | None = None,
 ) -> SwimInput:
-    """Build HDF5 input file from prepped_input.json.
+    """Build HDF5 input file from SwimContainer.
 
     Parameters
     ----------
-    json_path : Path | str
-        Path to prepped_input.json
+    container : SwimContainer
+        SwimContainer instance with ingested data
     output_h5 : Path | str
         Path for output HDF5 file
     spinup_state : dict, optional
@@ -446,42 +469,58 @@ def build_swim_input(
         Path to JSON file with calibrated parameters per field.
         Format: {fid: {param_name: value, ...}, ...}
     start_date : str | datetime, optional
-        Override start date (default: from time_series)
+        Override start date (default: from container)
     end_date : str | datetime, optional
-        Override end date (default: from time_series)
+        Override end date (default: from container)
     runoff_process : str
         Runoff mode: 'cn' (curve number) or 'ier' (infiltration excess)
-    refet_type : str
-        Reference ET: 'eto' (grass) or 'etr' (alfalfa)
+    etf_model : str
+        ET fraction model (e.g., 'ssebop', 'ptjpl')
+    met_source : str
+        Meteorology source (e.g., 'gridmet', 'era5')
+    fields : list[str], optional
+        List of field UIDs to include (default: all fields in container)
 
     Returns
     -------
     SwimInput
         Loaded SwimInput container
+
+    Example
+    -------
+        >>> from swimrs.container import SwimContainer
+        >>> from swimrs.process.input import build_swim_input
+        >>>
+        >>> container = SwimContainer.open("project.swim")
+        >>> swim_input = build_swim_input(
+        ...     container=container,
+        ...     output_h5="swim_input.h5",
+        ... )
+        >>> print(f"Fields: {swim_input.n_fields}, Days: {swim_input.n_days}")
     """
-    json_path = Path(json_path)
     output_h5 = Path(output_h5)
 
-    with open(json_path) as f:
-        data = json.load(f)
-
-    # Get field order and count
-    fids = data["order"]
+    # Determine fields to include
+    fids = fields if fields else container.field_uids
     n_fields = len(fids)
 
-    # Get date range from time_series
-    ts_dates = sorted(data["time_series"].keys())
+    # Get date range from container or overrides
     if start_date is None:
-        start_date = datetime.fromisoformat(ts_dates[0])
+        start_date = container.start_date.to_pydatetime()
     elif isinstance(start_date, str):
         start_date = datetime.fromisoformat(start_date)
 
     if end_date is None:
-        end_date = datetime.fromisoformat(ts_dates[-1])
+        end_date = container.end_date.to_pydatetime()
     elif isinstance(end_date, str):
         end_date = datetime.fromisoformat(end_date)
 
     n_days = (end_date - start_date).days + 1
+
+    # Extract data from container using its export infrastructure
+    container_data = _extract_from_container(
+        container, fids, start_date, end_date, etf_model, met_source
+    )
 
     # Create HDF5 file
     with h5py.File(output_h5, "w") as h5:
@@ -490,7 +529,7 @@ def build_swim_input(
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
             "runoff_process": runoff_process,
-            "refet_type": refet_type,
+            "refet_type": "eto",  # Container uses eto
         }
         h5.attrs["config"] = json.dumps(config)
 
@@ -506,17 +545,26 @@ def build_swim_input(
         if calibrated_params_path is not None:
             calibrated_params = _load_calibrated_params(calibrated_params_path, fids)
 
-        # Properties (with optional calibrated aw/mad overrides)
-        _write_properties(h5, data, fids, n_fields, calibrated_params)
+        # Write properties from container data
+        _write_properties_from_container(
+            h5, container_data, fids, n_fields, calibrated_params
+        )
 
-        # Parameters
-        _write_parameters(h5, data, fids, n_fields, calibrated_params)
+        # Write parameters
+        _write_parameters_from_container(h5, n_fields, calibrated_params)
 
-        # Time series
-        _write_time_series(h5, data, fids, n_fields, n_days, start_date, refet_type)
+        # Write time series from container data
+        _write_time_series_from_container(
+            h5, container_data, fids, n_fields, n_days, start_date
+        )
 
-        # Irrigation flags
-        _write_irrigation(h5, data, fids, n_fields, n_days, start_date)
+        # Write irrigation flags
+        _write_irrigation_from_container(
+            h5, container_data, fids, n_fields, n_days, start_date
+        )
+
+        # Write year-specific groundwater subsidy
+        _write_gwsub_from_container(h5, container_data, fids, n_fields)
 
         # Load spinup from JSON file if provided
         if spinup_json_path is not None:
@@ -529,164 +577,411 @@ def build_swim_input(
     return SwimInput(h5_path=output_h5)
 
 
-def _write_properties(
+# -----------------------------------------------------------------------------
+# Container extraction and writing helpers
+# -----------------------------------------------------------------------------
+
+
+def _extract_from_container(
+    container: "SwimContainer",
+    fids: list[str],
+    start_date: datetime,
+    end_date: datetime,
+    etf_model: str,
+    met_source: str,
+) -> dict[str, Any]:
+    """Extract all required data from SwimContainer.
+
+    Returns a dictionary with:
+    - props: dict[fid, dict] - field properties
+    - dynamics: dict - irr_data, gwsub_data, ke_max, kc_max
+    - time_series: xr.Dataset - meteorology, NDVI, SWE time series
+    """
+    # Use the container's export infrastructure to get data in the right format
+    exporter = container.export
+
+    # Get properties using exporter's method
+    props = exporter._get_properties_dict(fids)
+
+    # Get dynamics (irr_data, gwsub_data, ke_max, kc_max)
+    dynamics = exporter._get_dynamics_dict(fids)
+
+    # Build time series dataset
+    time_series = _get_container_time_series(
+        container, fids, start_date, end_date, etf_model, met_source
+    )
+
+    return {
+        "props": props,
+        "dynamics": dynamics,
+        "time_series": time_series,
+    }
+
+
+def _get_container_time_series(
+    container: "SwimContainer",
+    fids: list[str],
+    start_date: datetime,
+    end_date: datetime,
+    etf_model: str,
+    met_source: str,
+) -> "Any":
+    """Get time series data from container as xarray Dataset."""
+    import xarray as xr
+
+    paths = {}
+    root = container.state.root
+
+    # Meteorology variables
+    for var in ["eto", "prcp", "tmin", "tmax", "srad"]:
+        met_path = f"meteorology/{met_source}/{var}"
+        if met_path in root:
+            paths[var] = met_path
+
+    # Use eto_corr if available (bias-corrected)
+    eto_corr_path = f"meteorology/{met_source}/eto_corr"
+    if eto_corr_path in root:
+        paths["eto"] = eto_corr_path
+
+    # Snow/SWE
+    for source in ["snodas", "era5"]:
+        swe_path = f"snow/{source}/swe"
+        if swe_path in root:
+            paths["swe_obs"] = swe_path
+            break
+
+    # NDVI - prefer merged, try both masks
+    for mask in ["irr", "inv_irr"]:
+        merged_path = f"derived/merged_ndvi/{mask}"
+        raw_path = f"remote_sensing/ndvi/landsat/{mask}"
+        if merged_path in root:
+            paths[f"ndvi_{mask}"] = merged_path
+        elif raw_path in root:
+            paths[f"ndvi_{mask}"] = raw_path
+
+    if not paths:
+        return None
+
+    # Load dataset with date filtering
+    start_str = start_date.strftime("%Y-%m-%d")
+    end_str = end_date.strftime("%Y-%m-%d")
+
+    ds = container.state.get_dataset(
+        paths=paths,
+        fields=fids,
+        start_date=start_str,
+        end_date=end_str,
+    )
+
+    # Interpolate NDVI to fill gaps (matches legacy prep)
+    for var in ds.data_vars:
+        if "ndvi" in var:
+            # Convert to pandas, interpolate, convert back
+            df = ds[var].to_pandas()
+            df_interp = df.interpolate(limit=100, axis=0)
+            df_interp = df_interp.bfill(axis=0).ffill(axis=0)
+            ds[var] = ds[var].copy(data=df_interp.values)
+
+    return ds
+
+
+def _write_properties_from_container(
     h5: h5py.File,
-    data: dict,
+    container_data: dict[str, Any],
     fids: list[str],
     n_fields: int,
     calibrated_params: dict[str, NDArray[np.float64]] | None = None,
 ):
-    """Write static field properties to HDF5.
+    """Write properties from container data to HDF5."""
+    from swimrs.container.schema import get_rooting_depth
 
-    Parameters
-    ----------
-    calibrated_params : dict, optional
-        If provided, uses calibrated 'aw' for awc, 'mad' for p_depletion,
-        and 'f_sub' for groundwater subsidy fraction.
+    props_group = h5.create_group("properties")
+    props = container_data["props"]
+    dynamics = container_data["dynamics"]
 
-    Notes
-    -----
-    ke_max and f_sub are observation-derived properties (not tunable params):
-    - ke_max: 90th percentile of ETf where NDVI < 0.3 (bare soil evaporation cap)
-    - f_sub: derived from ETa/PPT ratio where f_sub = (ratio - 1) / ratio
-    """
-    props = h5.create_group("properties")
-
-    # Extract from JSON props
-    json_props = data["props"]
-
-    # awc: use calibrated 'aw' if provided, otherwise compute from soil awc
+    # AWC: calibrated or from container
     if calibrated_params is not None and "aw" in calibrated_params:
         awc = calibrated_params["aw"]
     else:
-        awc = np.array([json_props[fid].get("awc", 0.15) * 1000 for fid in fids])  # mm/m
+        awc = np.array([props.get(fid, {}).get("awc", 0.15) * 1000 for fid in fids])
 
-    ksat = np.array([json_props[fid].get("ksat", 10.0) for fid in fids])
+    # Ksat
+    ksat = np.array([props.get(fid, {}).get("ksat", 10.0) for fid in fids])
 
-    # Perennial status: derived from lulc_code (same logic as tracker.py)
-    # crops = [12, 14], all other codes 1-17 are perennial
+    # Perennial status from LULC code
     crops_codes = {12, 14}
-    def _get_perennial(fid):
-        lulc_code = json_props[fid].get("lulc_code", 0)
-        return lulc_code not in crops_codes and 1 <= lulc_code <= 17
-    perennial = np.array([_get_perennial(fid) for fid in fids])
-
-    # Apply zr_mult multiplier to root_depth if present
-    zr_max = np.array([
-        json_props[fid].get("root_depth", 1.0) * json_props[fid].get("zr_mult", 1.0)
+    perennial = np.array([
+        props.get(fid, {}).get("lulc_code", 0) not in crops_codes
+        and 1 <= props.get(fid, {}).get("lulc_code", 0) <= 17
         for fid in fids
     ])
-    # For perennials, zr_min = zr_max (roots don't shrink); for crops, zr_min = 0.1
+
+    # Root depth
+    zr_max = np.array([
+        props.get(fid, {}).get("root_depth", 1.0) * props.get(fid, {}).get("zr_mult", 1.0)
+        for fid in fids
+    ])
     zr_min = np.where(perennial, zr_max, 0.1)
 
-    # Default values for properties not in JSON
-    # Match legacy model defaults (tracker.py lines 99-100)
+    # Defaults
     rew = np.full(n_fields, 3.0)
     tew = np.full(n_fields, 18.0)
 
-    # Derive curve number (CN2) from clay content (same as tracker.py)
-    # Hydrologic group based on clay percentage:
-    #   Coarse (A, clay < 15%): CN2 = 67
-    #   Medium (B, 15-30%):     CN2 = 77
-    #   Fine (C/D, > 30%):      CN2 = 85
-    clay = np.array([json_props[fid].get("clay", 20.0) for fid in fids])
+    # CN2 from clay
+    clay = np.array([props.get(fid, {}).get("clay", 20.0) for fid in fids])
     cn2 = np.where(clay < 15.0, 67.0, np.where(clay > 30.0, 85.0, 77.0))
 
-    # p_depletion: use calibrated 'mad' if provided, otherwise default
+    # p_depletion
     if calibrated_params is not None and "mad" in calibrated_params:
         p_depletion = calibrated_params["mad"]
     else:
         p_depletion = np.full(n_fields, 0.5)
 
-    # Irrigation status from props - can be a dict {year: fraction} or a single value
-    def _get_irr_status(fid):
-        irr = json_props[fid].get("irr", 0)
-        if isinstance(irr, dict):
-            # If any year has irrigation fraction > 0, consider irrigated
-            return any(v > 0 for v in irr.values())
-        return irr > 0
-    irr_status = np.array([_get_irr_status(fid) for fid in fids])
+    # Irrigation status from dynamics
+    irr_data = dynamics.get("irr", {})
+    irr_status = np.array([
+        fid in irr_data and any(
+            isinstance(v, dict) and v.get("f_irr", 0) > 0
+            for k, v in irr_data.get(fid, {}).items()
+            if k != "fallow_years"
+        )
+        for fid in fids
+    ])
 
-    # Groundwater status from gwsub_data
-    gw_data = data.get("gwsub_data", {})
-    gw_status = np.array([fid in gw_data and bool(gw_data[fid]) for fid in fids])
+    # Groundwater status
+    gwsub_data = dynamics.get("gwsub", {})
+    gw_status = np.array([fid in gwsub_data and bool(gwsub_data[fid]) for fid in fids])
 
-    # ke_max: derived from observations (90th percentile ETf where NDVI < 0.3)
-    # This is a property, not a calibration parameter
-    json_ke_max = data.get("ke_max", {})
-    ke_max = np.array([json_ke_max.get(fid, 1.0) for fid in fids])
+    # ke_max from dynamics
+    ke_max_data = dynamics.get("ke_max", {})
+    ke_max = np.array([ke_max_data.get(fid, 1.0) for fid in fids])
 
-    # f_sub: derived from ETa/PPT ratio, use calibrated if provided
-    # f_sub = (ratio - 1) / ratio where ratio > 1
+    # f_sub
     if calibrated_params is not None and "f_sub" in calibrated_params:
         f_sub = calibrated_params["f_sub"]
     else:
-        # Default: derive from gwsub_data if available
-        # gwsub_data structure: {fid: {year: {"f_sub": float, ...}}} or {fid: bool}
-        gwsub = data.get("gwsub_data", {})
         f_sub_values = []
         for fid in fids:
-            fid_gw = gwsub.get(fid, {})
+            fid_gw = gwsub_data.get(fid, {})
             if isinstance(fid_gw, dict) and fid_gw:
-                # Average f_sub across years for this field
-                yearly_fsub = [yr_data.get("f_sub", 0.0) for yr_data in fid_gw.values()
-                               if isinstance(yr_data, dict)]
-                if yearly_fsub:
-                    f_sub_values.append(np.mean(yearly_fsub))
-                else:
-                    f_sub_values.append(0.0)
+                yearly_fsub = [
+                    yr_data.get("f_sub", 0.0)
+                    for yr_data in fid_gw.values()
+                    if isinstance(yr_data, dict)
+                ]
+                f_sub_values.append(np.mean(yearly_fsub) if yearly_fsub else 0.0)
             else:
                 f_sub_values.append(0.0)
         f_sub = np.array(f_sub_values)
 
-    props.create_dataset("awc", data=awc)
-    props.create_dataset("ksat", data=ksat)
-    props.create_dataset("rew", data=rew)
-    props.create_dataset("tew", data=tew)
-    props.create_dataset("cn2", data=cn2)
-    props.create_dataset("zr_max", data=zr_max)
-    props.create_dataset("zr_min", data=zr_min)
-    props.create_dataset("p_depletion", data=p_depletion)
-    props.create_dataset("irr_status", data=irr_status.astype(np.uint8))
-    props.create_dataset("perennial", data=perennial.astype(np.uint8))
-    props.create_dataset("gw_status", data=gw_status.astype(np.uint8))
-    props.create_dataset("ke_max", data=ke_max)
-    props.create_dataset("f_sub", data=f_sub)
-
-    # Write year-specific groundwater subsidy data
-    _write_gwsub_years(h5, data, fids, n_fields, calibrated_params)
+    # Write datasets
+    props_group.create_dataset("awc", data=awc)
+    props_group.create_dataset("ksat", data=ksat)
+    props_group.create_dataset("rew", data=rew)
+    props_group.create_dataset("tew", data=tew)
+    props_group.create_dataset("cn2", data=cn2)
+    props_group.create_dataset("zr_max", data=zr_max)
+    props_group.create_dataset("zr_min", data=zr_min)
+    props_group.create_dataset("p_depletion", data=p_depletion)
+    props_group.create_dataset("irr_status", data=irr_status.astype(np.uint8))
+    props_group.create_dataset("perennial", data=perennial.astype(np.uint8))
+    props_group.create_dataset("gw_status", data=gw_status.astype(np.uint8))
+    props_group.create_dataset("ke_max", data=ke_max)
+    props_group.create_dataset("f_sub", data=f_sub)
 
 
-def _write_gwsub_years(
+def _write_parameters_from_container(
     h5: h5py.File,
-    data: dict,
-    fids: list[str],
     n_fields: int,
     calibrated_params: dict[str, NDArray[np.float64]] | None = None,
 ):
-    """Write year-specific groundwater subsidy (f_sub) data to HDF5.
+    """Write calibration parameters to HDF5."""
+    params_group = h5.create_group("parameters")
 
-    Creates a /gwsub group with one dataset per year containing f_sub values.
-    This enables year-specific groundwater subsidy handling in the simulation.
+    # Default values
+    kc_max = np.full(n_fields, 1.0)
+    kc_min = np.full(n_fields, 0.15)
+    ndvi_k = np.full(n_fields, 7.0)
+    ndvi_0 = np.full(n_fields, 0.4)
+    swe_alpha = np.full(n_fields, 0.5)
+    swe_beta = np.full(n_fields, 2.0)
+    kr_damp = np.full(n_fields, 0.2)
+    ks_damp = np.full(n_fields, 0.2)
+    max_irr_rate = np.full(n_fields, 25.0)
 
-    Parameters
-    ----------
-    h5 : h5py.File
-        Open HDF5 file handle
-    data : dict
-        JSON input data containing gwsub_data
-    fids : list[str]
-        Field IDs in order
-    n_fields : int
-        Number of fields
-    calibrated_params : dict, optional
-        Calibrated parameters (not used here, for consistency)
-    """
-    gwsub_data = data.get("gwsub_data", {})
+    # Override with calibrated values
+    if calibrated_params is not None:
+        if "ndvi_k" in calibrated_params:
+            ndvi_k = calibrated_params["ndvi_k"]
+        if "ndvi_0" in calibrated_params:
+            ndvi_0 = calibrated_params["ndvi_0"]
+        if "swe_alpha" in calibrated_params:
+            swe_alpha = calibrated_params["swe_alpha"]
+        if "swe_beta" in calibrated_params:
+            swe_beta = calibrated_params["swe_beta"]
+        if "kr_damp" in calibrated_params:
+            kr_damp = calibrated_params["kr_damp"]
+        if "ks_damp" in calibrated_params:
+            ks_damp = calibrated_params["ks_damp"]
+
+    params_group.create_dataset("kc_max", data=kc_max)
+    params_group.create_dataset("kc_min", data=kc_min)
+    params_group.create_dataset("ndvi_k", data=ndvi_k)
+    params_group.create_dataset("ndvi_0", data=ndvi_0)
+    params_group.create_dataset("swe_alpha", data=swe_alpha)
+    params_group.create_dataset("swe_beta", data=swe_beta)
+    params_group.create_dataset("kr_damp", data=kr_damp)
+    params_group.create_dataset("ks_damp", data=ks_damp)
+    params_group.create_dataset("max_irr_rate", data=max_irr_rate)
+
+
+def _write_time_series_from_container(
+    h5: h5py.File,
+    container_data: dict[str, Any],
+    fids: list[str],
+    n_fields: int,
+    n_days: int,
+    start_date: datetime,
+):
+    """Write time series data from container to HDF5."""
+    ts_group = h5.create_group("time_series")
+    ds = container_data["time_series"]
+
+    if ds is None:
+        # Create empty arrays if no data
+        for var in ["ndvi", "prcp", "tmin", "tmax", "srad", "etr", "swe_obs"]:
+            ts_group.create_dataset(
+                var,
+                data=np.zeros((n_days, n_fields), dtype=np.float64),
+                compression="gzip",
+            )
+        return
+
+    # Map container variables to HDF5 names
+    var_map = {
+        "eto": "etr",  # Reference ET
+        "prcp": "prcp",
+        "tmin": "tmin",
+        "tmax": "tmax",
+        "srad": "srad",
+        "swe_obs": "swe_obs",
+    }
+
+    for src_name, dst_name in var_map.items():
+        if src_name in ds:
+            arr = ds[src_name].values
+            # Ensure correct shape (time, fields)
+            if arr.shape[0] == n_days and arr.shape[1] == len(fids):
+                ts_group.create_dataset(dst_name, data=arr, compression="gzip")
+            else:
+                # Pad or truncate if needed
+                padded = np.zeros((n_days, n_fields), dtype=np.float64)
+                copy_days = min(arr.shape[0], n_days)
+                copy_fields = min(arr.shape[1], n_fields)
+                padded[:copy_days, :copy_fields] = arr[:copy_days, :copy_fields]
+                ts_group.create_dataset(dst_name, data=padded, compression="gzip")
+        else:
+            ts_group.create_dataset(
+                dst_name,
+                data=np.zeros((n_days, n_fields), dtype=np.float64),
+                compression="gzip",
+            )
+
+    # NDVI - handle irr/inv_irr switching based on irrigation status
+    dynamics = container_data["dynamics"]
+    irr_data = dynamics.get("irr", {})
+
+    # Start with non-irrigated NDVI as base
+    if "ndvi_inv_irr" in ds:
+        ndvi_arr = ds["ndvi_inv_irr"].values.copy()
+    elif "ndvi_irr" in ds:
+        ndvi_arr = ds["ndvi_irr"].values.copy()
+    else:
+        ndvi_arr = np.zeros((n_days, n_fields), dtype=np.float64)
+
+    # Switch to irrigated NDVI for irrigated years
+    if "ndvi_irr" in ds:
+        ndvi_irr = ds["ndvi_irr"].values
+        time_index = pd.DatetimeIndex(ds.coords["time"].values)
+
+        for fid_idx, fid in enumerate(fids):
+            if fid not in irr_data:
+                continue
+
+            # Find irrigated years
+            irr_years = []
+            for k, v in irr_data[fid].items():
+                if k == "fallow_years":
+                    continue
+                try:
+                    if isinstance(v, dict) and v.get("f_irr", 0.0) >= 0.1:
+                        irr_years.append(int(k))
+                except (ValueError, TypeError):
+                    continue
+
+            if irr_years:
+                year_array = time_index.year
+                for yr in irr_years:
+                    yr_mask = year_array == yr
+                    ndvi_arr[yr_mask, fid_idx] = ndvi_irr[yr_mask, fid_idx]
+
+    ts_group.create_dataset("ndvi", data=ndvi_arr, compression="gzip")
+
+
+def _write_irrigation_from_container(
+    h5: h5py.File,
+    container_data: dict[str, Any],
+    fids: list[str],
+    n_fields: int,
+    n_days: int,
+    start_date: datetime,
+):
+    """Write irrigation flag array from container data to HDF5."""
+    irr_group = h5.create_group("irrigation")
+    irr_data = container_data["dynamics"].get("irr", {})
+
+    # Build daily irrigation flag array
+    irr_flag = np.zeros((n_days, n_fields), dtype=np.uint8)
+
+    for fid_idx, fid in enumerate(fids):
+        if fid not in irr_data:
+            continue
+
+        fid_irr = irr_data[fid]
+        for year_str, year_data in fid_irr.items():
+            if year_str == "fallow_years" or not isinstance(year_data, dict):
+                continue
+
+            irr_doys = year_data.get("irr_doys", [])
+            if not irr_doys:
+                continue
+
+            year = int(year_str)
+
+            for doy in irr_doys:
+                try:
+                    date = datetime(year, 1, 1) + pd.Timedelta(days=doy - 1)
+                    day_idx = (date - start_date).days
+                    if 0 <= day_idx < n_days:
+                        irr_flag[day_idx, fid_idx] = 1
+                except (ValueError, OverflowError):
+                    continue
+
+    irr_group.create_dataset("irr_flag", data=irr_flag, compression="gzip")
+
+
+def _write_gwsub_from_container(
+    h5: h5py.File,
+    container_data: dict[str, Any],
+    fids: list[str],
+    n_fields: int,
+):
+    """Write year-specific groundwater subsidy data from container."""
+    gwsub_data = container_data["dynamics"].get("gwsub", {})
     if not gwsub_data:
         return
 
-    # Collect all years from gwsub_data
+    # Collect all years
     all_years = set()
     for fid in fids:
         fid_gw = gwsub_data.get(fid, {})
@@ -716,234 +1011,9 @@ def _write_gwsub_years(
         gwsub_group.create_dataset(year_str, data=f_sub_year)
 
 
-def _write_parameters(
-    h5: h5py.File,
-    data: dict,
-    fids: list[str],
-    n_fields: int,
-    calibrated_params: dict[str, NDArray[np.float64]] | None = None,
-):
-    """Write calibration parameters to HDF5.
-
-    Parameters
-    ----------
-    calibrated_params : dict, optional
-        Dictionary with parameter arrays from calibration file.
-        Keys: 'aw', 'ndvi_k', 'ndvi_0', 'ks_damp', 'kr_damp', 'mad',
-              'swe_alpha', 'swe_beta'
-    """
-    params_group = h5.create_group("parameters")
-
-    # kc_max for model is typically 1.0-1.25, not the observational max ETf in JSON
-    kc_max = np.full(n_fields, 1.0)
-    kc_min = np.full(n_fields, 0.15)
-
-    # Default calibration parameter values
-    ndvi_k = np.full(n_fields, 7.0)
-    ndvi_0 = np.full(n_fields, 0.4)
-    swe_alpha = np.full(n_fields, 0.5)
-    swe_beta = np.full(n_fields, 2.0)
-    kr_damp = np.full(n_fields, 0.2)
-    ks_damp = np.full(n_fields, 0.2)
-    max_irr_rate = np.full(n_fields, 25.0)
-
-    # Override with calibrated values if provided
-    if calibrated_params is not None:
-        if "ndvi_k" in calibrated_params:
-            ndvi_k = calibrated_params["ndvi_k"]
-        if "ndvi_0" in calibrated_params:
-            ndvi_0 = calibrated_params["ndvi_0"]
-        if "swe_alpha" in calibrated_params:
-            swe_alpha = calibrated_params["swe_alpha"]
-        if "swe_beta" in calibrated_params:
-            swe_beta = calibrated_params["swe_beta"]
-        if "kr_damp" in calibrated_params:
-            kr_damp = calibrated_params["kr_damp"]
-        if "ks_damp" in calibrated_params:
-            ks_damp = calibrated_params["ks_damp"]
-
-    params_group.create_dataset("kc_max", data=kc_max)
-    params_group.create_dataset("kc_min", data=kc_min)
-    params_group.create_dataset("ndvi_k", data=ndvi_k)
-    params_group.create_dataset("ndvi_0", data=ndvi_0)
-    params_group.create_dataset("swe_alpha", data=swe_alpha)
-    params_group.create_dataset("swe_beta", data=swe_beta)
-    params_group.create_dataset("kr_damp", data=kr_damp)
-    params_group.create_dataset("ks_damp", data=ks_damp)
-    params_group.create_dataset("max_irr_rate", data=max_irr_rate)
-
-
-def _write_time_series(
-    h5: h5py.File,
-    data: dict,
-    fids: list[str],
-    n_fields: int,
-    n_days: int,
-    start_date: datetime,
-    refet_type: str,
-):
-    """Write time series data to HDF5."""
-    ts_group = h5.create_group("time_series")
-    ts_data = data["time_series"]
-    json_props = data["props"]
-
-    # Build year-specific irrigation status for NDVI selection
-    # Returns dict: {year: np.array of bool for each field}
-    def _build_year_irr_status():
-        result = {}
-        # Determine years from start/end date
-        years = list(range(start_date.year, start_date.year + (n_days // 365) + 2))
-        for year in years:
-            year_status = []
-            for fid in fids:
-                irr = json_props[fid].get("irr", 0)
-                if isinstance(irr, dict):
-                    # Get irrigation fraction for this specific year
-                    frac = irr.get(str(year), 0)
-                    year_status.append(frac > 0)
-                else:
-                    year_status.append(irr > 0)
-            result[year] = np.array(year_status)
-        return result
-
-    year_irr_status = _build_year_irr_status()
-
-    # Variables to extract (simple ones without irr/non-irr variants)
-    variables = {
-        "prcp": "prcp",
-        "tmin": "tmin",
-        "tmax": "tmax",
-        "srad": "srad",
-        "swe_obs": "swe",  # Observed SWE (e.g., SNODAS)
-    }
-
-    # Add reference ET based on type
-    if refet_type == "eto":
-        variables["etr"] = "eto"  # Use grass reference
-    else:
-        variables["etr"] = "etr"  # Use alfalfa reference
-
-    for out_name, json_name in variables.items():
-        arr = np.zeros((n_days, n_fields), dtype=np.float64)
-
-        for day_idx in range(n_days):
-            date = start_date + pd.Timedelta(days=day_idx)
-            date_str = date.strftime("%Y-%m-%d")
-
-            if date_str in ts_data and json_name in ts_data[date_str]:
-                values = ts_data[date_str][json_name]
-                if len(values) >= n_fields:
-                    arr[day_idx, :] = values[:n_fields]
-                else:
-                    arr[day_idx, : len(values)] = values
-
-        ts_group.create_dataset(out_name, data=arr, compression="gzip")
-
-    # Handle NDVI - check for single 'ndvi' field or separate irr/inv_irr fields
-    ndvi_arr = np.zeros((n_days, n_fields), dtype=np.float64)
-
-    # Check which NDVI format is used (sample first few dates)
-    sample_dates = [d for d in sorted(ts_data.keys())[:10]]
-    has_single_ndvi = any("ndvi" in ts_data.get(d, {}) for d in sample_dates)
-    has_split_ndvi = any("ndvi_irr" in ts_data.get(d, {}) for d in sample_dates)
-
-    for day_idx in range(n_days):
-        date = start_date + pd.Timedelta(days=day_idx)
-        date_str = date.strftime("%Y-%m-%d")
-
-        if date_str in ts_data:
-            day_data = ts_data[date_str]
-
-            if has_single_ndvi and "ndvi" in day_data:
-                # Single ndvi field (e.g., S2 fixture format)
-                ndvi_vals = day_data["ndvi"]
-                if len(ndvi_vals) >= n_fields:
-                    ndvi_arr[day_idx, :] = ndvi_vals[:n_fields]
-                else:
-                    ndvi_arr[day_idx, : len(ndvi_vals)] = ndvi_vals
-            elif has_split_ndvi:
-                # Separate ndvi_irr / ndvi_inv_irr fields (Fort Peck format)
-                ndvi_irr = day_data.get("ndvi_irr", [np.nan] * n_fields)
-                ndvi_inv = day_data.get("ndvi_inv_irr", [np.nan] * n_fields)
-
-                # Get year-specific irrigation status
-                year = date.year
-                irr_status_year = year_irr_status.get(year, np.zeros(n_fields, dtype=bool))
-
-                for fid_idx in range(n_fields):
-                    if irr_status_year[fid_idx]:
-                        # Irrigated field this year - use ndvi_irr
-                        if fid_idx < len(ndvi_irr):
-                            ndvi_arr[day_idx, fid_idx] = ndvi_irr[fid_idx]
-                    else:
-                        # Non-irrigated field this year - use ndvi_inv_irr
-                        if fid_idx < len(ndvi_inv):
-                            ndvi_arr[day_idx, fid_idx] = ndvi_inv[fid_idx]
-
-    ts_group.create_dataset("ndvi", data=ndvi_arr, compression="gzip")
-
-    # Add hourly precip for IER mode
-    if any("prcp_hr_00" in ts_data.get(d, {}) for d in list(ts_data.keys())[:10]):
-        prcp_hr = np.zeros((n_days, n_fields, 24), dtype=np.float64)
-
-        for day_idx in range(n_days):
-            date = start_date + pd.Timedelta(days=day_idx)
-            date_str = date.strftime("%Y-%m-%d")
-
-            if date_str in ts_data:
-                for hr in range(24):
-                    hr_key = f"prcp_hr_{hr:02d}"
-                    if hr_key in ts_data[date_str]:
-                        values = ts_data[date_str][hr_key]
-                        if len(values) >= n_fields:
-                            prcp_hr[day_idx, :, hr] = values[:n_fields]
-                        else:
-                            prcp_hr[day_idx, : len(values), hr] = values
-
-        ts_group.create_dataset("prcp_hr", data=prcp_hr, compression="gzip")
-
-
-def _write_irrigation(
-    h5: h5py.File,
-    data: dict,
-    fids: list[str],
-    n_fields: int,
-    n_days: int,
-    start_date: datetime,
-):
-    """Write irrigation flag array to HDF5."""
-    irr_group = h5.create_group("irrigation")
-    irr_data = data.get("irr_data", {})
-
-    # Build daily irrigation flag array
-    irr_flag = np.zeros((n_days, n_fields), dtype=np.uint8)
-
-    for fid_idx, fid in enumerate(fids):
-        if fid not in irr_data:
-            continue
-
-        fid_irr = irr_data[fid]
-        for year_str, year_data in fid_irr.items():
-            if not isinstance(year_data, dict):
-                continue
-
-            irr_doys = year_data.get("irr_doys", [])
-            if not irr_doys:
-                continue
-
-            year = int(year_str)
-
-            for doy in irr_doys:
-                # Convert DOY to date
-                try:
-                    date = datetime(year, 1, 1) + pd.Timedelta(days=doy - 1)
-                    day_idx = (date - start_date).days
-                    if 0 <= day_idx < n_days:
-                        irr_flag[day_idx, fid_idx] = 1
-                except (ValueError, OverflowError):
-                    continue
-
-    irr_group.create_dataset("irr_flag", data=irr_flag, compression="gzip")
+# -----------------------------------------------------------------------------
+# Shared helpers
+# -----------------------------------------------------------------------------
 
 
 def _load_spinup_json(

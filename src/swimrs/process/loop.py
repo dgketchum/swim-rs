@@ -145,7 +145,8 @@ class DailyOutput:
 
 def run_daily_loop(
     swim_input: SwimInput,
-    params: CalibrationParameters | None = None,
+    parameters: CalibrationParameters | None = None,
+    properties: FieldProperties | None = None,
 ) -> tuple[DailyOutput, WaterBalanceState]:
     """Run the daily water balance simulation loop.
 
@@ -153,8 +154,11 @@ def run_daily_loop(
     ----------
     swim_input : SwimInput
         Input data container (HDF5-backed)
-    params : CalibrationParameters, optional
+    parameters : CalibrationParameters, optional
         Calibration parameters. If not provided, uses swim_input.parameters.
+    properties : FieldProperties, optional
+        Field properties. If not provided, uses swim_input.properties.
+        Pass custom properties to use PEST++ calibrated values (awc, mad).
 
     Returns
     -------
@@ -163,12 +167,11 @@ def run_daily_loop(
     final_state : WaterBalanceState
         Final state after simulation
     """
-    if params is None:
-        params = swim_input.parameters
+    params = parameters if parameters is not None else swim_input.parameters
+    props = properties if properties is not None else swim_input.properties
 
     n_days = swim_input.n_days
     n_fields = swim_input.n_fields
-    props = swim_input.properties
     runoff_process = getattr(swim_input, "runoff_process", None) or "cn"
 
     # Check if hourly precip is available for IER mode

@@ -9,8 +9,7 @@ from pyemu import Pst, Matrix, ObservationEnsemble
 from pyemu.utils import PstFrom
 from pyemu.utils.os_utils import run_ossystem, run_sp
 
-from swimrs.model import obs_field_cycle
-from swimrs.swim.sampleplots import SamplePlots
+from swimrs.process.input import build_swim_input
 
 
 class PestBuilder:
@@ -49,7 +48,7 @@ class PestBuilder:
     def __init__(
         self,
         config,
-        container=None,
+        container,
         use_existing: bool = False,
         python_script: str | None = None,
         prior_constraint: dict | None = None,
@@ -60,8 +59,7 @@ class PestBuilder:
         Args:
             config: ProjectConfig instance
             container: SwimContainer instance or path to .swim directory.
-                       If provided, ETf and SWE data will be queried from
-                       the container instead of parquet files.
+                       Required - all data is sourced from the container.
             use_existing: If True, use existing PEST++ setup
             python_script: Path to custom forward run script
             prior_constraint: Prior constraint settings
@@ -71,23 +69,17 @@ class PestBuilder:
         self.project_ws = config.project_ws
         self.pest_run_dir = config.pest_run_dir
 
-        # Initialize container if provided
+        # Initialize container (required)
         self._container = None
         self._container_path = None
         self._owns_container = False
-
-        if container is not None:
-            self._init_container(container)
+        self._init_container(container)
 
         if not os.path.isdir(self.pest_run_dir):
             os.mkdir(self.pest_run_dir)
 
-        self.plots = SamplePlots()
-        self.plots.initialize_plot_data(self.config)
-        self.irr = self.plots.input['irr_data']
-        self.plot_order = self.plots.input['order']
-        self.plot_properties = self.plots.input['props']
-        self.plot_time_series = self.plots.input['time_series']
+        # Extract data from container (replaces SamplePlots)
+        self._load_data_from_container()
 
         self.observation_index = {}
 
@@ -137,6 +129,37 @@ class PestBuilder:
         else:
             self._container = container
             self._owns_container = False
+
+    def _load_data_from_container(self) -> None:
+        """Load all data from container (replaces SamplePlots).
+
+        Populates:
+        - self.plot_order: field UIDs
+        - self.plot_properties: field properties dict
+        - self.irr: irrigation data dict
+        - self.ke_max: bare soil evaporation coefficient dict
+        - self.kc_max: max crop coefficient dict
+        - self.date_range: (start_date, end_date) tuple
+        """
+        if self._container is None:
+            raise ValueError("Container not initialized")
+
+        # Field order
+        self.plot_order = self._container.field_uids
+
+        # Get properties and dynamics from container's export infrastructure
+        exporter = self._container.export
+        self.plot_properties = exporter._get_properties_dict(self.plot_order)
+
+        # Get dynamics (irr_data, gwsub_data, ke_max, kc_max)
+        dynamics = exporter._get_dynamics_dict(self.plot_order)
+        self.irr = dynamics.get("irr", {})
+        self.ke_max = dynamics.get("ke_max", {})
+        self.kc_max = dynamics.get("kc_max", {})
+        self.gwsub_data = dynamics.get("gwsub", {})
+
+        # Date range from container
+        self.date_range = (self._container.start_date, self._container.end_date)
 
     def _get_etf_data(self, fid: str, model: str = 'ssebop') -> pd.DataFrame:
         """
@@ -193,8 +216,8 @@ class PestBuilder:
 
         # Some projects (international) may not have SSURGO; allow missing AWC
         aw = [self.plot_properties.get(t, {}).get('awc', np.nan) for t in targets]
-        ke_max = [self.plots.input['ke_max'][t] for t in targets]
-        kc_max = [self.plots.input['kc_max'][t] for t in targets]
+        ke_max = [self.ke_max.get(t, 1.0) for t in targets]
+        kc_max = [self.kc_max.get(t, 1.0) for t in targets]
 
         input_csv = [os.path.join(self.config.plot_timeseries, '{}.parquet'.format(fid)) for fid in targets]
 
@@ -297,6 +320,9 @@ class PestBuilder:
         Creates the .pst control file, observation files, parameter templates,
         and forward run script in the pest directory.
 
+        Uses the process package with portable swim_input.h5 file. Workers are
+        fully self-contained and can run without shared storage.
+
         Args:
             target_etf: ET model to use as calibration target ('ssebop', 'ptjpl', etc.).
             members: Optional list of ensemble member models for uncertainty weighting.
@@ -327,8 +353,8 @@ class PestBuilder:
 
         self.pest.build_pst(filename=self.pst_file, version=2)
 
-        # Generate custom_forward_run.py with embedded absolute paths
-        # This avoids having to copy/modify config files
+        # Build portable input file and generate forward run script
+        self._build_swim_input()
         self._write_forward_run_script()
 
         self._finalize_obs()
@@ -336,42 +362,81 @@ class PestBuilder:
         print('Configured PEST++ for {} targets, '.format(len(self.pest_args['targets'])))
 
     def _write_forward_run_script(self) -> None:
-        """Generate custom_forward_run.py with embedded absolute paths.
+        """Generate custom_forward_run.py with portable relative paths.
 
-        This approach embeds all necessary paths directly in the script,
-        avoiding the need to copy or modify config files.
+        Uses the process package with swim_input.h5 for fully portable workers.
+        All paths are relative to the worker directory - no shared storage needed.
         """
         script_path = os.path.join(self.pest_dir, 'custom_forward_run.py')
 
-        # Get absolute paths to embed
-        config_path = os.path.abspath(self.config.config_path)
-        input_data = os.path.abspath(self.config.input_data) if self.config.input_data else None
-        calibration_dir = os.path.abspath(os.path.join(self.pest_dir, 'mult'))
+        script_content = '''"""Auto-generated forward run script for PEST++ calibration.
 
-        script_content = f'''"""Auto-generated forward run script for PEST++ calibration."""
+Uses the swimrs.process package with portable swim_input.h5 file.
+All paths are relative - workers are fully self-contained.
+"""
 import os
+import time
 import warnings
 
-warnings.filterwarnings("ignore", category=FutureWarning)
+import numpy as np
 
-# Embedded absolute paths (generated by PestBuilder)
-CONFIG_PATH = r"{config_path}"
-INPUT_DATA = r"{input_data}"
-CALIBRATION_DIR = r"{calibration_dir}"
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 def run():
     """Forward runner for PEST++ workers."""
-    from swimrs.calibrate.run_mp import optimize_fields
+    start_time = time.time()
+
+    from swimrs.process.input import SwimInput
+    from swimrs.process.loop import run_daily_loop
+    from swimrs.process.state import (
+        CalibrationParameters,
+        load_pest_mult_properties,
+    )
 
     cwd = os.getcwd()
-    # Use embedded paths, but calibration_dir is relative to current working directory
-    local_calibration_dir = os.path.join(cwd, 'mult')
 
-    optimize_fields(CONFIG_PATH, INPUT_DATA, cwd, local_calibration_dir)
+    # All paths relative to worker directory
+    h5_path = os.path.join(cwd, "swim_input.h5")
+    mult_dir = os.path.join(cwd, "mult")
+    pred_dir = os.path.join(cwd, "pred")
+
+    os.makedirs(pred_dir, exist_ok=True)
+
+    # Load portable input data
+    swim_input = SwimInput(h5_path=h5_path)
+
+    # Update parameters and properties from PEST++ multiplier files
+    params = CalibrationParameters.from_pest_mult(
+        mult_dir=mult_dir,
+        fids=swim_input.fids,
+        base=swim_input.parameters,
+    )
+    props = load_pest_mult_properties(
+        mult_dir=mult_dir,
+        fids=swim_input.fids,
+        base_props=swim_input.properties,
+    )
+
+    # Run the model
+    output, _ = run_daily_loop(
+        swim_input=swim_input,
+        properties=props,
+        parameters=params,
+    )
+
+    # Write predictions (ETf and SWE)
+    for i, fid in enumerate(swim_input.fids):
+        etf_path = os.path.join(pred_dir, f"pred_etf_{fid}.np")
+        swe_path = os.path.join(pred_dir, f"pred_swe_{fid}.np")
+        np.savetxt(etf_path, output.etf[:, i])
+        np.savetxt(swe_path, output.swe[:, i])
+
+    elapsed = time.time() - start_time
+    print(f"Execution time: {elapsed:.2f} seconds")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run()
 '''
 
@@ -413,7 +478,8 @@ if __name__ == '__main__':
 
         track = {k: [] for k in sites}
 
-        dt = [pd.to_datetime(k) for k, v in self.plot_time_series.items()]
+        # Date range from container
+        dt = list(pd.date_range(self._container.start_date, self._container.end_date, freq='D'))
         years = list(range(self.config.start_dt.year, self.config.end_dt.year + 1))
 
         for s in sites:
@@ -545,6 +611,8 @@ if __name__ == '__main__':
         Args:
             overwrite: If True, regenerate spinup even if file exists.
         """
+        from swimrs.process.loop import run_daily_loop
+
         if not os.path.exists(self.config.spinup) or overwrite:
             print('RUNNING SPINUP')
 
@@ -554,13 +622,89 @@ if __name__ == '__main__':
                 except FileNotFoundError:
                     pass
 
-            output = obs_field_cycle.field_day_loop(self.config, self.plots, debug_flag=True)
-            spn_dct = {k: v.iloc[-1].to_dict() for k, v in output.items()}
+            # Build temporary HDF5 for spinup (no existing spinup state)
+            spinup_h5 = os.path.join(self.pest_dir, 'spinup_temp.h5')
+            swim_input = build_swim_input(
+                container=self._container,
+                output_h5=spinup_h5,
+                start_date=self.config.start_dt,
+                end_date=self.config.end_dt,
+                runoff_process=getattr(self.config, 'runoff_process', 'cn'),
+            )
+
+            # Run simulation to generate spinup state
+            output, final_state = run_daily_loop(swim_input)
+            swim_input.close()
+
+            # Save final state as spinup JSON
+            spn_dct = {}
+            for i, fid in enumerate(swim_input.fids):
+                spn_dct[fid] = {
+                    'depl_root': float(final_state.depl_root[i]),
+                    'swe': float(final_state.swe[i]),
+                    'kr': float(final_state.kr[i]),
+                    'ks': float(final_state.ks[i]),
+                    'zr': float(final_state.zr[i]),
+                }
+                # Add optional state if available
+                if final_state.depl_ze is not None:
+                    spn_dct[fid]['depl_ze'] = float(final_state.depl_ze[i])
+                if final_state.s is not None:
+                    spn_dct[fid]['s'] = float(final_state.s[i])
+                    spn_dct[fid]['s1'] = float(final_state.s1[i])
+                    spn_dct[fid]['s2'] = float(final_state.s2[i])
+                    spn_dct[fid]['s3'] = float(final_state.s3[i])
+                    spn_dct[fid]['s4'] = float(final_state.s4[i])
+
             with open(self.config.spinup, 'w') as f:
-                json.dump(spn_dct, f)
+                json.dump(spn_dct, f, indent=2)
+
+            # Clean up temp file
+            os.remove(spinup_h5)
+            print(f'Spinup saved to {self.config.spinup}')
 
         else:
             print('SPINUP exists, skipping')
+
+    def _build_swim_input(self, overwrite: bool = False) -> str:
+        """Build portable swim_input.h5 file for workers.
+
+        Creates a self-contained HDF5 file with all input data needed
+        for model execution. This file is copied to each PEST++ worker,
+        enabling fully isolated execution without shared storage.
+
+        Args:
+            overwrite: If True, regenerate even if file exists.
+
+        Returns:
+            str: Path to the created swim_input.h5 file.
+        """
+        h5_path = os.path.join(self.pest_dir, 'swim_input.h5')
+
+        if os.path.exists(h5_path) and not overwrite:
+            print(f'swim_input.h5 exists at {h5_path}, skipping')
+            return h5_path
+
+        print('Building portable swim_input.h5...')
+
+        # Get spinup path if available
+        spinup_path = None
+        if hasattr(self.config, 'spinup') and self.config.spinup:
+            if os.path.exists(self.config.spinup):
+                spinup_path = self.config.spinup
+
+        # Build the HDF5 file from container
+        build_swim_input(
+            container=self._container,
+            output_h5=h5_path,
+            spinup_json_path=spinup_path,
+            start_date=self.config.start_dt,
+            end_date=self.config.end_dt,
+            runoff_process=getattr(self.config, 'runoff_process', 'cn'),
+        )
+
+        print(f'Created swim_input.h5 at {h5_path}')
+        return h5_path
 
     def _write_params(self) -> None:
         _file = None
@@ -650,7 +794,7 @@ if __name__ == '__main__':
 
             if members is not None:
                 etf_std = pd.DataFrame()
-                irr = self.plots.input['irr_data'][fid]
+                irr = self.irr.get(fid, {})
                 irr_threshold = 0.3
                 irr_years = [int(k) for k, v in irr.items() if k != 'fallow_years'
                              and v['f_irr'] >= irr_threshold]
