@@ -230,18 +230,7 @@ See the `examples/` subdirectories for example TOMLs and end-to-end runs.
 
 ## Licensing
 
-This software is offered under a dual-license model designed to support both non-commercial research/personal use and commercial applications.
-
-1) Non-Commercial Use — Licensed under the Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0).
-
-You are free to share/adapt under:
-- Attribution — credit, link to license, indicate changes.
-- NonCommercial — no commercial use.
-- ShareAlike — distribute contributions under the same license.
-
-A copy of the CC BY-NC 4.0 license text is included in `LICENSE_CC-BY-NC-4.0.txt` and online at https://creativecommons.org/licenses/by-nc/4.0/.
-
-Commercial use requires a separate commercial license agreement. Contact: David Ketchum — dgketchum@gmail.com.
+This software is free and open source under the Apache 2.0 license.
 
 ## Dependencies
 
