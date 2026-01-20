@@ -52,16 +52,13 @@ pip install -e .
 # Build container from shipped data
 swim prep examples/2_Fort_Peck/2_Fort_Peck.toml --overwrite
 
+# To run calibration (requires PEST++, ~ min):
+swim calibrate examples/2_Fort_Peck/2_Fort_Peck.toml --workers 6 --realizations 20
+
 # Run model and write output CSV
 swim evaluate examples/2_Fort_Peck/2_Fort_Peck.toml
 
 # Visualize vs flux tower (saves plots to examples/2_Fort_Peck/)
-python examples/2_Fort_Peck/viz.py --results examples/2_Fort_Peck --site US-FPe --save examples/2_Fort_Peck
-
-# To run calibration (requires PEST++, ~ min):
-swim calibrate examples/2_Fort_Peck/2_Fort_Peck.toml --workers 6 --realizations 20
-
-# Visualize the SWIM-RS against the normal PT-JPL remote sensing ET model
 python examples/2_Fort_Peck/viz.py --results examples/2_Fort_Peck --site US-FPe --save examples/2_Fort_Peck
 ```
 
