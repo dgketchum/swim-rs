@@ -65,6 +65,12 @@ class WaterBalanceState:
     s1, s2, s3, s4 : NDArray[np.float64]
         S history from 1-4 days ago (mm), used for smoothed runoff
         on irrigated fields
+    irr_frac_root : NDArray[np.float64]
+        Fraction of root zone water that originated from irrigation [0, 1].
+        Used for consumptive use accounting.
+    irr_frac_l3 : NDArray[np.float64]
+        Fraction of layer 3 water that originated from irrigation [0, 1].
+        Used for deep percolation accounting.
     """
 
     n_fields: int
@@ -85,6 +91,9 @@ class WaterBalanceState:
     s2: NDArray[np.float64] = field(default=None)     # 2 days ago
     s3: NDArray[np.float64] = field(default=None)     # 3 days ago
     s4: NDArray[np.float64] = field(default=None)     # 4 days ago
+    # Irrigation fraction tracking for consumptive use accounting
+    irr_frac_root: NDArray[np.float64] = field(default=None)  # Root zone [0, 1]
+    irr_frac_l3: NDArray[np.float64] = field(default=None)  # Layer 3 [0, 1]
 
     def __post_init__(self):
         """Initialize arrays with zeros if not provided."""
@@ -123,6 +132,12 @@ class WaterBalanceState:
             self.s3 = np.full(n, default_s, dtype=np.float64)
         if self.s4 is None:
             self.s4 = np.full(n, default_s, dtype=np.float64)
+        # Irrigation fraction tracking: default to 0.0 (no irrigation water)
+        # Proper initialization based on irr_status is done in from_spinup()
+        if self.irr_frac_root is None:
+            self.irr_frac_root = np.zeros(n, dtype=np.float64)
+        if self.irr_frac_l3 is None:
+            self.irr_frac_l3 = np.zeros(n, dtype=np.float64)
 
     @classmethod
     def from_spinup(
@@ -142,6 +157,9 @@ class WaterBalanceState:
         s2: NDArray[np.float64] | None = None,
         s3: NDArray[np.float64] | None = None,
         s4: NDArray[np.float64] | None = None,
+        irr_frac_root: NDArray[np.float64] | None = None,
+        irr_frac_l3: NDArray[np.float64] | None = None,
+        irr_status: NDArray[np.bool_] | None = None,
     ) -> WaterBalanceState:
         """Create state from spinup values.
 
@@ -171,6 +189,15 @@ class WaterBalanceState:
             Current S retention (mm)
         s1, s2, s3, s4 : NDArray[np.float64], optional
             S history from 1-4 days ago (mm)
+        irr_frac_root : NDArray[np.float64], optional
+            Irrigation fraction in root zone [0, 1]. If not provided,
+            initialized based on irr_status (0.5 if irrigated, 0.0 if not).
+        irr_frac_l3 : NDArray[np.float64], optional
+            Irrigation fraction in layer 3 [0, 1]. If not provided,
+            initialized based on irr_status (0.5 if irrigated, 0.0 if not).
+        irr_status : NDArray[np.bool_], optional
+            Whether each field is irrigated. Used to initialize irrigation
+            fractions when they are not provided in spinup data.
 
         Returns
         -------
@@ -203,6 +230,18 @@ class WaterBalanceState:
         if s4 is not None:
             state.s4 = s4.copy()
 
+        # Irrigation fraction tracking
+        if irr_frac_root is not None:
+            state.irr_frac_root = irr_frac_root.copy()
+        elif irr_status is not None:
+            # Initialize based on irrigation status: 0.5 for irrigated, 0.0 for non-irrigated
+            state.irr_frac_root = np.where(irr_status, 0.5, 0.0).astype(np.float64)
+
+        if irr_frac_l3 is not None:
+            state.irr_frac_l3 = irr_frac_l3.copy()
+        elif irr_status is not None:
+            state.irr_frac_l3 = np.where(irr_status, 0.5, 0.0).astype(np.float64)
+
         return state
 
     def copy(self) -> WaterBalanceState:
@@ -225,6 +264,8 @@ class WaterBalanceState:
             s2=self.s2.copy(),
             s3=self.s3.copy(),
             s4=self.s4.copy(),
+            irr_frac_root=self.irr_frac_root.copy(),
+            irr_frac_l3=self.irr_frac_l3.copy(),
         )
 
 
@@ -244,7 +285,10 @@ class FieldProperties:
     awc : NDArray[np.float64]
         Available water capacity (mm/m)
     ksat : NDArray[np.float64]
-        Saturated hydraulic conductivity (mm/hr)
+        Saturated hydraulic conductivity (mm/day).
+
+        This is converted to an hourly infiltration capacity (mm/hr) when
+        running infiltration-excess runoff (IER) using hourly precipitation.
     rew : NDArray[np.float64]
         Readily evaporable water (mm)
     tew : NDArray[np.float64]
@@ -255,7 +299,7 @@ class FieldProperties:
         Maximum root depth (m)
     zr_min : NDArray[np.float64]
         Minimum root depth (m)
-    p_depletion : NDArray[np.float64]
+    mad : NDArray[np.float64]
         Depletion fraction for stress onset
     irr_status : NDArray[np.bool_]
         Whether field is irrigated
@@ -280,7 +324,7 @@ class FieldProperties:
     cn2: NDArray[np.float64] = field(default=None)
     zr_max: NDArray[np.float64] = field(default=None)
     zr_min: NDArray[np.float64] = field(default=None)
-    p_depletion: NDArray[np.float64] = field(default=None)
+    mad: NDArray[np.float64] = field(default=None)
     irr_status: NDArray[np.bool_] = field(default=None)
     perennial: NDArray[np.bool_] = field(default=None)
     gw_status: NDArray[np.bool_] = field(default=None)
@@ -295,7 +339,7 @@ class FieldProperties:
         if self.awc is None:
             self.awc = np.full(n, 150.0, dtype=np.float64)  # mm/m
         if self.ksat is None:
-            self.ksat = np.full(n, 10.0, dtype=np.float64)  # mm/hr
+            self.ksat = np.full(n, 10.0, dtype=np.float64)  # mm/day
         if self.rew is None:
             self.rew = np.full(n, 9.0, dtype=np.float64)  # mm
         if self.tew is None:
@@ -306,8 +350,8 @@ class FieldProperties:
             self.zr_max = np.full(n, 1.0, dtype=np.float64)  # m
         if self.zr_min is None:
             self.zr_min = np.full(n, 0.1, dtype=np.float64)  # m
-        if self.p_depletion is None:
-            self.p_depletion = np.full(n, 0.5, dtype=np.float64)
+        if self.mad is None:
+            self.mad = np.full(n, 0.5, dtype=np.float64)
         if self.irr_status is None:
             self.irr_status = np.zeros(n, dtype=np.bool_)
         if self.perennial is None:
@@ -363,7 +407,7 @@ class FieldProperties:
         NDArray[np.float64]
             Readily available water (mm)
         """
-        return self.p_depletion * taw
+        return self.mad * taw
 
 
 @dataclass
@@ -561,7 +605,7 @@ def load_pest_mult_properties(
 ) -> FieldProperties:
     """Update FieldProperties with values from PEST++ mult files.
 
-    PEST tunes 'aw' (awc) and 'mad' (p_depletion) which are stored
+    PEST tunes 'aw' (awc) and 'mad' (mad) which are stored
     in FieldProperties, not CalibrationParameters.
 
     Parameters
@@ -595,7 +639,7 @@ def load_pest_mult_properties(
         cn2=base_props.cn2.copy(),
         zr_max=base_props.zr_max.copy(),
         zr_min=base_props.zr_min.copy(),
-        p_depletion=base_props.p_depletion.copy(),
+        mad=base_props.mad.copy(),
         irr_status=base_props.irr_status.copy(),
         perennial=base_props.perennial.copy(),
         gw_status=base_props.gw_status.copy(),
@@ -606,7 +650,7 @@ def load_pest_mult_properties(
     # Property params from PEST
     property_params = {
         "aw": "awc",
-        "mad": "p_depletion",
+        "mad": "mad",
     }
 
     for pest_name, attr_name in property_params.items():

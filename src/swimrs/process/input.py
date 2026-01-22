@@ -167,7 +167,7 @@ class SwimInput:
             cn2=props["cn2"][:],
             zr_max=props["zr_max"][:],
             zr_min=props["zr_min"][:],
-            p_depletion=props["p_depletion"][:],
+            mad=props["mad"][:],
             irr_status=props["irr_status"][:].astype(bool),
             perennial=props["perennial"][:].astype(bool),
             gw_status=props["gw_status"][:].astype(bool),
@@ -210,6 +210,11 @@ class SwimInput:
             s2=spinup["s2"][:] if "s2" in spinup else None,
             s3=spinup["s3"][:] if "s3" in spinup else None,
             s4=spinup["s4"][:] if "s4" in spinup else None,
+            # Irrigation fraction tracking
+            irr_frac_root=spinup["irr_frac_root"][:] if "irr_frac_root" in spinup else None,
+            irr_frac_l3=spinup["irr_frac_l3"][:] if "irr_frac_l3" in spinup else None,
+            # Pass irr_status for fallback initialization when fractions not in spinup
+            irr_status=self.properties.irr_status,
         )
 
     def close(self):
@@ -234,7 +239,7 @@ class SwimInput:
         Parameters
         ----------
         variable : str
-            Variable name (e.g., 'ndvi', 'prcp', 'tmin', 'tmax', 'srad', 'etr')
+            Variable name (e.g., 'ndvi', 'prcp', 'tmin', 'tmax', 'srad', 'ref_et')
         day_idx : int, optional
             If provided, return only data for this day index.
             Otherwise return full time series (n_days, n_fields).
@@ -382,7 +387,7 @@ class SwimInput:
             "swe_beta": "swe_beta",
             "kr_alpha": "kr_damp",
             "ks_alpha": "ks_damp",
-            "mad": None,  # Handled as p_depletion in properties
+            "mad": None,  # Handled as mad in properties
         }
 
         for mult_file in mult_dir.glob("p_*_constant.csv"):
@@ -443,6 +448,7 @@ def build_swim_input(
     start_date: str | datetime | None = None,
     end_date: str | datetime | None = None,
     runoff_process: str = "cn",
+    refet_type: str = "eto",
     etf_model: str = "ssebop",
     met_source: str = "gridmet",
     fields: list[str] | None = None,
@@ -470,6 +476,9 @@ def build_swim_input(
         Override end date (default: from container)
     runoff_process : str
         Runoff mode: 'cn' (curve number) or 'ier' (infiltration excess)
+    refet_type : str
+        Reference ET type to use from the container: 'eto' (grass) or 'etr' (alfalfa).
+        This is typically configured in the project TOML and passed through the CLI.
     etf_model : str
         ET fraction model (e.g., 'ssebop', 'ptjpl')
     met_source : str
@@ -515,8 +524,26 @@ def build_swim_input(
 
     # Extract data from container using its export infrastructure
     container_data = _extract_from_container(
-        container, fids, start_date, end_date, etf_model, met_source
+        container, fids, start_date, end_date, etf_model, met_source, refet_type
     )
+
+    refet_type = (refet_type or "eto").lower().strip()
+    if refet_type not in {"eto", "etr"}:
+        raise ValueError(f"refet_type must be one of {{'eto','etr'}}, got {refet_type!r}")
+
+    # Validate that the container data includes the requested reference ET.
+    # If it doesn't, that's almost always a configuration mismatch and should
+    # fail loudly rather than silently switching types.
+    ts = container_data.get("time_series")
+    if ts is None or refet_type not in ts:
+        available = []
+        if ts is not None:
+            available = [v for v in ["eto", "etr"] if v in ts]
+        raise ValueError(
+            "Requested reference ET type does not match available container time series: "
+            f"refet_type={refet_type!r}, available={available!r}. "
+            "Ingest/export the requested series or update the project TOML."
+        )
 
     # Create HDF5 file
     with h5py.File(output_h5, "w") as h5:
@@ -525,7 +552,7 @@ def build_swim_input(
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
             "runoff_process": runoff_process,
-            "refet_type": "eto",  # Container uses eto
+            "refet_type": refet_type,
         }
         h5.attrs["config"] = json.dumps(config)
 
@@ -551,7 +578,7 @@ def build_swim_input(
 
         # Write time series from container data
         _write_time_series_from_container(
-            h5, container_data, fids, n_fields, n_days, start_date
+            h5, container_data, fids, n_fields, n_days, start_date, refet_type
         )
 
         # Write irrigation flags
@@ -585,6 +612,7 @@ def _extract_from_container(
     end_date: datetime,
     etf_model: str,
     met_source: str,
+    refet_type: str,
 ) -> dict[str, Any]:
     """Extract all required data from SwimContainer.
 
@@ -604,7 +632,7 @@ def _extract_from_container(
 
     # Build time series dataset
     time_series = _get_container_time_series(
-        container, fids, start_date, end_date, etf_model, met_source
+        container, fids, start_date, end_date, etf_model, met_source, refet_type
     )
 
     return {
@@ -621,6 +649,7 @@ def _get_container_time_series(
     end_date: datetime,
     etf_model: str,
     met_source: str,
+    refet_type: str,
 ) -> "Any":
     """Get time series data from container as xarray Dataset."""
     import xarray as xr
@@ -628,16 +657,23 @@ def _get_container_time_series(
     paths = {}
     root = container.state.root
 
+    refet_type = (refet_type or "eto").lower().strip()
+    if refet_type not in {"eto", "etr"}:
+        raise ValueError(f"refet_type must be one of {{'eto','etr'}}, got {refet_type!r}")
+
     # Meteorology variables
-    for var in ["eto", "prcp", "tmin", "tmax", "srad"]:
+    for var in ["prcp", "tmin", "tmax", "srad"]:
         met_path = f"meteorology/{met_source}/{var}"
         if met_path in root:
             paths[var] = met_path
 
-    # Use eto_corr if available (bias-corrected)
-    eto_corr_path = f"meteorology/{met_source}/eto_corr"
-    if eto_corr_path in root:
-        paths["eto"] = eto_corr_path
+    # Reference ET (one type, selected by config)
+    ref_corr_path = f"meteorology/{met_source}/{refet_type}_corr"
+    ref_path = f"meteorology/{met_source}/{refet_type}"
+    if ref_corr_path in root:
+        paths[refet_type] = ref_corr_path
+    elif ref_path in root:
+        paths[refet_type] = ref_path
 
     # Snow/SWE
     for source in ["snodas", "era5"]:
@@ -702,6 +738,7 @@ def _write_properties_from_container(
         awc = np.array([props.get(fid, {}).get("awc", 0.15) * 1000 for fid in fids])
 
     # Ksat
+    # Units: mm/day (see `src/swimrs/units.py` PROCESS_CANONICAL_UNITS['ksat']).
     ksat = np.array([props.get(fid, {}).get("ksat", 10.0) for fid in fids])
 
     # Perennial status from LULC code
@@ -727,11 +764,11 @@ def _write_properties_from_container(
     clay = np.array([props.get(fid, {}).get("clay", 20.0) for fid in fids])
     cn2 = np.where(clay < 15.0, 67.0, np.where(clay > 30.0, 85.0, 77.0))
 
-    # p_depletion
+    # mad (management allowable depletion)
     if calibrated_params is not None and "mad" in calibrated_params:
-        p_depletion = calibrated_params["mad"]
+        mad = calibrated_params["mad"]
     else:
-        p_depletion = np.full(n_fields, 0.5)
+        mad = np.full(n_fields, 0.5)
 
     # Irrigation status from dynamics
     irr_data = dynamics.get("irr", {})
@@ -778,7 +815,7 @@ def _write_properties_from_container(
     props_group.create_dataset("cn2", data=cn2)
     props_group.create_dataset("zr_max", data=zr_max)
     props_group.create_dataset("zr_min", data=zr_min)
-    props_group.create_dataset("p_depletion", data=p_depletion)
+    props_group.create_dataset("mad", data=mad)
     props_group.create_dataset("irr_status", data=irr_status.astype(np.uint8))
     props_group.create_dataset("perennial", data=perennial.astype(np.uint8))
     props_group.create_dataset("gw_status", data=gw_status.astype(np.uint8))
@@ -838,6 +875,7 @@ def _write_time_series_from_container(
     n_fields: int,
     n_days: int,
     start_date: datetime,
+    refet_type: str,
 ):
     """Write time series data from container to HDF5."""
     ts_group = h5.create_group("time_series")
@@ -845,7 +883,7 @@ def _write_time_series_from_container(
 
     if ds is None:
         # Create empty arrays if no data
-        for var in ["ndvi", "prcp", "tmin", "tmax", "srad", "etr", "swe_obs"]:
+        for var in ["ndvi", "prcp", "tmin", "tmax", "srad", "ref_et", "swe_obs"]:
             ts_group.create_dataset(
                 var,
                 data=np.zeros((n_days, n_fields), dtype=np.float64),
@@ -853,9 +891,19 @@ def _write_time_series_from_container(
             )
         return
 
-    # Map container variables to HDF5 names
+    # Reference ET: write a single dataset to `time_series/ref_et`.
+    # The type is recorded in config['refet_type'] ('eto' or 'etr').
+    refet_type = (refet_type or "eto").lower().strip()
+    if refet_type not in {"eto", "etr"}:
+        raise ValueError(f"refet_type must be one of {{'eto','etr'}}, got {refet_type!r}")
+    if refet_type not in ds:
+        raise KeyError(
+            f"Requested refet_type={refet_type!r} missing from container time series dataset"
+        )
+    et_ref_arr = ds[refet_type].values
+
+    # Map remaining variables to HDF5 names
     var_map = {
-        "eto": "etr",  # Reference ET
         "prcp": "prcp",
         "tmin": "tmin",
         "tmax": "tmax",
@@ -863,19 +911,22 @@ def _write_time_series_from_container(
         "swe_obs": "swe_obs",
     }
 
+    def _write_var(dst_name: str, arr: np.ndarray) -> None:
+        # Ensure correct shape (time, fields)
+        if arr.shape[0] == n_days and arr.shape[1] == len(fids):
+            ts_group.create_dataset(dst_name, data=arr, compression="gzip")
+        else:
+            padded = np.zeros((n_days, n_fields), dtype=np.float64)
+            copy_days = min(arr.shape[0], n_days)
+            copy_fields = min(arr.shape[1], n_fields)
+            padded[:copy_days, :copy_fields] = arr[:copy_days, :copy_fields]
+            ts_group.create_dataset(dst_name, data=padded, compression="gzip")
+
+    _write_var("ref_et", et_ref_arr)
+
     for src_name, dst_name in var_map.items():
         if src_name in ds:
-            arr = ds[src_name].values
-            # Ensure correct shape (time, fields)
-            if arr.shape[0] == n_days and arr.shape[1] == len(fids):
-                ts_group.create_dataset(dst_name, data=arr, compression="gzip")
-            else:
-                # Pad or truncate if needed
-                padded = np.zeros((n_days, n_fields), dtype=np.float64)
-                copy_days = min(arr.shape[0], n_days)
-                copy_fields = min(arr.shape[1], n_fields)
-                padded[:copy_days, :copy_fields] = arr[:copy_days, :copy_fields]
-                ts_group.create_dataset(dst_name, data=padded, compression="gzip")
+            _write_var(dst_name, ds[src_name].values)
         else:
             ts_group.create_dataset(
                 dst_name,
@@ -1054,6 +1105,9 @@ def _load_spinup_json(
         "s2": np.full(n_fields, default_s),
         "s3": np.full(n_fields, default_s),
         "s4": np.full(n_fields, default_s),
+        # Note: irr_frac_root and irr_frac_l3 are not initialized with defaults
+        # here. If present in JSON, they will be added. If not present, they
+        # will be initialized based on irr_status in from_spinup().
     }
 
     # Map spinup JSON keys to our state keys
@@ -1072,6 +1126,8 @@ def _load_spinup_json(
         "s2": "s2",
         "s3": "s3",
         "s4": "s4",
+        "irr_frac_root": "irr_frac_root",
+        "irr_frac_l3": "irr_frac_l3",
     }
 
     # Fill arrays from spinup JSON
@@ -1080,6 +1136,9 @@ def _load_spinup_json(
             field_spinup = spinup_data[fid]
             for json_key, state_key in key_map.items():
                 if json_key in field_spinup:
+                    # For irrigation fractions, create array on first use
+                    if state_key not in spinup_state:
+                        spinup_state[state_key] = np.zeros(n_fields)
                     spinup_state[state_key][fid_idx] = field_spinup[json_key]
 
     return spinup_state
@@ -1125,6 +1184,11 @@ def _write_spinup(
             spinup.create_dataset("s3", data=spinup_state["s3"])
         if "s4" in spinup_state:
             spinup.create_dataset("s4", data=spinup_state["s4"])
+        # Irrigation fraction tracking
+        if "irr_frac_root" in spinup_state:
+            spinup.create_dataset("irr_frac_root", data=spinup_state["irr_frac_root"])
+        if "irr_frac_l3" in spinup_state:
+            spinup.create_dataset("irr_frac_l3", data=spinup_state["irr_frac_l3"])
     else:
         # Default initialization
         spinup.create_dataset("depl_root", data=np.zeros(n_fields))

@@ -15,6 +15,11 @@ from swimrs.process.kernels.cover import exposed_soil_fraction, fractional_cover
 from swimrs.process.kernels.crop_coefficient import kcb_sigmoid
 from swimrs.process.kernels.evaporation import ke_coefficient, kr_damped, kr_reduction
 from swimrs.process.kernels.irrigation import groundwater_subsidy, irrigation_demand
+from swimrs.process.kernels.irrigation_tracking import (
+    transfer_fraction_with_water,
+    update_irrigation_fraction_l3,
+    update_irrigation_fraction_root,
+)
 from swimrs.process.kernels.root_growth import (
     root_depth_from_kcb,
     root_water_redistribution,
@@ -91,6 +96,14 @@ class DailyOutput:
         Simulated irrigation (mm)
     gw_sim : NDArray[np.float64]
         Groundwater subsidy (mm)
+    et_irr : NDArray[np.float64]
+        ET from irrigation water (mm) - consumptive use
+    dperc_irr : NDArray[np.float64]
+        Deep percolation of irrigation water (mm) - return flow
+    irr_frac_root : NDArray[np.float64]
+        Irrigation fraction in root zone [0, 1]
+    irr_frac_l3 : NDArray[np.float64]
+        Irrigation fraction in layer 3 [0, 1]
     """
 
     n_days: int
@@ -109,6 +122,10 @@ class DailyOutput:
     dperc: NDArray[np.float64] = field(default=None)
     irr_sim: NDArray[np.float64] = field(default=None)
     gw_sim: NDArray[np.float64] = field(default=None)
+    et_irr: NDArray[np.float64] = field(default=None)
+    dperc_irr: NDArray[np.float64] = field(default=None)
+    irr_frac_root: NDArray[np.float64] = field(default=None)
+    irr_frac_l3: NDArray[np.float64] = field(default=None)
 
     def __post_init__(self):
         """Initialize output arrays."""
@@ -141,6 +158,14 @@ class DailyOutput:
             self.irr_sim = np.zeros(shape, dtype=np.float64)
         if self.gw_sim is None:
             self.gw_sim = np.zeros(shape, dtype=np.float64)
+        if self.et_irr is None:
+            self.et_irr = np.zeros(shape, dtype=np.float64)
+        if self.dperc_irr is None:
+            self.dperc_irr = np.zeros(shape, dtype=np.float64)
+        if self.irr_frac_root is None:
+            self.irr_frac_root = np.zeros(shape, dtype=np.float64)
+        if self.irr_frac_l3 is None:
+            self.irr_frac_l3 = np.zeros(shape, dtype=np.float64)
 
 
 def run_daily_loop(
@@ -186,7 +211,7 @@ def run_daily_loop(
     # Pre-load all time series data to avoid per-day HDF5 reads
     # This dramatically improves performance (7 reads instead of 7*n_days)
     all_ndvi = swim_input.get_time_series("ndvi")  # (n_days, n_fields)
-    all_etr = swim_input.get_time_series("etr")
+    all_ref_et = swim_input.get_time_series("ref_et")
     all_prcp = swim_input.get_time_series("prcp")
     all_tmin = swim_input.get_time_series("tmin")
     all_tmax = swim_input.get_time_series("tmax")
@@ -215,7 +240,7 @@ def run_daily_loop(
 
         # Get daily inputs from pre-loaded arrays
         ndvi = all_ndvi[day_idx, :]
-        etr = all_etr[day_idx, :]
+        etr = all_ref_et[day_idx, :]
         prcp = all_prcp[day_idx, :]
         tmin = all_tmin[day_idx, :]
         tmax = all_tmax[day_idx, :]
@@ -259,6 +284,10 @@ def run_daily_loop(
         output.dperc[day_idx, :] = day_out["dperc"]
         output.irr_sim[day_idx, :] = day_out["irr_sim"]
         output.gw_sim[day_idx, :] = day_out["gw_sim"]
+        output.et_irr[day_idx, :] = day_out["et_irr"]
+        output.dperc_irr[day_idx, :] = day_out["dperc_irr"]
+        output.irr_frac_root[day_idx, :] = day_out["irr_frac_root"]
+        output.irr_frac_l3[day_idx, :] = day_out["irr_frac_l3"]
 
     return output, state
 
@@ -302,7 +331,7 @@ def step_day(
     tmax : (n_fields,)
         Maximum temperature (°C)
     srad : (n_fields,)
-        Solar radiation (MJ/m²/day)
+        Solar radiation (W/m²), daily mean downward shortwave radiation
     irr_flag : (n_fields,)
         Irrigation flag for this day
     runoff_process : str
@@ -320,6 +349,13 @@ def step_day(
     """
     n = state.n_fields
     temp_avg = (tmin + tmax) / 2.0
+
+    # Save initial state for irrigation fraction tracking
+    # These are the values BEFORE today's fluxes
+    depl_root_before = state.depl_root.copy()
+    daw3_before = state.daw3.copy()
+    irr_frac_root_before = state.irr_frac_root.copy()
+    irr_frac_l3_before = state.irr_frac_l3.copy()
 
     # 1. Snow partitioning and melt
     rain, snow = partition_precip(prcp, temp_avg)
@@ -346,6 +382,7 @@ def step_day(
     if runoff_process == "ier" and prcp_hr is not None:
         # Infiltration-excess method (Hortonian runoff)
         # prcp_hr expected shape: (24, n_fields)
+        # props.ksat is stored as mm/day; convert to an hourly rate (mm/hr)
         ksat_hourly = props.ksat / 24.0
         runoff = infiltration_excess(prcp_hr, ksat_hourly)
     else:
@@ -495,14 +532,78 @@ def step_day(
     else:
         dperc_out = gross_dperc
 
+    # === IRRIGATION FRACTION TRACKING ===
+    # Track the fraction of soil water that originated from irrigation.
+    # This enables consumptive use accounting for water rights.
+
+    # 19a. Update root zone irrigation fraction
+    # Uses values BEFORE today's fluxes for consistency
+    state.irr_frac_root, et_irr = update_irrigation_fraction_root(
+        props.awc, zr_prev, depl_root_before, irr_frac_root_before,
+        infiltration, irr_sim, gw_sim, eta, dperc
+    )
+
+    # 19b. Update layer 3 irrigation fraction
+    # The gross_dperc (including 10% irrigation bypass) carries the root zone's
+    # current fraction, treating bypass as if irrigation mixed first
+    state.irr_frac_l3, dperc_irr = update_irrigation_fraction_l3(
+        daw3_before, irr_frac_l3_before,
+        gross_dperc, state.irr_frac_root, dperc_out
+    )
+
     # 20. Root growth water redistribution (at END of daily loop, matches legacy)
     # Legacy model grow_root.py is called at line 202 of compute_field_et.py,
     # after all ET/irrigation/dperc calculations
+
+    # Save pre-redistribution values for fraction tracking
+    depl_root_pre_redist = state.depl_root.copy()
+    daw3_pre_redist = state.daw3.copy()
+    irr_frac_root_pre_redist = state.irr_frac_root.copy()
+    irr_frac_l3_pre_redist = state.irr_frac_l3.copy()
+
     state.depl_root, state.daw3, state.taw3 = root_water_redistribution(
         zr_new, zr_prev, props.zr_max, props.awc,
-        state.depl_root, state.daw3
+        depl_root_pre_redist, daw3_pre_redist
     )
     state.zr = zr_new
+
+    # 20a. Update irrigation fractions for root growth water transfer
+    # Calculate water before and after redistribution to determine transfer
+    water_root_pre = props.awc * zr_prev - depl_root_pre_redist
+    water_root_post = props.awc * zr_new - state.depl_root
+    water_transfer = water_root_post - water_root_pre  # Positive = L3 to root
+
+    # Handle fraction transfer based on direction
+    # Roots grew (transfer > 0): L3 water mixed into root zone
+    # Roots receded (transfer < 0): root zone water mixed into L3
+    transfer_positive = np.maximum(water_transfer, 0.0)  # L3 -> root
+    transfer_negative = np.maximum(-water_transfer, 0.0)  # root -> L3
+
+    # Transfer from L3 to root zone (roots growing)
+    if np.any(transfer_positive > 1e-6):
+        _, irr_frac_root_after_grow = transfer_fraction_with_water(
+            daw3_pre_redist, irr_frac_l3_pre_redist,
+            water_root_pre, irr_frac_root_pre_redist,
+            transfer_positive
+        )
+        state.irr_frac_root = np.where(
+            transfer_positive > 1e-6,
+            irr_frac_root_after_grow,
+            state.irr_frac_root
+        )
+
+    # Transfer from root zone to L3 (roots receding)
+    if np.any(transfer_negative > 1e-6):
+        _, irr_frac_l3_after_recede = transfer_fraction_with_water(
+            water_root_pre, irr_frac_root_pre_redist,
+            daw3_pre_redist, irr_frac_l3_pre_redist,
+            transfer_negative
+        )
+        state.irr_frac_l3 = np.where(
+            transfer_negative > 1e-6,
+            irr_frac_l3_after_recede,
+            state.irr_frac_l3
+        )
 
     # 21. Store irr_sim for next day's Ze update
     state.prev_irr_sim = irr_sim.copy()
@@ -523,4 +624,8 @@ def step_day(
         "dperc": dperc_out,
         "irr_sim": irr_sim,
         "gw_sim": gw_sim,
+        "et_irr": et_irr,
+        "dperc_irr": dperc_irr,
+        "irr_frac_root": state.irr_frac_root.copy(),
+        "irr_frac_l3": state.irr_frac_l3.copy(),
     }
