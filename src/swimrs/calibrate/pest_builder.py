@@ -1,13 +1,18 @@
 import json
 import os
+import warnings
 from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pyemu import Pst, Matrix, ObservationEnsemble
-from pyemu.utils import PstFrom
-from pyemu.utils.os_utils import run_ossystem, run_sp
+
+# Suppress pyemu's flopy warning - flopy is optional and not needed for SWIM-RS
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", message="Failed to import legacy module")
+    from pyemu import Pst, Matrix, ObservationEnsemble
+    from pyemu.utils import PstFrom
+    from pyemu.utils.os_utils import run_ossystem, run_sp
 
 from swimrs.process.input import build_swim_input
 

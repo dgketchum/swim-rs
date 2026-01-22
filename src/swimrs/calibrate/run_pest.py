@@ -1,7 +1,11 @@
 import os
 import shutil
+import warnings
 
-from pyemu import os_utils
+# Suppress pyemu's flopy warning - flopy is optional and not needed for SWIM-RS
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", message="Failed to import legacy module")
+    from pyemu import os_utils
 
 
 def run_pst(
