@@ -241,11 +241,18 @@ class Ingestor(Component):
         Ingest GridMET meteorology data from Parquet files.
 
         GridMET data is downloaded at grid cell resolution (4km), where multiple
-        fields may share the same grid cell. This method uses a UID-to-GFID mapping
-        to replicate grid cell data across all fields that share that cell.
+        fields may share the same grid cell. This method can operate in two modes:
+
+        1. **Mapped mode** (grid_shapefile or grid_mapping provided): Uses a
+           UID-to-GFID mapping to replicate grid cell data across fields that
+           share the same cell. Files are named {gfid}.parquet.
+
+        2. **Direct mode** (no mapping provided): Looks for files named
+           {uid}.parquet directly. Use this when each field has its own
+           unique parquet file (e.g., sparse flux stations).
 
         Args:
-            source_dir: Directory containing Parquet files (one per GFID)
+            source_dir: Directory containing Parquet files
             grid_shapefile: Shapefile with UID and GFID columns for mapping
             grid_mapping: Alternative to grid_shapefile - can be:
                 - Path to JSON file with {uid: gfid, ...} mapping
@@ -259,40 +266,43 @@ class Ingestor(Component):
 
         Returns:
             ProvenanceEvent recording the operation
-
-        Raises:
-            ValueError: If neither grid_shapefile nor grid_mapping provided
         """
         from .grid_mapping import GridMapping
 
         self._ensure_writable()
         source_dir = Path(source_dir)
 
-        # Build grid mapping
-        if grid_shapefile is None and grid_mapping is None:
-            raise ValueError(
-                "Must provide either grid_shapefile or grid_mapping. "
-                "GridMET data requires a UID-to-GFID mapping to assign "
-                "grid cell data to fields."
-            )
+        # Determine mode: mapped vs direct
+        use_mapping = grid_shapefile is not None or grid_mapping is not None
+        mapping = None
+        n_grid_cells = 0
 
-        if grid_shapefile is not None:
-            mapping = GridMapping.from_shapefile(
-                grid_shapefile, uid_column, grid_column, source_name="gridmet"
+        if use_mapping:
+            # Build grid mapping
+            if grid_shapefile is not None:
+                mapping = GridMapping.from_shapefile(
+                    grid_shapefile, uid_column, grid_column, source_name="gridmet"
+                )
+            elif isinstance(grid_mapping, (str, Path)):
+                mapping = GridMapping.from_json(grid_mapping, source_name="gridmet")
+            elif isinstance(grid_mapping, dict):
+                mapping = GridMapping(grid_mapping, source_name="gridmet")
+            else:
+                # Assume it's already a GridMapping instance
+                mapping = grid_mapping
+
+            self._log.info(
+                "gridmet_mapping_loaded",
+                n_fields=mapping.n_fields,
+                n_grid_cells=mapping.n_grid_cells,
             )
-        elif isinstance(grid_mapping, (str, Path)):
-            mapping = GridMapping.from_json(grid_mapping, source_name="gridmet")
-        elif isinstance(grid_mapping, dict):
-            mapping = GridMapping(grid_mapping, source_name="gridmet")
+            n_grid_cells = mapping.n_grid_cells
         else:
-            # Assume it's already a GridMapping instance
-            mapping = grid_mapping
-
-        self._log.info(
-            "gridmet_mapping_loaded",
-            n_fields=mapping.n_fields,
-            n_grid_cells=mapping.n_grid_cells,
-        )
+            # Direct mode - files named by UID
+            self._log.info(
+                "gridmet_direct_mode",
+                message="No mapping provided, looking for {uid}.parquet files",
+            )
 
         # Default variables
         if variables is None:
@@ -316,8 +326,11 @@ class Ingestor(Component):
                     self._log.debug("skipping_existing", path=path)
                     continue
 
-                # Load data from Parquet files using grid mapping
-                var_data = self._load_gridded_variable(source_dir, var, mapping)
+                # Load data from Parquet files
+                if use_mapping:
+                    var_data = self._load_gridded_variable(source_dir, var, mapping)
+                else:
+                    var_data = self._load_uid_variable(source_dir, var)
 
                 if var_data.empty:
                     self._log.debug("no_data_for_variable", variable=var)
@@ -340,7 +353,8 @@ class Ingestor(Component):
                 params={
                     "variables": variables,
                     "include_corrected": include_corrected,
-                    "grid_cells": mapping.n_grid_cells,
+                    "grid_cells": n_grid_cells,
+                    "direct_mode": not use_mapping,
                 },
                 fields_affected=list(fields_processed),
                 records_count=total_records,
@@ -1091,6 +1105,79 @@ class Ingestor(Component):
                 uid_series = series.copy()
                 uid_series.name = uid
                 result_series.append(uid_series)
+
+        if not result_series:
+            return pd.DataFrame()
+
+        return pd.concat(result_series, axis=1).sort_index()
+
+    def _load_uid_variable(
+        self,
+        source_dir: Path,
+        variable: str,
+    ) -> pd.DataFrame:
+        """
+        Load a variable from UID-named parquet files (direct mode).
+
+        Looks for files named {uid}.parquet directly, without grid mapping.
+        Use this for sparse field networks where each field has its own
+        unique parquet file.
+
+        Args:
+            source_dir: Directory containing {uid}.parquet files
+            variable: Variable name to extract (e.g., 'eto', 'tmax')
+
+        Returns:
+            DataFrame with columns=field_uids, index=dates
+        """
+        result_series = []
+        valid_uids = set(self._state._uid_to_index.keys())
+
+        for uid in valid_uids:
+            # Find parquet file for this UID
+            pq_file = source_dir / f"{uid}.parquet"
+            if not pq_file.exists():
+                self._log.debug(
+                    "uid_file_missing",
+                    uid=uid,
+                    file=str(pq_file),
+                )
+                continue
+
+            try:
+                df = pd.read_parquet(pq_file)
+            except Exception as e:
+                self._log.debug(
+                    "parquet_read_error",
+                    file=str(pq_file),
+                    variable=variable,
+                    error=str(e),
+                )
+                continue
+
+            # Require simple column format (no legacy MultiIndex support)
+            if isinstance(df.columns, pd.MultiIndex):
+                raise ValueError(
+                    f"Legacy MultiIndex format not supported. "
+                    f"Re-download gridmet data with simple column format: {pq_file}"
+                )
+
+            if variable not in df.columns:
+                self._log.debug(
+                    "variable_not_in_file",
+                    variable=variable,
+                    file=str(pq_file),
+                    available=list(df.columns),
+                )
+                continue
+
+            series = df[variable]
+
+            if not isinstance(series.index, pd.DatetimeIndex):
+                series.index = pd.DatetimeIndex(series.index)
+
+            series.name = uid
+            result_series.append(series)
 
         if not result_series:
             return pd.DataFrame()

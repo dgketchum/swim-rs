@@ -62,7 +62,7 @@ def create_project_container(cfg: ProjectConfig = None,
 
     print(f"Creating new container: {container_path}")
     container = create_container(
-        path=container_path,
+        uri=container_path,
         fields_shapefile=cfg.fields_shapefile,
         uid_column=cfg.feature_id_col,
         start_date=cfg.start_dt,
@@ -93,6 +93,7 @@ def ingest_meteorology(container: SwimContainer, cfg: ProjectConfig, overwrite: 
         return
 
     # Ingest GridMET with all available variables
+    # Direct mode: parquet files named by site_id (e.g., US-FPe.parquet)
     container.ingest.gridmet(
         source_dir=cfg.met_dir,
         variables=["eto", "etr", "prcp", "tmin", "tmax", "srad", "u2", "ea"],
