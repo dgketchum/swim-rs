@@ -7,6 +7,7 @@ import time
 from openet.refetgee import Daily
 
 from swimrs.data_extraction.ee.ee_utils import as_ee_feature_collection
+from swimrs.units import GEE_ERA5_LAND_HOURLY_DATASET
 
 
 def _compute_utc_offset_hours(fc: ee.FeatureCollection) -> ee.Number:
@@ -55,19 +56,23 @@ def _aggregate_hourly_to_daily(hourly_coll: ee.ImageCollection, day_str: str) ->
     ee.Image
         Multi-band image with daily aggregates
     """
-    # Temperature: mean, min, max (convert K to C)
+    # Temperature: mean, min, max (K -> C)
+    # See ERA5_LAND_HOURLY_UNITS['temperature_2m'].
     temp = hourly_coll.select('temperature_2m')
     tmean_c = temp.mean().subtract(273.15).rename(f'tmean_{day_str}')
     tmin_c = temp.min().subtract(273.15).rename(f'tmin_{day_str}')
     tmax_c = temp.max().subtract(273.15).rename(f'tmax_{day_str}')
 
-    # Precipitation: sum (convert m to mm)
+    # Precipitation: sum hourly accumulations (m -> mm)
+    # See ERA5_LAND_HOURLY_UNITS['total_precipitation_hourly'].
     precip_mm = hourly_coll.select('total_precipitation_hourly').sum().multiply(1000).rename(f'precip_{day_str}')
 
-    # Solar radiation: sum J/m² then convert to mean W/m² (divide by 86400 seconds)
+    # Solar radiation: sum J/m² then convert to daily-mean W/m² (divide by 86400 seconds)
+    # See ERA5_LAND_HOURLY_UNITS['surface_solar_radiation_downwards_hourly'].
     srad_wm2 = hourly_coll.select('surface_solar_radiation_downwards_hourly').sum().divide(86400).rename(f'srad_{day_str}')
 
-    # SWE: mean of instantaneous values (convert m to mm)
+    # SWE: mean of instantaneous values (m -> mm)
+    # See ERA5_LAND_HOURLY_UNITS['snow_depth_water_equivalent'].
     swe_mm = hourly_coll.select('snow_depth_water_equivalent').mean().multiply(1000).rename(f'swe_{day_str}')
 
     return ee.Image([swe_mm, tmean_c, tmin_c, tmax_c, precip_mm, srad_wm2])
@@ -112,7 +117,7 @@ def sample_era5_land_variables_daily(
     - Starts ee.batch table exports, one per month, to the `bucket`.
     """
     fc = as_ee_feature_collection(shapefile, feature_id=feature_id_col)
-    era5_land_hourly = ee.ImageCollection('ECMWF/ERA5_LAND/HOURLY')
+    era5_land_hourly = ee.ImageCollection(GEE_ERA5_LAND_HOURLY_DATASET)
 
     # Compute UTC offset from feature collection centroid for local-time aggregation
     utc_offset_hours = _compute_utc_offset_hours(fc)

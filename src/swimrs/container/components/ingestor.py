@@ -1223,7 +1223,8 @@ class Ingestor(Component):
         Load SNODAS SWE data from Earth Engine CSV extracts.
 
         CSV format: rows=fields, columns=dates (YYYYMMDD), values=SWE in meters.
-        Values are converted to millimeters (*1000).
+        Values are converted to millimeters (*1000). See `src/swimrs/units.py`
+        (SNODAS_DAILY_UNITS).
 
         Args:
             source_dir: Directory containing CSV files
@@ -1333,7 +1334,14 @@ class Ingestor(Component):
         uid_column: str,
         overwrite: bool,
     ) -> None:
-        """Ingest soil properties."""
+        """Ingest soil properties.
+
+        Expected units (canonical SWIM-RS):
+        - `awc`: meters of water per meter soil (m/m) in source CSV; stored as-is
+          in the container and converted to mm/m when building SwimInput.
+        - `ksat`: mm/day. This is converted to mm/hr internally for IER runoff.
+          See `src/swimrs/units.py` (PROCESS_CANONICAL_UNITS).
+        """
         df = pd.read_csv(soils_csv)
         df = df.set_index(uid_column)
 

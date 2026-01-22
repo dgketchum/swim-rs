@@ -233,7 +233,11 @@ REQUIRED_MET_UNIRR: List[str] = ["eto"]     # Required for non-irrigated fields
 # Parameters that can have NaN values in model input
 ACCEPT_NAN_PARAMS: List[str] = REQUIRED_MET_IRR + REQUIRED_MET_UNIRR + ["swe"]
 
-# Parameter to unit mapping
+# Parameter to unit mapping.
+#
+# Note: this mapping uses legacy short unit tokens (e.g., "wm2", "kpa") that
+# appear in parquet MultiIndex columns. Canonical process-model units and
+# external-source conversion notes live in `src/swimrs/units.py`.
 ACCEPTED_UNITS_MAP: Dict[str, str] = {
     "elev": "m",
     "tmin": "c",
