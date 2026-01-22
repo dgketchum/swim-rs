@@ -2,6 +2,22 @@
 
 This example demonstrates the complete SWIM-RS calibration workflow for an irrigated alfalfa site at Crane, Oregon (S2).
 
+## OpenET Ensemble Members
+
+This example uses the **open source OpenET ensemble members** for ETf observations:
+- **SIMS** (Satellite Irrigation Management Support)
+- **geeSEBAL** (Google Earth Engine Surface Energy Balance Algorithm for Land)
+- **PT-JPL** (Priestley-Taylor Jet Propulsion Laboratory)
+- **SSEBop** (Operational Simplified Surface Energy Balance)
+
+To re-extract the remote sensing data from Google Earth Engine, install SWIM-RS with the OpenET optional dependencies:
+
+```bash
+pip install swimrs[openet]
+```
+
+Pre-extracted data is provided in `data/` so you can run the tutorials without these dependencies.
+
 ## Overview
 
 The tutorial covers:
@@ -15,15 +31,15 @@ Run the notebooks in order:
 
 | Notebook | Description |
 |----------|-------------|
-| `01_uncalibrated_model.ipynb` | Load data, run uncalibrated model, compare with SSEBop |
-| `02_calibration.ipynb` | Set up and run PEST++ calibration using SSEBop ETf and SNODAS SWE |
+| `01_uncalibrated_model.ipynb` | Load data, run uncalibrated model, compare with OpenET ensemble |
+| `02_calibration.ipynb` | Set up and run PEST++ calibration using OpenET ETf and SNODAS SWE |
 | `03_calibrated_model.ipynb` | Run calibrated model, visualize parameter evolution, evaluate improvement |
 
 ## Configuration
 
 - **Config file:** `3_Crane.toml`
 - **PEST++ worker script:** `custom_forward_run.py`
-- **ETf source:** SSEBop only (no ensemble members)
+- **ETf source:** OpenET ensemble (SIMS, geeSEBAL, PT-JPL, SSEBop)
 - **Date range:** 2003-01-01 to 2007-12-31
 
 ## Site Details
@@ -53,7 +69,7 @@ Pre-built data is provided in `data/`:
 
 ## Expected Results
 
-The uncalibrated model underestimates irrigation and shows poor agreement with SSEBop. After calibration:
+The uncalibrated model underestimates irrigation and shows poor agreement with the OpenET ensemble. After calibration:
 - RMSE reduced by ~50%
 - Model learns site-specific irrigation patterns and crop coefficients
 
