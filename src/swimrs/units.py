@@ -49,7 +49,7 @@ PROCESS_CANONICAL_UNITS: dict[str, str] = {
     "tmax": "C",
     "prcp": "mm/day",  # daily total
     "prcp_hr": "mm/hr",  # hourly intensity, 24 values per day
-    "etr": "mm/day",  # reference ET used by model; see SwimInput.config['refet_type']
+    "ref_et": "mm/day",  # reference ET time series; see SwimInput.config['refet_type']
     "srad": "W/m^2",  # daily mean downward shortwave radiation
     # Snow
     "swe": "mm",
@@ -104,6 +104,82 @@ ERA5_LAND_HOURLY_UNITS: dict[str, UnitSpec] = {
     ),
 }
 
+# -----------------------------------------------------------------------------
+# GridMET (typically pulled via Climatology Lab THREDDS)
+# -----------------------------------------------------------------------------
+
+# SWIM-RS can use GridMET meteorology time series. In practice we often pull
+# GridMET from the University of Idaho / Climatology Lab THREDDS service (see
+# `src/swimrs/data_extraction/gridmet/thredds.py`), but the same variable names
+# and units are also documented in the public GEE catalog dataset.
+
+GEE_GRIDMET_DATASET = "IDAHO_EPSCOR/GRIDMET"
+GEE_GRIDMET_CATALOG = (
+    "https://developers.google.com/earth-engine/datasets/catalog/IDAHO_EPSCOR_GRIDMET"
+)
+GRIDMET_INFO_PAGE = "https://www.climatologylab.org/gridmet.html"
+
+GRIDMET_UNITS: dict[str, UnitSpec] = {
+    # Used in src/swimrs/data_extraction/gridmet/thredds.py and gridmet.py
+    "pr": UnitSpec(
+        native_units="mm, daily total",
+        canonical_units="mm/day (SWIM prcp)",
+        conversion="none",
+        reference=GEE_GRIDMET_CATALOG,
+    ),
+    "eto": UnitSpec(
+        native_units="mm",
+        canonical_units="mm/day (SWIM ref_et when refet_type='eto')",
+        conversion="none",
+        reference=GEE_GRIDMET_CATALOG,
+    ),
+    "etr": UnitSpec(
+        native_units="mm",
+        canonical_units="mm/day (SWIM ref_et when refet_type='etr')",
+        conversion="none",
+        reference=GEE_GRIDMET_CATALOG,
+    ),
+    "srad": UnitSpec(
+        native_units="W/m^2",
+        canonical_units="W/m^2 (SWIM srad)",
+        conversion="none",
+        notes=f"See also {GRIDMET_INFO_PAGE}.",
+        reference=GEE_GRIDMET_CATALOG,
+    ),
+    "tmmn": UnitSpec(
+        native_units="K",
+        canonical_units="C (SWIM tmin)",
+        conversion="C = K - 273.15",
+        reference=GEE_GRIDMET_CATALOG,
+    ),
+    "tmmx": UnitSpec(
+        native_units="K",
+        canonical_units="C (SWIM tmax)",
+        conversion="C = K - 273.15",
+        reference=GEE_GRIDMET_CATALOG,
+    ),
+    "elev": UnitSpec(
+        native_units="m",
+        canonical_units="m",
+        conversion="none",
+        reference=GEE_GRIDMET_CATALOG,
+    ),
+    "sph": UnitSpec(
+        native_units="kg/kg",
+        canonical_units="kg/kg",
+        conversion="none",
+        notes="Specific humidity; SWIM-RS uses this to derive vapor pressure (ea, kPa) during GridMET processing.",
+        reference=GEE_GRIDMET_CATALOG,
+    ),
+    "vs": UnitSpec(
+        native_units="m/s",
+        canonical_units="m/s",
+        conversion="none",
+        notes="Wind speed at 10m in GridMET; SWIM-RS converts to 2m wind speed (u2) during processing.",
+        reference=GEE_GRIDMET_CATALOG,
+    ),
+}
+
 
 GEE_SNODAS_DAILY_DATASET = (
     "projects/earthengine-legacy/assets/projects/climate-engine/snodas/daily"
@@ -119,4 +195,3 @@ SNODAS_DAILY_UNITS: dict[str, UnitSpec] = {
         notes="This is the convention assumed by SWIM-RS SNODAS extract handling.",
     )
 }
-

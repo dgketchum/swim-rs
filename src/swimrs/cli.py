@@ -669,6 +669,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
             spinup_json_path=spinup_path,
             calibrated_params_path=calibrated_params_path,
             runoff_process=getattr(config, 'runoff_process', 'cn'),
+            refet_type=getattr(config, 'refet_type', 'eto') or 'eto',
             etf_model=getattr(config, 'etf_target_model', 'ssebop'),
             met_source=getattr(config, 'met_source', 'gridmet'),
             fields=fields,
@@ -684,7 +685,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 
         # Get time series data for DataFrame columns
         dates = pd.date_range(swim_input.start_date, periods=n_days, freq='D')
-        etr = swim_input.get_time_series('etr')
+        etr = swim_input.get_time_series('ref_et')
         prcp = swim_input.get_time_series('prcp')
         tmin = swim_input.get_time_series('tmin')
         tmax = swim_input.get_time_series('tmax')

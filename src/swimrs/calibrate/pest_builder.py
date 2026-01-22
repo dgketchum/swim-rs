@@ -694,6 +694,7 @@ if __name__ == "__main__":
                 start_date=self.config.start_dt,
                 end_date=self.config.end_dt,
                 runoff_process=getattr(self.config, 'runoff_process', 'cn'),
+                refet_type=getattr(self.config, "refet_type", "eto") or "eto",
             )
 
             # Run simulation to generate spinup state (uses fast JIT loop)
@@ -766,6 +767,7 @@ if __name__ == "__main__":
             start_date=self.config.start_dt,
             end_date=self.config.end_dt,
             runoff_process=getattr(self.config, 'runoff_process', 'cn'),
+            refet_type=getattr(self.config, "refet_type", "eto") or "eto",
         )
 
         print(f'Created swim_input.h5 at {h5_path}')
