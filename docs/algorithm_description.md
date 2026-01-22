@@ -15,10 +15,10 @@ data storage objects to help organize the data and relieve the user of dealing
 with the many files that are required to run the model, see [container architecture](container_architecture.md) 
 for a description of the SwimContainer.
 
-We use special watar balance state, properties, calibrated parameter, and input 
-data structure objects to organize information required to run the algorithm, and to 
-make all components testable enabling new features see [process architecture](process_architecture.md)
-for a description of SwimInput, FieldProperties, CalibrationParameters, and WaterBalanceState.
+We use special water balance state, properties, calibrated parameter, and input 
+data objects to organize information required to run the algorithm. This modular approach 
+makes all components testable, enabling new features. See [process architecture](process_architecture.md)
+for a description of SwimInput, FieldProperties, CalibrationParameters, and WaterBalanceState classes.
 
 We've made a considerable investment to design the software in such a way that it is testable and usable
 by non-developers. The architecture, while complex, will allow easier integration of expected 
@@ -26,9 +26,9 @@ future features, such as specialized irrigation scheduling and simulation, diffe
 and soil water models, and new proxies for ET and Kcb.
 
 While this software has been completely rewritten, it was originally based on a fork
-of [et-demands](https://github.com/WSWUP/et-demands); shoutout to Dr. Richard Allen,
-Chris Pearson, Charles Morton, Blake Minor, Thomas Ott, Justin Huntington, and others who've contributed to 
-that project over the years.
+of [et-demands](https://github.com/WSWUP/et-demands); shoutout to Dr. Richard Allen, Chris Pearson, Charles Morton, Blake Minor,
+Thomas Ott, Dr. Justin Huntington, and others who've contributed to that project over the years.
+For a detailed comparison of the two codebases, see [ET-Demands Comparison](et-demands-compare.md).
 
 ## Model Inputs
 

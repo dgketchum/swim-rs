@@ -79,6 +79,7 @@ nav:
   - Installation: installation.md
   - Data Extraction Guide: data_extraction.md
   - Algorithm Description: algorithm_description.md
+  - ET-Demands Comparison: et-demands-compare.md
   - Architecture:
       - Process Package: process_architecture.md
       - Container: container_architecture.md

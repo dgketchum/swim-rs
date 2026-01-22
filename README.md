@@ -80,7 +80,7 @@ irrigation-applied water (in cases where irrigation is detected, see Example 3 -
 
 Flux data from [Volk et al., 2023](https://www.sciencedirect.com/science/article/pii/S0168192323000011).
 
-## Scientific and Software Innovations
+## Scientific and Software Highlights
 
 ### Scientific Innovation
 
