@@ -18,7 +18,7 @@ dependencies = [
   "toml",
   "scikit-learn",
   "plotly",
-  "openet-refet-gee",
+  "earthengine-api",
   "pydantic>=1.10",
   "zarr>=2.18",
   "filelock",
@@ -27,6 +27,7 @@ dependencies = [
 
 [project.optional-dependencies]
 openet = [
+  "openet-refet-gee",
   "openet-ptjpl",
   "openet-sims",
   "openet-ssebop",

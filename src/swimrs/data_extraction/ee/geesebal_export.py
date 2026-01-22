@@ -9,7 +9,10 @@ import ee
 import geopandas as gpd
 from tqdm import tqdm
 
-import openet.geesebal as geesebal
+try:
+    import openet.geesebal as geesebal
+except ImportError:  # pragma: no cover
+    geesebal = None
 
 from .common import (
     LANDSAT_COLLECTIONS,
@@ -24,6 +27,7 @@ from .common import (
     export_table_to_gcs,
     parse_scene_name,
 )
+from swimrs.utils.optional_deps import missing_optional_dependency
 
 
 def export_geesebal_zonal_stats(
@@ -71,6 +75,12 @@ def export_geesebal_zonal_stats(
     file_prefix : str, optional
         Bucket path prefix, typically project name (default: 'swim').
     """
+    if geesebal is None:  # pragma: no cover
+        raise missing_optional_dependency(
+            extra="openet",
+            purpose="geeSEBAL ETf Earth Engine export",
+            import_name="openet-geesebal",
+        )
     df = load_shapefile(shapefile, feature_id, buffer=buffer)
 
     # Setup irrigation mask resources

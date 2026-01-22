@@ -6,6 +6,12 @@ This guide covers extracting remote sensing and meteorological data for SWIM-RS 
 
 SWIM-RS requires several data inputs that are typically extracted from remote sources:
 
+Some extraction pathways use optional OpenET Python implementations (and refetgee). If you plan to run those exporters, install:
+
+```bash
+pip install "swimrs[openet]"
+```
+
 | Data Type | Source | Function |
 |-----------|--------|----------|
 | NDVI | Landsat 8/9, Sentinel-2 | `clustered_sample_ndvi`, `sparse_sample_ndvi` |

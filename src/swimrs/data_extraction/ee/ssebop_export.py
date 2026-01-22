@@ -9,7 +9,10 @@ import ee
 import geopandas as gpd
 from tqdm import tqdm
 
-import openet.ssebop as ssebop
+try:
+    import openet.ssebop as ssebop
+except ImportError:  # pragma: no cover
+    ssebop = None
 
 from .common import (
     LANDSAT_COLLECTIONS,
@@ -21,6 +24,7 @@ from .common import (
     export_table_to_gcs,
     parse_scene_name,
 )
+from swimrs.utils.optional_deps import missing_optional_dependency
 
 
 def export_ssebop_zonal_stats(
@@ -68,6 +72,12 @@ def export_ssebop_zonal_stats(
     file_prefix : str, optional
         Bucket path prefix, typically project name (default: 'swim').
     """
+    if ssebop is None:  # pragma: no cover
+        raise missing_optional_dependency(
+            extra="openet",
+            purpose="SSEBop ETf Earth Engine export",
+            import_name="openet-ssebop",
+        )
     df = load_shapefile(shapefile, feature_id, buffer=buffer)
 
     # Setup irrigation mask resources

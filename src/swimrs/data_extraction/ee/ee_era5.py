@@ -4,10 +4,14 @@ from datetime import date, timedelta
 import ee
 import time
 
-from openet.refetgee import Daily
+try:
+    from openet.refetgee import Daily
+except ImportError:  # pragma: no cover
+    Daily = None
 
 from swimrs.data_extraction.ee.ee_utils import as_ee_feature_collection
 from swimrs.units import GEE_ERA5_LAND_HOURLY_DATASET
+from swimrs.utils.optional_deps import missing_optional_dependency
 
 
 def _compute_utc_offset_hours(fc: ee.FeatureCollection) -> ee.Number:
@@ -116,6 +120,13 @@ def sample_era5_land_variables_daily(
     Side Effects
     - Starts ee.batch table exports, one per month, to the `bucket`.
     """
+    if Daily is None:  # pragma: no cover
+        raise missing_optional_dependency(
+            extra="openet",
+            purpose="ERA5-Land daily reference ET export (refetgee)",
+            import_name="openet-refet-gee",
+        )
+
     fc = as_ee_feature_collection(shapefile, feature_id=feature_id_col)
     era5_land_hourly = ee.ImageCollection(GEE_ERA5_LAND_HOURLY_DATASET)
 
