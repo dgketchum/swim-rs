@@ -28,7 +28,6 @@ from .steps import (
     IngestPropertiesStep,
     ComputeFusedNDVIStep,
     ComputeDynamicsStep,
-    ExportStep,
 )
 
 logger = get_logger("workflow")
@@ -159,17 +158,6 @@ class WorkflowEngine:
                 ComputeDynamicsStep(
                     etf_model=params.get("etf_model", "ssebop"),
                     irr_threshold=params.get("irr_threshold", 0.1),
-                )
-            )
-
-        # Export step
-        if self.config.export.output:
-            self._steps.append(
-                ExportStep(
-                    output_path=self.config.resolve_path(self.config.export.output),
-                    etf_model=self.config.export.etf_model,
-                    use_merged_ndvi=self.config.export.use_merged_ndvi,
-                    validate=self.config.export.validate,
                 )
             )
 

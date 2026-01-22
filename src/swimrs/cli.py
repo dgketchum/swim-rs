@@ -895,9 +895,9 @@ def build_parser() -> argparse.ArgumentParser:
     # prep (container-based)
     pp = sub.add_parser(
         'prep',
-        help='Ingest data into SwimContainer and export prepped_input.json',
+        help='Ingest data into SwimContainer and compute dynamics',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Ingest properties/RS/met into a .swim container, compute dynamics, and export prepped_input.json.',
+        description='Ingest properties/RS/met into a .swim container and compute dynamics.',
     )
     add_common(pp)
     pp.add_argument('--overwrite', action='store_true', help='Overwrite existing datasets in the container')

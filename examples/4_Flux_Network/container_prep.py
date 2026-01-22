@@ -12,7 +12,6 @@ The container workflow:
     5. Ingest properties (soils, LULC, irrigation)
     6. Compute fused NDVI (Landsat + Sentinel)
     7. Compute dynamics (irrigation, groundwater, ke_max, kc_max)
-    8. Export prepped_input.json for model consumption
 
 Usage:
     python container_prep.py [--overwrite] [--sites SITE1,SITE2,...] [--skip-sentinel]
@@ -264,31 +263,6 @@ def compute_dynamics(container: SwimContainer, cfg: ProjectConfig, overwrite: bo
     )
 
 
-def export_model_inputs(container: SwimContainer, cfg: ProjectConfig, output_path: str = None):
-    """
-    Export data in prepped_input.json format for model consumption.
-
-    Corresponds to: prep_input_json()
-
-    Args:
-        container: SwimContainer instance
-        cfg: ProjectConfig instance
-        output_path: Output path (defaults to cfg.input_data)
-    """
-    print("\n=== Exporting Model Inputs ===")
-
-    if output_path is None:
-        output_path = cfg.input_data
-
-    container.export.prepped_input_json(
-        output_path=output_path,
-        etf_model=cfg.etf_target_model,
-        masks=("irr", "inv_irr"),
-        instrument="landsat",
-        use_fused_ndvi=True,
-    )
-
-
 def prep_all(container: SwimContainer, cfg: ProjectConfig = None, sites: list = None,
              overwrite: bool = False, add_sentinel: bool = True):
     """
@@ -322,9 +296,6 @@ def prep_all(container: SwimContainer, cfg: ProjectConfig = None, sites: list = 
 
     # Step 6: Compute dynamics
     compute_dynamics(container, cfg, overwrite=overwrite)
-
-    # Step 7: Export model inputs
-    export_model_inputs(container, cfg)
 
     print("\n=== Container Preparation Complete ===")
     print(container.inventory)
@@ -379,5 +350,4 @@ if __name__ == "__main__":
 
     print(f"\nContainer saved to: {container.path}")
     print("\nTo use with the model:")
-    print("  Option A: Use exported prepped_input.json with SamplePlots")
-    print("  Option B: Use ContainerPlots directly (no JSON export needed)")
+    print("  Use build_swim_input() from swimrs.process.input to generate swim_input.h5")

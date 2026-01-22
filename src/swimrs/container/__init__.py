@@ -20,7 +20,7 @@ Components:
     Clean, namespace-organized API via component attributes:
     - container.ingest: Data ingestion (ndvi, etf, gridmet, etc.)
     - container.compute: Derived computation (dynamics, fused_ndvi)
-    - container.export: Data export (prepped_input_json, shapefile)
+    - container.export: Data export (observations, shapefile, csv)
     - container.query: Data access (status, xarray, dataframe)
 
 Convenience Functions:
@@ -43,9 +43,8 @@ Example:
     >>> container.ingest.gridmet("gridmet_dir/")
     >>> container.ingest.ndvi("ndvi_dir/", instrument="landsat", mask="irr")
     >>>
-    >>> # Compute dynamics and export for model
+    >>> # Compute dynamics
     >>> container.compute.dynamics(etf_model="ssebop")
-    >>> container.export.prepped_input_json("prepped_input.json")
     >>>
     >>> # Open from cloud storage (requires s3fs)
     >>> container = SwimContainer.open("s3://bucket/project.zarr", mode="r")

@@ -4,7 +4,7 @@ Build Model Inputs via SwimContainer
 =====================================
 
 This script processes extracted Earth Engine and GridMET data into the
-SWIM-RS container format, then exports to prepped_input.json.
+SWIM-RS container format.
 
 The container approach provides:
 - Provenance tracking for all operations
@@ -41,7 +41,6 @@ Input Data Structure
 Output
 ------
     data/3_Crane.swim/  (container directory)
-    data/prepped_input.json
 
 Usage
 -----
@@ -211,22 +210,6 @@ def compute_dynamics(container, select_fields=None):
     )
 
 
-def export_prepped_json(container, output_path, select_fields=None):
-    """Export container data to prepped_input.json format."""
-    print(f"\n=== Exporting to {output_path} ===")
-
-    container.export.prepped_input_json(
-        output_path=output_path,
-        etf_model='ssebop',
-        masks=('irr', 'inv_irr'),
-        met_source='gridmet',
-        instrument='landsat',
-        fields=select_fields,
-        use_merged_ndvi=False,  # Use Landsat-only NDVI
-        irr_threshold=0.1,
-    )
-
-
 def main():
     parser = argparse.ArgumentParser(
         description='Build SWIM-RS model inputs using SwimContainer',
@@ -239,8 +222,6 @@ def main():
                         help='Specific field IDs to process')
     parser.add_argument('--rebuild', action='store_true',
                         help='Rebuild container from scratch (overwrites existing)')
-    parser.add_argument('--output', default=None,
-                        help='Output JSON path (default: data/prepped_input.json)')
     args = parser.parse_args()
 
     # Determine fields to process
@@ -273,10 +254,6 @@ def main():
 
         # Compute derived products (merged NDVI, dynamics)
         compute_dynamics(container, select_fields)
-
-        # Export to prepped_input.json
-        output_path = args.output or os.path.join(SCRIPT_DIR, 'prepped_input.json')
-        export_prepped_json(container, output_path, select_fields)
 
         # Save container
         container.save()

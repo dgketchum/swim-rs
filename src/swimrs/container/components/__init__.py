@@ -14,14 +14,8 @@ Example:
     # Clean component API
     container.ingest.ndvi(source_dir, instrument="landsat", mask="irr")
     container.compute.dynamics(etf_model="ssebop")
-    container.export.prepped_input_json("output.json")
+    container.export.observations("obs/", etf_model="ssebop")
     print(container.query.status())
-
-    # vs. legacy mixin API (still supported)
-    container.ingest_ee_ndvi(source_dir, instrument="landsat", mask="irr")
-    container.compute_dynamics(etf_model="ssebop")
-    container.export_prepped_input_json("output.json")
-    print(container.status())
 """
 
 from .base import Component

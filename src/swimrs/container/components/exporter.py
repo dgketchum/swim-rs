@@ -2,25 +2,18 @@
 Exporter component for data export operations.
 
 Provides a clean API for exporting container data in various formats.
-Usage: container.export.prepped_input_json(...) instead of container.export_prepped_input_json(...)
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 
 from .base import Component
-from swimrs.container.schema import (
-    REQUIRED_MET_BASE,
-    REQUIRED_MET_HOURLY,
-    REQUIRED_MET_IRR,
-    REQUIRED_MET_UNIRR,
-)
 
 if TYPE_CHECKING:
     import xarray as xr
@@ -33,16 +26,13 @@ class Exporter(Component):
     Component for exporting container data.
 
     Provides methods for exporting data to various formats including
-    shapefiles, CSVs, and model-ready JSON.
+    shapefiles, CSVs, and observation files for calibration.
 
     Example:
-        container.export.prepped_input_json("output/prepped.json")
         container.export.shapefile("output/fields.shp")
         container.export.csv("remote_sensing/ndvi/landsat/irr", "output/ndvi/")
+        container.export.observations("output/obs/", etf_model="ssebop")
     """
-
-    # Required meteorology parameters (from centralized schema)
-    REQUIRED_MET = REQUIRED_MET_BASE + REQUIRED_MET_HOURLY
 
     def __init__(self, state: "ContainerState", container=None):
         """
@@ -53,115 +43,6 @@ class Exporter(Component):
             container: Optional reference to parent SwimContainer
         """
         super().__init__(state, container)
-
-    def prepped_input_json(
-        self,
-        output_path: Union[str, Path],
-        etf_model: str = "ssebop",
-        masks: Tuple[str, ...] = ("irr", "inv_irr"),
-        met_source: str = "gridmet",
-        instrument: str = "landsat",
-        fields: Optional[List[str]] = None,
-        use_merged_ndvi: bool = True,
-        irr_threshold: float = 0.1,
-        include_switched_etf: bool = True,
-        validate: bool = False,
-        validation_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> "ProvenanceEvent":
-        """
-        Export model-ready prepped input JSON file.
-
-        Creates a JSON file suitable for the SWIM-RS model containing:
-        - Field order and properties
-        - Daily time series (met, NDVI, ETf)
-        - Per-year irrigation and groundwater subsidy data
-        - Scalar dynamics (Ke, Kc parameters)
-
-        Args:
-            output_path: Output file path (.json)
-            etf_model: ET model to use
-            masks: Mask types to include
-            met_source: Meteorology source
-            instrument: NDVI instrument
-            fields: Optional list of field UIDs (default: all)
-            use_merged_ndvi: Use combined Landsat+Sentinel NDVI
-            irr_threshold: Threshold for irrigation classification
-            include_switched_etf: Apply ETf mask switching logic
-            validate: If True, filter fields by validation rules
-            validation_kwargs: Arguments for field validation
-
-        Returns:
-            ProvenanceEvent recording the operation
-        """
-        output_path = Path(output_path)
-
-        with self._track_operation(
-            "export_prepped_json",
-            target=str(output_path),
-            etf_model=etf_model,
-            met_source=met_source,
-        ) as ctx:
-            # Determine target fields
-            target_fields = fields if fields else self._state.field_uids
-
-            # Validate fields if requested
-            if validate and validation_kwargs:
-                validation_result = self._state.inventory.validate_for_calibration(
-                    model=etf_model,
-                    met_source=met_source,
-                    **validation_kwargs
-                )
-                target_fields = [f for f in target_fields if f in validation_result.ready_fields]
-
-            if not target_fields:
-                self._log.warning("no_fields_to_export")
-                return self._state.provenance.record(
-                    "export",
-                    target=str(output_path),
-                    params={"etf_model": etf_model},
-                    records_count=0,
-                    success=True,
-                )
-
-            # Build output dictionary
-            output = self._build_prepped_json(
-                target_fields,
-                etf_model,
-                masks,
-                met_source,
-                instrument,
-                use_merged_ndvi,
-                irr_threshold,
-                include_switched_etf,
-            )
-
-            # Write JSON
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(output_path, "w") as f:
-                json.dump(output, f, indent=2)
-
-            ctx["records_processed"] = len(target_fields)
-            ctx["fields_processed"] = len(target_fields)
-
-            self._log.info("export_complete", path=str(output_path), fields=len(target_fields))
-
-            event = self._state.provenance.record(
-                "export",
-                target=str(output_path),
-                source_format="prepped_json",
-                params={
-                    "etf_model": etf_model,
-                    "masks": list(masks),
-                    "met_source": met_source,
-                    "instrument": instrument,
-                    "use_merged_ndvi": use_merged_ndvi,
-                    "irr_threshold": irr_threshold,
-                },
-                fields_affected=target_fields,
-                records_count=len(target_fields),
-            )
-
-            return event
 
     def shapefile(
         self,
@@ -627,118 +508,63 @@ class Exporter(Component):
     # Helper Methods
     # -------------------------------------------------------------------------
 
-    def _build_prepped_json(
-        self,
-        fields: List[str],
-        etf_model: str,
-        masks: Tuple[str, ...],
-        met_source: str,
-        instrument: str,
-        use_merged_ndvi: bool,
-        irr_threshold: float,
-        include_switched_etf: bool,
-    ) -> Dict[str, Any]:
-        """Build the complete prepped JSON structure."""
-        output = {}
-
-        # Properties
-        output["props"] = self._get_properties_dict(fields)
-
-        # Dynamics
-        dynamics = self._get_dynamics_dict(fields)
-        output["irr_data"] = dynamics.get("irr", {})
-        output["gwsub_data"] = dynamics.get("gwsub", {})
-        output["ke_max"] = dynamics.get("ke_max", {})
-        output["kc_max"] = dynamics.get("kc_max", {})
-
-        # Build time series
-        order = []
-        time_series = {}
-
-        # Get required data
-        ds = self._build_export_dataset(fields, etf_model, masks, met_source, instrument, use_merged_ndvi)
-
-        if ds is None:
-            output["order"] = []
-            output["time_series"] = {}
-            return output
-
-        # Apply ETf switching if requested
-        if include_switched_etf:
-            ds = self._apply_etf_switching(ds, etf_model, masks, irr_threshold, dynamics.get("irr", {}))
-
-        # Build time series data
-        time_index = pd.DatetimeIndex(ds.coords["time"].values)
-
-        for field_uid in fields:
-            if field_uid not in ds.coords["site"].values:
-                continue
-            order.append(field_uid)
-
-        # Initialize time series structure
-        for i, t in enumerate(time_index):
-            dt_str = f"{t.year}-{t.month:02d}-{t.day:02d}"
-            time_series[dt_str] = {"doy": int(t.dayofyear)}
-
-        # Add data for each parameter
-        for var_name in ds.data_vars:
-            var_data = ds[var_name]
-            for i, t in enumerate(time_index):
-                dt_str = f"{t.year}-{t.month:02d}-{t.day:02d}"
-                values = var_data.isel(time=i).values.tolist()
-                time_series[dt_str][var_name] = values
-
-        # Add hourly precip (derived from daily)
-        if "prcp" in ds:
-            prcp_data = ds["prcp"]
-            for hr in range(24):
-                hr_name = f"prcp_hr_{hr:02d}"
-                for i, t in enumerate(time_index):
-                    dt_str = f"{t.year}-{t.month:02d}-{t.day:02d}"
-                    values = (prcp_data.isel(time=i).values / 24.0).tolist()
-                    time_series[dt_str][hr_name] = values
-
-        # Add nld_ppt_d (same as prcp)
-        if "prcp" in ds:
-            for i, t in enumerate(time_index):
-                dt_str = f"{t.year}-{t.month:02d}-{t.day:02d}"
-                time_series[dt_str]["nld_ppt_d"] = time_series[dt_str].get("prcp", [])
-
-        output["order"] = order
-        output["time_series"] = time_series
-        output["missing"] = [f for f in fields if f not in order]
-
-        return output
-
     def _get_properties_dict(self, fields: List[str]) -> Dict[str, Dict]:
-        """Get properties for all fields as a dictionary."""
-        from swimrs.container.schema import get_rooting_depth
+        """
+        Get field properties as a dictionary.
 
+        Used by build_swim_input to extract properties for HDF5 construction.
+
+        Args:
+            fields: List of field UIDs to get properties for
+
+        Returns:
+            Dict mapping field UIDs to their property dictionaries
+        """
         props = {}
 
+        # Get properties dataset
         props_ds = self._state.get_properties_dataset(fields=fields)
 
+        # Property names mapping (container names -> standard names)
+        prop_map = {
+            "awc": "awc",
+            "rew": "rew",
+            "tew": "tew",
+            "ksat": "ksat",
+            "cn2": "cn2",
+            "zr_min": "zr_min",
+            "zr_max": "zr_max",
+            "mad": "mad",
+            # Handle legacy name
+            "p_depletion": "mad",
+        }
+
         for field_uid in fields:
-            if field_uid not in props_ds.coords["site"].values:
+            if field_uid not in self._state._uid_to_index:
                 continue
 
             field_props = {}
-            for var in props_ds.data_vars:
-                value = props_ds[var].sel(site=field_uid).values
-                if not np.isnan(value):
-                    field_props[var] = float(value)
 
-            # Add LULC code mapping and derived rooting depth properties
-            if "modis_lc" in field_props:
-                lulc_code = int(field_props["modis_lc"])
-                field_props["lulc_code"] = lulc_code
+            for ds_name, out_name in prop_map.items():
+                if ds_name in props_ds:
+                    try:
+                        val = props_ds[ds_name].sel(site=field_uid).values
+                        if not np.isnan(val):
+                            field_props[out_name] = float(val)
+                    except (KeyError, TypeError):
+                        continue
 
-                # Compute root_depth and zr_mult from LULC (matches legacy prep)
-                root_depth, zr_mult = get_rooting_depth(lulc_code, use_max=True)
-                field_props["root_depth"] = root_depth
-                field_props["zr_mult"] = zr_mult
+            # Add boolean properties
+            for bool_prop in ["irr_status", "perennial", "gw_status"]:
+                if bool_prop in props_ds:
+                    try:
+                        val = props_ds[bool_prop].sel(site=field_uid).values
+                        field_props[bool_prop] = bool(val)
+                    except (KeyError, TypeError):
+                        continue
 
-            props[field_uid] = field_props
+            if field_props:
+                props[field_uid] = field_props
 
         return props
 
@@ -778,172 +604,3 @@ class Exporter(Component):
                                 pass
 
         return dynamics
-
-    def _build_export_dataset(
-        self,
-        fields: List[str],
-        etf_model: str,
-        masks: Tuple[str, ...],
-        met_source: str,
-        instrument: str,
-        use_merged_ndvi: bool,
-    ) -> Optional["xr.Dataset"]:
-        """Build dataset with all required variables for export."""
-        import xarray as xr
-
-        paths = {}
-
-        # Meteorology
-        for var in ["eto", "eto_corr", "prcp", "tmin", "tmax", "srad"]:
-            met_path = f"meteorology/{met_source}/{var}"
-            if met_path in self._state.root:
-                paths[var] = met_path
-
-        # Snow
-        for source in ["snodas", "era5"]:
-            swe_path = f"snow/{source}/swe"
-            if swe_path in self._state.root:
-                paths["swe"] = swe_path
-                break
-
-        # ETf for each mask (handle 'ensemble' by computing mean of available models)
-        ensemble_etf = {}
-        if etf_model == "ensemble":
-            # Find all available ETf models and compute mean
-            known_models = ["ssebop", "ptjpl", "sims", "geesebal", "eemetric", "disalexi"]
-            for mask in masks:
-                mask_data = []
-                for model in known_models:
-                    etf_path = f"remote_sensing/etf/{instrument}/{model}/{mask}"
-                    if etf_path in self._state.root:
-                        mask_data.append(self._state.get_xarray(etf_path, fields=fields))
-                if mask_data:
-                    import xarray as xr
-                    combined = xr.concat(mask_data, dim="model")
-                    ensemble_etf[mask] = combined.mean(dim="model")
-        else:
-            for mask in masks:
-                etf_path = f"remote_sensing/etf/{instrument}/{etf_model}/{mask}"
-                if etf_path in self._state.root:
-                    paths[f"etf_{mask}"] = etf_path
-
-        if not paths and not ensemble_etf:
-            return None
-
-        # Load base dataset (met, snow, ETf)
-        ds = self._state.get_dataset(paths, fields=fields) if paths else None
-
-        # Add ensemble ETf if computed
-        if ensemble_etf:
-            import xarray as xr
-            if ds is None:
-                # Create dataset from first ensemble ETf
-                first_mask = list(ensemble_etf.keys())[0]
-                ds = xr.Dataset({f"etf_{first_mask}": ensemble_etf[first_mask]})
-                for mask in list(ensemble_etf.keys())[1:]:
-                    ds[f"etf_{mask}"] = ensemble_etf[mask]
-            else:
-                for mask, da in ensemble_etf.items():
-                    ds[f"etf_{mask}"] = da
-
-        # NDVI: keep separate variables per mask (model expects ndvi_irr, ndvi_inv_irr)
-        # Interpolate sparse observations to create continuous time series (matches legacy prep)
-        for mask in masks:
-            if use_merged_ndvi:
-                merged_path = f"derived/merged_ndvi/{mask}"
-                ndvi_path = f"remote_sensing/ndvi/{instrument}/{mask}"
-                path = merged_path if merged_path in self._state.root else ndvi_path
-            else:
-                path = f"remote_sensing/ndvi/{instrument}/{mask}"
-
-            if path not in self._state.root:
-                continue
-
-            mask_ndvi = self._state.get_xarray(path, fields=fields)
-
-            # Interpolate NDVI to fill gaps (matches legacy prep_plots line 148-149)
-            # Convert to pandas for interpolation, then back to xarray
-            ndvi_df = mask_ndvi.to_pandas()
-            ndvi_interp = ndvi_df.interpolate(limit=100, axis=0)
-            ndvi_interp = ndvi_interp.bfill(axis=0).ffill(axis=0)
-
-            # Convert back to xarray with same coordinates
-            ds[f"ndvi_{mask}"] = mask_ndvi.copy(data=ndvi_interp.values)
-
-        return ds
-
-    def _apply_etf_switching(
-        self,
-        ds: "xr.Dataset",
-        etf_model: str,
-        masks: Tuple[str, ...],
-        irr_threshold: float,
-        irr_data: Dict[str, Dict],
-    ) -> "xr.Dataset":
-        """
-        Apply ETf mask switching based on irrigation status.
-
-        Logic matches legacy prep_plots.preproc():
-        1. Start with non-irrigated (inv_irr) mask as base
-        2. Fill NaN from irrigated (irr) mask for fields with only irr data
-        3. For irrigated years (f_irr >= threshold), use irr mask values
-
-        This ensures fields that only have data in one mask still get values,
-        while applying proper mask switching for mixed fields.
-        """
-        import xarray as xr
-
-        # Determine which ETf variables are available
-        has_inv_irr = "etf_inv_irr" in ds
-        has_irr = "etf_irr" in ds
-        has_no_mask = "etf_no_mask" in ds
-
-        if not (has_inv_irr or has_irr or has_no_mask):
-            return ds
-
-        # Build base ETf by combining masks with fillna()
-        # Priority: inv_irr -> irr -> no_mask (for base values)
-        if has_inv_irr:
-            etf = ds["etf_inv_irr"].copy()
-            # Fill NaN from irr mask (for fields that only have irrigated data)
-            if has_irr:
-                etf = etf.fillna(ds["etf_irr"])
-            if has_no_mask:
-                etf = etf.fillna(ds["etf_no_mask"])
-        elif has_irr:
-            etf = ds["etf_irr"].copy()
-            if has_no_mask:
-                etf = etf.fillna(ds["etf_no_mask"])
-        else:
-            etf = ds["etf_no_mask"].copy()
-
-        # Apply year-based switching: for irrigated years, use irr mask values
-        # This overrides the base values for years where the field is irrigated
-        if has_irr:
-            for site in ds.coords["site"].values:
-                site_irr = irr_data.get(str(site), {})
-
-                # Find irrigated years (f_irr >= threshold)
-                irr_years = []
-                for k, v in site_irr.items():
-                    if k == "fallow_years":
-                        continue
-                    try:
-                        if isinstance(v, dict) and v.get("f_irr", 0.0) >= irr_threshold:
-                            irr_years.append(int(k))
-                    except (ValueError, TypeError):
-                        continue
-
-                if irr_years:
-                    time_idx = pd.DatetimeIndex(ds.coords["time"].values)
-                    irr_mask = time_idx.year.isin(irr_years)
-                    etf.loc[dict(site=site, time=irr_mask)] = \
-                        ds["etf_irr"].sel(site=site).isel(time=irr_mask)
-
-        # Add combined ETf to dataset
-        ds["etf"] = etf
-
-        # Add model-specific ETf name
-        ds[f"{etf_model}_etf"] = etf
-
-        return ds

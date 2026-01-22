@@ -195,27 +195,6 @@ class ValidationConfig:
 
 
 @dataclass
-class ExportConfig:
-    """Export configuration."""
-
-    format: str = "prepped_input_json"
-    output: Path = None
-    validate: bool = True
-    etf_model: str = "ssebop"
-    use_merged_ndvi: bool = True
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ExportConfig":
-        return cls(
-            format=data.get("format", "prepped_input_json"),
-            output=Path(data["output"]) if data.get("output") else None,
-            validate=data.get("validate", True),
-            etf_model=data.get("etf_model", "ssebop"),
-            use_merged_ndvi=data.get("use_merged_ndvi", True),
-        )
-
-
-@dataclass
 class WorkflowConfig:
     """
     Complete workflow configuration.
@@ -241,17 +220,12 @@ class WorkflowConfig:
           compute_fused_ndvi: true
           compute_dynamics:
             etf_model: ssebop
-
-        export:
-          format: prepped_input_json
-          output: "output/prepped.json"
     """
 
     project: ProjectConfig
     sources: SourcesConfig
     compute: ComputeConfig
     validation: ValidationConfig
-    export: ExportConfig
     config_path: Optional[Path] = None
 
     @classmethod
@@ -291,7 +265,6 @@ class WorkflowConfig:
             sources=SourcesConfig.from_dict(data.get("sources", {})),
             compute=ComputeConfig.from_dict(data.get("workflow", {})),
             validation=ValidationConfig.from_dict(data.get("validation", {})),
-            export=ExportConfig.from_dict(data.get("export", {})),
             config_path=config_path,
         )
 

@@ -33,10 +33,6 @@ Example YAML Configuration:
         etf_model: ssebop
         irr_threshold: 0.1
 
-    export:
-      format: prepped_input_json
-      output: "output/prepped.json"
-
 Example Usage:
     from swimrs.container.workflow import WorkflowEngine
 
@@ -63,7 +59,6 @@ from .config import (
     PropertiesConfig,
     ComputeConfig,
     ValidationConfig,
-    ExportConfig,
 )
 from .steps import (
     WorkflowStep,
@@ -75,7 +70,6 @@ from .steps import (
     IngestPropertiesStep,
     ComputeFusedNDVIStep,
     ComputeDynamicsStep,
-    ExportStep,
 )
 from .engine import (
     WorkflowEngine,
@@ -93,7 +87,6 @@ __all__ = [
     "PropertiesConfig",
     "ComputeConfig",
     "ValidationConfig",
-    "ExportConfig",
     # Steps
     "WorkflowStep",
     "StepStatus",
@@ -104,7 +97,6 @@ __all__ = [
     "IngestPropertiesStep",
     "ComputeFusedNDVIStep",
     "ComputeDynamicsStep",
-    "ExportStep",
     # Engine
     "WorkflowEngine",
     "WorkflowProgress",

@@ -91,9 +91,6 @@ class SwimContainer:
         # Compute derived products
         container.compute.dynamics(etf_model="ssebop")
 
-        # Export for model
-        container.export.prepped_input_json("output/prepped.json")
-
         # Save and close
         container.save()
 
