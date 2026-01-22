@@ -233,31 +233,6 @@ REQUIRED_MET_UNIRR: List[str] = ["eto"]     # Required for non-irrigated fields
 # Parameters that can have NaN values in model input
 ACCEPT_NAN_PARAMS: List[str] = REQUIRED_MET_IRR + REQUIRED_MET_UNIRR + ["swe"]
 
-# Parameter to unit mapping.
-#
-# Note: this mapping uses legacy short unit tokens (e.g., "wm2", "kpa") that
-# appear in parquet MultiIndex columns. Canonical process-model units and
-# external-source conversion notes live in `src/swimrs/units.py`.
-ACCEPTED_UNITS_MAP: Dict[str, str] = {
-    "elev": "m",
-    "tmin": "c",
-    "tmax": "c",
-    "etr": "mm",
-    "etr_corr": "mm",
-    "eto": "mm",
-    "eto_corr": "mm",
-    "prcp": "mm",
-    "srad": "wm2",
-    "u2": "ms",
-    "ea": "kpa",
-    "et_fraction": "unitless",
-    "nld_ppt_d": "mm",
-    "centroid_lat": "degrees",
-    "centroid_lon": "degrees",
-    "swe": "mm",
-    **{f"prcp_hr_{i:02d}": "mm" for i in range(24)},
-}
-
 # Column MultiIndex structure for parquet time series files
 COLUMN_MULTIINDEX: List[str] = ["site", "instrument", "parameter", "units", "algorithm", "mask"]
 
