@@ -42,7 +42,7 @@ def _run_loop_jit(
     cn2: np.ndarray,
     zr_max: np.ndarray,
     zr_min: np.ndarray,
-    p_depletion: np.ndarray,
+    mad: np.ndarray,
     irr_status: np.ndarray,
     perennial: np.ndarray,
     gw_status: np.ndarray,
@@ -257,7 +257,7 @@ def _run_loop_jit(
         # ================================================================
         taw = awc * zr
         taw = np.maximum(taw, np.maximum(tew, 0.001))
-        raw = p_depletion * taw
+        raw = mad * taw
 
         # ================================================================
         # 7. UPDATE SURFACE LAYER (Ze)
@@ -523,7 +523,7 @@ def run_daily_loop_fast(
 
     # Pre-load all time series (this is fast - single HDF5 read per variable)
     all_ndvi = swim_input.get_time_series("ndvi").astype(np.float64)
-    all_etr = swim_input.get_time_series("etr").astype(np.float64)
+    all_ref_et = swim_input.get_time_series("ref_et").astype(np.float64)
     all_prcp = swim_input.get_time_series("prcp").astype(np.float64)
     all_tmin = swim_input.get_time_series("tmin").astype(np.float64)
     all_tmax = swim_input.get_time_series("tmax").astype(np.float64)
@@ -537,7 +537,7 @@ def run_daily_loop_fast(
     cn2 = props.cn2.astype(np.float64)
     zr_max = props.zr_max.astype(np.float64)
     zr_min = props.zr_min.astype(np.float64)
-    p_depletion = props.p_depletion.astype(np.float64)
+    mad = props.mad.astype(np.float64)
     irr_status = props.irr_status.astype(np.float64)
     perennial = props.perennial.astype(np.float64)
     gw_status = props.gw_status.astype(np.float64)
@@ -597,8 +597,8 @@ def run_daily_loop_fast(
         final_daw3, final_taw3,
     ) = _run_loop_jit(
         n_days, n_fields,
-        all_ndvi, all_etr, all_prcp, all_tmin, all_tmax, all_srad, all_irr_flag,
-        awc, rew, tew, cn2, zr_max, zr_min, p_depletion,
+        all_ndvi, all_ref_et, all_prcp, all_tmin, all_tmax, all_srad, all_irr_flag,
+        awc, rew, tew, cn2, zr_max, zr_min, mad,
         irr_status, perennial, gw_status, ke_max, f_sub,
         kc_max, kc_min, ndvi_k, ndvi_0, swe_alpha, swe_beta,
         kr_damp, ks_damp, max_irr_rate,
