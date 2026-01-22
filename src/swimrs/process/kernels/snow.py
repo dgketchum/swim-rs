@@ -178,11 +178,11 @@ def degree_day_melt(
     temp_avg : (n_fields,)
         Average daily temperature (°C)
     srad : (n_fields,)
-        Incoming shortwave radiation (MJ/m²/day)
+        Incoming shortwave radiation (W/m²), daily mean downward shortwave radiation
     albedo : (n_fields,)
         Snow albedo [0.45, 0.98]
     swe_alpha : (n_fields,)
-        Radiation melt coefficient (mm/MJ/m²)
+        Radiation melt coefficient (mm / (W/m²))
         Calibration parameter, typically [-0.5, 1.0]
     swe_beta : (n_fields,)
         Degree-day melt factor (mm/°C/day)

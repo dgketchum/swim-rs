@@ -52,7 +52,8 @@ def sample_snodas_swe(
             swe_img = coll.filterMetadata(
                 'system:index', 'equals', img_id).first().rename(img_id)
 
-            # this is in meters, conversion to mm is in the snodas.py processing script
+            # SWIM-RS assumes this SWE band is in meters; ingestion converts to mm.
+            # See `src/swimrs/units.py` (SNODAS_DAILY_UNITS).
             swe_img = swe_img.clip(feature_coll.geometry())
 
             if first:
