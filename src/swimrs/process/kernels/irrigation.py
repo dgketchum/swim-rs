@@ -146,15 +146,9 @@ def groundwater_subsidy(
     """
     Calculate groundwater subsidy to root zone.
 
-    For fields with shallow water tables, groundwater equilibrates depletion
-    to the RAW level. This can be positive (water added) when depl > raw,
-    or negative (water drained) when depl < raw due to rainfall.
-
-    Legacy behavior (compute_field_et.py lines 151-153):
-        - If any field has depl > raw AND gwsub_status is true globally
-        - Then for all fields with gwsub_status AND f_sub > 0.2:
-          gw_sim = depl_root - raw (can be negative when depl < raw)
-        - This effectively maintains depletion at exactly RAW level
+    For fields with shallow water tables, groundwater provides capillary rise
+    when depletion exceeds RAW. Each field is evaluated independently based
+    on its own conditions.
 
     Parameters
     ----------
@@ -167,61 +161,36 @@ def groundwater_subsidy(
     f_sub : (n_fields,)
         Fractional subsidy factor [0, 1]
         Uses threshold logic: if f_sub > 0.2, subsidy is applied
-        (matches legacy model compute_field_et.py behavior)
 
     Returns
     -------
     gw_sim : (n_fields,)
-        Groundwater subsidy amount (mm). Can be negative when depl < raw,
-        which means excess rain is drained to groundwater to maintain
-        depletion at RAW level.
+        Groundwater subsidy amount (mm). Positive when depl > raw
+        (capillary rise fills root zone back to RAW level).
 
     Notes
     -----
-    This behavior effectively models a field with a shallow, stable water
-    table that buffers soil moisture at the RAW level. When ET exceeds
-    rain, groundwater provides the deficit. When rain exceeds ET,
-    excess water drains back to groundwater.
+    Each field is evaluated independently:
+    - If field has gw_status=True AND f_sub > 0.2 AND depl_root > raw:
+      gw_sim = depl_root - raw (capillary rise to restore RAW level)
+    - Fields without groundwater connection are unaffected
+    - Fields with groundwater but depl <= raw receive no subsidy
 
-    The legacy model applies this when ANY subsidized field has depl > raw,
-    which triggers the subsidy logic for ALL subsidized fields. We match
-    this by checking if ANY active field (gw_status AND f_sub > 0.2) has
-    depl > raw, then applying gw_sim = depl - raw to all active fields.
+    This models capillary rise from a shallow water table that can supply
+    water when the root zone is depleted beyond the RAW threshold.
     """
     n = depl_root.shape[0]
     gw_sim = np.zeros(n, dtype=np.float64)
 
-    # Threshold for activating groundwater subsidy (matches legacy model)
+    # Threshold for activating groundwater subsidy
     FSUB_THRESHOLD = 0.2
 
-    # Legacy behavior (compute_field_et.py lines 151-153):
-    # if np.any(day_data.gwsub_status) and np.any((swb.depl_root > swb.raw)):
-    #     gw_subsidy = np.where(day_data.gwsub_status, swb.depl_root - swb.raw, 0.0)
-    #
-    # This means:
-    # 1. Check if ANY field has gwsub_status = 1 (f_sub > 0.2)
-    # 2. Check if ANY field (not necessarily same one!) has depl > raw
-    # 3. If both true, apply gw_sim = depl - raw for ALL fields with gwsub_status
-
-    # Step 1: Check if any field has active subsidy (gwsub_status = 1)
-    any_has_gwsub = False
-    for i in range(n):
+    # Per-field evaluation: each field's subsidy depends on its own state
+    for i in prange(n):
+        # Check if this field has active groundwater connection
         if gw_status[i] and f_sub[i] > FSUB_THRESHOLD:
-            any_has_gwsub = True
-            break
-
-    # Step 2: Check if any field has depl > raw
-    any_depl_above_raw = False
-    for i in range(n):
-        if depl_root[i] > raw[i]:
-            any_depl_above_raw = True
-            break
-
-    # Step 3: If both conditions met, apply subsidy to all fields with gwsub_status
-    if any_has_gwsub and any_depl_above_raw:
-        # gw_sim = depl_root - raw (can be negative!)
-        for i in prange(n):
-            if gw_status[i] and f_sub[i] > FSUB_THRESHOLD:
+            # Only provide subsidy when depletion exceeds RAW (capillary rise)
+            if depl_root[i] > raw[i]:
                 gw_sim[i] = depl_root[i] - raw[i]
 
     return gw_sim
