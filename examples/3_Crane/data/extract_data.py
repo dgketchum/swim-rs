@@ -235,12 +235,14 @@ def extract_ndvi(cfg, select_fields, use_drive, satellite='landsat', mask_types=
     bucket = None if use_drive else cfg.ee_bucket
     drive_folder = cfg.resolved_config.get('earth_engine', {}).get('drive_folder', cfg.project_name)
 
-    # Check directory for existing exports
-    ndvi_base = os.path.join(SCRIPT_DIR, 'remote_sensing', 'landsat', 'extracts', 'ndvi')
+    # Check directory for existing exports (use satellite-specific path)
+    ndvi_base = os.path.join(SCRIPT_DIR, 'remote_sensing', satellite, 'extracts', 'ndvi')
 
     for mask in mask_types:
         print(f"\nExtracting {satellite} NDVI ({mask})...")
-        check_dir = None if overwrite else os.path.join(ndvi_base, mask)
+        mask_check_dir = os.path.join(ndvi_base, mask)
+        # Only use check_dir if not overwriting AND directory exists
+        check_dir = None if overwrite or not os.path.exists(mask_check_dir) else mask_check_dir
         sparse_sample_ndvi(
             cfg.fields_shapefile,
             bucket=bucket,
@@ -414,7 +416,7 @@ def sync_from_bucket(cfg, dry_run=False):
             print("Sync complete!")
 
 
-def print_summary(use_drive, cfg):
+def print_summary(use_drive, cfg, sentinel=False):
     """Print extraction summary and next steps."""
     print("\n" + "=" * 60)
     print("EXTRACTION COMPLETE")
@@ -425,8 +427,10 @@ Expected output directories:
   remote_sensing/landsat/extracts/sims_etf/    - SIMS ETf CSVs
   remote_sensing/landsat/extracts/ssebop_etf/  - SSEBop ETf CSVs
   remote_sensing/landsat/extracts/geesebal_etf/ - geeSEBAL ETf CSVs
-  remote_sensing/landsat/extracts/ndvi/        - NDVI CSVs
-  snow/snodas/extracts/                        - SWE CSVs
+  remote_sensing/landsat/extracts/ndvi/        - Landsat NDVI CSVs""")
+    if sentinel:
+        print("  remote_sensing/sentinel/extracts/ndvi/       - Sentinel-2 NDVI CSVs")
+    print("""  snow/snodas/extracts/                        - SWE CSVs
   properties/                                  - Irrigation, landcover, soils
   met/                                         - Meteorology parquet files
 
@@ -465,6 +469,10 @@ def main():
                         help='Overwrite existing exported data')
     parser.add_argument('--build-shp', action='store_true',
                         help='Only rebuild local shapefile from master and exit (writes provenance)')
+    parser.add_argument('--sentinel', action='store_true',
+                        help='Extract Sentinel-2 NDVI (in addition to or instead of Landsat)')
+    parser.add_argument('--sentinel-only', action='store_true',
+                        help='Extract only Sentinel-2 NDVI (skip Landsat and ETf)')
     args = parser.parse_args()
 
     # Determine which fields to extract
@@ -502,39 +510,54 @@ def main():
         init_earth_engine()
         print(f"Bucket: {cfg.ee_bucket}")
         print(f"Destination: {'Google Drive' if args.drive else 'GCS bucket'}")
-        etf_models = args.models if args.models else OPENET_MODELS
-        print(f"ETf models: {etf_models}")
-        # Remote sensing extractions (Earth Engine)
+
+        # Handle sentinel-only mode
+        if args.sentinel_only:
+            print("\n" + "=" * 60)
+            print("SENTINEL-2 NDVI EXTRACTION ONLY")
+            print("=" * 60)
+            extract_ndvi(cfg, select_fields, args.drive, satellite='sentinel', overwrite=args.overwrite)
+
+        else:
+            etf_models = args.models if args.models else OPENET_MODELS
+            print(f"ETf models: {etf_models}")
+            # Remote sensing extractions (Earth Engine)
+            print("\n" + "=" * 60)
+            print("PART A: Remote Sensing Extraction (Earth Engine)")
+            print("=" * 60)
+
+            extract_openet_etf(cfg, select_fields, args.drive, models=etf_models, overwrite=args.overwrite)
+            extract_ndvi(cfg, select_fields, args.drive, satellite='landsat', overwrite=args.overwrite)
+
+            # Extract Sentinel-2 NDVI if --sentinel flag is set
+            if args.sentinel:
+                print("\n--- Extracting Sentinel-2 NDVI ---")
+                extract_ndvi(cfg, select_fields, args.drive, satellite='sentinel', overwrite=args.overwrite)
+
+            # Properties and snow
+            print("\n" + "=" * 60)
+            print("PART B: Properties and Snow Extraction (Earth Engine)")
+            print("=" * 60)
+
+            extract_snodas(cfg, select_fields, args.drive, overwrite=args.overwrite)
+            extract_properties(cfg, select_fields, args.drive, overwrite=args.overwrite)
+
+    # GridMET (local processing) - skip for sentinel-only mode
+    if not args.sentinel_only:
         print("\n" + "=" * 60)
-        print("PART A: Remote Sensing Extraction (Earth Engine)")
+        print("PART C: Meteorology Extraction (GridMET)")
         print("=" * 60)
 
-        extract_openet_etf(cfg, select_fields, args.drive, models=etf_models, overwrite=args.overwrite)
-        extract_ndvi(cfg, select_fields, args.drive, overwrite=args.overwrite)
+        extract_gridmet(cfg, select_fields, overwrite=args.overwrite)
 
-        # Properties and snow
-        print("\n" + "=" * 60)
-        print("PART B: Properties and Snow Extraction (Earth Engine)")
-        print("=" * 60)
-
-        extract_snodas(cfg, select_fields, args.drive, overwrite=args.overwrite)
-        extract_properties(cfg, select_fields, args.drive, overwrite=args.overwrite)
-
-    # GridMET (local processing)
-    print("\n" + "=" * 60)
-    print("PART C: Meteorology Extraction (GridMET)")
-    print("=" * 60)
-
-    extract_gridmet(cfg, select_fields, overwrite=args.overwrite)
-
-    # Sync if using bucket
-    if not args.drive:
+    # Sync if using bucket (skip for sentinel-only as it goes to different path)
+    if not args.drive and not args.sentinel_only:
         print("\n" + "=" * 60)
         print("PART D: Sync from Cloud Storage")
         print("=" * 60)
         sync_from_bucket(cfg, dry_run=True)
 
-    print_summary(args.drive, cfg)
+    print_summary(args.drive, cfg, sentinel=(args.sentinel or args.sentinel_only))
 
 
 if __name__ == '__main__':

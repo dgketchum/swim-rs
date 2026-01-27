@@ -166,11 +166,11 @@ def ingest_data(container, cfg, select_fields=None):
                     overwrite=True,
                 )
 
-    # 5. Ingest NDVI data
+    # 5. Ingest NDVI data (Landsat)
     # Note: Single-field EE exports may use the field ID as the first column header
     # (e.g., 'S2' instead of 'site_id'). The ingestor auto-detects and converts
     # these to standard format if the column header matches a known field ID.
-    print("\n=== Ingesting NDVI ===")
+    print("\n=== Ingesting Landsat NDVI ===")
     ndvi_base = os.path.join(SCRIPT_DIR, 'remote_sensing', 'landsat', 'extracts', 'ndvi')
 
     for mask in ['irr', 'inv_irr']:
@@ -186,14 +186,18 @@ def ingest_data(container, cfg, select_fields=None):
             )
 
 
+
 def compute_dynamics(container, select_fields=None):
     """Compute merged NDVI and field dynamics (ke_max, kc_max, irrigation)."""
 
-    # 1. Merge NDVI (Landsat only for this example)
-    print("\n=== Computing Merged NDVI ===")
+    # Use Landsat-only NDVI by default
+    instruments = ('landsat',)
+
+    # 1. Merge NDVI
+    print(f"\n=== Computing Merged NDVI (instruments: {list(instruments)}) ===")
     container.compute.merged_ndvi(
         masks=('irr', 'inv_irr'),
-        instruments=('landsat',),
+        instruments=instruments,
         overwrite=True,
     )
 
@@ -202,7 +206,7 @@ def compute_dynamics(container, select_fields=None):
     container.compute.dynamics(
         etf_model='ssebop',
         masks=('irr', 'inv_irr'),
-        instruments=('landsat',),
+        instruments=instruments,
         use_mask=True,  # Use irrigation mask for CONUS
         use_lulc=False,
         fields=select_fields,
