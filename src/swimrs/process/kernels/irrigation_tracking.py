@@ -168,7 +168,7 @@ def update_irrigation_fraction_l3(
         Irrigation fraction in layer 3 BEFORE today's fluxes [0, 1]
     gross_dperc : (n_fields,)
         Gross deep percolation entering layer 3 (mm)
-        Includes dperc + 10% of irrigation
+        Includes dperc + IRR_BYPASS_FRAC of applied irrigation (bypasses root zone)
     irr_frac_inflow : (n_fields,)
         Irrigation fraction of inflowing water (root zone's current fraction)
     dperc_out : (n_fields,)

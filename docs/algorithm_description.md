@@ -69,6 +69,22 @@ We iterate through each day in the simulation period. For each day, we
 perform the following calculations in sequence, updating the water balance
 state.
 
+**Note on step numbering:** The steps below are numbered for conceptual
+clarity, not execution order. In the implementation (`loop.py:step_day`),
+the actual sequence differs for physical correctness:
+
+1. Snow partitioning and melt (Step 2) - needed to determine effective precip
+2. Runoff calculation (Step 3) - depends on rain vs snow
+3. Crop coefficient from NDVI (Step 1)
+4. Fractional cover (Step 4)
+5. Root depth calculation (Step 5) - computed early but applied at end
+6. TAW/RAW computation, surface layer update
+7. Kr/Ks coefficients (Steps 6-7)
+8. Actual ET (Step 8)
+9. Irrigation and groundwater (Steps 9-10)
+10. Deep percolation (Step 11)
+11. Root growth water redistribution (Step 5 completion)
+
 ## Algorithm Steps
 
 ### Step 1: Basal Crop Coefficient from NDVI
@@ -79,6 +95,8 @@ relationship:
 ```
 Kcb = Kc_max / (1 + exp(-ndvi_k × (NDVI - ndvi_0)))
 ```
+
+The exponent is clipped to [-20, 20] to prevent numerical overflow.
 
 - Higher NDVI indicates greater vegetation vigor and higher transpiration
   potential
@@ -100,7 +118,10 @@ We partition precipitation into rain or snow and compute snowmelt:
 
 **Albedo evolution**:
 - Fresh snowfall (> 3 mm) resets albedo to 0.98
-- Albedo decays exponentially between snowfall events
+- Albedo decays exponentially with two rates:
+  - With some snowfall (0-3 mm): decay rate = 0.12
+  - With no snowfall: decay rate = 0.05 (slower aging)
+- Decay formula: `albedo = albedo_min + (albedo_prev - albedo_min) × exp(-decay_rate)`
 - Minimum albedo for old snow: 0.45
 
 **Snowmelt** (combined degree-day and radiation approach):
@@ -157,6 +178,7 @@ few = 1 - fc
 
 - `fc` is bounded [0, 0.99] to ensure exposed soil fraction remains
   positive
+- `few` is bounded [0.01, 1.0] for numerical stability
 - `few` represents the fraction of soil available for evaporation
 
 ### Step 5: Root Growth
@@ -262,17 +284,24 @@ days until the deficit is satisfied.
 
 ### Step 10: Groundwater Subsidy
 
-For fields with shallow water tables (`gw_status = True` and
-`f_sub > 0.2`):
+For fields with shallow water tables, groundwater can provide capillary
+rise when the root zone is depleted. Each field is evaluated independently
+based on its own conditions.
 
-When `depl_root > RAW`:
+**Conditions for subsidy** (all must be met for a given field):
+1. `gw_status = True` (field has groundwater connection)
+2. `f_sub > 0.2` (sufficient subsidy fraction)
+3. `depl_root > RAW` (root zone is depleted beyond threshold)
+
+When conditions are met:
 
 ```
 gw_sim = depl_root - RAW
 ```
 
 This represents capillary rise filling the root zone back to the RAW
-threshold.
+threshold. Fields without groundwater connection, or fields where
+depletion is below RAW, receive no subsidy.
 
 **Parameters**: `f_sub` (subsidy fraction, derived from observations)
 
@@ -288,11 +317,43 @@ depl_root = 0
 The excess water drains to layer 3 (below-root storage):
 
 ```
-gross_dperc = dperc + 0.1 × irr_sim
+gross_dperc = dperc + IRR_BYPASS_FRAC × irr_sim
 ```
+
+**Irrigation bypass**: A fraction of applied irrigation (IRR_BYPASS_FRAC = 0.1,
+or 10%) bypasses the root zone and goes directly to deep percolation. This
+accounts for irrigation inefficiency due to preferential flow paths, non-uniform
+application, or application in excess of infiltration capacity.
+
+**Mass conservation**: Only 90% of irrigation enters the root zone (reducing
+depletion), while 10% bypasses directly to deep percolation. Total water
+accounted for = 90% + 10% = 100%.
 
 Layer 3 stores water up to its capacity (`taw3 = AWC × (zr_max - zr)`).
 When full, excess drains as deep percolation leaving the system.
+
+### Irrigation Fraction Tracking
+
+The model tracks the fraction of soil water that originated from irrigation
+versus natural precipitation. This enables **consumptive use accounting**
+for water rights management.
+
+**Tracked quantities:**
+- `irr_frac_root`: Irrigation fraction in root zone [0, 1]
+- `irr_frac_l3`: Irrigation fraction in layer 3 [0, 1]
+
+**Derived outputs:**
+- `et_irr = eta × irr_frac_root`: ET from irrigation water (consumptive use)
+- `dperc_irr = dperc × irr_frac_root`: Deep percolation of irrigation water (return flow)
+
+**Fraction mixing logic:**
+- When irrigation is applied (90% to root zone), it mixes with existing soil water
+- When water transfers between root zone and layer 3 (root growth/recession),
+  the irrigation fraction transfers proportionally
+- The 10% irrigation bypass to deep percolation is treated as having the root
+  zone's current irrigation fraction (a simplifying assumption for mixing)
+
+This feature is implemented in `kernels/irrigation_tracking.py`.
 
 ## Three-Layer Soil Model
 
@@ -322,6 +383,8 @@ The model tracks water in three conceptual layers:
 | `ks`        | Water stress coefficient (damped)        | -     |
 | `kr`        | Evaporation reduction coefficient        | -     |
 | `albedo`    | Snow albedo                              | -     |
+| `irr_frac_root` | Irrigation fraction in root zone     | -     |
+| `irr_frac_l3`   | Irrigation fraction in layer 3       | -     |
 
 ## Tunable Coefficients
 
@@ -385,6 +448,10 @@ and crop stress tolerance.
 | `dperc`     | Deep percolation                 | mm      |
 | `irr_sim`   | Simulated irrigation             | mm      |
 | `gw_sim`    | Groundwater subsidy              | mm      |
+| `et_irr`    | ET from irrigation water         | mm      |
+| `dperc_irr` | Deep percolation of irr. water   | mm      |
+| `irr_frac_root` | Irrigation fraction in root zone | -   |
+| `irr_frac_l3`   | Irrigation fraction in layer 3   | -   |
 
 ## Source Code Reference
 
@@ -399,6 +466,7 @@ and crop stress tolerance.
 | `kernels/transpiration.py`  | Step 7 (Ks stress coefficient)          |
 | `kernels/water_balance.py`  | Step 8 (Actual ET, deep percolation)    |
 | `kernels/irrigation.py`     | Steps 9-10 (Irrigation, groundwater)    |
+| `kernels/irrigation_tracking.py` | Irrigation fraction tracking       |
 | `kernels/root_growth.py`    | Step 5, 11 (Root depth, redistribution) |
 | `state.py`                  | State variable containers               |
 | `input.py`                  | Input data structures (HDF5 container)  |

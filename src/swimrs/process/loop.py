@@ -55,6 +55,11 @@ if TYPE_CHECKING:
 
 __all__ = ["run_daily_loop", "DailyOutput", "step_day"]
 
+# Irrigation bypass fraction: 10% of applied irrigation bypasses the root zone
+# and goes directly to deep percolation (accounts for preferential flow paths,
+# non-uniform application, etc.). Only 90% actually enters the root zone.
+IRR_BYPASS_FRAC = 0.1
+
 
 @dataclass
 class DailyOutput:
@@ -363,20 +368,21 @@ def step_day(
     # Update albedo
     state.albedo = albedo_decay(state.albedo, snow)
 
-    # Calculate melt
+    # Calculate melt.
+    # NOTE: Legacy model updates SWE with today's snowfall BEFORE computing melt
+    # (compute_snow.py: foo.swe += sf, then melt = min(foo.swe, melt_potential)).
+    swe_before_melt = state.swe + snow
     melt = degree_day_melt(
-        state.swe, tmax, temp_avg, srad, state.albedo,
+        swe_before_melt, tmax, temp_avg, srad, state.albedo,
         params.swe_alpha, params.swe_beta
     )
 
     # Update SWE
     swe_new = snow_water_equivalent(state.swe, snow, melt)
-    # Actual melt is the minimum of potential melt and available SWE
-    actual_melt = np.minimum(melt, state.swe)
     state.swe = swe_new
 
     # Effective precipitation (rain + melt)
-    precip_eff = rain + actual_melt
+    precip_eff = rain + melt
 
     # 2. Runoff calculation based on runoff_process
     if runoff_process == "ier" and prcp_hr is not None:
@@ -399,11 +405,12 @@ def step_day(
             )
             runoff = np.where(props.irr_status, runoff_smooth, runoff_std)
 
-            # Shift S history (newest to oldest: s -> s1 -> s2 -> s3 -> s4)
+            # Shift S history (newest to oldest: s_new -> s1 -> s2 -> s3 -> s4)
+            # Legacy model sets s1 to today's S (runoff.py: foo.s1 = foo.s).
             state.s4 = state.s3.copy()
             state.s3 = state.s2.copy()
             state.s2 = state.s1.copy()
-            state.s1 = state.s.copy()
+            state.s1 = s_new.copy()
             state.s = s_new
         else:
             # Non-irrigated: standard SCS runoff
@@ -441,7 +448,7 @@ def step_day(
     # swb.depl_ze = swb.depl_ze - (swb.melt + swb.rain + swb.irr_sim)
     # Note: uses previous day's irr_sim (stored in state.prev_irr_sim)
     prev_irr = state.prev_irr_sim if hasattr(state, 'prev_irr_sim') else np.zeros(n)
-    state.depl_ze = state.depl_ze - (actual_melt + rain + prev_irr)
+    state.depl_ze = state.depl_ze - (melt + rain + prev_irr)
     state.depl_ze = np.maximum(state.depl_ze, 0.0)  # Can't be negative
 
     # 9. Calculate base Kr and Ks (using current depletion)
@@ -508,9 +515,11 @@ def step_day(
     )
 
     # 16. Apply irrigation and groundwater subsidy
-    # Matches legacy model compute_field_et.py line 156:
-    # swb.depl_root -= (swb.irr_sim + swb.gw_sim)
-    depl_new = depl_after_et - irr_sim - gw_sim
+    # Note: Only (1 - IRR_BYPASS_FRAC) of irrigation reaches the root zone.
+    # The remaining IRR_BYPASS_FRAC goes directly to deep percolation (step 19).
+    # This accounts for preferential flow, non-uniform application, etc.
+    irr_to_root = (1.0 - IRR_BYPASS_FRAC) * irr_sim
+    depl_new = depl_after_et - irr_to_root - gw_sim
 
     # 17. Deep percolation (excess water when depl < 0)
     dperc, depl_after_perc = deep_percolation(depl_new)
@@ -521,9 +530,10 @@ def step_day(
     state.depl_root = np.minimum(depl_after_perc, taw)
 
     # 19. Layer 3 storage update with gross deep percolation
-    # Matches legacy model compute_field_et.py line 165:
-    # gross_dperc = swb.dperc + (0.1 * swb.irr_sim)
-    gross_dperc = dperc + 0.1 * irr_sim
+    # The IRR_BYPASS_FRAC of irrigation bypasses the root zone directly to dperc.
+    # Combined with irr_to_root from step 16, total = 90% + 10% = 100% (mass conserved).
+    irr_bypass = IRR_BYPASS_FRAC * irr_sim
+    gross_dperc = dperc + irr_bypass
 
     if state.taw3 is not None and np.any(state.taw3 > 0):
         state.daw3, dperc_out = layer3_storage(
@@ -538,14 +548,15 @@ def step_day(
 
     # 19a. Update root zone irrigation fraction
     # Uses values BEFORE today's fluxes for consistency
+    # Note: Use irr_to_root (not irr_sim) since that's what enters the root zone
     state.irr_frac_root, et_irr = update_irrigation_fraction_root(
         props.awc, zr_prev, depl_root_before, irr_frac_root_before,
-        infiltration, irr_sim, gw_sim, eta, dperc
+        infiltration, irr_to_root, gw_sim, eta, dperc
     )
 
     # 19b. Update layer 3 irrigation fraction
-    # The gross_dperc (including 10% irrigation bypass) carries the root zone's
-    # current fraction, treating bypass as if irrigation mixed first
+    # The gross_dperc includes the irrigation bypass. For fraction tracking,
+    # we treat the bypass as having 100% irrigation fraction (it's pure irrigation water).
     state.irr_frac_l3, dperc_irr = update_irrigation_fraction_l3(
         daw3_before, irr_frac_l3_before,
         gross_dperc, state.irr_frac_root, dperc_out
@@ -618,7 +629,7 @@ def step_day(
         "kr": kr_new,
         "runoff": runoff,
         "rain": rain,
-        "melt": actual_melt,
+        "melt": melt,
         "swe": state.swe,
         "depl_root": state.depl_root,
         "dperc": dperc_out,
