@@ -5,8 +5,8 @@
 SWIM-RS combines the desirable qualities of remote sensing and hydrological modeling into an easy-to-use, rigorous
 water use modeling system.
 
-SWIM-RS is a container-first toolkit for field-scale soil water balance: Landsat/Sentinel NDVI/ETf + GridMET/ERA5 meteorology, 
-packaged into `.swim` containers with provenance and coverage checks. 
+SWIM-RS is a toolkit for field-scale soil water balance using remote sensing (Landsat/Sentinel NDVI/ETf) and gridded meteorology (GridMET/ERA5) data sources, 
+packaged into easy-to-manage containers with provenance and coverage checks. 
 The process engine uses numba-accelerated FAO-56 kernels; calibration is field-level via PEST++ IES (ensemble ETf optional). 
 A 40-year run on a single field completes in under a second; shipped examples run end-to-end with a few commands.
 
@@ -102,7 +102,7 @@ Flux data from [Volk et al., 2023](https://www.sciencedirect.com/science/article
 
 - **Portable HDF5 Inputs for Simulation and Calibration** — A single HDF5 file (`swim_input.h5`) is generated per project or worker and contains all data needed to run simulations or calibrations independently of the original container or filesystem.
 
-- **Fast, Modular Simulation Engine Using Numba JIT** — Implements core model kernels as Numba-accelerated functions, achieving 5–10× speedups over standard NumPy code and enabling daily simulations over decades for thousands of fields in seconds.
+- **Fast, Modular Simulation Engine Using Numba JIT** — Implements core model kernels as Numba-accelerated functions, achieving 5–10× speedups over standard NumPy code and enabling daily simulations over decades for hundreds of fields in seconds.
 
 - **End-to-End Integration with PEST++ IES** — Includes built-in support for spinup, control file generation, localization, and parameter bounds for Iterative Ensemble Smoother–based calibration, directly from container inputs.
 
