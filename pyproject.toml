@@ -67,6 +67,7 @@ markers = [
     "integration: Tests requiring multiple modules, network, or external services",
     "regression: Golden file comparison tests",
     "parity: Legacy compatibility tests (container vs legacy implementations)",
+    "conservation: Mass balance and water conservation verification tests",
     "slow: Tests taking > 5 seconds",
     "requires_ee: Tests requiring Earth Engine authentication (skip with default, run with --run-ee)",
     "pest: Tests requiring PEST++ binaries",

@@ -441,7 +441,7 @@ def get_container_dynamics_values(container) -> Dict[str, Any]:
 def pytest_configure(config):
     """Register custom markers."""
     config.addinivalue_line(
-        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
+        "markers", "unit: fast isolated unit tests"
     )
     config.addinivalue_line(
         "markers", "integration: marks integration tests"
@@ -451,6 +451,12 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "parity: marks parity tests comparing container vs legacy implementations"
+    )
+    config.addinivalue_line(
+        "markers", "conservation: mass balance and water conservation verification"
+    )
+    config.addinivalue_line(
+        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
     config.addinivalue_line(
         "markers", "requires_ee: marks tests requiring Earth Engine authentication (run with --run-ee)"
