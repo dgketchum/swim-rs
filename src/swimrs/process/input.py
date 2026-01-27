@@ -157,6 +157,16 @@ class SwimInput:
     def _load_properties(self, h5: h5py.File) -> FieldProperties:
         """Load field properties from HDF5."""
         props = h5["properties"]
+
+        # Handle mad/p_depletion alias for backward compatibility
+        # Old files have 'p_depletion', new files have 'mad'
+        if "mad" in props:
+            mad = props["mad"][:]
+        elif "p_depletion" in props:
+            mad = props["p_depletion"][:]
+        else:
+            raise KeyError("Neither 'mad' nor 'p_depletion' found in properties")
+
         return FieldProperties(
             n_fields=self.n_fields,
             fids=np.array(self.fids),
@@ -167,7 +177,7 @@ class SwimInput:
             cn2=props["cn2"][:],
             zr_max=props["zr_max"][:],
             zr_min=props["zr_min"][:],
-            mad=props["mad"][:],
+            mad=mad,
             irr_status=props["irr_status"][:].astype(bool),
             perennial=props["perennial"][:].astype(bool),
             gw_status=props["gw_status"][:].astype(bool),
@@ -239,7 +249,9 @@ class SwimInput:
         Parameters
         ----------
         variable : str
-            Variable name (e.g., 'ndvi', 'prcp', 'tmin', 'tmax', 'srad', 'ref_et')
+            Variable name (e.g., 'ndvi', 'prcp', 'tmin', 'tmax', 'srad', 'ref_et',
+            'etr', 'eto'). Note: 'etr'/'eto' are aliases for 'ref_et' in newer
+            HDF5 files, and 'ref_et' is an alias for 'etr'/'eto' in older files.
         day_idx : int, optional
             If provided, return only data for this day index.
             Otherwise return full time series (n_days, n_fields).
@@ -254,12 +266,34 @@ class SwimInput:
             raise RuntimeError("HDF5 file not open")
 
         ts = self._h5_file["time_series"]
+
+        # Handle reference ET aliases for backward/forward compatibility
+        # Old files have 'etr'/'eto', new files have 'ref_et'
+        actual_var = variable
         if variable not in ts:
-            raise KeyError(f"Variable '{variable}' not in time_series")
+            # Try aliases for reference ET
+            ref_et_aliases = {"etr", "eto", "ref_et"}
+            if variable in ref_et_aliases:
+                for alias in ref_et_aliases:
+                    if alias in ts:
+                        actual_var = alias
+                        break
+                else:
+                    available = list(ts.keys())
+                    raise KeyError(
+                        f"Variable '{variable}' not in time_series. "
+                        f"Available: {available}"
+                    )
+            else:
+                available = list(ts.keys())
+                raise KeyError(
+                    f"Variable '{variable}' not in time_series. "
+                    f"Available: {available}"
+                )
 
         if day_idx is not None:
-            return ts[variable][day_idx, :]
-        return ts[variable][:]
+            return ts[actual_var][day_idx, :]
+        return ts[actual_var][:]
 
     def get_irr_flag(self, day_idx: int | None = None) -> NDArray[np.bool_]:
         """Get irrigation flag data.
