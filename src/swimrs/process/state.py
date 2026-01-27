@@ -310,6 +310,9 @@ class FieldProperties:
     ke_max : NDArray[np.float64]
         Maximum soil evaporation coefficient, derived from ETf observations
         where NDVI < 0.3 (90th percentile of bare soil ETf)
+    kc_max : NDArray[np.float64]
+        Maximum crop coefficient, derived from ETf observations
+        (90th percentile of all ETf values)
     f_sub : NDArray[np.float64]
         Groundwater subsidy fraction (0-1), derived from ETa/PPT ratio
         where f_sub = (ratio - 1) / ratio when ratio > 1
@@ -329,6 +332,7 @@ class FieldProperties:
     perennial: NDArray[np.bool_] = field(default=None)
     gw_status: NDArray[np.bool_] = field(default=None)
     ke_max: NDArray[np.float64] = field(default=None)
+    kc_max: NDArray[np.float64] = field(default=None)
     f_sub: NDArray[np.float64] = field(default=None)
 
     def __post_init__(self):
@@ -360,6 +364,8 @@ class FieldProperties:
             self.gw_status = np.zeros(n, dtype=np.bool_)
         if self.ke_max is None:
             self.ke_max = np.full(n, 1.0, dtype=np.float64)  # Default: no cap
+        if self.kc_max is None:
+            self.kc_max = np.full(n, 1.25, dtype=np.float64)  # Default: typical crop max
         if self.f_sub is None:
             self.f_sub = np.zeros(n, dtype=np.float64)  # Default: no GW subsidy
 
@@ -421,8 +427,6 @@ class CalibrationParameters:
     ----------
     n_fields : int
         Number of fields/pixels
-    kc_max : NDArray[np.float64]
-        Maximum crop coefficient
     kc_min : NDArray[np.float64]
         Minimum crop coefficient (bare soil)
     ndvi_k : NDArray[np.float64]
@@ -442,7 +446,6 @@ class CalibrationParameters:
     """
 
     n_fields: int
-    kc_max: NDArray[np.float64] = field(default=None)
     kc_min: NDArray[np.float64] = field(default=None)
     ndvi_k: NDArray[np.float64] = field(default=None)
     ndvi_0: NDArray[np.float64] = field(default=None)
@@ -455,8 +458,6 @@ class CalibrationParameters:
     def __post_init__(self):
         """Initialize arrays with default values if not provided."""
         n = self.n_fields
-        if self.kc_max is None:
-            self.kc_max = np.full(n, 1.15, dtype=np.float64)
         if self.kc_min is None:
             self.kc_min = np.full(n, 0.15, dtype=np.float64)
         if self.ndvi_k is None:
@@ -497,7 +498,6 @@ class CalibrationParameters:
         params = cls(n_fields=base.n_fields)
 
         # Copy base values
-        params.kc_max = base.kc_max.copy()
         params.kc_min = base.kc_min.copy()
         params.ndvi_k = base.ndvi_k.copy()
         params.ndvi_0 = base.ndvi_0.copy()
@@ -518,7 +518,6 @@ class CalibrationParameters:
     def copy(self) -> CalibrationParameters:
         """Create a deep copy of the parameters."""
         params = CalibrationParameters(n_fields=self.n_fields)
-        params.kc_max = self.kc_max.copy()
         params.kc_min = self.kc_min.copy()
         params.ndvi_k = self.ndvi_k.copy()
         params.ndvi_0 = self.ndvi_0.copy()
@@ -644,6 +643,7 @@ def load_pest_mult_properties(
         perennial=base_props.perennial.copy(),
         gw_status=base_props.gw_status.copy(),
         ke_max=base_props.ke_max.copy(),
+        kc_max=base_props.kc_max.copy(),
         f_sub=base_props.f_sub.copy(),
     )
 

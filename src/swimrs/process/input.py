@@ -182,6 +182,7 @@ class SwimInput:
             perennial=props["perennial"][:].astype(bool),
             gw_status=props["gw_status"][:].astype(bool),
             ke_max=props["ke_max"][:] if "ke_max" in props else None,
+            kc_max=props["kc_max"][:] if "kc_max" in props else None,
             f_sub=props["f_sub"][:] if "f_sub" in props else None,
         )
 
@@ -190,7 +191,6 @@ class SwimInput:
         params = h5["parameters"]
         return CalibrationParameters(
             n_fields=self.n_fields,
-            kc_max=params["kc_max"][:],
             kc_min=params["kc_min"][:],
             ndvi_k=params["ndvi_k"][:],
             ndvi_0=params["ndvi_0"][:],
@@ -486,6 +486,7 @@ def build_swim_input(
     etf_model: str = "ssebop",
     met_source: str = "gridmet",
     fields: list[str] | None = None,
+    empirical_kc_max: bool = False,
 ) -> SwimInput:
     """Build HDF5 input file from SwimContainer.
 
@@ -519,6 +520,9 @@ def build_swim_input(
         Meteorology source (e.g., 'gridmet', 'era5')
     fields : list[str], optional
         List of field UIDs to include (default: all fields in container)
+    empirical_kc_max : bool
+        If True, use empirical kc_max from container (90th percentile ETf).
+        If False (default), use fixed FAO-56 value of 1.2.
 
     Returns
     -------
@@ -604,7 +608,8 @@ def build_swim_input(
 
         # Write properties from container data
         _write_properties_from_container(
-            h5, container_data, fids, n_fields, calibrated_params
+            h5, container_data, fids, n_fields, calibrated_params,
+            empirical_kc_max=empirical_kc_max
         )
 
         # Write parameters
@@ -757,8 +762,16 @@ def _write_properties_from_container(
     fids: list[str],
     n_fields: int,
     calibrated_params: dict[str, NDArray[np.float64]] | None = None,
+    empirical_kc_max: bool = False,
 ):
-    """Write properties from container data to HDF5."""
+    """Write properties from container data to HDF5.
+
+    Parameters
+    ----------
+    empirical_kc_max : bool
+        If True, use empirical kc_max from container (90th percentile ETf).
+        If False (default), use fixed FAO-56 value of 1.2.
+    """
     from swimrs.container.schema import get_rooting_depth
 
     props_group = h5.create_group("properties")
@@ -823,6 +836,14 @@ def _write_properties_from_container(
     ke_max_data = dynamics.get("ke_max", {})
     ke_max = np.array([ke_max_data.get(fid, 1.0) for fid in fids])
 
+    # kc_max: empirical (from 90th percentile ETf) or fixed FAO-56 value
+    if empirical_kc_max:
+        kc_max_data = dynamics.get("kc_max", {})
+        kc_max = np.array([kc_max_data.get(fid, 1.2) for fid in fids])
+    else:
+        # Use fixed FAO-56 value for full-cover alfalfa reference
+        kc_max = np.full(n_fields, 1.2)
+
     # f_sub
     if calibrated_params is not None and "f_sub" in calibrated_params:
         f_sub = calibrated_params["f_sub"]
@@ -854,6 +875,7 @@ def _write_properties_from_container(
     props_group.create_dataset("perennial", data=perennial.astype(np.uint8))
     props_group.create_dataset("gw_status", data=gw_status.astype(np.uint8))
     props_group.create_dataset("ke_max", data=ke_max)
+    props_group.create_dataset("kc_max", data=kc_max)
     props_group.create_dataset("f_sub", data=f_sub)
 
 
@@ -866,7 +888,6 @@ def _write_parameters_from_container(
     params_group = h5.create_group("parameters")
 
     # Default values
-    kc_max = np.full(n_fields, 1.0)
     kc_min = np.full(n_fields, 0.15)
     ndvi_k = np.full(n_fields, 7.0)
     ndvi_0 = np.full(n_fields, 0.4)
@@ -891,7 +912,6 @@ def _write_parameters_from_container(
         if "ks_damp" in calibrated_params:
             ks_damp = calibrated_params["ks_damp"]
 
-    params_group.create_dataset("kc_max", data=kc_max)
     params_group.create_dataset("kc_min", data=kc_min)
     params_group.create_dataset("ndvi_k", data=ndvi_k)
     params_group.create_dataset("ndvi_0", data=ndvi_0)

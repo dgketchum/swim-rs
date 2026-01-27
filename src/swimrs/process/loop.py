@@ -421,17 +421,17 @@ def step_day(
     infiltration = precip_eff - runoff
 
     # 3. Crop coefficient calculation
-    kcb = kcb_sigmoid(ndvi, params.kc_max, params.ndvi_k, params.ndvi_0)
+    kcb = kcb_sigmoid(ndvi, props.kc_max, params.ndvi_k, params.ndvi_0)
 
     # 4. Fractional cover
-    fc = fractional_cover(kcb, params.kc_min, params.kc_max)
+    fc = fractional_cover(kcb, params.kc_min, props.kc_max)
     few = exposed_soil_fraction(fc)
 
     # 5. Calculate new root depth from kcb (but don't apply redistribution yet)
     # Legacy model: root growth is applied at END of daily loop
     zr_prev = state.zr.copy()
     zr_new = root_depth_from_kcb(
-        kcb, params.kc_min, params.kc_max,
+        kcb, params.kc_min, props.kc_max,
         props.zr_max, props.zr_min
     )
 
@@ -463,10 +463,10 @@ def step_day(
     state.ks = ks_new
 
     # 10. Calculate evaporation coefficient
-    ke = ke_coefficient(kr_new, params.kc_max, kcb, few, props.ke_max)
+    ke = ke_coefficient(kr_new, props.kc_max, kcb, few, props.ke_max)
 
     # 11. Calculate actual ET and evaporation
-    kc_act, eta = actual_et(ks_new, kcb, fc, ke, params.kc_max, etr)
+    kc_act, eta = actual_et(ks_new, kcb, fc, ke, props.kc_max, etr)
     evap = ke * etr  # Soil evaporation component
 
     # 11a. Constrain ET to available water (prevents phantom ET)
