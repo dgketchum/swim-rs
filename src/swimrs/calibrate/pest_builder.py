@@ -751,13 +751,17 @@ if __name__ == "__main__":
                          'initial_value': 0.5, 'lower_bound': 0.01, 'upper_bound': 1.0,
                          'pargp': 'kr_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            # NDVI-Kcb relationship
+            # NDVI-Kcb relationship (sigmoid: Kcb = kc_max / (1 + exp(-ndvi_k * (NDVI - ndvi_0))))
+            # Parameter search (examples/3_Crane/parameter_search.py) found:
+            #   - Optimal region: ndvi_k ∈ [5-11], ndvi_0 ∈ [0.70-0.85]
+            #   - Best: ndvi_k=7.0, ndvi_0=0.80 (R²=0.516)
+            #   - Trade-off: higher ndvi_k works with lower ndvi_0
             'ndvi_k': {'file': self.params_file, 'std': 0.75,
-                       'initial_value': 7.0, 'lower_bound': 4.0, 'upper_bound': 10.0,
+                       'initial_value': 7.0, 'lower_bound': 4.0, 'upper_bound': 20.0,
                        'pargp': 'ndvi_k', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            'ndvi_0': {'file': self.params_file, 'std': 0.25,
-                       'initial_value': 0.4, 'lower_bound': 0.1, 'upper_bound': 0.7,
+            'ndvi_0': {'file': self.params_file, 'std': 0.15,
+                       'initial_value': 0.75, 'lower_bound': 0.5, 'upper_bound': 0.95,
                        'pargp': 'ndvi_0', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             # Management allowed depletion
