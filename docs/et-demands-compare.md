@@ -1,7 +1,7 @@
 # ET-Demands vs SWIM-RS: Comprehensive Comparison
 
 This document compares SWIM-RS with [ET-Demands](https://github.com/WSWUP/et-demands),
-the legacy codebase from which SWIM-RS evolved. While SWIM-RS has been completely
+the original FAO-56 codebase from which SWIM-RS evolved. While SWIM-RS has been completely
 rewritten, understanding the differences helps contextualize design decisions.
 
 ## Software Paradigmatic Differences
@@ -95,12 +95,12 @@ rewritten, understanding the differences helps contextualize design decisions.
 
 ### Snow Dynamics
 
-| ET-Demands | SWIM-RS |
-|-----------|---------|
-| Albedo-based Kc_mult reduction | Degree-day + radiation melt model |
-| Simple: `Kc_mult = f(albedo, DOY)` | Full SWE tracking with decay |
-| No SWE state variable | `swe`, `albedo` state variables |
-| No melt calculation | Melt computed and added to infiltration |
+| ET-Demands                           | SWIM-RS |
+|--------------------------------------|---------|
+| Albedo-based Kc_mult reduction       | Degree-day + radiation melt model |
+| `Kc_mult = f(albedo, DOY)` | Full SWE tracking with decay |
+| No SWE state variable                | `swe`, `albedo` state variables |
+| No melt calculation                  | Melt computed and added to infiltration |
 
 ### Root Growth
 
@@ -131,12 +131,7 @@ rewritten, understanding the differences helps contextualize design decisions.
 
 ### ET-Demands
 
-Virtually no automated tests. The only test file contains a placeholder:
-
-```python
-def test():
-    assert True
-```
+Does not have automated tests. 
 
 Testing relies on:
 - Integration testing via example runs
