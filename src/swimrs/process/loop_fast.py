@@ -308,6 +308,11 @@ def _run_loop_jit(
         eta = kc_act * etr
         evap = ke * etr
 
+        # Constrain ET to available water (prevents phantom ET)
+        # Available water = current storage + infiltration
+        available_for_et = (taw - depl_root) + infiltration
+        eta = np.minimum(eta, np.maximum(0.0, available_for_et))
+
         # ================================================================
         # 11. UPDATE Ze WITH EVAPORATION
         # ================================================================

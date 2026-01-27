@@ -1052,11 +1052,16 @@ class TestEdgeCases:
                 assert np.abs(error[0]) < WATER_BALANCE_ATOL
 
     def test_drought_taw_capping_documented(self):
-        """Document mass imbalance during severe drought (known limitation).
+        """Verify ET is constrained by available water during drought.
 
-        When depletion approaches or exceeds TAW, the model caps depletion
-        but still reports calculated ET. This can cause apparent mass
-        imbalance which is expected legacy behavior.
+        Regression test for phantom ET bug: when depletion approaches TAW,
+        ET must be constrained to available water. Without this constraint,
+        the model would report ET that exceeds physically available water,
+        causing mass balance errors.
+
+        The fix constrains ET before applying it to depletion:
+            available_for_et = (taw - depl_root) + infiltration
+            eta = min(eta, max(0, available_for_et))
         """
         state, props, params = create_test_setup(
             n_fields=1,
@@ -1074,6 +1079,7 @@ class TestEdgeCases:
         )
 
         taw = props.awc[0] * state.zr[0]  # 75 mm
+        available_water_before = taw - state.depl_root[0]  # 5 mm
 
         state_before = state.copy()
         day_out = step_day(
@@ -1086,12 +1092,21 @@ class TestEdgeCases:
         # Depletion should be capped at TAW
         assert state.depl_root[0] <= taw + 1e-6
 
-        # There may be mass imbalance due to capping - this is documented
+        # ET must be constrained to available water (regression test for phantom ET)
+        # Without the fix, ET could exceed available water causing mass imbalance
+        assert day_out["eta"][0] <= available_water_before + 1e-6, (
+            f"ET ({day_out['eta'][0]:.3f} mm) exceeds available water "
+            f"({available_water_before:.3f} mm) - phantom ET bug!"
+        )
+
+        # Mass balance must be conserved even during drought
         error = compute_water_balance_error(
             state_before, state, props, day_out, inputs["prcp"]
         )
-        # Just verify the test runs - we're documenting the behavior
-        assert isinstance(error[0], (float, np.floating))
+        assert np.abs(error[0]) < WATER_BALANCE_ATOL, (
+            f"Mass balance error ({error[0]:.6f} mm) during drought - "
+            f"phantom ET constraint may be broken"
+        )
 
     def test_zero_etr(self):
         """Zero reference ET (winter/night)."""

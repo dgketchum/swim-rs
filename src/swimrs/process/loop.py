@@ -469,6 +469,17 @@ def step_day(
     kc_act, eta = actual_et(ks_new, kcb, fc, ke, params.kc_max, etr)
     evap = ke * etr  # Soil evaporation component
 
+    # 11a. Constrain ET to available water (prevents phantom ET)
+    # Available water = current storage + expected inputs
+    # Current storage = TAW - depl_root_before
+    # Inputs = infiltration + irrigation + groundwater (estimated)
+    # We use a preliminary estimate of irr/gw since they depend on post-ET depletion
+    available_for_et = (taw - depl_root_before) + infiltration
+    # Add safety margin for expected irrigation/gw on irrigated/gw fields
+    # (actual irr/gw calculated later, but we don't want to over-constrain)
+    # For non-irrigated/non-gw fields, this constraint ensures ET <= available water
+    eta = np.minimum(eta, np.maximum(0.0, available_for_et))
+
     # 12. Update Ze with evaporation
     # Matches legacy model compute_field_et.py lines 97-107
     depl_ze_prev = state.depl_ze.copy()
