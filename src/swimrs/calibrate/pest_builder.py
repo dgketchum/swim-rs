@@ -912,7 +912,7 @@ if __name__ == "__main__":
             d['weight'] = 0.0
 
             if not captures_for_this_df.empty and total_valid_obs > 0:
-                if self.etf_std:
+                if self.etf_std is not None and self.etf_std.get(fid) is not None:
                     d.loc[captures_for_this_df, 'weight'] = 1 / (self.etf_std[fid].loc[capture_dates, 'std'].values + 0.1)
                 else:
                     d.loc[captures_for_this_df, 'weight'] = 1 / 0.33
@@ -927,6 +927,19 @@ if __name__ == "__main__":
 
             if self.conflicted_obs:
                 self._drop_conflicts(i, fid)
+
+        # Diagnostic warning: detect if all ETf observations got zero weights
+        total_nonzero_etf = sum(
+            (df['weight'] > 0).sum()
+            for df in self.pest.obs_dfs[:len(self.pest_args['targets'])]
+        )
+        if total_valid_obs > 0 and total_nonzero_etf == 0:
+            warnings.warn(
+                f"All {total_valid_obs} ETf observations have zero weight. "
+                "Check etf_std index alignment with capture_dates.",
+                UserWarning,
+                stacklevel=2
+            )
 
         return i
 
