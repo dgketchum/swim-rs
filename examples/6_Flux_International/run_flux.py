@@ -1,40 +1,155 @@
+"""
+Flux International Evaluation Script
+
+Evaluates SWIM model against flux tower observations for international sites.
+Uses the modern SwimContainer + process package workflow.
+"""
+
 import os
 import time
 import collections
+import tempfile
 from datetime import datetime
 from pprint import pprint
+
+import numpy as np
 import pandas as pd
 
 from ssebop_evaluation import evaluate_ssebop_site
-from swimrs.model.initialize import initialize_data
-from swimrs.model import obs_field_cycle
+from swimrs.container import SwimContainer
+from swimrs.process.input import build_swim_input
+from swimrs.process.loop import run_daily_loop
 from swimrs.prep import get_flux_sites
+from swimrs.swim.config import ProjectConfig
 
 
-def run_flux_sites(fid, config, plot_data, outfile):
+def run_single_site(config, container, site_id, output_csv):
+    """Run SWIM model for a single site using the process package.
+
+    Parameters
+    ----------
+    config : ProjectConfig
+        Project configuration
+    container : SwimContainer
+        Open container with input data
+    site_id : str
+        Site identifier
+    output_csv : str
+        Path to output CSV file
+
+    Returns
+    -------
+    pd.DataFrame
+        Combined input/output DataFrame
+    """
     start_time = time.time()
 
-    df_dct = obs_field_cycle.field_day_loop(config, plot_data, debug_flag=True)
+    # Create temporary HDF5 for SwimInput
+    with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as tmp:
+        temp_h5_path = tmp.name
+
+    try:
+        # Build SwimInput from container for single site
+        swim_input = build_swim_input(
+            container,
+            output_h5=temp_h5_path,
+            runoff_process=getattr(config, 'runoff_process', 'cn'),
+            etf_model=getattr(config, 'etf_target_model', 'ptjpl'),
+            met_source=getattr(config, 'met_source', 'era5'),
+            fields=[site_id],
+        )
+
+        # Run simulation
+        output, final_state = run_daily_loop(swim_input)
+
+        # Get time series data
+        n_days = swim_input.n_days
+        dates = pd.date_range(swim_input.start_date, periods=n_days, freq='D')
+
+        # Get input time series
+        etr = swim_input.get_time_series('etr')
+        prcp = swim_input.get_time_series('prcp')
+        tmin = swim_input.get_time_series('tmin')
+        tmax = swim_input.get_time_series('tmax')
+        ndvi = swim_input.get_time_series('ndvi')
+
+        # Build DataFrame (field index 0 since we're doing single field)
+        i = 0
+        df_data = {
+            # Model outputs
+            'et_act': output.eta[:, i],
+            'etref': etr[:, i],
+            'kc_act': output.etf[:, i],
+            'kc_bas': output.kcb[:, i],
+            'ks': output.ks[:, i],
+            'ke': output.ke[:, i],
+            'melt': output.melt[:, i],
+            'rain': output.rain[:, i],
+            'depl_root': output.depl_root[:, i],
+            'dperc': output.dperc[:, i],
+            'runoff': output.runoff[:, i],
+            'swe': output.swe[:, i],
+            'irrigation': output.irr_sim[:, i],
+            'gw_sim': output.gw_sim[:, i],
+            # Input time series
+            'ppt': prcp[:, i],
+            'tmin': tmin[:, i],
+            'tmax': tmax[:, i],
+            'tavg': (tmin[:, i] + tmax[:, i]) / 2.0,
+            'ndvi': ndvi[:, i],
+        }
+
+        # Calculate derived columns
+        df_data['soil_water'] = swim_input.properties.awc[i] - output.depl_root[:, i]
+
+        # Add ETf observations for comparison
+        etf_model = getattr(config, 'etf_target_model', 'ptjpl')
+
+        for mask in ['inv_irr', 'irr']:
+            etf_path = f"remote_sensing/etf/landsat/{etf_model}/{mask}"
+            try:
+                etf_df = container.query.dataframe(etf_path, fields=[site_id])
+                etf_series = etf_df[site_id].reindex(dates)
+                df_data[f'etf_{mask}'] = etf_series.values
+            except Exception:
+                df_data[f'etf_{mask}'] = np.nan
+
+        df = pd.DataFrame(df_data, index=dates)
+
+        # Trim to config date range
+        df = df.loc[config.start_dt:config.end_dt]
+
+        swim_input.close()
+
+    finally:
+        # Clean up temp file
+        if os.path.exists(temp_h5_path):
+            os.remove(temp_h5_path)
 
     end_time = time.time()
-    print('\nExecution time: {:.2f} seconds\n'.format(end_time - start_time))
+    print(f'\nExecution time: {end_time - start_time:.2f} seconds\n')
 
-    df = df_dct[fid].copy()
-    in_df = plot_data.input_to_dataframe(fid)
-    df = pd.concat([df, in_df], axis=1, ignore_index=False)
-
-    df = df.loc[config.start_dt:config.end_dt]
-
-    df.to_csv(outfile)
+    df.to_csv(output_csv)
+    return df
 
 
-def compare_ssebop(fid, flux_file, model_output, plot_data_,
+def get_irrigation_status(container, site_id):
+    """Get irrigation status for a site from container."""
+    try:
+        irr_path = "properties/irrigation/irr"
+        irr_arr = container.root[irr_path][:]
+        field_idx = container.field_uids.index(site_id)
+        return bool(irr_arr[field_idx])
+    except Exception:
+        return False
+
+
+def compare_ssebop(fid, flux_file, model_output, irr,
                    return_comparison=False, gap_tolerance=5):
     """Compare SWIM and SSEBop against flux observations for a single site."""
-    irr_ = plot_data_.input['irr_data'][fid]
     daily, overpass, monthly = evaluate_ssebop_site(
         model_output, flux_file,
-        irr=irr_,
+        irr=irr,
         gap_tolerance=gap_tolerance
     )
 
@@ -83,7 +198,7 @@ if __name__ == '__main__':
         project_ws_ = os.path.join(root, 'examples', project)
         data = os.path.join(project_ws_, 'data')
 
-    config_file = os.path.join(project_ws_, 'config.toml')
+    config_file = os.path.join(project_ws_, '6_Flux_International.toml')
 
     station_file = os.path.join(data, 'station_metadata.csv')
     sites, sdf = get_flux_sites(station_file, crop_only=False, return_df=True)
@@ -92,12 +207,13 @@ if __name__ == '__main__':
 
     overwrite_ = False
 
+    # Load config
+    cfg = ProjectConfig()
+    cfg.read_config(config_file, project_ws_)
+
     for ee, site_ in enumerate(sites):
 
         lulc = sdf.at[site_, 'General classification']
-
-        # if lulc != 'Croplands':
-        #     continue
 
         if site_ in ['US-Bi2', 'US-Dk1', 'JPL1_JV114']:
             continue
@@ -110,12 +226,16 @@ if __name__ == '__main__':
         run_const = os.path.join(project_ws_, 'results', 'verify')
         output_ = os.path.join(run_const, site_)
 
-        prepped_input = os.path.join(output_, f'prepped_input.json')
-        spinup_ = os.path.join(output_, f'spinup.json')
+        # Check for site-specific container or use main container
+        site_container_path = os.path.join(output_, f'{site_}.swim')
+        main_container_path = os.path.join(data, f'{project}.swim')
 
-        if not os.path.exists(prepped_input):
-            prepped_input = os.path.join(output_, f'prepped_input_{site_}.json')
-            spinup_ = os.path.join(output_, f'spinup_{site_}.json')
+        container_path = site_container_path if os.path.exists(site_container_path) else main_container_path
+
+        if not os.path.exists(container_path):
+            print(f"Container not found at {container_path}")
+            incomplete.append(site_)
+            continue
 
         flux_dir = os.path.join(project_ws_, 'data', 'daily_flux_files')
         flux_data = os.path.join(flux_dir, f'{site_}_daily_data.csv')
@@ -129,21 +249,30 @@ if __name__ == '__main__':
         if modified_date < pd.to_datetime('2025-07-01'):
             continue
 
-        cal = os.path.join(project_ws_, f'tight_pest', 'mult')
-
         out_csv = os.path.join(output_, f'{site_}.csv')
 
-        config_, fields_ = initialize_data(config_file, project_ws_, input_data=prepped_input, spinup_data=spinup_,
-                                           forecast=True, forecast_file=fcst_params)
+        # Open container and run
+        container = SwimContainer.open(container_path, mode='r')
 
         try:
+            # Set forecast parameters on config
+            cfg.forecast = True
+            cfg.forecast_parameters_csv = fcst_params
+            cfg.read_forecast_parameters()
+
             if not os.path.exists(out_csv) or overwrite_:
-                run_flux_sites(site_, config_, fields_, out_csv)
+                run_single_site(cfg, container, site_, out_csv)
+
+            irr = get_irrigation_status(container, site_)
+
         except ValueError as exc:
             print(f'{site_} error: {exc}')
+            container.close()
             continue
+        finally:
+            container.close()
 
-        result = compare_ssebop(site_, flux_data, out_csv, fields_,
+        result = compare_ssebop(site_, flux_data, out_csv, irr,
                                 return_comparison=True, gap_tolerance=5)
 
         if result:
@@ -152,9 +281,6 @@ if __name__ == '__main__':
         complete.append(site_)
 
         out_fig_dir_ = os.path.join(root, 'examples', project, 'figures', 'model_output', 'png')
-
-        # flux_pdc_timeseries(run_const, flux_dir, [site_], out_fig_dir=out_fig_dir_, spec='flux', model=model,
-        #                     members=['ssebop', 'disalexi', 'geesebal', 'eemetric', 'ptjpl', 'sims'])
 
     pprint({s: [t[0] for t in results].count(s) for s in set(t[0] for t in results)})
     pprint(
