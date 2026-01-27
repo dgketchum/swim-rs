@@ -64,7 +64,6 @@ class ProjectConfig:
         self.snodas_in_dir = None
         self.snodas_out_json = None
         self.dynamics_data_json = None
-        self.prepped_input = None
 
         # EE
         self.ee_bucket = None
@@ -251,7 +250,6 @@ class ProjectConfig:
         self.snodas_in_dir = paths_conus_conf.get('snodas_in') or paths_conf.get('snodas_in')
         self.snodas_out_json = paths_conus_conf.get('snodas_out') or paths_conf.get('snodas_out')
         self.dynamics_data_json = paths_conf.get('dynamics_data')
-        self.input_data = paths_conf.get('prepped_input')
 
         # Earth Engine
         self.ee_bucket = ee_conf.get('bucket')

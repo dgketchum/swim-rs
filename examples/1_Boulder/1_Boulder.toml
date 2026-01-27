@@ -28,7 +28,6 @@ properties_json = "{properties}/{project}_properties.json"
 snodas_in = "{data}/snow/snodas/extracts"
 
 dynamics_data = "{data}/{project}_dynamics.json"
-prepped_input = "{data}/prepped_input.json"
 container = "{data}/{project}.swim"
 
 [earth_engine]

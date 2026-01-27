@@ -14,17 +14,16 @@ Subpackages:
     viz: Visualization utilities for model outputs.
 
 Example:
-    >>> from swimrs.swim import ProjectConfig, SamplePlots
-    >>> from swimrs.calibrate import PestBuilder, run_pst
+    >>> from swimrs.container import SwimContainer
+    >>> from swimrs.process.input import build_swim_input
+    >>> from swimrs.process.loop import run_daily_loop
     >>>
-    >>> # Load project configuration
-    >>> config = ProjectConfig.from_toml("project.toml")
-    >>> plots = SamplePlots.from_json("prepped_input.json")
+    >>> # Load project data from container
+    >>> container = SwimContainer.open("project.swim")
+    >>> swim_input = build_swim_input(container, "swim_input.h5")
     >>>
-    >>> # Build and run calibration
-    >>> builder = PestBuilder(config, plots)
-    >>> pst = builder.build()
-    >>> run_pst(pst, num_workers=4)
+    >>> # Run simulation
+    >>> output, final_state = run_daily_loop(swim_input)
 """
 
 __version__ = "0.1.0"

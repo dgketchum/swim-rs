@@ -30,7 +30,6 @@ properties_json = "{properties}/{project}_properties.json"
 
 snodas_in = "{data}/snow/snodas/extracts"
 
-prepped_input = "{data}/prepped_input.json"
 
 [earth_engine]
 bucket = "wudr"

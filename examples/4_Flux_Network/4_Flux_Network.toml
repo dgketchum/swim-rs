@@ -11,7 +11,6 @@ fields_shapefile = "{gis}/flux_stations.shp"
 properties = "{data}/properties"
 lulc = "{properties}/{project}_landcover.csv"
 properties_json = "{properties}/{project}_properties.json"
-prepped_input = "{data}/prepped_input.json"
 container = "{data}/{project}.swim"
 
 # Remote sensing

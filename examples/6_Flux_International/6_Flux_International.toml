@@ -17,7 +17,6 @@ landsat = "{remote_sensing}/landsat"
 sentinel = "{remote_sensing}/sentinel"
 ecostress = "{remote_sensing}/ecostress"
 
-prepped_input = "{data}/prepped_input.json"
 container = "{data}/{project}.swim"
 
 [paths.era5]
