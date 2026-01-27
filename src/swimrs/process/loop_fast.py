@@ -150,16 +150,19 @@ def _run_loop_jit(
         albedo = np.maximum(albedo_min, np.minimum(albedo_max, albedo))
 
         # Degree-day snowmelt
+        # NOTE: Legacy model updates SWE with today's snowfall BEFORE computing melt
+        # (compute_snow.py: foo.swe += sf, then melt = min(foo.swe, melt_potential))
+        swe_before_melt = swe + snow
         rad_melt = (1.0 - albedo) * srad * swe_alpha
         dd_melt = (temp_avg - melt_base_temp) * swe_beta
         melt_potential = rad_melt + dd_melt
         melt_potential = np.maximum(melt_potential, 0.0)
         # Melt only when SWE > 0 and tmax > 0
-        can_melt = (swe > 0.0) & (tmax > 0.0)
-        melt = np.where(can_melt, np.minimum(melt_potential, swe), 0.0)
+        can_melt = (swe_before_melt > 0.0) & (tmax > 0.0)
+        melt = np.where(can_melt, np.minimum(melt_potential, swe_before_melt), 0.0)
 
         actual_melt = melt
-        swe = np.maximum(0.0, swe + snow - melt)
+        swe = np.maximum(0.0, swe_before_melt - melt)
 
         # Effective precipitation
         precip_eff = rain + actual_melt
@@ -204,23 +207,29 @@ def _run_loop_jit(
             0.0
         )
 
-        # Smoothed runoff for irrigated fields (4-day S average)
-        s_avg = (s + s1 + s2 + s3 + s4) / 5.0
-        ia_avg = 0.2 * s_avg
-        runoff_smooth = np.where(
-            (precip_eff > ia_avg) & (s_avg > 0.0),
-            (precip_eff - ia_avg) ** 2 / (precip_eff - ia_avg + s_avg),
-            0.0
-        )
+        # Smoothed runoff for irrigated fields (average of runoffs from 4 historical S values)
+        # Matches scs_runoff_smoothed kernel: compute runoff for each S, then average
+        runoff_smooth = np.zeros(n_fields, dtype=np.float64)
+        for s_hist in [s1, s2, s3, s4]:
+            ia_hist = 0.2 * s_hist
+            sro_hist = np.where(
+                (precip_eff > ia_hist) & (s_hist > 0.0),
+                (precip_eff - ia_hist) ** 2 / (precip_eff + 0.8 * s_hist),
+                0.0
+            )
+            runoff_smooth = runoff_smooth + sro_hist
+        runoff_smooth = runoff_smooth / 4.0
+        runoff_smooth = np.minimum(runoff_smooth, precip_eff)
 
         # Use smoothed for irrigated, standard for others
         runoff = np.where(irr_status > 0.5, runoff_smooth, runoff_std)
 
-        # Update S history
+        # Update S history (newest to oldest: s_new -> s1 -> s2 -> s3 -> s4)
+        # Legacy model sets s1 to today's S (runoff.py: foo.s1 = foo.s)
         s4 = s3.copy()
         s3 = s2.copy()
         s2 = s1.copy()
-        s1 = s.copy()
+        s1 = s_new.copy()
         s = s_new
 
         infiltration = precip_eff - runoff
@@ -301,9 +310,10 @@ def _run_loop_jit(
         ke = np.maximum(ke, 0.0)
 
         # ================================================================
-        # 10. ACTUAL ET
+        # 10. ACTUAL ET (FAO-56 dual crop coefficient)
+        # Kc_act = Ks * Kcb + Ke, capped at Kc_max
         # ================================================================
-        kc_act = ks * kcb * fc + ke
+        kc_act = ks * kcb + ke
         kc_act = np.minimum(kc_max, kc_act)
         eta = kc_act * etr
         evap = ke * etr
@@ -345,38 +355,74 @@ def _run_loop_jit(
 
         # ================================================================
         # 13. IRRIGATION DEMAND (per-field logic)
+        # Matches irrigation_demand kernel exactly
         # ================================================================
         irr_sim = np.zeros(n_fields, dtype=np.float64)
+        irr_continue_new = np.zeros(n_fields, dtype=np.float64)
+        next_day_irr_new = np.zeros(n_fields, dtype=np.float64)
+        temp_threshold = 5.0
+        refill_factor = 1.1
+
         for i in range(n_fields):
-            if (irr_flag[i] > 0.5 or irr_continue[i] > 0.5) and irr_status[i] > 0.5:
-                irr_waiting = next_day_irr[i]
+            # Skip if not an irrigated field
+            if irr_status[i] < 0.5:
+                continue
 
-                if next_day_irr[i] > max_irr_rate[i]:
-                    next_day_irr[i] = next_day_irr[i] - max_irr_rate[i]
-                else:
-                    next_day_irr[i] = 0.0
+            # Skip if temperature too cold (check FIRST, matches kernel)
+            if temp_avg[i] < temp_threshold:
+                continue
 
-                if irr_flag[i] > 0.5 and depl_after_et[i] > raw[i]:
-                    irr_needed = depl_after_et[i] * 1.1
-                    if max_irr_rate[i] < irr_needed:
-                        next_day_irr[i] = irr_needed - max_irr_rate[i]
-                        irr_continue[i] = 1.0
-                    else:
-                        irr_continue[i] = 0.0
-                    irr_sim[i] = min(max_irr_rate[i], irr_needed)
-                elif irr_continue[i] > 0.5:
-                    irr_sim[i] = min(irr_waiting, max_irr_rate[i])
+            # Check if new irrigation is needed (depl > RAW on irrigation day)
+            needs_irrigation = (irr_flag[i] > 0.5) and (depl_after_et[i] > raw[i])
+            has_carryover = irr_continue[i] > 0.5
 
-                # No irrigation if too cold
-                if temp_avg[i] < 5.0:
-                    irr_sim[i] = 0.0
+            # Calculate target refill amount
+            target_amount = depl_after_et[i] * refill_factor
+
+            # First, handle carryover from previous day
+            irr_waiting = next_day_irr[i]
+            if irr_waiting > max_irr_rate[i]:
+                next_day_irr_new[i] = irr_waiting - max_irr_rate[i]
+            else:
+                next_day_irr_new[i] = 0.0
+
+            # Then, check if new irrigation creates carryover
+            if needs_irrigation and target_amount > max_irr_rate[i]:
+                next_day_irr_new[i] = target_amount - max_irr_rate[i]
+
+            # Calculate irrigation amount (carryover takes priority)
+            if has_carryover:
+                # Apply carryover irrigation (regardless of current depletion)
+                potential_irr = irr_waiting
+                if potential_irr > max_irr_rate[i]:
+                    potential_irr = max_irr_rate[i]
+                irr_sim[i] = potential_irr
+            elif needs_irrigation:
+                # Apply new irrigation
+                potential_irr = target_amount
+                if potential_irr > max_irr_rate[i]:
+                    potential_irr = max_irr_rate[i]
+                irr_sim[i] = potential_irr
+
+            # Set continuation flag for next day
+            # Legacy behavior: irr_flag AND (max_irr_rate < target_amount)
+            # This is independent of whether depl > RAW!
+            if (irr_flag[i] > 0.5) and (max_irr_rate[i] < target_amount):
+                irr_continue_new[i] = 1.0
+
+        # Update state for next iteration
+        irr_continue = irr_continue_new
+        next_day_irr = next_day_irr_new
 
         # ================================================================
         # 14. GROUNDWATER SUBSIDY
+        # Matches groundwater_subsidy kernel: f_sub is a threshold check (> 0.2),
+        # not a multiplier. Returns full (depl - raw) when conditions are met.
         # ================================================================
+        FSUB_THRESHOLD = 0.2
         gw_sim = np.where(
-            (gw_status > 0.5) & (depl_after_et > raw),
-            (depl_after_et - raw) * f_sub,
+            (gw_status > 0.5) & (f_sub > FSUB_THRESHOLD) & (depl_after_et > raw),
+            depl_after_et - raw,
             0.0
         )
 
@@ -401,18 +447,22 @@ def _run_loop_jit(
         # 17. LAYER 3 STORAGE
         # irr_bypass_frac of irrigation bypasses root zone directly to dperc.
         # Combined with irr_to_root: 90% + 10% = 100% (mass conserved).
+        # Matches layer3_storage kernel behavior exactly.
         # ================================================================
         irr_bypass = irr_bypass_frac * irr_sim
         gross_dperc = dperc + irr_bypass
 
-        has_taw3 = taw3 > 0.0
-        daw3 = daw3 + gross_dperc
-        dperc_out = np.where(
-            has_taw3 & (daw3 > taw3),
-            daw3 - taw3,
-            np.where(has_taw3, 0.0, gross_dperc)
-        )
-        daw3 = np.where(has_taw3, np.minimum(daw3, taw3), daw3)
+        # Match loop.py logic: only use layer3 storage if any field has taw3 > 0
+        if np.any(taw3 > 0.0):
+            # Layer 3 storage kernel: add inflow, check overflow
+            daw3_new = daw3 + gross_dperc
+            daw3_new = np.maximum(daw3_new, 0.0)  # Ensure non-negative
+            # Overflow when daw3 > taw3
+            dperc_out = np.where(daw3_new > taw3, daw3_new - taw3, 0.0)
+            daw3 = np.minimum(daw3_new, taw3)
+        else:
+            # No layer 3 - all dperc passes through
+            dperc_out = gross_dperc
 
         # ================================================================
         # 18. ROOT GROWTH WATER REDISTRIBUTION
@@ -437,7 +487,6 @@ def _run_loop_jit(
         added_depletion = added_capacity - water_from_l3
         depl_root = np.where(growing, depl_root + added_depletion, depl_root)
         daw3 = np.where(growing, np.maximum(0.0, daw3 - water_from_l3), daw3)
-        taw3 = np.where(growing, taw3_new, taw3)
 
         # Shrinking: water moves from root zone to layer 3
         rt_water_prev = np.where(shrinking, awc * zr_prev - depl_root, 0.0)
@@ -459,7 +508,13 @@ def _run_loop_jit(
             depl_root
         )
         depl_root = np.where(shrinking, np.minimum(depl_root, new_taw), depl_root)
-        taw3 = np.where(shrinking, taw3_new, taw3)
+
+        # ALWAYS update taw3 to match kernel behavior
+        # The kernel always returns taw3_new = awc * (zr_max - zr_new)
+        taw3 = taw3_new
+
+        # Ensure daw3 doesn't exceed taw3
+        daw3 = np.minimum(daw3, taw3)
 
         zr = zr_new
 
@@ -555,11 +610,12 @@ def run_daily_loop_fast(
     gw_status = props.gw_status.astype(np.float64)
     ke_max = (props.ke_max.astype(np.float64)
               if props.ke_max is not None else np.ones(n_fields))
+    kc_max = (props.kc_max.astype(np.float64)
+              if props.kc_max is not None else np.full(n_fields, 1.25))
     f_sub = (props.f_sub.astype(np.float64)
              if props.f_sub is not None else np.zeros(n_fields))
 
     # Extract parameter arrays
-    kc_max = params.kc_max.astype(np.float64)
     kc_min = params.kc_min.astype(np.float64)
     ndvi_k = params.ndvi_k.astype(np.float64)
     ndvi_0 = params.ndvi_0.astype(np.float64)

@@ -173,29 +173,29 @@ class TestCalibrationParameters:
         params = CalibrationParameters(n_fields=5)
 
         assert params.n_fields == 5
-        assert_array_equal(params.kc_max, np.full(5, 1.15))
         assert_array_equal(params.kc_min, np.full(5, 0.15))
         assert_array_equal(params.ndvi_k, np.full(5, 7.0))
+        assert_array_equal(params.swe_alpha, np.full(5, 0.5))
 
     def test_explicit_initialization(self):
         """Parameters accept explicit values."""
-        kc_max = np.array([1.2, 1.1, 1.15])
+        kc_min = np.array([0.1, 0.15, 0.2])
 
         params = CalibrationParameters(
             n_fields=3,
-            kc_max=kc_max,
+            kc_min=kc_min,
         )
 
-        assert_array_equal(params.kc_max, kc_max)
+        assert_array_equal(params.kc_min, kc_min)
 
     def test_from_base_with_multipliers(self):
         """Multipliers are applied correctly."""
         base = CalibrationParameters(n_fields=3)
-        base.kc_max = np.array([1.0, 1.0, 1.0])
+        base.ndvi_k = np.array([7.0, 7.0, 7.0])
         base.swe_alpha = np.array([0.5, 0.5, 0.5])
 
         multipliers = {
-            "kc_max": np.array([1.2, 1.0, 0.8]),
+            "ndvi_k": np.array([1.2, 1.0, 0.8]),
             "swe_alpha": np.array([1.5, 1.5, 1.5]),
         }
 
@@ -203,35 +203,35 @@ class TestCalibrationParameters:
             base, multipliers
         )
 
-        assert_array_almost_equal(params.kc_max, [1.2, 1.0, 0.8])
+        assert_array_almost_equal(params.ndvi_k, [8.4, 7.0, 5.6])
         assert_array_almost_equal(params.swe_alpha, [0.75, 0.75, 0.75])
         # Unmultiplied param should be unchanged
-        assert_array_equal(params.ndvi_k, base.ndvi_k)
+        assert_array_equal(params.kc_min, base.kc_min)
 
     def test_from_base_with_multipliers_preserves_base(self):
         """Applying multipliers doesn't modify base."""
         base = CalibrationParameters(n_fields=2)
-        base.kc_max = np.array([1.0, 1.0])
+        base.ndvi_k = np.array([7.0, 7.0])
 
-        multipliers = {"kc_max": np.array([2.0, 2.0])}
+        multipliers = {"ndvi_k": np.array([2.0, 2.0])}
 
         _ = CalibrationParameters.from_base_with_multipliers(base, multipliers)
 
         # Base should be unchanged
-        assert_array_equal(base.kc_max, [1.0, 1.0])
+        assert_array_equal(base.ndvi_k, [7.0, 7.0])
 
     def test_copy(self):
         """copy() creates independent deep copy."""
         params1 = CalibrationParameters(n_fields=3)
-        params1.kc_max = np.array([1.2, 1.1, 1.0])
+        params1.ndvi_k = np.array([7.0, 8.0, 9.0])
 
         params2 = params1.copy()
 
         # Modify copy
-        params2.kc_max[0] = 999.0
+        params2.ndvi_k[0] = 999.0
 
         # Original should be unaffected
-        assert params1.kc_max[0] == 1.2
+        assert params1.ndvi_k[0] == 7.0
 
     def test_unknown_multiplier_ignored(self):
         """Unknown multiplier names are silently ignored."""
@@ -247,4 +247,4 @@ class TestCalibrationParameters:
         )
 
         # Params should be unchanged from base
-        assert_array_equal(params.kc_max, base.kc_max)
+        assert_array_equal(params.ndvi_k, base.ndvi_k)
