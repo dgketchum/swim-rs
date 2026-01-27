@@ -418,12 +418,132 @@ class PestBuilder:
         self._write_forward_run_script()
 
         self._finalize_obs()
+        self.print_build_diagnostics()
 
         # Clean up template directory
         if os.path.exists(template_dir):
             shutil.rmtree(template_dir)
 
         print('Configured PEST++ for {} targets, '.format(len(self.pest_args['targets'])))
+
+    def print_build_diagnostics(self, max_groups: int = 25) -> pd.DataFrame:
+        """Print a compact diagnostics table after building the PEST++ project.
+
+        This is meant to make it obvious whether calibration is actually using
+        the intended observations/weights (e.g., ETf weights not all zero).
+
+        Returns
+        -------
+        pd.DataFrame
+            Per-observation-group summary table (also printed).
+        """
+        try:
+            pst = Pst(self.pst_file)
+            obs = pst.observation_data.copy()
+        except Exception as e:
+            print(f"[PEST++ diagnostics] Failed to load pst/observation data: {e}")
+            return pd.DataFrame()
+
+        if obs is None or obs.empty:
+            print("[PEST++ diagnostics] No observations found in pst.")
+            return pd.DataFrame()
+
+        w = obs["weight"].fillna(0.0).astype(float) if "weight" in obs.columns else pd.Series(0.0, index=obs.index)
+        y = obs["obsval"].astype(float) if "obsval" in obs.columns else pd.Series(np.nan, index=obs.index)
+        valid_obs = np.isfinite(y.values) & (y.values != -99.0)
+        nonzero_w = w.values > 0.0
+
+        # Overall header
+        print("\n=== PEST++ Build Diagnostics ===")
+        print(f"pst: {self.pst_file}")
+        print(
+            "observations: "
+            f"total={len(obs)}, valid={int(valid_obs.sum())}, "
+            f"nonzero_weight={int(nonzero_w.sum())}"
+        )
+
+        # Type-specific quick checks
+        etf_mask = obs.index.to_series().str.contains("etf", case=False, regex=False)
+        swe_mask = obs.index.to_series().str.contains("swe", case=False, regex=False)
+        if etf_mask.any():
+            etf_nonzero = int((nonzero_w & etf_mask.values).sum())
+            etf_valid = int((valid_obs & etf_mask.values).sum())
+            print(f"ETf: valid={etf_valid}, nonzero_weight={etf_nonzero}")
+        if swe_mask.any():
+            swe_nonzero = int((nonzero_w & swe_mask.values).sum())
+            swe_valid = int((valid_obs & swe_mask.values).sum())
+            print(f"SWE: valid={swe_valid}, nonzero_weight={swe_nonzero}")
+
+        table = self._build_obs_diagnostics_table(obs)
+        # Limit printed rows for readability
+        show = table.head(max_groups).copy()
+        if len(table) > max_groups:
+            more = len(table) - max_groups
+            print(f"\nTop {max_groups} observation groups (of {len(table)}). ({more} more not shown)")
+        else:
+            print(f"\nObservation groups: {len(table)}")
+
+        # Make output stable/compact
+        pd.set_option("display.max_colwidth", 90)
+        print(show.to_string(index=False))
+
+        # Parameter quick summary (helps confirm tuned params exist)
+        try:
+            par = pst.parameter_data.copy()
+            if par is not None and not par.empty:
+                at_lower = (par["parval1"].astype(float) <= par["parlbnd"].astype(float) + 1e-12).sum()
+                at_upper = (par["parval1"].astype(float) >= par["parubnd"].astype(float) - 1e-12).sum()
+                print(
+                    "\nparameters: "
+                    f"n={len(par)}, at_lower={int(at_lower)}, at_upper={int(at_upper)}, "
+                    f"groups={par['pargp'].nunique() if 'pargp' in par.columns else 'n/a'}"
+                )
+        except Exception:
+            pass
+
+        return table
+
+    @staticmethod
+    def _build_obs_diagnostics_table(obs: pd.DataFrame) -> pd.DataFrame:
+        """Build per-observation-group diagnostics for a PEST++ observation table."""
+        if obs is None or obs.empty:
+            return pd.DataFrame()
+
+        grp = obs["obgnme"] if "obgnme" in obs.columns else pd.Series("obs", index=obs.index)
+
+        rows: list[dict] = []
+        for gname, gdf in obs.groupby(grp, dropna=False):
+            gw = (
+                gdf["weight"].fillna(0.0).astype(float)
+                if "weight" in gdf.columns
+                else pd.Series(0.0, index=gdf.index)
+            )
+            gy = gdf["obsval"].astype(float) if "obsval" in gdf.columns else pd.Series(np.nan, index=gdf.index)
+            gsd = (
+                gdf["standard_deviation"].astype(float)
+                if "standard_deviation" in gdf.columns
+                else pd.Series(np.nan, index=gdf.index)
+            )
+            gvalid = np.isfinite(gy.values) & (gy.values != -99.0)
+            gnonzero = gw.values > 0.0
+            rows.append(
+                {
+                    "group": str(gname),
+                    "n": int(len(gdf)),
+                    "valid": int(gvalid.sum()),
+                    "w>0": int(gnonzero.sum()),
+                    "w_sum": float(gw.sum()),
+                    "w_max": float(gw.max()) if len(gw) else 0.0,
+                    "obs_min": float(np.nanmin(gy.values[gvalid])) if gvalid.any() else np.nan,
+                    "obs_max": float(np.nanmax(gy.values[gvalid])) if gvalid.any() else np.nan,
+                    "sd_nan%": float(np.mean(~np.isfinite(gsd.values)) * 100.0) if len(gsd) else 0.0,
+                }
+            )
+
+        if not rows:
+            return pd.DataFrame()
+
+        return pd.DataFrame(rows).sort_values(by=["w_sum", "valid", "n"], ascending=False)
 
     def _write_forward_run_script(self) -> None:
         """Generate custom_forward_run.py with portable relative paths.
@@ -863,22 +983,24 @@ if __name__ == "__main__":
                 members_and_target = members + [target]
 
                 for member in members_and_target:
+                    # Get this member's ETf data directly
+                    member_etf = self._get_etf_data(fid, model=member)
 
                     mask_cols = []
-
                     for mask in self.masks:
-
                         col = f'{member}_etf_{mask}'
-
-                        if col in etf.columns:
+                        if col in member_etf.columns:
                             mask_cols.append(col)
 
-                    etf_std[member] = pd.DataFrame(etf[mask_cols].mean(axis=1))
-
-                    if irr_index:
-                        irr_col = f'{member}_etf_irr'
-                        if irr_col in etf.columns:
-                            etf_std.loc[irr_index, member] = etf.loc[irr_index, irr_col]
+                    if mask_cols:
+                        etf_std[member] = member_etf[mask_cols].mean(axis=1)
+                        if irr_index:
+                            irr_col = f'{member}_etf_irr'
+                            if irr_col in member_etf.columns:
+                                etf_std.loc[irr_index, member] = member_etf.loc[irr_index, irr_col]
+                    else:
+                        # No data for this member, fill with NaN
+                        etf_std[member] = pd.Series(np.nan, index=etf.index)
 
                 valid_members = [m for m in members_and_target if m in etf_std.columns]
 
