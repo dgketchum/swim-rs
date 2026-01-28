@@ -16,8 +16,6 @@ A 40-year run on a single field completes in under a second; shipped examples ru
 swim extract (EE + met) → swim prep (build .swim container) → build_swim_input (HDF5) → run_daily_loop / calibrate
 ```
 
-The legacy `prep/` and `model/` packages are deprecated; the container (`src/swimrs/container`) plus process engine (`src/swimrs/process`) are the canonical path. `prepped_input.json` is retained for compatibility (see `DEPRECATION_PLAN.md`).
-
 ```mermaid
 flowchart LR
     EE["EE exports<br/>NDVI/ETf"] --> C[".swim container"]
@@ -26,8 +24,6 @@ flowchart LR
     C --> H5["SwimInput (HDF5)"]
     H5 --> Loop["run_daily_loop / PEST++"]
 ```
-
-If diagrams don't render in your viewer, the flow is: EE/met/properties → `.swim` container → `SwimInput (HDF5)` → `run_daily_loop` / PEST++.
 
 ## Installation
 
