@@ -86,11 +86,11 @@ class WaterBalanceState:
     irr_continue: NDArray[np.float64] = field(default=None)
     next_day_irr: NDArray[np.float64] = field(default=None)
     # S history for smoothed CN runoff (irrigated fields)
-    s: NDArray[np.float64] = field(default=None)      # Current day S retention
-    s1: NDArray[np.float64] = field(default=None)     # 1 day ago
-    s2: NDArray[np.float64] = field(default=None)     # 2 days ago
-    s3: NDArray[np.float64] = field(default=None)     # 3 days ago
-    s4: NDArray[np.float64] = field(default=None)     # 4 days ago
+    s: NDArray[np.float64] = field(default=None)  # Current day S retention
+    s1: NDArray[np.float64] = field(default=None)  # 1 day ago
+    s2: NDArray[np.float64] = field(default=None)  # 2 days ago
+    s3: NDArray[np.float64] = field(default=None)  # 3 days ago
+    s4: NDArray[np.float64] = field(default=None)  # 4 days ago
     # Irrigation fraction tracking for consumptive use accounting
     irr_frac_root: NDArray[np.float64] = field(default=None)  # Root zone [0, 1]
     irr_frac_l3: NDArray[np.float64] = field(default=None)  # Layer 3 [0, 1]
@@ -411,9 +411,7 @@ class FieldProperties:
         taw = np.maximum(taw, self.tew)
         return taw
 
-    def compute_raw(
-        self, taw: NDArray[np.float64]
-    ) -> NDArray[np.float64]:
+    def compute_raw(self, taw: NDArray[np.float64]) -> NDArray[np.float64]:
         """Compute readily available water.
 
         RAW = p * TAW
@@ -571,8 +569,9 @@ class CalibrationParameters:
         CalibrationParameters
             Parameters loaded from mult files
         """
-        import pandas as pd
         from pathlib import Path
+
+        import pandas as pd
 
         mult_path = Path(mult_dir)
         n_fields = len(fids)
@@ -636,8 +635,9 @@ def load_pest_mult_properties(
     FieldProperties
         Updated properties with PEST values applied
     """
-    import pandas as pd
     from pathlib import Path
+
+    import pandas as pd
 
     mult_path = Path(mult_dir)
     n_fields = len(fids)

@@ -7,7 +7,7 @@ Usage: container.query.status() instead of container.status()
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -15,8 +15,9 @@ from .base import Component
 
 if TYPE_CHECKING:
     import xarray as xr
-    from swimrs.container.state import ContainerState
+
     from swimrs.container.inventory import FieldValidationReport, ValidationResult
+    from swimrs.container.state import ContainerState
 
 
 class Query(Component):
@@ -32,7 +33,7 @@ class Query(Component):
         gdf = container.query.geodataframe()
     """
 
-    def __init__(self, state: "ContainerState", container=None):
+    def __init__(self, state: ContainerState, container=None):
         """
         Initialize the Query component.
 
@@ -94,6 +95,7 @@ class Query(Component):
                     child = group[key]
                     full_path = f"{prefix}{key}" if prefix else key
                     import zarr
+
                     if isinstance(child, zarr.Array):
                         # Get array stats
                         shape = child.shape
@@ -105,7 +107,7 @@ class Query(Component):
                                 total = arr.size
                                 pct = 100.0 * valid_count / total if total > 0 else 0
                                 stats = f"shape={shape}, {pct:.1f}% valid"
-                            elif arr.dtype.kind in ('U', 'O') or 'str' in str(dtype).lower():
+                            elif arr.dtype.kind in ("U", "O") or "str" in str(dtype).lower():
                                 # String array - count non-empty
                                 non_empty = sum(1 for v in arr.flat if v and str(v).strip())
                                 total = arr.size
@@ -136,7 +138,7 @@ class Query(Component):
         for cat in sorted(categories.keys()):
             lines.append(f"\n  {cat}/")
             for path, stats in sorted(categories[cat]):
-                subpath = path[len(cat) + 1:] if "/" in path else path
+                subpath = path[len(cat) + 1 :] if "/" in path else path
                 lines.append(f"    {subpath}: {stats}")
 
         if detailed:
@@ -158,7 +160,7 @@ class Query(Component):
         met_source: str = "gridmet",
         snow_source: str = "snodas",
         instrument: str = "landsat",
-    ) -> "ValidationResult":
+    ) -> ValidationResult:
         """
         Validate container readiness for an operation.
 
@@ -193,7 +195,7 @@ class Query(Component):
         mask: str = "irr",
         instrument: str = "landsat",
         met_source: str = "gridmet",
-    ) -> "FieldValidationReport":
+    ) -> FieldValidationReport:
         """
         Validate individual fields against criteria.
 
@@ -220,7 +222,7 @@ class Query(Component):
             "Implement logic to validate fields against data requirements."
         )
 
-    def valid_fields(self, **kwargs) -> List[str]:
+    def valid_fields(self, **kwargs) -> list[str]:
         """
         Get list of valid field UIDs based on validation criteria.
 
@@ -236,11 +238,11 @@ class Query(Component):
     def xarray(
         self,
         path: str,
-        fields: Optional[List[str]] = None,
-        start_date: Optional[Union[str, pd.Timestamp]] = None,
-        end_date: Optional[Union[str, pd.Timestamp]] = None,
-        name: Optional[str] = None,
-    ) -> "xr.DataArray":
+        fields: list[str] | None = None,
+        start_date: str | pd.Timestamp | None = None,
+        end_date: str | pd.Timestamp | None = None,
+        name: str | None = None,
+    ) -> xr.DataArray:
         """
         Get data as labeled xarray DataArray.
 
@@ -260,11 +262,11 @@ class Query(Component):
 
     def dataset(
         self,
-        paths: Optional[Dict[str, str]] = None,
-        fields: Optional[List[str]] = None,
-        start_date: Optional[Union[str, pd.Timestamp]] = None,
-        end_date: Optional[Union[str, pd.Timestamp]] = None,
-    ) -> "xr.Dataset":
+        paths: dict[str, str] | None = None,
+        fields: list[str] | None = None,
+        start_date: str | pd.Timestamp | None = None,
+        end_date: str | pd.Timestamp | None = None,
+    ) -> xr.Dataset:
         """
         Get multiple variables as xarray Dataset.
 
@@ -284,9 +286,9 @@ class Query(Component):
     def dataframe(
         self,
         path: str,
-        fields: Optional[List[str]] = None,
-        start_date: Optional[Union[str, pd.Timestamp]] = None,
-        end_date: Optional[Union[str, pd.Timestamp]] = None,
+        fields: list[str] | None = None,
+        start_date: str | pd.Timestamp | None = None,
+        end_date: str | pd.Timestamp | None = None,
     ) -> pd.DataFrame:
         """
         Get data as pandas DataFrame.
@@ -318,7 +320,7 @@ class Query(Component):
     def field_timeseries(
         self,
         uid: str,
-        parameters: Optional[List[str]] = None,
+        parameters: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Get all time series for a single field.
@@ -400,7 +402,7 @@ class Query(Component):
             irr_arr = self._state.root[irr_path]
             irr_json = irr_arr[field_idx]
             # Handle zarr v3 ndarray returns
-            if hasattr(irr_json, 'item'):
+            if hasattr(irr_json, "item"):
                 irr_json = irr_json.item()
             if irr_json and isinstance(irr_json, str):
                 try:
@@ -408,25 +410,24 @@ class Query(Component):
                     # Build a set of (year, doy) tuples for irrigation days
                     irr_set = set()
                     for year_key, year_data in irr_data.items():
-                        if isinstance(year_data, dict) and 'irr_doys' in year_data:
+                        if isinstance(year_data, dict) and "irr_doys" in year_data:
                             year_int = int(year_key)
-                            for doy in year_data['irr_doys']:
+                            for doy in year_data["irr_doys"]:
                                 irr_set.add((year_int, doy))
                     # Create binary column
-                    df['irr_doy'] = [
-                        1 if (ts.year, ts.dayofyear) in irr_set else 0
-                        for ts in df.index
+                    df["irr_doy"] = [
+                        1 if (ts.year, ts.dayofyear) in irr_set else 0 for ts in df.index
                     ]
                 except (json.JSONDecodeError, TypeError, ValueError):
-                    df['irr_doy'] = 0
+                    df["irr_doy"] = 0
             else:
-                df['irr_doy'] = 0
+                df["irr_doy"] = 0
         else:
-            df['irr_doy'] = 0
+            df["irr_doy"] = 0
 
         return df
 
-    def dynamics(self, uid: str) -> Dict[str, Any]:
+    def dynamics(self, uid: str) -> dict[str, Any]:
         """
         Get computed dynamics for a field.
 

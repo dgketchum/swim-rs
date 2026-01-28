@@ -28,11 +28,16 @@ jobs:
         run: |
           pip install -e ".[dev]"
 
-      - name: Lint (ruff)
+      - name: Auto-fix lint and format
+        run: |
+          ruff check --fix .
+          ruff format .
+
+      - name: Check lint (ruff)
         run: ruff check .
 
-      - name: Format (black)
-        run: black --check .
+      - name: Check format (ruff)
+        run: ruff format --check .
 
       - name: Run tests (coverage)
         env:

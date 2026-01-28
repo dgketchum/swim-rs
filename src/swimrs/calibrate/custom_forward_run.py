@@ -1,5 +1,4 @@
 import os
-
 import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -22,29 +21,35 @@ def run():
     """This script is meant to be executed by PEST++"""
 
     path = split_path(__file__)
-    project_top = path.index('swim-rs')
-    root = os.path.join(*path[:project_top + 1])
+    project_top = path.index("swim-rs")
+    root = os.path.join(*path[: project_top + 1])
 
-    os.environ['PYTHONPATH'] = root
+    os.environ["PYTHONPATH"] = root
 
-    model_script = os.path.join(root, 'run', 'run_mp.py')
+    model_script = os.path.join(root, "run", "run_mp.py")
 
-    project_ws = os.path.join(root, 'examples', 'DUMMY_PROJECT')
+    project_ws = os.path.join(root, "examples", "DUMMY_PROJECT")
 
-    conf_file = os.path.join(project_ws, 'config.toml')
+    conf_file = os.path.join(project_ws, "config.toml")
 
     cwd = os.getcwd()
 
-    calibration_dir = os.path.join(cwd, 'mult')
+    calibration_dir = os.path.join(cwd, "mult")
 
-    args = ['python' + ' {}'.format(model_script),
-            '--project_dir', project_ws,
-            '--config_path', conf_file,
-            '--worker_dir', cwd,
-            '--calibration_dir', calibration_dir]
+    args = [
+        "python" + f" {model_script}",
+        "--project_dir",
+        project_ws,
+        "--config_path",
+        conf_file,
+        "--worker_dir",
+        cwd,
+        "--calibration_dir",
+        calibration_dir,
+    ]
 
-    os.system(' '.join(args))
+    os.system(" ".join(args))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run()

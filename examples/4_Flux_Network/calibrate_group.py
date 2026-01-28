@@ -7,6 +7,7 @@ container-based workflow and the modern PestBuilder API.
 Usage:
     python calibrate_group.py [--sites SITE1,SITE2,...] [--pdc-remove] [--workers N]
 """
+
 import os
 import shutil
 from pathlib import Path
@@ -33,8 +34,13 @@ def _load_config() -> ProjectConfig:
     return cfg
 
 
-def run_pest_sequence(cfg: ProjectConfig, results_dir: str, select_stations: list = None,
-                      pdc_remove: bool = False, overwrite: bool = False):
+def run_pest_sequence(
+    cfg: ProjectConfig,
+    results_dir: str,
+    select_stations: list = None,
+    pdc_remove: bool = False,
+    overwrite: bool = False,
+):
     """
     Run PEST++ calibration sequence using modern SwimContainer workflow.
 
@@ -62,18 +68,18 @@ def run_pest_sequence(cfg: ProjectConfig, results_dir: str, select_stations: lis
             "Run container_prep.py first to create the container."
         )
 
-    container = SwimContainer.open(container_path, mode='r')
+    container = SwimContainer.open(container_path, mode="r")
 
     try:
         # Export observation files for PEST++ calibration
-        obs_dir = os.path.join(cfg.pest_run_dir, 'obs')
+        obs_dir = os.path.join(cfg.pest_run_dir, "obs")
         os.makedirs(obs_dir, exist_ok=True)
 
         print("\n=== Exporting Observations ===")
         container.export.observations(
             output_dir=obs_dir,
             etf_model=cfg.etf_target_model,
-            masks=('irr', 'inv_irr'),
+            masks=("irr", "inv_irr"),
             irr_threshold=cfg.irrigation_threshold or 0.1,
             fields=select_stations,
         )

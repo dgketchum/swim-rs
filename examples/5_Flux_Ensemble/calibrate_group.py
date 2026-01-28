@@ -24,8 +24,13 @@ def _load_config() -> ProjectConfig:
     return cfg
 
 
-def run_pest_sequence(cfg: ProjectConfig, results_dir: str, select_stations, pdc_remove: bool = False,
-                      overwrite: bool = False):
+def run_pest_sequence(
+    cfg: ProjectConfig,
+    results_dir: str,
+    select_stations,
+    pdc_remove: bool = False,
+    overwrite: bool = False,
+):
     project = cfg.project_name
 
     if os.path.isdir(cfg.pest_run_dir):
@@ -51,7 +56,9 @@ def run_pest_sequence(cfg: ProjectConfig, results_dir: str, select_stations, pdc
         preproc(cfg)
 
     shutil.copyfile(cfg.input_data, station_prepped_input)
-    shutil.copyfile(cfg.input_data, os.path.join(cfg.pest_run_dir, os.path.basename(cfg.input_data)))
+    shutil.copyfile(
+        cfg.input_data, os.path.join(cfg.pest_run_dir, os.path.basename(cfg.input_data))
+    )
 
     p_dir = os.path.join(cfg.pest_run_dir, "pest")
     m_dir = os.path.join(cfg.pest_run_dir, "master")
@@ -59,8 +66,12 @@ def run_pest_sequence(cfg: ProjectConfig, results_dir: str, select_stations, pdc
 
     os.chdir(Path(__file__).resolve().parent)
 
-    builder = PestBuilder(cfg, use_existing=False, python_script=getattr(cfg, "python_script", None),
-                          conflicted_obs=None)
+    builder = PestBuilder(
+        cfg,
+        use_existing=False,
+        python_script=getattr(cfg, "python_script", None),
+        conflicted_obs=None,
+    )
     builder.build_pest(target_etf=cfg.etf_target_model, members=cfg.etf_ensemble_members)
     builder.build_localizer()
 
@@ -82,8 +93,12 @@ def run_pest_sequence(cfg: ProjectConfig, results_dir: str, select_stations, pdc
             temp_pdc = os.path.join(temp_dir, f"{project}.pdc.csv")
             shutil.copyfile(pdc_file, temp_pdc)
 
-            builder = PestBuilder(cfg, use_existing=False, python_script=getattr(cfg, "python_script", None),
-                                  conflicted_obs=temp_pdc)
+            builder = PestBuilder(
+                cfg,
+                use_existing=False,
+                python_script=getattr(cfg, "python_script", None),
+                conflicted_obs=temp_pdc,
+            )
             builder.build_pest(target_etf=cfg.etf_target_model, members=cfg.etf_ensemble_members)
             builder.build_localizer()
             builder.write_control_settings(noptmax=0)
@@ -91,11 +106,24 @@ def run_pest_sequence(cfg: ProjectConfig, results_dir: str, select_stations, pdc
 
     builder.write_control_settings(noptmax=3, reals=cfg.realizations)
     pst_name = f"{project}.pst"
-    run_pst(p_dir, exe_, pst_name, num_workers=cfg.workers, worker_root=w_dir, master_dir=m_dir, verbose=False,
-            cleanup=False)
+    run_pst(
+        p_dir,
+        exe_,
+        pst_name,
+        num_workers=cfg.workers,
+        worker_root=w_dir,
+        master_dir=m_dir,
+        verbose=False,
+        cleanup=False,
+    )
 
-    for fname in [f"{project}.3.par.csv", f"{project}.2.par.csv", f"{project}.phi.meas.csv", f"{project}.pdc.csv",
-                  f"{project}.idx.csv"]:
+    for fname in [
+        f"{project}.3.par.csv",
+        f"{project}.2.par.csv",
+        f"{project}.phi.meas.csv",
+        f"{project}.pdc.csv",
+        f"{project}.idx.csv",
+    ]:
         src = os.path.join(m_dir, fname)
         if os.path.exists(src):
             shutil.copyfile(src, os.path.join(results_dir, fname))
@@ -114,5 +142,10 @@ if __name__ == "__main__":
     non_crop_sites = [s for s in all_sites if s not in all_sites]
 
     results = os.path.join(cfg.project_ws, "diy_ensemble_test")
-    run_pest_sequence(cfg, results, select_stations=['MR', 'US-FPe', 'ALARC2_Smith6'], overwrite=True, pdc_remove=True)
-
+    run_pest_sequence(
+        cfg,
+        results,
+        select_stations=["MR", "US-FPe", "ALARC2_Smith6"],
+        overwrite=True,
+        pdc_remove=True,
+    )

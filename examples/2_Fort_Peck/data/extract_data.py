@@ -61,25 +61,29 @@ import ee
 # Add project root to path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
-ROOT_DIR = os.path.abspath(os.path.join(PROJECT_DIR, '../..'))
+ROOT_DIR = os.path.abspath(os.path.join(PROJECT_DIR, "../.."))
 sys.path.insert(0, ROOT_DIR)
 
-from swimrs.swim.config import ProjectConfig
-from swimrs.data_extraction.ee.ptjpl_export import export_ptjpl_zonal_stats
-from swimrs.data_extraction.ee.ndvi_export import sparse_sample_ndvi
-from swimrs.data_extraction.ee.snodas_export import sample_snodas_swe
-from swimrs.data_extraction.ee.ee_props import get_irrigation, get_ssurgo, get_landcover
+from swimrs.data_extraction.ee.ee_props import get_irrigation, get_landcover, get_ssurgo
 from swimrs.data_extraction.ee.ee_utils import is_authorized
-from swimrs.data_extraction.gridmet.gridmet import assign_gridmet_ids, sample_gridmet_corrections, download_gridmet
+from swimrs.data_extraction.ee.ndvi_export import sparse_sample_ndvi
+from swimrs.data_extraction.ee.ptjpl_export import export_ptjpl_zonal_stats
+from swimrs.data_extraction.ee.snodas_export import sample_snodas_swe
+from swimrs.data_extraction.gridmet.gridmet import (
+    assign_gridmet_ids,
+    download_gridmet,
+    sample_gridmet_corrections,
+)
+from swimrs.swim.config import ProjectConfig
 from swimrs.utils.flux_stations import extract_stations
 
 sys.setrecursionlimit(5000)
 
 # Default: extract only US-FPe (Fort Peck)
-DEFAULT_FIELDS = ['US-FPe']
+DEFAULT_FIELDS = ["US-FPe"]
 
 # Path to master flux stations shapefile
-MASTER_SHAPEFILE = os.path.abspath(os.path.join(ROOT_DIR, 'examples', 'gis', 'flux_stations.shp'))
+MASTER_SHAPEFILE = os.path.abspath(os.path.join(ROOT_DIR, "examples", "gis", "flux_stations.shp"))
 
 
 def init_earth_engine():
@@ -93,7 +97,7 @@ def init_earth_engine():
 
 def load_config():
     """Load project configuration from TOML file."""
-    config_file = os.path.join(PROJECT_DIR, '2_Fort_Peck.toml')
+    config_file = os.path.join(PROJECT_DIR, "2_Fort_Peck.toml")
     cfg = ProjectConfig()
     cfg.read_config(config_file, project_root_override=PROJECT_DIR)
     return cfg
@@ -109,8 +113,8 @@ def setup_local_shapefile(select_fields, overwrite=False):
     overwrite : bool
         If True, overwrite existing shapefile
     """
-    gis_dir = os.path.join(SCRIPT_DIR, 'gis')
-    local_shp = os.path.join(gis_dir, 'flux_fields.shp')
+    gis_dir = os.path.join(SCRIPT_DIR, "gis")
+    local_shp = os.path.join(gis_dir, "flux_fields.shp")
 
     if os.path.exists(local_shp) and not overwrite:
         print(f"Using existing local shapefile: {local_shp}")
@@ -122,13 +126,8 @@ def setup_local_shapefile(select_fields, overwrite=False):
             f"Run: python -m swimrs.utils.flux_stations create --help"
         )
 
-    print(f"\nExtracting stations from master shapefile...")
-    extract_stations(
-        MASTER_SHAPEFILE,
-        select_fields,
-        local_shp,
-        overwrite=True
-    )
+    print("\nExtracting stations from master shapefile...")
+    extract_stations(MASTER_SHAPEFILE, select_fields, local_shp, overwrite=True)
 
     return local_shp
 
@@ -151,12 +150,18 @@ def extract_etf(cfg, select_fields, mask_types=None, overwrite=False):
         If True, re-extract all data ignoring existing files. Default: False
     """
     if mask_types is None:
-        mask_types = ['irr', 'inv_irr']
+        mask_types = ["irr", "inv_irr"]
 
     for mask in mask_types:
         print(f"\nExtracting ETf ({mask}) using PT-JPL...")
         # Check local directory to skip already-extracted years (unless overwrite)
-        check_dir = None if overwrite else os.path.join(SCRIPT_DIR, 'remote_sensing', 'landsat', 'extracts', 'ptjpl_etf', mask)
+        check_dir = (
+            None
+            if overwrite
+            else os.path.join(
+                SCRIPT_DIR, "remote_sensing", "landsat", "extracts", "ptjpl_etf", mask
+            )
+        )
 
         export_ptjpl_zonal_stats(
             shapefile=cfg.fields_shapefile,
@@ -172,7 +177,9 @@ def extract_etf(cfg, select_fields, mask_types=None, overwrite=False):
         )
 
 
-def extract_ndvi(cfg, select_fields, use_drive, satellite='landsat', mask_types=None, overwrite=False):
+def extract_ndvi(
+    cfg, select_fields, use_drive, satellite="landsat", mask_types=None, overwrite=False
+):
     """Extract NDVI from Landsat or Sentinel-2.
 
     Parameters
@@ -191,16 +198,20 @@ def extract_ndvi(cfg, select_fields, use_drive, satellite='landsat', mask_types=
         If True, re-extract all data ignoring existing files. Default: False
     """
     if mask_types is None:
-        mask_types = ['irr', 'inv_irr']
+        mask_types = ["irr", "inv_irr"]
 
-    dest = 'drive' if use_drive else 'bucket'
+    dest = "drive" if use_drive else "bucket"
     bucket = None if use_drive else cfg.ee_bucket
-    drive_folder = cfg.resolved_config.get('earth_engine', {}).get('drive_folder', cfg.project_name)
+    drive_folder = cfg.resolved_config.get("earth_engine", {}).get("drive_folder", cfg.project_name)
 
     for mask in mask_types:
         print(f"\nExtracting {satellite} NDVI ({mask})...")
         # Check local directory to skip already-extracted years (unless overwrite)
-        check_dir = None if overwrite else os.path.join(SCRIPT_DIR, 'remote_sensing', satellite, 'extracts', 'ndvi', mask)
+        check_dir = (
+            None
+            if overwrite
+            else os.path.join(SCRIPT_DIR, "remote_sensing", satellite, "extracts", "ndvi", mask)
+        )
         sparse_sample_ndvi(
             cfg.fields_shapefile,
             bucket=bucket,
@@ -216,7 +227,7 @@ def extract_ndvi(cfg, select_fields, use_drive, satellite='landsat', mask_types=
             dest=dest,
             file_prefix=cfg.project_name,
             drive_folder=drive_folder,
-            drive_categorize=use_drive
+            drive_categorize=use_drive,
         )
 
 
@@ -235,12 +246,12 @@ def extract_snodas(cfg, select_fields, use_drive, overwrite=False):
         If True, re-extract all data ignoring existing files. Default: False
     """
     print("\nExtracting SNODAS SWE...")
-    dest = 'drive' if use_drive else 'bucket'
+    dest = "drive" if use_drive else "bucket"
     bucket = None if use_drive else cfg.ee_bucket
-    drive_folder = cfg.resolved_config.get('earth_engine', {}).get('drive_folder', cfg.project_name)
+    drive_folder = cfg.resolved_config.get("earth_engine", {}).get("drive_folder", cfg.project_name)
 
     # Check local directory to skip already-extracted months (unless overwrite)
-    check_dir = None if overwrite else os.path.join(SCRIPT_DIR, 'snow', 'snodas', 'extracts')
+    check_dir = None if overwrite else os.path.join(SCRIPT_DIR, "snow", "snodas", "extracts")
     sample_snodas_swe(
         cfg.fields_shapefile,
         bucket=bucket,
@@ -252,20 +263,20 @@ def extract_snodas(cfg, select_fields, use_drive, overwrite=False):
         dest=dest,
         file_prefix=cfg.project_name,
         drive_folder=drive_folder,
-        drive_categorize=use_drive
+        drive_categorize=use_drive,
     )
 
 
 def extract_properties(cfg, select_fields, use_drive):
     """Extract irrigation, land cover, and soil properties."""
-    dest = 'drive' if use_drive else 'bucket'
+    dest = "drive" if use_drive else "bucket"
     bucket = None if use_drive else cfg.ee_bucket
-    drive_folder = cfg.resolved_config.get('earth_engine', {}).get('drive_folder', cfg.project_name)
+    drive_folder = cfg.resolved_config.get("earth_engine", {}).get("drive_folder", cfg.project_name)
 
     print("\nExtracting irrigation data...")
     get_irrigation(
         cfg.fields_shapefile,
-        desc=f'{cfg.project_name}_irr',
+        desc=f"{cfg.project_name}_irr",
         debug=False,
         selector=cfg.feature_id_col,
         select=select_fields,
@@ -274,13 +285,13 @@ def extract_properties(cfg, select_fields, use_drive):
         bucket=bucket,
         file_prefix=cfg.project_name,
         drive_folder=drive_folder,
-        drive_categorize=use_drive
+        drive_categorize=use_drive,
     )
 
     print("\nExtracting land cover data...")
     get_landcover(
         cfg.fields_shapefile,
-        desc=f'{cfg.project_name}_landcover',
+        desc=f"{cfg.project_name}_landcover",
         debug=False,
         selector=cfg.feature_id_col,
         select=select_fields,
@@ -288,13 +299,13 @@ def extract_properties(cfg, select_fields, use_drive):
         bucket=bucket,
         file_prefix=cfg.project_name,
         drive_folder=drive_folder,
-        drive_categorize=use_drive
+        drive_categorize=use_drive,
     )
 
     print("\nExtracting SSURGO soil data...")
     get_ssurgo(
         cfg.fields_shapefile,
-        desc=f'{cfg.project_name}_ssurgo',
+        desc=f"{cfg.project_name}_ssurgo",
         debug=False,
         selector=cfg.feature_id_col,
         select=select_fields,
@@ -302,7 +313,7 @@ def extract_properties(cfg, select_fields, use_drive):
         bucket=bucket,
         file_prefix=cfg.project_name,
         drive_folder=drive_folder,
-        drive_categorize=use_drive
+        drive_categorize=use_drive,
     )
 
 
@@ -330,8 +341,8 @@ def extract_gridmet(cfg, select_fields, overwrite=False):
         cfg.gridmet_mapping_shp,
         cfg.gridmet_factors,
         cfg.met_dir,
-        start=cfg.start_dt.strftime('%Y-%m-%d'),
-        end=cfg.end_dt.strftime('%Y-%m-%d'),
+        start=cfg.start_dt.strftime("%Y-%m-%d"),
+        end=cfg.end_dt.strftime("%Y-%m-%d"),
         target_fields=select_fields,
         overwrite=overwrite,
         feature_id=cfg.feature_id_col,
@@ -377,24 +388,38 @@ Next steps:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Extract SWIM-RS input data from Earth Engine and GridMET',
+        description="Extract SWIM-RS input data from Earth Engine and GridMET",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
-    parser.add_argument('--drive', action='store_true',
-                        help='Export NDVI/SNODAS/properties to Google Drive (ETf always uses bucket)')
-    parser.add_argument('--all-fields', action='store_true',
-                        help='Extract all 161 flux sites (default: US-FPe only)')
-    parser.add_argument('--fields', nargs='+', default=None,
-                        help='Specific field IDs to extract')
-    parser.add_argument('--skip-ee', action='store_true',
-                        help='Skip Earth Engine exports (GridMET only)')
-    parser.add_argument('--sync-only', action='store_true',
-                        help='Only sync from bucket, no new exports')
-    parser.add_argument('--overwrite', action='store_true', default=False,
-                        help='Re-extract all data, ignoring existing files (default: False)')
-    parser.add_argument('--build-shp', action='store_true',
-                        help='Only rebuild local shapefile from master and exit (writes provenance)')
+    parser.add_argument(
+        "--drive",
+        action="store_true",
+        help="Export NDVI/SNODAS/properties to Google Drive (ETf always uses bucket)",
+    )
+    parser.add_argument(
+        "--all-fields",
+        action="store_true",
+        help="Extract all 161 flux sites (default: US-FPe only)",
+    )
+    parser.add_argument("--fields", nargs="+", default=None, help="Specific field IDs to extract")
+    parser.add_argument(
+        "--skip-ee", action="store_true", help="Skip Earth Engine exports (GridMET only)"
+    )
+    parser.add_argument(
+        "--sync-only", action="store_true", help="Only sync from bucket, no new exports"
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        default=False,
+        help="Re-extract all data, ignoring existing files (default: False)",
+    )
+    parser.add_argument(
+        "--build-shp",
+        action="store_true",
+        help="Only rebuild local shapefile from master and exit (writes provenance)",
+    )
     args = parser.parse_args()
 
     # Determine which fields to extract
@@ -465,5 +490,5 @@ def main():
     print_summary(args.drive, cfg)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

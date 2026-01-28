@@ -28,6 +28,6 @@ def initialize_data(ini_path, input_data=None, spinup_data=None):
     return config, plots_
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass
 # ========================= EOF ====================================================================

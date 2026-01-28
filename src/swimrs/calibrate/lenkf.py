@@ -1,33 +1,54 @@
-import os
-import json
 import copy
+import json
+import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from tqdm import tqdm
+
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
-from swimrs.swim.config import ProjectConfig
-from swimrs.swim.sampleplots import SamplePlots
+from swimrs.calibrate.enkf_utils import (
+    _field_worker,
+    _make_ensemble_plots_from_single,
+    _pred_at_dt_from_state,
+    _RingStates,
+)
+from swimrs.model import TRACKER_PARAMS
 from swimrs.model.obs_field_cycle import field_day_loop
 from swimrs.model.tracker import TUNABLE_PARAMS
-from swimrs.model import TRACKER_PARAMS
-
-from swimrs.calibrate.enkf_utils import _field_worker, _RingStates, _make_ensemble_plots_from_single, _pred_at_dt_from_state
+from swimrs.swim.config import ProjectConfig
+from swimrs.swim.sampleplots import SamplePlots
 
 
 class LaggedEnKF:
-    def __init__(self, config: ProjectConfig, plots: SamplePlots,
-                 enkf_params=None, lag_days=7, ensemble_size=50, bounds=None,
-                 fields_subset=None, num_workers=None, use_processes=False,
-                 stochastic_obs=True, par_fields=True, field_workers=None,
-                 smooth_within_window=True):
+    def __init__(
+        self,
+        config: ProjectConfig,
+        plots: SamplePlots,
+        enkf_params=None,
+        lag_days=7,
+        ensemble_size=50,
+        bounds=None,
+        fields_subset=None,
+        num_workers=None,
+        use_processes=False,
+        stochastic_obs=True,
+        par_fields=True,
+        field_workers=None,
+        smooth_within_window=True,
+    ):
         self.config = config
         self.plots = plots
-        self.fields = self.plots.input['order']
-        self.active_fields = [f for f in (fields_subset if fields_subset is not None else self.fields) if
-                              f in self.fields]
+        self.fields = self.plots.input["order"]
+        self.active_fields = [
+            f
+            for f in (fields_subset if fields_subset is not None else self.fields)
+            if f in self.fields
+        ]
         self.field_idx = {f: i for i, f in enumerate(self.fields)}
-        self.enkf_params = enkf_params if enkf_params is not None else ['ndvi_k', 'ndvi_0', 'ks_alpha', 'kr_alpha']
+        self.enkf_params = (
+            enkf_params if enkf_params is not None else ["ndvi_k", "ndvi_0", "ks_alpha", "kr_alpha"]
+        )
         self.lag_days = int(lag_days)
         self.ne = int(ensemble_size)
         self.bounds = bounds if bounds is not None else {}
@@ -54,12 +75,14 @@ class LaggedEnKF:
         self.R = {fid: 0.01 for fid in self.fields}
         self.Q = {p: 1e-4 for p in self.enkf_params}
 
-        dr = pd.date_range(self.config.start_dt, self.config.end_dt, freq='D')
+        dr = pd.date_range(self.config.start_dt, self.config.end_dt, freq="D")
         self.dates = list(dr)
         self.final_kc = np.zeros((len(self.dates), len(self.fields))) * np.nan
         self.baseline_kc = None
-        self.param_trace = {fid: pd.DataFrame(index=self.dates, columns=self.enkf_params, dtype=float) for fid in
-                            self.fields}
+        self.param_trace = {
+            fid: pd.DataFrame(index=self.dates, columns=self.enkf_params, dtype=float)
+            for fid in self.fields
+        }
         self._single_cfg = {}
         self._single_plots = {}
         self._prepare_singleton_views()
@@ -69,24 +92,28 @@ class LaggedEnKF:
         self.obs_kc = None
 
     def build_obs_from_plots(self, model=None, irr_threshold=None):
-        mdl = model if model is not None else self.config.etf_target_model or 'ssebop'
-        thr = float(irr_threshold) if irr_threshold is not None else (self.config.irr_threshold if self.config.irr_threshold is not None else 0.2)
-        ts = self.plots.input['time_series']
-        irr_info = self.plots.input.get('irr_data', {})
+        mdl = model if model is not None else self.config.etf_target_model or "ssebop"
+        thr = (
+            float(irr_threshold)
+            if irr_threshold is not None
+            else (self.config.irr_threshold if self.config.irr_threshold is not None else 0.2)
+        )
+        ts = self.plots.input["time_series"]
+        irr_info = self.plots.input.get("irr_data", {})
         cols = {fid: [] for fid in self.active_fields}
         idx = []
 
         for dt in self.dates:
-            dts = dt.strftime('%Y-%m-%d')
+            dts = dt.strftime("%Y-%m-%d")
             if dts not in ts:
                 idx.append(dt)
                 for fid in self.active_fields:
                     cols[fid].append(np.nan)
                 continue
             vals = ts[dts]
-            irr_key = f'{mdl}_etf_irr'
-            inv_key = f'{mdl}_etf_inv_irr'
-            base_key = f'{mdl}_etf'
+            irr_key = f"{mdl}_etf_irr"
+            inv_key = f"{mdl}_etf_inv_irr"
+            base_key = f"{mdl}_etf"
             idx.append(dt)
             for fid in self.active_fields:
                 j = self.field_idx[fid]  # likely error if fid missing
@@ -95,8 +122,8 @@ class LaggedEnKF:
                 irrigated = None
                 if fid in irr_info and yr in irr_info[fid]:
                     rec = irr_info[fid][yr]
-                    f_irr = rec.get('f_irr')
-                    irrigated = rec.get('irrigated')
+                    f_irr = rec.get("f_irr")
+                    irrigated = rec.get("irrigated")
                 v = np.nan
                 has_irr = irr_key in vals
                 has_inv = inv_key in vals
@@ -120,7 +147,11 @@ class LaggedEnKF:
         return df
 
     def _load_param_ensemble(self):
-        csv_path = self.config.forecast_param_csv if self.config.forecast_param_csv else self.config.forecast_parameters_csv
+        csv_path = (
+            self.config.forecast_param_csv
+            if self.config.forecast_param_csv
+            else self.config.forecast_parameters_csv
+        )
         if csv_path is None:
             return
         df = pd.read_csv(csv_path, index_col=0)
@@ -137,19 +168,21 @@ class LaggedEnKF:
     def _init_theta_from_posterior(self):
         for fid in self.fields:
             for j, p in enumerate(self.enkf_params):
-                key = f'{p}_{fid}'
+                key = f"{p}_{fid}"
                 if self.par_df is not None:
                     col = self._find_param_col(p, fid)
                     if col is not None:
                         vals = self.par_df[col].values
                         if len(vals) >= self.ne:
-                            self.theta[fid][:, j] = vals[:self.ne]
+                            self.theta[fid][:, j] = vals[: self.ne]
                         else:
                             reps = int(np.ceil(self.ne / len(vals)))
-                            tiled = np.tile(vals, reps)[:self.ne]
+                            tiled = np.tile(vals, reps)[: self.ne]
                             self.theta[fid][:, j] = tiled
                         continue
-                v = self.base_params[key] if key in self.base_params else 0.0  # likely error if key missing
+                v = (
+                    self.base_params[key] if key in self.base_params else 0.0
+                )  # likely error if key missing
                 self.theta[fid][:, j] = v
 
     def estimate_Q_R(self, q_scale=0.05, r_scale=1.0):
@@ -187,16 +220,16 @@ class LaggedEnKF:
         base_dir = None
         if self.config.spinup and os.path.exists(self.config.spinup):
             base_dir = os.path.dirname(self.config.spinup)
-            req = [os.path.join(base_dir, f'{fid}.csv') for fid in self.active_fields]
+            req = [os.path.join(base_dir, f"{fid}.csv") for fid in self.active_fields]
             if all(os.path.exists(p) for p in req):
                 kc_arr = np.zeros((len(self.dates), len(self.fields))) * np.nan
                 for fid in self.active_fields:
-                    fcsv = os.path.join(base_dir, f'{fid}.csv')
+                    fcsv = os.path.join(base_dir, f"{fid}.csv")
                     df_ = pd.read_csv(fcsv, index_col=0, parse_dates=True)
-                    if 'kc_act' in df_.columns:
-                        s_kc = df_['kc_act'].reindex(self.dates)
+                    if "kc_act" in df_.columns:
+                        s_kc = df_["kc_act"].reindex(self.dates)
                     else:
-                        s_kc = df_['kc']  # likely error if kc column missing
+                        s_kc = df_["kc"]  # likely error if kc column missing
                         s_kc = s_kc.reindex(self.dates)
                     kc_arr[:, self.field_idx[fid]] = s_kc.values
                 self.baseline_kc = kc_arr
@@ -210,7 +243,7 @@ class LaggedEnKF:
         self.config.start_dt = start_dt
         self.config.end_dt = end_dt
         if self.config.spinup and os.path.exists(self.config.spinup):
-            with open(self.config.spinup, 'r') as fp:
+            with open(self.config.spinup) as fp:
                 sdct = json.load(fp)
             self._spinup_states = sdct
             for fid in self.active_fields:
@@ -223,7 +256,7 @@ class LaggedEnKF:
         for fid in self.active_fields:
             cfg = copy.deepcopy(self.config)
             if cfg.forecast_parameters is not None:
-                idx = [i for i in cfg.forecast_parameters.index if i.endswith(f'_{fid.lower()}')]
+                idx = [i for i in cfg.forecast_parameters.index if i.endswith(f"_{fid.lower()}")]
                 if len(idx) > 0:
                     cfg.forecast_parameters = cfg.forecast_parameters.loc[idx]
             self._single_cfg[fid] = cfg
@@ -235,26 +268,38 @@ class LaggedEnKF:
         idx = self.field_idx[fid]
         order = [fid]
         ts_sub = {}
-        for dt, vals in base['time_series'].items():
+        for dt, vals in base["time_series"].items():
             d = {}
             for k, v in vals.items():
-                if k == 'doy':
+                if k == "doy":
                     d[k] = v
                 else:
                     d[k] = [v[idx]]
             ts_sub[dt] = d
-        props_sub = {fid: base['props'][fid]} if 'props' in base and fid in base['props'] else {}
-        irr_sub = {fid: base['irr_data'][fid]} if 'irr_data' in base and fid in base['irr_data'] else {}
-        gwsub_sub = {fid: base['gwsub_data'][fid]} if 'gwsub_data' in base and fid in base['gwsub_data'] else {}
-        kc_max_sub = {fid: base['kc_max'][fid]} if 'kc_max' in base and fid in base['kc_max'] else {}
-        ke_max_sub = {fid: base['ke_max'][fid]} if 'ke_max' in base and fid in base['ke_max'] else {}
-        sp.input = {'order': order,
-                    'time_series': ts_sub,
-                    'props': props_sub,
-                    'irr_data': irr_sub,
-                    'gwsub_data': gwsub_sub,
-                    'kc_max': kc_max_sub,
-                    'ke_max': ke_max_sub}
+        props_sub = {fid: base["props"][fid]} if "props" in base and fid in base["props"] else {}
+        irr_sub = (
+            {fid: base["irr_data"][fid]} if "irr_data" in base and fid in base["irr_data"] else {}
+        )
+        gwsub_sub = (
+            {fid: base["gwsub_data"][fid]}
+            if "gwsub_data" in base and fid in base["gwsub_data"]
+            else {}
+        )
+        kc_max_sub = (
+            {fid: base["kc_max"][fid]} if "kc_max" in base and fid in base["kc_max"] else {}
+        )
+        ke_max_sub = (
+            {fid: base["ke_max"][fid]} if "ke_max" in base and fid in base["ke_max"] else {}
+        )
+        sp.input = {
+            "order": order,
+            "time_series": ts_sub,
+            "props": props_sub,
+            "irr_data": irr_sub,
+            "gwsub_data": gwsub_sub,
+            "kc_max": kc_max_sub,
+            "ke_max": ke_max_sub,
+        }
         return sp
 
     def _make_ensemble_plots_for_fid(self, fid, ne):
@@ -273,7 +318,7 @@ class LaggedEnKF:
         fid_l = fid.lower()
         base_by_group = {}
         for p in TUNABLE_PARAMS:
-            key = f'{p}_{fid_l}'
+            key = f"{p}_{fid_l}"
             base_by_group[p] = float(self.base_params.get(key, 0.0))
 
         efids = [f"{fid_l}__e{i}" for i in range(ne)]
@@ -282,20 +327,27 @@ class LaggedEnKF:
             for p in TUNABLE_PARAMS:
                 if p in self.enkf_params:
                     j = self.enkf_params.index(p)
-                    fp[f'{p}_{ef}'] = float(theta_mat[i, j])
+                    fp[f"{p}_{ef}"] = float(theta_mat[i, j])
                 else:
-                    fp[f'{p}_{ef}'] = base_by_group[p]
+                    fp[f"{p}_{ef}"] = base_by_group[p]
 
         cfg2.forecast_parameters = pd.Series(fp)
 
-        kc, swe = field_day_loop(cfg2, plots_e, debug_flag=False, params=None,
-                                  state_in=state0, capture_state=False, single_fid_idx=None)
+        kc, swe = field_day_loop(
+            cfg2,
+            plots_e,
+            debug_flag=False,
+            params=None,
+            state_in=state0,
+            capture_state=False,
+            single_fid_idx=None,
+        )
         return kc[-1, :]
 
     def _build_params_for_field(self, fid, theta_vec):
         params = dict(self.base_params)
         for j, p in enumerate(self.enkf_params):
-            key = f'{p}_{fid.lower()}'
+            key = f"{p}_{fid.lower()}"
             if key in params:
                 params[key] = float(theta_vec[j])
         return params
@@ -313,12 +365,26 @@ class LaggedEnKF:
         cfg.start_dt = start_dt
         cfg.end_dt = end_dt
         if capture_state:
-            kc, swe, states = field_day_loop(cfg, self._single_plots[fid], debug_flag=False, params=params,
-                                             state_in=state0, capture_state=True, single_fid_idx=0)
+            kc, swe, states = field_day_loop(
+                cfg,
+                self._single_plots[fid],
+                debug_flag=False,
+                params=params,
+                state_in=state0,
+                capture_state=True,
+                single_fid_idx=0,
+            )
             return kc[:, 0], states
         else:
-            kc, swe = field_day_loop(cfg, self._single_plots[fid], debug_flag=False, params=params,
-                                     state_in=state0, capture_state=False, single_fid_idx=0)
+            kc, swe = field_day_loop(
+                cfg,
+                self._single_plots[fid],
+                debug_flag=False,
+                params=params,
+                state_in=state0,
+                capture_state=False,
+                single_fid_idx=0,
+            )
             return kc[:, 0], None
 
     def _ensure_state(self, fid, target_ix, params):
@@ -335,11 +401,15 @@ class LaggedEnKF:
             return st_at_target
 
         base = ring.base
-        count = ring.count if hasattr(ring, 'count') else 0
+        count = ring.count if hasattr(ring, "count") else 0
         if base is None or count == 0:
             # Fall back to spinup if available
             if self._spinup_states is not None and fid in self._spinup_states:
-                st0 = {k: self._spinup_states[fid][k] for k in TRACKER_PARAMS if k in self._spinup_states[fid]}
+                st0 = {
+                    k: self._spinup_states[fid][k]
+                    for k in TRACKER_PARAMS
+                    if k in self._spinup_states[fid]
+                }
                 seed_ix = 0
                 seed_state = st0
             else:
@@ -360,14 +430,20 @@ class LaggedEnKF:
                 # fallback to spinup if present
                 if self._spinup_states is not None and fid in self._spinup_states:
                     seed_ix = 0
-                    seed_state = {k: self._spinup_states[fid][k] for k in TRACKER_PARAMS if k in self._spinup_states[fid]}
+                    seed_state = {
+                        k: self._spinup_states[fid][k]
+                        for k in TRACKER_PARAMS
+                        if k in self._spinup_states[fid]
+                    }
                 else:
                     return None
 
         if seed_ix == target_ix:
             return seed_state
 
-        kc_seg, states_seg = self._run_range(fid, seed_ix, target_ix, params, seed_state, capture_state=True)
+        kc_seg, states_seg = self._run_range(
+            fid, seed_ix, target_ix, params, seed_state, capture_state=True
+        )
         for k, st_ in enumerate(states_seg):
             ring.set(seed_ix + k, st_)
         return ring.get(target_ix)
@@ -389,14 +465,18 @@ class LaggedEnKF:
 
         self.estimate_Q_R()
 
-        init_iter = tqdm(self.active_fields, desc='init', leave=False)
+        init_iter = tqdm(self.active_fields, desc="init", leave=False)
         for fid in init_iter:
             if self.state_snapshots[fid] is None:
                 self.state_snapshots[fid] = _RingStates(self.lag_days + 1)
-                st0 = {k: self._spinup_states[fid][k] for k in TRACKER_PARAMS if k in self._spinup_states[fid]}
+                st0 = {
+                    k: self._spinup_states[fid][k]
+                    for k in TRACKER_PARAMS
+                    if k in self._spinup_states[fid]
+                }
                 self.state_snapshots[fid].set(0, st0)
 
-        date_iter = tqdm(self.dates, desc='dates')
+        date_iter = tqdm(self.dates, desc="dates")
         if self.par_fields and self.field_workers and self.field_workers > 1:
             # Per-field multiprocessing: each worker handles all dates for one field
             with ProcessPoolExecutor(max_workers=self.field_workers) as fpool:
@@ -410,43 +490,46 @@ class LaggedEnKF:
 
                     theta_init = self.theta[fid].copy()
                     baseline_col = self.baseline_kc[:, self.field_idx[fid]].copy()
-                    base_params_by_fid = {k: v for k, v in self.base_params.items() if k.endswith(f'_{fid.lower()}')}
+                    base_params_by_fid = {
+                        k: v for k, v in self.base_params.items() if k.endswith(f"_{fid.lower()}")
+                    }
                     spinup_state = None
                     if self._spinup_states is not None and fid in self._spinup_states:
                         spinup_state = self._spinup_states[fid]
 
-                    fut = fpool.submit(_field_worker,
-                                       self._single_cfg[fid],
-                                       self._single_plots[fid],
-                                       self.dates,
-                                       obs_vals,
-                                       self.enkf_params,
-                                       theta_init,
-                                       self.bounds,
-                                       self.Q_per_field.get(fid, {}),
-                                       self.Q,
-                                       self.R[fid],
-                                       fid,
-                                       self.stochastic_obs,
-                                       self.lag_days,
-                                       self.smooth_within_window,
-                                       base_params_by_fid,
-                                       spinup_state,
-                                       baseline_col)
+                    fut = fpool.submit(
+                        _field_worker,
+                        self._single_cfg[fid],
+                        self._single_plots[fid],
+                        self.dates,
+                        obs_vals,
+                        self.enkf_params,
+                        theta_init,
+                        self.bounds,
+                        self.Q_per_field.get(fid, {}),
+                        self.Q,
+                        self.R[fid],
+                        fid,
+                        self.stochastic_obs,
+                        self.lag_days,
+                        self.smooth_within_window,
+                        base_params_by_fid,
+                        spinup_state,
+                        baseline_col,
+                    )
                     futures[fut] = fid
                 for fut in as_completed(futures):
                     fid = futures[fut]
                     res = fut.result()
-                    self.theta[fid] = res['theta']
+                    self.theta[fid] = res["theta"]
                     # update param trace for all dates
-                    arr = res['param_trace']
+                    arr = res["param_trace"]
                     self.param_trace[fid].iloc[:, :] = arr
                     # update full kc time series for this field
-                    self.final_kc[:, self.field_idx[fid]] = res['final_kc_col']
+                    self.final_kc[:, self.field_idx[fid]] = res["final_kc_col"]
 
         else:
             for t_idx, dt in enumerate(date_iter):
-
                 if dt not in self.obs_kc.index:
                     continue
 
@@ -465,8 +548,9 @@ class LaggedEnKF:
                         continue
 
                     # Vectorized ensemble propagation across ne synthetic fields
-                    preds = self._preds_ensemble_at_dt_from_state(fid, self.dates[start_ix], dt,
-                                                                  self.theta[fid], state0)
+                    preds = self._preds_ensemble_at_dt_from_state(
+                        fid, self.dates[start_ix], dt, self.theta[fid], state0
+                    )
 
                     y_bar = float(np.mean(preds))
                     theta_bar = np.mean(self.theta[fid], axis=0)
@@ -480,7 +564,9 @@ class LaggedEnKF:
                     r = self.R[fid]
                     k_gain = cov_ty / (var_y + r)
 
-                    q_vec = np.array([self.Q_per_field.get(fid, {}).get(p, self.Q[p]) for p in self.enkf_params])
+                    q_vec = np.array(
+                        [self.Q_per_field.get(fid, {}).get(p, self.Q[p]) for p in self.enkf_params]
+                    )
                     noise = np.random.normal(0.0, np.sqrt(q_vec), size=self.theta[fid].shape)
                     if self.stochastic_obs:
                         obs_noise = np.random.normal(0.0, np.sqrt(max(r, 0.0)), size=self.ne)
@@ -497,9 +583,10 @@ class LaggedEnKF:
 
                     if self.smooth_within_window:
                         params_mean = self._build_params_for_field(fid, theta_mean)
-                        kc_win, states_win = self._run_range(fid, start_ix, t_idx, params_mean, state0,
-                                                             capture_state=True)
-                        self.final_kc[start_ix:t_idx + 1, self.field_idx[fid]] = kc_win
+                        kc_win, states_win = self._run_range(
+                            fid, start_ix, t_idx, params_mean, state0, capture_state=True
+                        )
+                        self.final_kc[start_ix : t_idx + 1, self.field_idx[fid]] = kc_win
                         for k, st in enumerate(states_win):
                             self.state_snapshots[fid].set(start_ix + k, st)
 
@@ -507,8 +594,14 @@ class LaggedEnKF:
         start_ix = 0
         state0 = self.state_snapshots[fid].get(start_ix)
         params_m = self._build_params_for_field(fid, self.theta[fid][m, :])
-        val = _pred_at_dt_from_state(self._single_cfg[fid], self._single_plots[fid],
-                                     self.dates[start_ix], dt, params_m, state0)
+        val = _pred_at_dt_from_state(
+            self._single_cfg[fid],
+            self._single_plots[fid],
+            self.dates[start_ix],
+            dt,
+            params_m,
+            state0,
+        )
         return val
 
     def get_final_kc(self):
@@ -519,7 +612,7 @@ class LaggedEnKF:
         dct = {fid: self.param_trace[fid].copy() for fid in self.fields}
         return dct
 
-    def write_full_model_output(self, target_dir, suffix='_lenkf', file_fmt='csv'):
+    def write_full_model_output(self, target_dir, suffix="_lenkf", file_fmt="csv"):
         """Write full daily state/output for each field using final posterior params.
 
         For each active field, builds a single-field config with forecast parameters
@@ -549,10 +642,10 @@ class LaggedEnKF:
             fp_single = {}
             for p in TUNABLE_PARAMS:
                 if p in self.enkf_params and p in s and pd.notna(s[p]):
-                    fp_single[f'{p}_{fid_l}'] = float(s[p])
+                    fp_single[f"{p}_{fid_l}"] = float(s[p])
                 else:
-                    base_val = float(self.base_params.get(f'{p}_{fid_l}', 0.0))
-                    fp_single[f'{p}_{fid_l}'] = base_val
+                    base_val = float(self.base_params.get(f"{p}_{fid_l}", 0.0))
+                    fp_single[f"{p}_{fid_l}"] = base_val
 
             cfg = copy.copy(self._single_cfg[fid])
             cfg.start_dt = self.config.start_dt
@@ -568,8 +661,15 @@ class LaggedEnKF:
                 state0 = {k: var_dct[k] for k in TRACKER_PARAMS if k in var_dct}
 
             # Run in debug mode to get full daily outputs
-            df_dict = field_day_loop(cfg, self._single_plots[fid], debug_flag=True, params=None,
-                                     state_in=state0, capture_state=False, single_fid_idx=0)
+            df_dict = field_day_loop(
+                cfg,
+                self._single_plots[fid],
+                debug_flag=True,
+                params=None,
+                state_in=state0,
+                capture_state=False,
+                single_fid_idx=0,
+            )
             # df_dict is keyed by the field id used in plots order (which is fid)
             df = df_dict.get(fid) if isinstance(df_dict, dict) else None
             if df is None:
@@ -578,32 +678,36 @@ class LaggedEnKF:
             results[fid] = df
 
             # Write to file
-            out_path = os.path.join(target_dir, f'{fid}{suffix}.csv') if file_fmt == 'csv' else os.path.join(target_dir, f'{fid}{suffix}.parquet')
-            if file_fmt == 'csv':
+            out_path = (
+                os.path.join(target_dir, f"{fid}{suffix}.csv")
+                if file_fmt == "csv"
+                else os.path.join(target_dir, f"{fid}{suffix}.parquet")
+            )
+            if file_fmt == "csv":
                 df.to_csv(out_path)
-            elif file_fmt == 'parquet':
+            elif file_fmt == "parquet":
                 df.to_parquet(out_path, index=True)
             else:
-                raise ValueError('Unsupported file_fmt; use csv or parquet')
+                raise ValueError("Unsupported file_fmt; use csv or parquet")
 
         return results
 
 
-if __name__ == '__main__':
-    home = os.path.expanduser('~')
-    project = '5_Flux_Ensemble'
+if __name__ == "__main__":
+    home = os.path.expanduser("~")
+    project = "5_Flux_Ensemble"
 
-    root = os.path.join(home, 'code', 'swim-rs')
-    project_ws_ = os.path.join(root, 'examples', project)
-    config_file = os.path.join(project_ws_, '5_Flux_Ensemble.toml')
+    root = os.path.join(home, "code", "swim-rs")
+    project_ws_ = os.path.join(root, "examples", project)
+    config_file = os.path.join(project_ws_, "5_Flux_Ensemble.toml")
 
     config_ = ProjectConfig()
     config_.read_config(config_file)
 
-    target_dir = os.path.join(config_.project_ws, 'diy_ensemble')
-    config_.forecast_parameters_csv = os.path.join(target_dir, f'{project}.3.par.csv')
-    config_.spinup = os.path.join(target_dir, f'spinup.json')
-    station_prepped_input = os.path.join(target_dir, f'prepped_input.json')
+    target_dir = os.path.join(config_.project_ws, "diy_ensemble")
+    config_.forecast_parameters_csv = os.path.join(target_dir, f"{project}.3.par.csv")
+    config_.spinup = os.path.join(target_dir, "spinup.json")
+    station_prepped_input = os.path.join(target_dir, "prepped_input.json")
     config_.input_data = station_prepped_input
 
     plots_ = SamplePlots()
@@ -613,19 +717,29 @@ if __name__ == '__main__':
     config_.forecast = True
     config_.read_forecast_parameters()
 
-    fields = plots_.input['order']
-    subset_fids = ['ALARC2_Smith6', 'S2']
+    fields = plots_.input["order"]
+    subset_fids = ["ALARC2_Smith6", "S2"]
 
-    enkf = LaggedEnKF(config_, plots_, enkf_params=['ndvi_k', 'ndvi_0', 'ks_alpha', 'kr_alpha'],
-                      lag_days=16, ensemble_size=50, fields_subset=subset_fids, use_processes=12,
-                      smooth_within_window=True, stochastic_obs=True, par_fields=True, field_workers=True)
+    enkf = LaggedEnKF(
+        config_,
+        plots_,
+        enkf_params=["ndvi_k", "ndvi_0", "ks_alpha", "kr_alpha"],
+        lag_days=16,
+        ensemble_size=50,
+        fields_subset=subset_fids,
+        use_processes=12,
+        smooth_within_window=True,
+        stochastic_obs=True,
+        par_fields=True,
+        field_workers=True,
+    )
     enkf.run()
 
     kc_df = enkf.get_final_kc()
-    kc_out = os.path.join(target_dir, 'lenkf_kc.csv')
+    kc_out = os.path.join(target_dir, "lenkf_kc.csv")
     kc_df.to_csv(kc_out)
 
     ptr = enkf.get_param_trace()
     params_df = pd.concat(ptr, axis=1)
-    params_df.to_csv(os.path.join(target_dir, 'lenkf_params.csv'))
+    params_df.to_csv(os.path.join(target_dir, "lenkf_params.csv"))
 # ========================= EOF ====================================================================

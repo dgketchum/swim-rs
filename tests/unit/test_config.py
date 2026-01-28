@@ -1,8 +1,6 @@
 """Tests for swimrs.swim.config module."""
 
 import os
-import tempfile
-from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -192,11 +190,7 @@ class TestProjectConfigPathResolution:
 
     def test_resolve_paths_expands_root_variable(self):
         """_resolve_paths expands {root} in paths."""
-        raw_config = {
-            "paths": {
-                "data": "{root}/data"
-            }
-        }
+        raw_config = {"paths": {"data": "{root}/data"}}
         base_vars = {"root": "/home/user/project", "project": "test"}
 
         result = ProjectConfig._resolve_paths(raw_config, base_vars)
@@ -204,11 +198,7 @@ class TestProjectConfigPathResolution:
 
     def test_resolve_paths_expands_project_variable(self):
         """_resolve_paths expands {project} in paths."""
-        raw_config = {
-            "paths": {
-                "output": "/data/{project}/output"
-            }
-        }
+        raw_config = {"paths": {"output": "/data/{project}/output"}}
         base_vars = {"root": "/home/user", "project": "my_project"}
 
         result = ProjectConfig._resolve_paths(raw_config, base_vars)
@@ -216,12 +206,7 @@ class TestProjectConfigPathResolution:
 
     def test_resolve_paths_expands_nested_templates(self):
         """_resolve_paths expands nested path templates."""
-        raw_config = {
-            "paths": {
-                "data": "{root}/data",
-                "gis": "{data}/gis"
-            }
-        }
+        raw_config = {"paths": {"data": "{root}/data", "gis": "{data}/gis"}}
         base_vars = {"root": "/project", "project": "test"}
 
         result = ProjectConfig._resolve_paths(raw_config, base_vars)
@@ -231,11 +216,7 @@ class TestProjectConfigPathResolution:
 
     def test_resolve_paths_expands_tilde(self):
         """_resolve_paths expands ~ in paths."""
-        raw_config = {
-            "paths": {
-                "home_data": "~/data"
-            }
-        }
+        raw_config = {"paths": {"home_data": "~/data"}}
         base_vars = {"root": "/root", "project": "test"}
 
         result = ProjectConfig._resolve_paths(raw_config, base_vars)

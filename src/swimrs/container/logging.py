@@ -17,11 +17,12 @@ import json
 import logging
 import sys
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 # Try to import structlog for rich structured logging
 try:
     import structlog
+
     STRUCTLOG_AVAILABLE = True
 except ImportError:
     STRUCTLOG_AVAILABLE = False
@@ -46,7 +47,7 @@ class ContainerLogger:
     def __init__(
         self,
         component: str,
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ):
         """
         Initialize the logger.
@@ -65,7 +66,7 @@ class ContainerLogger:
         else:
             self._logger = logging.getLogger(f"swimrs.{component}")
 
-    def bind(self, **kwargs: Any) -> "ContainerLogger":
+    def bind(self, **kwargs: Any) -> ContainerLogger:
         """
         Create a new logger with additional context bindings.
 

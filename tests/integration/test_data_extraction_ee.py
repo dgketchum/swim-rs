@@ -4,14 +4,11 @@ Note: The ee module is mocked in conftest.py to allow testing pure logic
 functions without Earth Engine authentication.
 """
 
-import json
-from pathlib import Path
-
 import geopandas as gpd
 import pytest
 from shapely.geometry import Point, Polygon
 
-from swimrs.data_extraction.ee.common import parse_scene_name, load_shapefile
+from swimrs.data_extraction.ee.common import load_shapefile, parse_scene_name
 from swimrs.data_extraction.ee.etf_export import get_utm_epsg
 
 

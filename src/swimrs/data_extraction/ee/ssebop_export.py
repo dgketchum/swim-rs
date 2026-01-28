@@ -3,10 +3,10 @@ SSEBop ET fraction zonal statistics export module.
 
 Export per-scene SSEBop ET fraction zonal means for polygons to Google Cloud Storage as CSVs.
 """
+
 import os
 
 import ee
-import geopandas as gpd
 from tqdm import tqdm
 
 try:
@@ -14,32 +14,32 @@ try:
 except ImportError:  # pragma: no cover
     ssebop = None
 
+from swimrs.utils.optional_deps import missing_optional_dependency
+
 from .common import (
     LANDSAT_COLLECTIONS,
-    WEST_STATES,
-    load_shapefile,
-    setup_irrigation_masks,
-    get_irrigation_mask,
     build_feature_collection,
     export_table_to_gcs,
+    get_irrigation_mask,
+    load_shapefile,
     parse_scene_name,
+    setup_irrigation_masks,
 )
-from swimrs.utils.optional_deps import missing_optional_dependency
 
 
 def export_ssebop_zonal_stats(
     shapefile: str,
     bucket: str,
-    feature_id: str = 'FID',
+    feature_id: str = "FID",
     select: list[str] | None = None,
     start_yr: int = 2000,
     end_yr: int = 2024,
-    mask_type: str = 'no_mask',
+    mask_type: str = "no_mask",
     check_dir: str | None = None,
-    state_col: str = 'state',
+    state_col: str = "state",
     buffer: float | None = None,
     batch_size: int = 15,
-    file_prefix: str = 'swim',
+    file_prefix: str = "swim",
 ) -> None:
     """
     Export per-scene SSEBop ET fraction zonal means for polygons to GCS CSVs.
@@ -83,10 +83,10 @@ def export_ssebop_zonal_stats(
     # Setup irrigation mask resources
     irr_coll, irr_min_yr_mask, lanid, east_fc = setup_irrigation_masks()
 
-    for fid, row in tqdm(df.iterrows(), desc='Export SSEBop zonal stats', total=df.shape[0]):
-        if row['geometry'].geom_type == 'Point':
+    for fid, row in tqdm(df.iterrows(), desc="Export SSEBop zonal stats", total=df.shape[0]):
+        if row["geometry"].geom_type == "Point":
             continue
-        elif row['geometry'].geom_type == 'Polygon':
+        elif row["geometry"].geom_type == "Polygon":
             polygon = ee.Geometry(row.geometry.__geo_interface__)
         else:
             continue
@@ -96,7 +96,7 @@ def export_ssebop_zonal_stats(
 
         for year in range(start_yr, end_yr + 1):
             # Get irrigation mask if needed
-            if mask_type in ['irr', 'inv_irr']:
+            if mask_type in ["irr", "inv_irr"]:
                 state = row.get(state_col, None) if state_col in row else None
                 irr, irr_mask = get_irrigation_mask(
                     year, state, irr_coll, irr_min_yr_mask, lanid, east_fc
@@ -107,14 +107,14 @@ def export_ssebop_zonal_stats(
             # Get scene IDs for this year and geometry
             coll = ssebop.Collection(
                 LANDSAT_COLLECTIONS,
-                start_date=f'{year}-01-01',
-                end_date=f'{year}-12-31',
+                start_date=f"{year}-01-01",
+                end_date=f"{year}-12-31",
                 geometry=polygon,
                 cloud_cover_max=70,
             )
             scenes = coll.get_image_ids()
             scenes = list(set(scenes))
-            scenes = sorted(scenes, key=lambda item: item.split('_')[-1])
+            scenes = sorted(scenes, key=lambda item: item.split("_")[-1])
 
             if not scenes:
                 continue
@@ -129,15 +129,17 @@ def export_ssebop_zonal_stats(
 
                 # Include batch suffix only if multiple batches
                 if n_batches > 1:
-                    desc = f'ssebop_etf_{fid}_{mask_type}_{year}_b{batch_idx:02d}'
+                    desc = f"ssebop_etf_{fid}_{mask_type}_{year}_b{batch_idx:02d}"
                 else:
-                    desc = f'ssebop_etf_{fid}_{mask_type}_{year}'
-                fn_prefix = f'{file_prefix}/remote_sensing/landsat/extracts/ssebop_etf/{mask_type}/{desc}'
+                    desc = f"ssebop_etf_{fid}_{mask_type}_{year}"
+                fn_prefix = (
+                    f"{file_prefix}/remote_sensing/landsat/extracts/ssebop_etf/{mask_type}/{desc}"
+                )
 
                 if check_dir:
-                    f = os.path.join(check_dir, f'{desc}.csv')
+                    f = os.path.join(check_dir, f"{desc}.csv")
                     if os.path.exists(f):
-                        print(f'{f} exists, skipping')
+                        print(f"{f} exists, skipping")
                         continue
 
                 first, bands = True, None
@@ -153,15 +155,15 @@ def export_ssebop_zonal_stats(
                         etf_img = ssebop_img.et_fraction.rename(_name)
 
                     except ee.ee_exception.EEException as e:
-                        print(f'{_name} returned error {e}')
+                        print(f"{_name} returned error {e}")
                         continue
 
                     # Apply masking
-                    if mask_type == 'no_mask':
+                    if mask_type == "no_mask":
                         etf_img = etf_img.clip(polygon)
-                    elif mask_type == 'irr':
+                    elif mask_type == "irr":
                         etf_img = etf_img.clip(polygon).mask(irr_mask)
-                    elif mask_type == 'inv_irr':
+                    elif mask_type == "inv_irr":
                         etf_img = etf_img.clip(polygon).mask(irr.gt(0))
 
                     if first:
@@ -181,33 +183,33 @@ def export_ssebop_zonal_stats(
                 export_table_to_gcs(data, desc, bucket, fn_prefix, selectors)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ee.Initialize()
 
-    project = '5_Flux_Ensemble'
-    root = '/data/ssd2/swim'
-    data = os.path.join(root, project, 'data')
+    project = "5_Flux_Ensemble"
+    root = "/data/ssd2/swim"
+    data = os.path.join(root, project, "data")
     project_ws = os.path.join(root, project)
 
     if not os.path.isdir(root):
-        root = '/home/dgketchum/code/swim-rs'
-        project_ws = os.path.join(root, 'examples', project)
-        data = os.path.join(project_ws, 'data')
+        root = "/home/dgketchum/code/swim-rs"
+        project_ws = os.path.join(root, "examples", project)
+        data = os.path.join(project_ws, "data")
 
-    shapefile_ = os.path.join(data, 'gis', 'flux_footprints_3p.shp')
-    chk_dir = os.path.join(data, 'landsat', 'extracts', 'ssebop_etf')
+    shapefile_ = os.path.join(data, "gis", "flux_footprints_3p.shp")
+    chk_dir = os.path.join(data, "landsat", "extracts", "ssebop_etf")
 
-    FEATURE_ID = 'site_id'
+    FEATURE_ID = "site_id"
 
     export_ssebop_zonal_stats(
         shapefile=shapefile_,
-        bucket='wudr',
+        bucket="wudr",
         feature_id=FEATURE_ID,
         start_yr=1987,
         end_yr=2024,
         select=None,
-        mask_type='no_mask',
+        mask_type="no_mask",
         check_dir=chk_dir,
-        state_col='state',
+        state_col="state",
         buffer=None,
     )

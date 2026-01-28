@@ -1,5 +1,5 @@
-import os
 import json
+import os
 import warnings
 
 import numpy as np
@@ -48,7 +48,7 @@ class SamplePlots:
             "Use swimrs.process.input.build_swim_input() with a SwimContainer instead. "
             "See DEPRECATION_PLAN.md for migration guide.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         super().__init__()
         self.input = None
@@ -72,11 +72,11 @@ class SamplePlots:
         self.input = {}
 
         try:
-            with open(f, 'r', encoding='utf-8') as fp:
+            with open(f, encoding="utf-8") as fp:
                 for line in fp:
                     self.input.update(json.loads(line))
         except json.decoder.JSONDecodeError:
-            with open(f, 'r') as fp:
+            with open(f) as fp:
                 self.input = json.load(fp)
 
     def initialize_spinup(self, config) -> None:
@@ -92,11 +92,11 @@ class SamplePlots:
             FileNotFoundError: If the spinup file doesn't exist.
         """
         if os.path.isfile(config.spinup):
-            print(f'SPINUP: {config.spinup}')
-            with open(config.spinup, 'r') as f:
+            print(f"SPINUP: {config.spinup}")
+            with open(config.spinup) as f:
                 self.spinup = json.load(f)
         else:
-            raise FileNotFoundError(f'Spinup file {config.spinup} not found')
+            raise FileNotFoundError(f"Spinup file {config.spinup} not found")
 
     def input_to_dataframe(self, feature_id: str) -> pd.DataFrame:
         """Convert a field's time series data to a pandas DataFrame.
@@ -114,9 +114,9 @@ class SamplePlots:
         Raises:
             ValueError: If feature_id is not in the input data.
         """
-        idx = self.input['order'].index(feature_id)
+        idx = self.input["order"].index(feature_id)
 
-        ts = self.input['time_series']
+        ts = self.input["time_series"]
         dct = {k: [] for k in ts[list(ts.keys())[0]]}
         dates = []
 
@@ -124,8 +124,8 @@ class SamplePlots:
             doy_data = ts[dt]
             dates.append(dt)
             for k, v in doy_data.items():
-                if k == 'doy':
-                    dct['doy'].append(v)
+                if k == "doy":
+                    dct["doy"].append(v)
                 else:
                     # all other values are lists
                     dct[k].append(v[idx])
@@ -157,7 +157,7 @@ class SamplePlots:
         if self.input is None:
             raise ValueError("Plots data not initialized. Call initialize_plot_data first.")
 
-        plots_fields = set(self.input['order'])
+        plots_fields = set(self.input["order"])
         plots_fields_lower = {f.lower(): f for f in plots_fields}
 
         # Extract field IDs from parameters
@@ -167,7 +167,7 @@ class SamplePlots:
                 # Parameter names are like "aw_fieldid", "ndvi_k_fieldid"
                 for tunable in TUNABLE_PARAMS:
                     if param_name.startswith(f"{tunable}_"):
-                        fid = param_name[len(tunable) + 1:]
+                        fid = param_name[len(tunable) + 1 :]
                         param_fields.add(fid)
                         break
 
@@ -194,20 +194,30 @@ class SamplePlots:
 
         # Identify dropped fields
         dropped_from_plots = [f for f in plots_fields if f.lower() not in common_lower]
-        dropped_from_params = [param_fields_lower[f] for f in param_fields_lower if f not in common_lower]
+        dropped_from_params = [
+            param_fields_lower[f] for f in param_fields_lower if f not in common_lower
+        ]
 
         if dropped_from_plots:
             warnings.warn(
                 f"Dropping {len(dropped_from_plots)} field(s) from plots data "
                 f"(no parameters found): {dropped_from_plots[:5]}"
-                + (f"... and {len(dropped_from_plots) - 5} more" if len(dropped_from_plots) > 5 else "")
+                + (
+                    f"... and {len(dropped_from_plots) - 5} more"
+                    if len(dropped_from_plots) > 5
+                    else ""
+                )
             )
 
         if dropped_from_params:
             warnings.warn(
                 f"Ignoring {len(dropped_from_params)} parameter set(s) "
                 f"(no plots data found): {dropped_from_params[:5]}"
-                + (f"... and {len(dropped_from_params) - 5} more" if len(dropped_from_params) > 5 else "")
+                + (
+                    f"... and {len(dropped_from_params) - 5} more"
+                    if len(dropped_from_params) > 5
+                    else ""
+                )
             )
 
         # Filter plots data to only include common fields
@@ -227,7 +237,7 @@ class SamplePlots:
         if self.input is None:
             return
 
-        original_order = self.input['order']
+        original_order = self.input["order"]
         field_set = set(field_list)
 
         # Get indices of fields to keep (preserving order from field_list)
@@ -242,32 +252,36 @@ class SamplePlots:
             raise ValueError("No valid fields remaining after filtering")
 
         # Update order
-        self.input['order'] = new_order
+        self.input["order"] = new_order
 
         # Filter time series data (each value is a list indexed by field)
-        for dt, day_data in self.input['time_series'].items():
+        for dt, day_data in self.input["time_series"].items():
             for key, values in day_data.items():
-                if key == 'doy':
+                if key == "doy":
                     continue  # doy is a scalar, not a list
                 if isinstance(values, list):
                     day_data[key] = [values[i] for i in keep_indices]
 
         # Filter properties
-        if 'props' in self.input:
-            self.input['props'] = {k: v for k, v in self.input['props'].items() if k in field_set}
+        if "props" in self.input:
+            self.input["props"] = {k: v for k, v in self.input["props"].items() if k in field_set}
 
         # Filter ke_max and kc_max
-        for key in ['ke_max', 'kc_max']:
+        for key in ["ke_max", "kc_max"]:
             if key in self.input:
                 self.input[key] = {k: v for k, v in self.input[key].items() if k in field_set}
 
         # Filter irr_data
-        if 'irr_data' in self.input:
-            self.input['irr_data'] = {k: v for k, v in self.input['irr_data'].items() if k in field_set}
+        if "irr_data" in self.input:
+            self.input["irr_data"] = {
+                k: v for k, v in self.input["irr_data"].items() if k in field_set
+            }
 
         # Filter gwsub_data
-        if 'gwsub_data' in self.input:
-            self.input['gwsub_data'] = {k: v for k, v in self.input['gwsub_data'].items() if k in field_set}
+        if "gwsub_data" in self.input:
+            self.input["gwsub_data"] = {
+                k: v for k, v in self.input["gwsub_data"].items() if k in field_set
+            }
 
 
 class ContainerPlots:
@@ -342,13 +356,13 @@ class ContainerPlots:
     def _build_input_dict(self) -> None:
         """Build the input dict structure expected by SampleTracker."""
         self.input = {
-            'order': self._fields,
-            'props': self._load_props(),
-            'time_series': self._load_timeseries(),
-            'irr_data': self._load_json_dynamics("irr_data"),
-            'gwsub_data': self._load_json_dynamics("gwsub_data"),
-            'ke_max': self._load_scalar_dynamics("ke_max", default=1.0),
-            'kc_max': self._load_scalar_dynamics("kc_max", default=1.25),
+            "order": self._fields,
+            "props": self._load_props(),
+            "time_series": self._load_timeseries(),
+            "irr_data": self._load_json_dynamics("irr_data"),
+            "gwsub_data": self._load_json_dynamics("gwsub_data"),
+            "ke_max": self._load_scalar_dynamics("ke_max", default=1.0),
+            "kc_max": self._load_scalar_dynamics("kc_max", default=1.25),
         }
 
     def _load_props(self) -> dict:
@@ -426,8 +440,10 @@ class ContainerPlots:
             for var_name, path in met_var_map.items():
                 if path in c._root:
                     arr = c._root[path]
-                    values = [float(arr[i, idx]) if not np.isnan(arr[i, idx]) else None
-                              for idx in field_indices]
+                    values = [
+                        float(arr[i, idx]) if not np.isnan(arr[i, idx]) else None
+                        for idx in field_indices
+                    ]
                     day_data[var_name] = values
                 elif var_name in ["eto_corr", "etr_corr"]:
                     day_data[var_name] = [None] * len(field_indices)
@@ -438,8 +454,10 @@ class ContainerPlots:
                 swe_path = "snow/era5/swe"
             if swe_path in c._root:
                 arr = c._root[swe_path]
-                day_data["swe"] = [float(arr[i, idx]) if not np.isnan(arr[i, idx]) else 0.0
-                                   for idx in field_indices]
+                day_data["swe"] = [
+                    float(arr[i, idx]) if not np.isnan(arr[i, idx]) else 0.0
+                    for idx in field_indices
+                ]
             else:
                 day_data["swe"] = [0.0] * len(field_indices)
 
@@ -448,8 +466,9 @@ class ContainerPlots:
             for hr in range(24):
                 hr_key = f"prcp_hr_{hr:02d}"
                 if "prcp" in day_data:
-                    day_data[hr_key] = [v / 24.0 if v is not None else 0.0
-                                        for v in day_data["prcp"]]
+                    day_data[hr_key] = [
+                        v / 24.0 if v is not None else 0.0 for v in day_data["prcp"]
+                    ]
                 else:
                     day_data[hr_key] = [0.0] * len(field_indices)
 
@@ -463,14 +482,18 @@ class ContainerPlots:
                 key = f"ndvi_{mask}"
                 if ndvi_path in c._root:
                     arr = c._root[ndvi_path]
-                    day_data[key] = [float(arr[i, idx]) if not np.isnan(arr[i, idx]) else None
-                                     for idx in field_indices]
+                    day_data[key] = [
+                        float(arr[i, idx]) if not np.isnan(arr[i, idx]) else None
+                        for idx in field_indices
+                    ]
                 else:
                     fallback_path = f"remote_sensing/ndvi/{self.instrument}/{mask}"
                     if fallback_path in c._root:
                         arr = c._root[fallback_path]
-                        day_data[key] = [float(arr[i, idx]) if not np.isnan(arr[i, idx]) else None
-                                         for idx in field_indices]
+                        day_data[key] = [
+                            float(arr[i, idx]) if not np.isnan(arr[i, idx]) else None
+                            for idx in field_indices
+                        ]
                     else:
                         day_data[key] = [None] * len(field_indices)
 
@@ -480,8 +503,10 @@ class ContainerPlots:
                 key = f"{self.etf_model}_etf_{mask}"
                 if etf_path in c._root:
                     arr = c._root[etf_path]
-                    day_data[key] = [float(arr[i, idx]) if not np.isnan(arr[i, idx]) else None
-                                     for idx in field_indices]
+                    day_data[key] = [
+                        float(arr[i, idx]) if not np.isnan(arr[i, idx]) else None
+                        for idx in field_indices
+                    ]
                 else:
                     day_data[key] = [None] * len(field_indices)
 
@@ -545,21 +570,21 @@ class ContainerPlots:
 
     def initialize_spinup(self, config) -> None:
         """Load spinup state from config (same as SamplePlots)."""
-        import os
         import json
+        import os
 
         if os.path.isfile(config.spinup):
-            print(f'SPINUP: {config.spinup}')
-            with open(config.spinup, 'r') as f:
+            print(f"SPINUP: {config.spinup}")
+            with open(config.spinup) as f:
                 self.spinup = json.load(f)
         else:
-            raise FileNotFoundError(f'Spinup file {config.spinup} not found')
+            raise FileNotFoundError(f"Spinup file {config.spinup} not found")
 
     def input_to_dataframe(self, feature_id: str) -> pd.DataFrame:
         """Convert a field's time series to DataFrame (same as SamplePlots)."""
-        idx = self.input['order'].index(feature_id)
+        idx = self.input["order"].index(feature_id)
 
-        ts = self.input['time_series']
+        ts = self.input["time_series"]
         dct = {k: [] for k in ts[list(ts.keys())[0]]}
         dates = []
 
@@ -567,8 +592,8 @@ class ContainerPlots:
             doy_data = ts[dt]
             dates.append(dt)
             for k, v in doy_data.items():
-                if k == 'doy':
-                    dct['doy'].append(v)
+                if k == "doy":
+                    dct["doy"].append(v)
                 else:
                     dct[k].append(v[idx])
 
@@ -586,7 +611,7 @@ class ContainerPlots:
         if self.input is None:
             raise ValueError("Plots data not initialized.")
 
-        plots_fields = set(self.input['order'])
+        plots_fields = set(self.input["order"])
         plots_fields_lower = {f.lower(): f for f in plots_fields}
 
         param_fields = set()
@@ -594,7 +619,7 @@ class ContainerPlots:
             for param_name in config.forecast_parameters.index:
                 for tunable in TUNABLE_PARAMS:
                     if param_name.startswith(f"{tunable}_"):
-                        fid = param_name[len(tunable) + 1:]
+                        fid = param_name[len(tunable) + 1 :]
                         param_fields.add(fid)
                         break
 
@@ -614,20 +639,30 @@ class ContainerPlots:
         common_fields = [plots_fields_lower[f] for f in common_lower]
 
         dropped_from_plots = [f for f in plots_fields if f.lower() not in common_lower]
-        dropped_from_params = [param_fields_lower[f] for f in param_fields_lower if f not in common_lower]
+        dropped_from_params = [
+            param_fields_lower[f] for f in param_fields_lower if f not in common_lower
+        ]
 
         if dropped_from_plots:
             warnings.warn(
                 f"Dropping {len(dropped_from_plots)} field(s) from plots data "
                 f"(no parameters found): {dropped_from_plots[:5]}"
-                + (f"... and {len(dropped_from_plots) - 5} more" if len(dropped_from_plots) > 5 else "")
+                + (
+                    f"... and {len(dropped_from_plots) - 5} more"
+                    if len(dropped_from_plots) > 5
+                    else ""
+                )
             )
 
         if dropped_from_params:
             warnings.warn(
                 f"Ignoring {len(dropped_from_params)} parameter set(s) "
                 f"(no plots data found): {dropped_from_params[:5]}"
-                + (f"... and {len(dropped_from_params) - 5} more" if len(dropped_from_params) > 5 else "")
+                + (
+                    f"... and {len(dropped_from_params) - 5} more"
+                    if len(dropped_from_params) > 5
+                    else ""
+                )
             )
 
         if common_fields and len(common_fields) < len(plots_fields):
@@ -640,7 +675,7 @@ class ContainerPlots:
         if self.input is None:
             return
 
-        original_order = self.input['order']
+        original_order = self.input["order"]
         field_set = set(field_list)
 
         keep_indices = []
@@ -653,28 +688,32 @@ class ContainerPlots:
         if not keep_indices:
             raise ValueError("No valid fields remaining after filtering")
 
-        self.input['order'] = new_order
+        self.input["order"] = new_order
 
-        for dt, day_data in self.input['time_series'].items():
+        for dt, day_data in self.input["time_series"].items():
             for key, values in day_data.items():
-                if key == 'doy':
+                if key == "doy":
                     continue
                 if isinstance(values, list):
                     day_data[key] = [values[i] for i in keep_indices]
 
-        if 'props' in self.input:
-            self.input['props'] = {k: v for k, v in self.input['props'].items() if k in field_set}
+        if "props" in self.input:
+            self.input["props"] = {k: v for k, v in self.input["props"].items() if k in field_set}
 
-        for key in ['ke_max', 'kc_max']:
+        for key in ["ke_max", "kc_max"]:
             if key in self.input:
                 self.input[key] = {k: v for k, v in self.input[key].items() if k in field_set}
 
-        if 'irr_data' in self.input:
-            self.input['irr_data'] = {k: v for k, v in self.input['irr_data'].items() if k in field_set}
+        if "irr_data" in self.input:
+            self.input["irr_data"] = {
+                k: v for k, v in self.input["irr_data"].items() if k in field_set
+            }
 
-        if 'gwsub_data' in self.input:
-            self.input['gwsub_data'] = {k: v for k, v in self.input['gwsub_data'].items() if k in field_set}
+        if "gwsub_data" in self.input:
+            self.input["gwsub_data"] = {
+                k: v for k, v in self.input["gwsub_data"].items() if k in field_set
+            }
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass

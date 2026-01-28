@@ -20,29 +20,29 @@ Storage backends are pluggable via the storage module:
 from __future__ import annotations
 
 import warnings
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import zarr
-from zarr.core.dtype import VariableLengthUTF8, VariableLengthBytes
+from zarr.core.dtype import VariableLengthBytes, VariableLengthUTF8
 
-from swimrs.container.provenance import ProvenanceLog, DatasetProvenance
+from swimrs.container.components import (
+    Calculator,
+    Exporter,
+    Ingestor,
+    Query,
+)
 from swimrs.container.inventory import Inventory
+from swimrs.container.provenance import ProvenanceLog
 from swimrs.container.state import ContainerState
 from swimrs.container.storage import (
+    DirectoryStoreProvider,
     StorageProvider,
     StorageProviderFactory,
     ZipStoreProvider,
-    DirectoryStoreProvider,
-)
-from swimrs.container.components import (
-    Ingestor,
-    Calculator,
-    Exporter,
-    Query,
 )
 
 
@@ -103,7 +103,7 @@ class SwimContainer:
 
     def __init__(
         self,
-        path_or_provider: Union[str, Path, StorageProvider],
+        path_or_provider: str | Path | StorageProvider,
         mode: str = "r",
     ):
         """
@@ -124,19 +124,23 @@ class SwimContainer:
             self._mode = path_or_provider.mode
             # Extract path for backward compatibility
             location = path_or_provider.location
-            self.path = Path(location) if isinstance(location, str) and not location.startswith(("s3://", "gs://")) else Path(str(location))
+            self.path = (
+                Path(location)
+                if isinstance(location, str) and not location.startswith(("s3://", "gs://"))
+                else Path(str(location))
+            )
         else:
             # Legacy path-based initialization
             self.path = Path(path_or_provider)
             self._mode = mode
             self._provider = StorageProviderFactory.from_uri(self.path, mode=mode)
 
-        self._root: Optional[zarr.Group] = None
-        self._provenance: Optional[ProvenanceLog] = None
-        self._inventory: Optional[Inventory] = None
-        self._field_uids: List[str] = []
-        self._uid_to_index: Dict[str, int] = {}
-        self._time_index: Optional[pd.DatetimeIndex] = None
+        self._root: zarr.Group | None = None
+        self._provenance: ProvenanceLog | None = None
+        self._inventory: Inventory | None = None
+        self._field_uids: list[str] = []
+        self._uid_to_index: dict[str, int] = {}
+        self._time_index: pd.DatetimeIndex | None = None
         self._modified: bool = False
 
         # Check existence for read modes
@@ -166,10 +170,10 @@ class SwimContainer:
     @classmethod
     def open(
         cls,
-        uri: Union[str, Path],
+        uri: str | Path,
         mode: str = "r",
         **kwargs: Any,
-    ) -> "SwimContainer":
+    ) -> SwimContainer:
         """
         Open an existing container from a URI.
 
@@ -266,16 +270,16 @@ class SwimContainer:
     @classmethod
     def create(
         cls,
-        uri: Union[str, Path],
-        fields_shapefile: Union[str, Path],
+        uri: str | Path,
+        fields_shapefile: str | Path,
         uid_column: str,
-        start_date: Union[str, datetime],
-        end_date: Union[str, datetime],
+        start_date: str | datetime,
+        end_date: str | datetime,
         project_name: str = None,
         overwrite: bool = False,
         storage: str = "auto",
         **storage_kwargs: Any,
-    ) -> "SwimContainer":
+    ) -> SwimContainer:
         """
         Create a new SwimContainer from a shapefile.
 
@@ -343,6 +347,7 @@ class SwimContainer:
             # uses the default (DirectoryStore) instead of the existing format
             if overwrite and path.exists():
                 import shutil
+
                 if path.is_file():
                     path.unlink()
                     # Also remove lock file if present
@@ -363,8 +368,7 @@ class SwimContainer:
         # Check for existing container (only relevant if overwrite=False)
         if provider.exists():
             raise FileExistsError(
-                f"Container already exists: {provider.uri}. "
-                "Use overwrite=True to replace."
+                f"Container already exists: {provider.uri}. Use overwrite=True to replace."
             )
 
         # Parse dates
@@ -382,8 +386,10 @@ class SwimContainer:
         gdf = gpd.read_file(fields_shapefile)
 
         if uid_column not in gdf.columns:
-            raise ValueError(f"UID column '{uid_column}' not found in shapefile. "
-                           f"Available columns: {list(gdf.columns)}")
+            raise ValueError(
+                f"UID column '{uid_column}' not found in shapefile. "
+                f"Available columns: {list(gdf.columns)}"
+            )
 
         # Extract UIDs and validate uniqueness
         uids = gdf[uid_column].astype(str).tolist()
@@ -401,7 +407,7 @@ class SwimContainer:
 
         # Initialize provenance early so we can include it in single attrs update
         provenance = ProvenanceLog()
-        provenance.container_created_at = datetime.now(timezone.utc).isoformat()
+        provenance.container_created_at = datetime.now(UTC).isoformat()
 
         # Determine project name from path if not provided
         if project_name is None:
@@ -412,17 +418,19 @@ class SwimContainer:
                 project_name = uri_str.rstrip("/").split("/")[-1].split(".")[0]
 
         # Set all root attributes in a single update to avoid duplicate .zattrs in ZipStore
-        root.attrs.update({
-            "project_name": project_name,
-            "schema_version": cls.SCHEMA_VERSION,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "start_date": str(start_date.date()),
-            "end_date": str(end_date.date()),
-            "n_fields": n_fields,
-            "n_days": n_days,
-            "uid_column": uid_column,
-            "source_shapefile": str(fields_shapefile),
-        })
+        root.attrs.update(
+            {
+                "project_name": project_name,
+                "schema_version": cls.SCHEMA_VERSION,
+                "created_at": datetime.now(UTC).isoformat(),
+                "start_date": str(start_date.date()),
+                "end_date": str(end_date.date()),
+                "n_fields": n_fields,
+                "n_days": n_days,
+                "uid_column": uid_column,
+                "source_shapefile": str(fields_shapefile),
+            }
+        )
 
         # Create time coordinate
         time_grp = root.create_group("time")
@@ -559,7 +567,7 @@ class SwimContainer:
         return len(self._field_uids)
 
     @property
-    def field_uids(self) -> List[str]:
+    def field_uids(self) -> list[str]:
         """List of field UIDs."""
         return self._field_uids.copy()
 
@@ -574,7 +582,7 @@ class SwimContainer:
         return pd.Timestamp(self._root.attrs.get("end_date"))
 
     @property
-    def date_range(self) -> Tuple[pd.Timestamp, pd.Timestamp]:
+    def date_range(self) -> tuple[pd.Timestamp, pd.Timestamp]:
         """Date range as (start, end) tuple."""
         return (self.start_date, self.end_date)
 
@@ -616,10 +624,10 @@ class SwimContainer:
     def to_xarray(
         self,
         path: str,
-        fields: Optional[List[str]] = None,
-        start_date: Optional[Union[str, pd.Timestamp]] = None,
-        end_date: Optional[Union[str, pd.Timestamp]] = None,
-        name: Optional[str] = None,
+        fields: list[str] | None = None,
+        start_date: str | pd.Timestamp | None = None,
+        end_date: str | pd.Timestamp | None = None,
+        name: str | None = None,
     ):
         """
         Get data as a labeled xarray DataArray.
@@ -651,10 +659,10 @@ class SwimContainer:
 
     def to_dataset(
         self,
-        paths: Optional[Dict[str, str]] = None,
-        fields: Optional[List[str]] = None,
-        start_date: Optional[Union[str, pd.Timestamp]] = None,
-        end_date: Optional[Union[str, pd.Timestamp]] = None,
+        paths: dict[str, str] | None = None,
+        fields: list[str] | None = None,
+        start_date: str | pd.Timestamp | None = None,
+        end_date: str | pd.Timestamp | None = None,
     ):
         """
         Get multiple variables as an xarray Dataset.
@@ -694,7 +702,7 @@ class SwimContainer:
             raise KeyError(f"Unknown field UID: {uid}")
         return self._uid_to_index[uid]
 
-    def get_time_index(self, date: Union[str, datetime, pd.Timestamp]) -> int:
+    def get_time_index(self, date: str | datetime | pd.Timestamp) -> int:
         """Get the array index for a date."""
         if isinstance(date, str):
             date = pd.Timestamp(date)
@@ -718,8 +726,9 @@ class SwimContainer:
                 current = current[part]
         return current
 
-    def _create_timeseries_array(self, path: str, dtype: str = "float32",
-                                 fill_value: float = np.nan) -> zarr.Array:
+    def _create_timeseries_array(
+        self, path: str, dtype: str = "float32", fill_value: float = np.nan
+    ) -> zarr.Array:
         """Create a new time series array at the given path."""
         parent_path = "/".join(path.split("/")[:-1])
         name = path.split("/")[-1]
@@ -734,8 +743,9 @@ class SwimContainer:
         )
         return arr
 
-    def _create_property_array(self, path: str, dtype: str = "float32",
-                              fill_value: float = np.nan) -> zarr.Array:
+    def _create_property_array(
+        self, path: str, dtype: str = "float32", fill_value: float = np.nan
+    ) -> zarr.Array:
         """Create a new static property array at the given path."""
         parent_path = "/".join(path.split("/")[:-1])
         name = path.split("/")[-1]
@@ -758,7 +768,7 @@ class SwimContainer:
     # Pack / Unpack Methods
     # -------------------------------------------------------------------------
 
-    def pack(self, output_path: Union[str, Path]) -> Path:
+    def pack(self, output_path: str | Path) -> Path:
         """
         Pack container to zip file for sharing.
 
@@ -830,7 +840,7 @@ class SwimContainer:
         print(f"Packed to: {output_path}")
         return output_path
 
-    def unpack(self, output_path: Union[str, Path]) -> "SwimContainer":
+    def unpack(self, output_path: str | Path) -> SwimContainer:
         """
         Unpack zip container to directory format.
 
@@ -895,8 +905,9 @@ class SwimContainer:
 # Convenience functions
 # -------------------------------------------------------------------------
 
+
 def open_container(
-    uri: Union[str, Path],
+    uri: str | Path,
     mode: str = "r",
     **storage_kwargs: Any,
 ) -> SwimContainer:
@@ -934,11 +945,11 @@ def open_container(
 
 
 def create_container(
-    uri: Union[str, Path],
-    fields_shapefile: Union[str, Path],
+    uri: str | Path,
+    fields_shapefile: str | Path,
     uid_column: str,
-    start_date: Union[str, datetime],
-    end_date: Union[str, datetime],
+    start_date: str | datetime,
+    end_date: str | datetime,
     project_name: str = None,
     overwrite: bool = False,
     storage: str = "auto",

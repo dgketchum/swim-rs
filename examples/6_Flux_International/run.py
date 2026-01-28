@@ -16,11 +16,11 @@ Key differences from CONUS examples:
 Usage:
     python run.py --site SITE_ID [--output-dir PATH]
 """
+
 import os
 import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from swimrs.container import SwimContainer
@@ -40,24 +40,27 @@ def output_to_dataframe(output, swim_input, field_idx: int) -> pd.DataFrame:
     Returns:
         DataFrame with daily outputs indexed by date
     """
-    dates = pd.date_range(swim_input.start_date, periods=output.n_days, freq='D')
+    dates = pd.date_range(swim_input.start_date, periods=output.n_days, freq="D")
 
-    df = pd.DataFrame({
-        'et_act': output.eta[:, field_idx],
-        'kc_act': output.etf[:, field_idx],
-        'kc_bas': output.kcb[:, field_idx],
-        'ke': output.ke[:, field_idx],
-        'ks': output.ks[:, field_idx],
-        'kr': output.kr[:, field_idx],
-        'runoff': output.runoff[:, field_idx],
-        'rain': output.rain[:, field_idx],
-        'melt': output.melt[:, field_idx],
-        'swe': output.swe[:, field_idx],
-        'depl_root': output.depl_root[:, field_idx],
-        'dperc': output.dperc[:, field_idx],
-        'irrigation': output.irr_sim[:, field_idx],
-        'soil_water': output.gw_sim[:, field_idx],
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "et_act": output.eta[:, field_idx],
+            "kc_act": output.etf[:, field_idx],
+            "kc_bas": output.kcb[:, field_idx],
+            "ke": output.ke[:, field_idx],
+            "ks": output.ks[:, field_idx],
+            "kr": output.kr[:, field_idx],
+            "runoff": output.runoff[:, field_idx],
+            "rain": output.rain[:, field_idx],
+            "melt": output.melt[:, field_idx],
+            "swe": output.swe[:, field_idx],
+            "depl_root": output.depl_root[:, field_idx],
+            "dperc": output.dperc[:, field_idx],
+            "irrigation": output.irr_sim[:, field_idx],
+            "soil_water": output.gw_sim[:, field_idx],
+        },
+        index=dates,
+    )
 
     return df
 
@@ -72,44 +75,48 @@ def input_to_dataframe(swim_input, field_idx: int) -> pd.DataFrame:
     Returns:
         DataFrame with input time series indexed by date
     """
-    dates = pd.date_range(swim_input.start_date, periods=swim_input.n_days, freq='D')
+    dates = pd.date_range(swim_input.start_date, periods=swim_input.n_days, freq="D")
 
     # ERA5 uses 'eto' as the reference ET variable
     try:
-        etr = swim_input.get_time_series('eto')
+        etr = swim_input.get_time_series("eto")
     except (KeyError, ValueError):
-        etr = swim_input.get_time_series('etr')
+        etr = swim_input.get_time_series("etr")
 
-    prcp = swim_input.get_time_series('prcp')
-    tmin = swim_input.get_time_series('tmin')
-    tmax = swim_input.get_time_series('tmax')
+    prcp = swim_input.get_time_series("prcp")
+    tmin = swim_input.get_time_series("tmin")
+    tmax = swim_input.get_time_series("tmax")
 
-    df = pd.DataFrame({
-        'etref': etr[:, field_idx],
-        'ppt': prcp[:, field_idx],
-        'tmin': tmin[:, field_idx],
-        'tmax': tmax[:, field_idx],
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "etref": etr[:, field_idx],
+            "ppt": prcp[:, field_idx],
+            "tmin": tmin[:, field_idx],
+            "tmax": tmax[:, field_idx],
+        },
+        index=dates,
+    )
 
     # Add ETf observations if available (no mask for international)
     try:
-        etf = swim_input.get_time_series('etf_no_mask')
-        df['etf'] = etf[:, field_idx]
+        etf = swim_input.get_time_series("etf_no_mask")
+        df["etf"] = etf[:, field_idx]
     except (KeyError, ValueError):
         pass
 
     # Add NDVI observations if available
     try:
-        ndvi = swim_input.get_time_series('ndvi_no_mask')
-        df['ndvi'] = ndvi[:, field_idx]
+        ndvi = swim_input.get_time_series("ndvi_no_mask")
+        df["ndvi"] = ndvi[:, field_idx]
     except (KeyError, ValueError):
         pass
 
     return df
 
 
-def run_flux_site(fid: str, cfg: ProjectConfig, container: SwimContainer,
-                  overwrite_input: bool = False) -> None:
+def run_flux_site(
+    fid: str, cfg: ProjectConfig, container: SwimContainer, overwrite_input: bool = False
+) -> None:
     """Run SWIM model for a single flux site.
 
     Args:
@@ -147,7 +154,7 @@ def run_flux_site(fid: str, cfg: ProjectConfig, container: SwimContainer,
     df = pd.concat([out_df, in_df], axis=1)
 
     # Filter to config date range
-    df = df.loc[cfg.start_dt: cfg.end_dt]
+    df = df.loc[cfg.start_dt : cfg.end_dt]
 
     out_csv = os.path.join(target_dir, f"{fid}.csv")
     df.to_csv(out_csv)
@@ -192,7 +199,7 @@ if __name__ == "__main__":
             "Run container_prep.py first to create the container."
         )
 
-    container = SwimContainer.open(container_path, mode='r')
+    container = SwimContainer.open(container_path, mode="r")
 
     try:
         run_flux_site(args.site, cfg, container, overwrite_input=True)

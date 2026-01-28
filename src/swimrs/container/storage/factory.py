@@ -8,7 +8,7 @@ allowing transparent use of different storage backends.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any
 from urllib.parse import urlparse
 
 from .base import StorageProvider
@@ -51,7 +51,7 @@ class StorageProviderFactory:
     """
 
     # Map schemes to provider classes
-    _scheme_handlers: Dict[str, type] = {}
+    _scheme_handlers: dict[str, type] = {}
 
     @classmethod
     def register_scheme(cls, scheme: str, provider_class: type) -> None:
@@ -67,7 +67,7 @@ class StorageProviderFactory:
     @classmethod
     def from_uri(
         cls,
-        uri: Union[str, Path],
+        uri: str | Path,
         mode: str = "r",
         storage: str = "auto",
         **kwargs: Any,
@@ -145,8 +145,7 @@ class StorageProviderFactory:
 
         else:
             raise ValueError(
-                f"Unsupported URI scheme: {scheme}. "
-                f"Supported schemes: file, s3, gs, memory"
+                f"Unsupported URI scheme: {scheme}. Supported schemes: file, s3, gs, memory"
             )
 
     @classmethod
@@ -189,8 +188,7 @@ class StorageProviderFactory:
 
         if storage not in ("auto", "directory", "zip"):
             raise ValueError(
-                f"Invalid storage type: {storage}. "
-                "Must be 'auto', 'directory', or 'zip'."
+                f"Invalid storage type: {storage}. Must be 'auto', 'directory', or 'zip'."
             )
 
         # Explicit storage selection
@@ -228,7 +226,7 @@ class StorageProviderFactory:
 
 # Convenience function at module level
 def open_storage(
-    uri: Union[str, Path],
+    uri: str | Path,
     mode: str = "r",
     **kwargs: Any,
 ) -> StorageProvider:

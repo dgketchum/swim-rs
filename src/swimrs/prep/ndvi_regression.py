@@ -1,13 +1,10 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 from scipy.stats import percentileofscore
 
 
 def sentinel_adjust_quantile_mapping(
-        landsat_ndvi_df,
-        sentinel_ndvi_df,
-        window_days=5,
-        min_pairs=20
+    landsat_ndvi_df, sentinel_ndvi_df, window_days=5, min_pairs=20
 ):
     landsat_ndvi = landsat_ndvi_df.iloc[:, 0]
     sentinel_ndvi = sentinel_ndvi_df.iloc[:, 0]
@@ -21,28 +18,28 @@ def sentinel_adjust_quantile_mapping(
     if landsat_ndvi_sorted.empty or sentinel_ndvi_sorted.empty:
         return sentinel_ndvi.copy()
 
-    landsat_df = landsat_ndvi_sorted.rename('landsat_val').rename_axis('time').reset_index()
-    sentinel_df = sentinel_ndvi_sorted.rename('sentinel_val').rename_axis('time').reset_index()
+    landsat_df = landsat_ndvi_sorted.rename("landsat_val").rename_axis("time").reset_index()
+    sentinel_df = sentinel_ndvi_sorted.rename("sentinel_val").rename_axis("time").reset_index()
 
     paired_df = pd.merge_asof(
         left=landsat_df,
         right=sentinel_df,
-        on='time',
-        direction='nearest',
-        tolerance=pd.Timedelta(days=window_days)
+        on="time",
+        direction="nearest",
+        tolerance=pd.Timedelta(days=window_days),
     )
 
-    paired_df = paired_df.dropna(subset=['landsat_val', 'sentinel_val'])
+    paired_df = paired_df.dropna(subset=["landsat_val", "sentinel_val"])
 
-    landsat_train_values = paired_df['landsat_val'].values
-    sentinel_train_values = paired_df['sentinel_val'].values
+    landsat_train_values = paired_df["landsat_val"].values
+    sentinel_train_values = paired_df["sentinel_val"].values
 
     original_sentinel_to_adjust = sentinel_ndvi.dropna()
 
     adjusted_values_list = []
 
     for s_val in original_sentinel_to_adjust.values:
-        s_val_percentile = percentileofscore(sentinel_train_values, s_val, kind='weak')
+        s_val_percentile = percentileofscore(sentinel_train_values, s_val, kind="weak")
         s_val_percentile = np.clip(s_val_percentile, 0.0, 100.0)
 
         try:
@@ -56,7 +53,7 @@ def sentinel_adjust_quantile_mapping(
 
     if isinstance(input_series_name, tuple):
         name_list = list(input_series_name)
-        if len(name_list) > 2 and isinstance(name_list[2], str) and 'ndvi' in name_list[2].lower():
+        if len(name_list) > 2 and isinstance(name_list[2], str) and "ndvi" in name_list[2].lower():
             name_list[2] = name_list[2] + "_adjusted"
             series_name = tuple(name_list)
         else:
@@ -70,9 +67,7 @@ def sentinel_adjust_quantile_mapping(
         series_name = "sentinel_ndvi_adjusted"
 
     adjusted_sentinel_series_nonan = pd.Series(
-        adjusted_values_list,
-    index = original_sentinel_to_adjust.index,
-    name = series_name
+        adjusted_values_list, index=original_sentinel_to_adjust.index, name=series_name
     )
 
     final_adjusted_series = adjusted_sentinel_series_nonan.reindex(sentinel_ndvi.index)
@@ -80,6 +75,6 @@ def sentinel_adjust_quantile_mapping(
     return final_adjusted_series
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass
 # ========================= EOF ====================================================================

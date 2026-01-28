@@ -28,6 +28,7 @@ from swimrs.process.state import (
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
     from swimrs.container import SwimContainer
 
 __all__ = ["SwimInput", "build_swim_input"]
@@ -115,8 +116,9 @@ class SwimInput:
         self.refet_type = config.get("refet_type", "eto")
 
         # Load field info
-        self.fids = [fid.decode() if isinstance(fid, bytes) else fid
-                     for fid in h5["fields/fids"][:]]
+        self.fids = [
+            fid.decode() if isinstance(fid, bytes) else fid for fid in h5["fields/fids"][:]
+        ]
         self.n_fields = len(self.fids)
         self.n_days = (self.end_date - self.start_date).days + 1
 
@@ -283,15 +285,11 @@ class SwimInput:
                 else:
                     available = list(ts.keys())
                     raise KeyError(
-                        f"Variable '{variable}' not in time_series. "
-                        f"Available: {available}"
+                        f"Variable '{variable}' not in time_series. Available: {available}"
                     )
             else:
                 available = list(ts.keys())
-                raise KeyError(
-                    f"Variable '{variable}' not in time_series. "
-                    f"Available: {available}"
-                )
+                raise KeyError(f"Variable '{variable}' not in time_series. Available: {available}")
 
         if day_idx is not None:
             return ts[actual_var][day_idx, :]
@@ -359,6 +357,7 @@ class SwimInput:
     def get_date(self, day_idx: int) -> datetime:
         """Get date for a given day index."""
         from datetime import timedelta
+
         return self.start_date + timedelta(days=day_idx)
 
     def get_day_idx(self, date: datetime) -> int:
@@ -470,13 +469,11 @@ class SwimInput:
             except ValueError:
                 continue
 
-        return CalibrationParameters.from_base_with_multipliers(
-            self.parameters, multipliers
-        )
+        return CalibrationParameters.from_base_with_multipliers(self.parameters, multipliers)
 
 
 def build_swim_input(
-    container: "SwimContainer",
+    container: SwimContainer,
     output_h5: Path | str,
     spinup_state: dict[str, NDArray[np.float64]] | None = None,
     spinup_json_path: Path | str | None = None,
@@ -610,8 +607,7 @@ def build_swim_input(
 
         # Write properties from container data
         _write_properties_from_container(
-            h5, container_data, fids, n_fields, calibrated_params,
-            empirical_kc_max=empirical_kc_max
+            h5, container_data, fids, n_fields, calibrated_params, empirical_kc_max=empirical_kc_max
         )
 
         # Write parameters
@@ -623,9 +619,7 @@ def build_swim_input(
         )
 
         # Write irrigation flags
-        _write_irrigation_from_container(
-            h5, container_data, fids, n_fields, n_days, start_date
-        )
+        _write_irrigation_from_container(h5, container_data, fids, n_fields, n_days, start_date)
 
         # Write year-specific groundwater subsidy
         _write_gwsub_from_container(h5, container_data, fids, n_fields)
@@ -647,7 +641,7 @@ def build_swim_input(
 
 
 def _extract_from_container(
-    container: "SwimContainer",
+    container: SwimContainer,
     fids: list[str],
     start_date: datetime,
     end_date: datetime,
@@ -684,16 +678,15 @@ def _extract_from_container(
 
 
 def _get_container_time_series(
-    container: "SwimContainer",
+    container: SwimContainer,
     fids: list[str],
     start_date: datetime,
     end_date: datetime,
     etf_model: str,
     met_source: str,
     refet_type: str,
-) -> "Any":
+) -> Any:
     """Get time series data from container as xarray Dataset."""
-    import xarray as xr
 
     paths = {}
     root = container.state.root
@@ -774,7 +767,6 @@ def _write_properties_from_container(
         If True, use empirical kc_max from container (90th percentile ETf).
         If False (default), use fixed FAO-56 value of 1.2.
     """
-    from swimrs.container.schema import get_rooting_depth
 
     props_group = h5.create_group("properties")
     props = container_data["props"]
@@ -792,17 +784,21 @@ def _write_properties_from_container(
 
     # Perennial status from LULC code
     crops_codes = {12, 14}
-    perennial = np.array([
-        props.get(fid, {}).get("lulc_code", 0) not in crops_codes
-        and 1 <= props.get(fid, {}).get("lulc_code", 0) <= 17
-        for fid in fids
-    ])
+    perennial = np.array(
+        [
+            props.get(fid, {}).get("lulc_code", 0) not in crops_codes
+            and 1 <= props.get(fid, {}).get("lulc_code", 0) <= 17
+            for fid in fids
+        ]
+    )
 
     # Root depth
-    zr_max = np.array([
-        props.get(fid, {}).get("root_depth", 1.0) * props.get(fid, {}).get("zr_mult", 1.0)
-        for fid in fids
-    ])
+    zr_max = np.array(
+        [
+            props.get(fid, {}).get("root_depth", 1.0) * props.get(fid, {}).get("zr_mult", 1.0)
+            for fid in fids
+        ]
+    )
     zr_min = np.where(perennial, zr_max, 0.1)
 
     # Defaults
@@ -821,14 +817,17 @@ def _write_properties_from_container(
 
     # Irrigation status from dynamics
     irr_data = dynamics.get("irr", {})
-    irr_status = np.array([
-        fid in irr_data and any(
-            isinstance(v, dict) and v.get("f_irr", 0) > 0
-            for k, v in irr_data.get(fid, {}).items()
-            if k != "fallow_years"
-        )
-        for fid in fids
-    ])
+    irr_status = np.array(
+        [
+            fid in irr_data
+            and any(
+                isinstance(v, dict) and v.get("f_irr", 0) > 0
+                for k, v in irr_data.get(fid, {}).items()
+                if k != "fallow_years"
+            )
+            for fid in fids
+        ]
+    )
 
     # Groundwater status
     gwsub_data = dynamics.get("gwsub", {})
@@ -916,14 +915,17 @@ def _write_parameters_from_container(
     # Get irrigation status from dynamics for setting ndvi_0 default
     dynamics = container_data["dynamics"]
     irr_data = dynamics.get("irr", {})
-    irr_status = np.array([
-        fid in irr_data and any(
-            isinstance(v, dict) and v.get("f_irr", 0) > 0
-            for k, v in irr_data.get(fid, {}).items()
-            if k != "fallow_years"
-        )
-        for fid in fids
-    ])
+    irr_status = np.array(
+        [
+            fid in irr_data
+            and any(
+                isinstance(v, dict) and v.get("f_irr", 0) > 0
+                for k, v in irr_data.get(fid, {}).items()
+                if k != "fallow_years"
+            )
+            for fid in fids
+        ]
+    )
 
     # Default values
     kc_min = np.full(n_fields, 0.15)
@@ -1248,16 +1250,11 @@ def _write_spinup(
     spinup = h5.create_group("spinup")
 
     if spinup_state is not None:
-        spinup.create_dataset("depl_root", data=spinup_state.get(
-            "depl_root", np.zeros(n_fields)))
-        spinup.create_dataset("swe", data=spinup_state.get(
-            "swe", np.zeros(n_fields)))
-        spinup.create_dataset("kr", data=spinup_state.get(
-            "kr", np.ones(n_fields)))
-        spinup.create_dataset("ks", data=spinup_state.get(
-            "ks", np.ones(n_fields)))
-        spinup.create_dataset("zr", data=spinup_state.get(
-            "zr", np.full(n_fields, 0.1)))
+        spinup.create_dataset("depl_root", data=spinup_state.get("depl_root", np.zeros(n_fields)))
+        spinup.create_dataset("swe", data=spinup_state.get("swe", np.zeros(n_fields)))
+        spinup.create_dataset("kr", data=spinup_state.get("kr", np.ones(n_fields)))
+        spinup.create_dataset("ks", data=spinup_state.get("ks", np.ones(n_fields)))
+        spinup.create_dataset("zr", data=spinup_state.get("zr", np.full(n_fields, 0.1)))
 
         # Optional spinup arrays
         if "daw3" in spinup_state:

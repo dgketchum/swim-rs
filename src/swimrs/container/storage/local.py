@@ -11,7 +11,6 @@ from __future__ import annotations
 import shutil
 import warnings
 from pathlib import Path
-from typing import Optional, Union
 
 import zarr
 import zarr.storage
@@ -43,7 +42,7 @@ class ZipStoreProvider(StorageProvider):
         provider.close()
     """
 
-    def __init__(self, path: Union[str, Path], mode: str = "r"):
+    def __init__(self, path: str | Path, mode: str = "r"):
         """
         Initialize zip storage provider.
 
@@ -53,7 +52,7 @@ class ZipStoreProvider(StorageProvider):
         """
         super().__init__(mode)
         self._path = Path(path)
-        self._lock: Optional[FileLock] = None
+        self._lock: FileLock | None = None
 
     @property
     def uri(self) -> str:
@@ -127,9 +126,7 @@ class ZipStoreProvider(StorageProvider):
             zarr_mode = self._mode
 
         self._store = zarr.storage.ZipStore(str(self._path), mode=zarr_mode)
-        self._root = zarr.open_group(
-            self._store, mode="a" if zarr_mode != "r" else "r"
-        )
+        self._root = zarr.open_group(self._store, mode="a" if zarr_mode != "r" else "r")
 
         return self._root
 
@@ -171,7 +168,7 @@ class DirectoryStoreProvider(StorageProvider):
         provider.close()
     """
 
-    def __init__(self, path: Union[str, Path], mode: str = "r"):
+    def __init__(self, path: str | Path, mode: str = "r"):
         """
         Initialize directory storage provider.
 
@@ -181,7 +178,7 @@ class DirectoryStoreProvider(StorageProvider):
         """
         super().__init__(mode)
         self._path = Path(path)
-        self._lock: Optional[FileLock] = None
+        self._lock: FileLock | None = None
 
     @property
     def uri(self) -> str:

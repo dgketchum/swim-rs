@@ -181,9 +181,7 @@ GRIDMET_UNITS: dict[str, UnitSpec] = {
 }
 
 
-GEE_SNODAS_DAILY_DATASET = (
-    "projects/earthengine-legacy/assets/projects/climate-engine/snodas/daily"
-)
+GEE_SNODAS_DAILY_DATASET = "projects/earthengine-legacy/assets/projects/climate-engine/snodas/daily"
 
 SNODAS_DAILY_UNITS: dict[str, UnitSpec] = {
     # Used in src/swimrs/data_extraction/ee/snodas_export.py and

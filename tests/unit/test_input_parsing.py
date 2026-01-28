@@ -119,7 +119,8 @@ class TestBuildSwimInput:
                 json.dump(sample_json_with_timeseries, f)
 
             swim_input = build_swim_input(
-                json_path, h5_path,
+                json_path,
+                h5_path,
                 runoff_process="cn",
                 refet_type="eto",
             )

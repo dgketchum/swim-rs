@@ -10,7 +10,7 @@ Key Classes:
 """
 
 from swimrs.swim.config import ProjectConfig
-from swimrs.swim.sampleplots import SamplePlots, ContainerPlots
+from swimrs.swim.sampleplots import ContainerPlots, SamplePlots
 
 __all__ = [
     "ProjectConfig",
@@ -18,6 +18,6 @@ __all__ = [
     "ContainerPlots",
 ]
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass
 # ========================= EOF ====================================================================

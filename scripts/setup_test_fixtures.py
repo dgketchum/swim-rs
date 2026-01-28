@@ -22,7 +22,6 @@ The script will create the following structure:
         input/met/
 """
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -75,13 +74,8 @@ def setup_s2_fixture():
     dst_shp = gis_dir / "flux_footprint_s2.shp"
 
     if not dst_shp.exists():
-        cmd = [
-            "ogr2ogr",
-            "-where", "FID = 'S2'",
-            str(dst_shp),
-            str(src_shp)
-        ]
-        print(f"  Extracting S2 from shapefile...")
+        cmd = ["ogr2ogr", "-where", "FID = 'S2'", str(dst_shp), str(src_shp)]
+        print("  Extracting S2 from shapefile...")
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             print(f"  Error: {result.stderr}")
@@ -138,13 +132,8 @@ def setup_multi_station_fixture():
     where_clause = " OR ".join([f"FID = '{fid}'" for fid in fids])
 
     if not dst_shp.exists():
-        cmd = [
-            "ogr2ogr",
-            "-where", where_clause,
-            str(dst_shp),
-            str(src_shp)
-        ]
-        print(f"  Extracting stations from shapefile...")
+        cmd = ["ogr2ogr", "-where", where_clause, str(dst_shp), str(src_shp)]
+        print("  Extracting stations from shapefile...")
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             print(f"  Error: {result.stderr}")
@@ -185,9 +174,7 @@ def check_fixture_sizes():
     for fixture in ["S2", "multi_station"]:
         fixture_path = FIXTURES_ROOT / fixture
         if fixture_path.exists():
-            total_size = sum(
-                f.stat().st_size for f in fixture_path.rglob("*") if f.is_file()
-            )
+            total_size = sum(f.stat().st_size for f in fixture_path.rglob("*") if f.is_file())
             print(f"  {fixture}: {total_size / 1024 / 1024:.2f} MB")
 
 

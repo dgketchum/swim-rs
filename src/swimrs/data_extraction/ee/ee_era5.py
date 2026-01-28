@@ -1,8 +1,8 @@
 import os
+import time
 from datetime import date, timedelta
 
 import ee
-import time
 
 try:
     from openet.refetgee import Daily
@@ -40,8 +40,8 @@ def _local_day_utc_bounds(day_date: date, utc_offset_hours: ee.Number) -> tuple:
         (utc_start, utc_end) representing local midnight-to-midnight in UTC
     """
     local_midnight = ee.Date.fromYMD(day_date.year, day_date.month, day_date.day)
-    utc_start = local_midnight.advance(utc_offset_hours.multiply(-1), 'hour')
-    utc_end = utc_start.advance(1, 'day')
+    utc_start = local_midnight.advance(utc_offset_hours.multiply(-1), "hour")
+    utc_end = utc_start.advance(1, "day")
     return utc_start, utc_end
 
 
@@ -62,22 +62,37 @@ def _aggregate_hourly_to_daily(hourly_coll: ee.ImageCollection, day_str: str) ->
     """
     # Temperature: mean, min, max (K -> C)
     # See ERA5_LAND_HOURLY_UNITS['temperature_2m'].
-    temp = hourly_coll.select('temperature_2m')
-    tmean_c = temp.mean().subtract(273.15).rename(f'tmean_{day_str}')
-    tmin_c = temp.min().subtract(273.15).rename(f'tmin_{day_str}')
-    tmax_c = temp.max().subtract(273.15).rename(f'tmax_{day_str}')
+    temp = hourly_coll.select("temperature_2m")
+    tmean_c = temp.mean().subtract(273.15).rename(f"tmean_{day_str}")
+    tmin_c = temp.min().subtract(273.15).rename(f"tmin_{day_str}")
+    tmax_c = temp.max().subtract(273.15).rename(f"tmax_{day_str}")
 
     # Precipitation: sum hourly accumulations (m -> mm)
     # See ERA5_LAND_HOURLY_UNITS['total_precipitation_hourly'].
-    precip_mm = hourly_coll.select('total_precipitation_hourly').sum().multiply(1000).rename(f'precip_{day_str}')
+    precip_mm = (
+        hourly_coll.select("total_precipitation_hourly")
+        .sum()
+        .multiply(1000)
+        .rename(f"precip_{day_str}")
+    )
 
     # Solar radiation: sum J/m² then convert to daily-mean W/m² (divide by 86400 seconds)
     # See ERA5_LAND_HOURLY_UNITS['surface_solar_radiation_downwards_hourly'].
-    srad_wm2 = hourly_coll.select('surface_solar_radiation_downwards_hourly').sum().divide(86400).rename(f'srad_{day_str}')
+    srad_wm2 = (
+        hourly_coll.select("surface_solar_radiation_downwards_hourly")
+        .sum()
+        .divide(86400)
+        .rename(f"srad_{day_str}")
+    )
 
     # SWE: mean of instantaneous values (m -> mm)
     # See ERA5_LAND_HOURLY_UNITS['snow_depth_water_equivalent'].
-    swe_mm = hourly_coll.select('snow_depth_water_equivalent').mean().multiply(1000).rename(f'swe_{day_str}')
+    swe_mm = (
+        hourly_coll.select("snow_depth_water_equivalent")
+        .mean()
+        .multiply(1000)
+        .rename(f"swe_{day_str}")
+    )
 
     return ee.Image([swe_mm, tmean_c, tmin_c, tmax_c, precip_mm, srad_wm2])
 
@@ -90,8 +105,8 @@ def sample_era5_land_variables_daily(
     overwrite: bool = False,
     start_yr: int = 2004,
     end_yr: int = 2023,
-    feature_id_col: str = 'FID',
-    file_prefix: str = 'swim',
+    feature_id_col: str = "FID",
+    file_prefix: str = "swim",
 ) -> None:
     """Export daily ERA5-Land variables reduced over features, by month.
 
@@ -159,10 +174,10 @@ def sample_era5_land_variables_daily(
         monthly_bands_image = None
         current_month_selectors = [feature_id_col]
 
-        desc = f'era5_vars_{year}_{str(month).zfill(2)}'
+        desc = f"era5_vars_{year}_{str(month).zfill(2)}"
 
         if check_dir and not overwrite:
-            output_filepath = os.path.join(check_dir, f'{desc}.csv')
+            output_filepath = os.path.join(check_dir, f"{desc}.csv")
             if os.path.exists(output_filepath):
                 skipped_months += 1
                 continue
@@ -172,17 +187,17 @@ def sample_era5_land_variables_daily(
             continue
 
         for d in days_in_month:
-            day_str_yyyymmdd_selector = d.strftime('%Y%m%d')
-            current_month_selectors.append(f'swe_{day_str_yyyymmdd_selector}')
-            current_month_selectors.append(f'eto_{day_str_yyyymmdd_selector}')
-            current_month_selectors.append(f'tmean_{day_str_yyyymmdd_selector}')
-            current_month_selectors.append(f'tmin_{day_str_yyyymmdd_selector}')
-            current_month_selectors.append(f'tmax_{day_str_yyyymmdd_selector}')
-            current_month_selectors.append(f'precip_{day_str_yyyymmdd_selector}')
-            current_month_selectors.append(f'srad_{day_str_yyyymmdd_selector}')
+            day_str_yyyymmdd_selector = d.strftime("%Y%m%d")
+            current_month_selectors.append(f"swe_{day_str_yyyymmdd_selector}")
+            current_month_selectors.append(f"eto_{day_str_yyyymmdd_selector}")
+            current_month_selectors.append(f"tmean_{day_str_yyyymmdd_selector}")
+            current_month_selectors.append(f"tmin_{day_str_yyyymmdd_selector}")
+            current_month_selectors.append(f"tmax_{day_str_yyyymmdd_selector}")
+            current_month_selectors.append(f"precip_{day_str_yyyymmdd_selector}")
+            current_month_selectors.append(f"srad_{day_str_yyyymmdd_selector}")
 
         for d in days_in_month:
-            day_str_yyyymmdd = d.strftime('%Y%m%d')
+            day_str_yyyymmdd = d.strftime("%Y%m%d")
 
             # Get UTC bounds for local day
             utc_start, utc_end = _local_day_utc_bounds(d, utc_offset_hours)
@@ -195,11 +210,11 @@ def sample_era5_land_variables_daily(
             daily_vars = _aggregate_hourly_to_daily(hourly_for_day, day_str_yyyymmdd)
 
             # ETo computed via refetgee (uses same local-time filtered collection)
-            daily_eto_img = Daily.era5_land(hourly_for_day).etr.rename(f'eto_{day_str_yyyymmdd}')
+            daily_eto_img = Daily.era5_land(hourly_for_day).etr.rename(f"eto_{day_str_yyyymmdd}")
 
             # Combine all bands and set time property
             all_daily_bands = daily_vars.addBands(daily_eto_img)
-            all_daily_bands = all_daily_bands.set('system:time_start', day_start_ee.millis())
+            all_daily_bands = all_daily_bands.set("system:time_start", day_start_ee.millis())
 
             if first_band_in_month:
                 monthly_bands_image = all_daily_bands
@@ -211,7 +226,7 @@ def sample_era5_land_variables_daily(
             continue
 
         if debug:
-            debug_fc_collection = fc.filterMetadata('sid', 'equals', 'BE-Lon')
+            debug_fc_collection = fc.filterMetadata("sid", "equals", "BE-Lon")
             debug_data = monthly_bands_image.reduceRegions(
                 collection=debug_fc_collection,
                 reducer=ee.Reducer.mean(),
@@ -228,20 +243,20 @@ def sample_era5_land_variables_daily(
             collection=output_data,
             description=desc,
             bucket=bucket,
-            fileNamePrefix=f'{file_prefix}/meteorology/era5_land/extracts/{desc}',
-            fileFormat='CSV',
-            selectors=current_month_selectors
+            fileNamePrefix=f"{file_prefix}/meteorology/era5_land/extracts/{desc}",
+            fileFormat="CSV",
+            selectors=current_month_selectors,
         )
 
         try:
             task.start()
         except ee.ee_exception.EEException as e:
-            print('{}, waiting on '.format(e), desc, '......')
+            print(f"{e}, waiting on ", desc, "......")
             time.sleep(600)
             task.start()
         exported_months += 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass
 # ========================= EOF ====================================================================

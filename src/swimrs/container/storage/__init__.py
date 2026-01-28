@@ -42,14 +42,13 @@ Examples:
 """
 
 from pathlib import Path
-from typing import Union
 
 from .base import StorageProvider
-from .local import DirectoryStoreProvider, MemoryStoreProvider, ZipStoreProvider
 from .factory import StorageProviderFactory, open_storage
+from .local import DirectoryStoreProvider, MemoryStoreProvider, ZipStoreProvider
 
 
-def detect_storage_type(path: Union[str, Path]) -> str:
+def detect_storage_type(path: str | Path) -> str:
     """
     Detect storage type from path.
 
@@ -103,8 +102,10 @@ def __getattr__(name: str):
     """Lazy loading for cloud providers."""
     if name == "S3StoreProvider":
         from .cloud import S3StoreProvider
+
         return S3StoreProvider
     elif name == "GCSStoreProvider":
         from .cloud import GCSStoreProvider
+
         return GCSStoreProvider
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

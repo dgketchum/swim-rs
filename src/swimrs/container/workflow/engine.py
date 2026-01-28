@@ -10,24 +10,22 @@ Provides:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
 
 from swimrs.container import SwimContainer
 from swimrs.container.logging import get_logger
 
 from .config import WorkflowConfig
 from .steps import (
-    WorkflowStep,
-    StepStatus,
-    StepResult,
-    IngestNDVIStep,
+    ComputeDynamicsStep,
+    ComputeFusedNDVIStep,
     IngestETFStep,
     IngestMeteorologyStep,
+    IngestNDVIStep,
     IngestPropertiesStep,
-    ComputeFusedNDVIStep,
-    ComputeDynamicsStep,
+    StepResult,
+    StepStatus,
+    WorkflowStep,
 )
 
 logger = get_logger("workflow")
@@ -41,7 +39,7 @@ class WorkflowProgress:
     completed_steps: int = 0
     skipped_steps: int = 0
     failed_steps: int = 0
-    step_results: Dict[str, StepResult] = field(default_factory=dict)
+    step_results: dict[str, StepResult] = field(default_factory=dict)
 
     @property
     def percent_complete(self) -> float:
@@ -93,7 +91,7 @@ class WorkflowEngine:
     def __init__(
         self,
         config: WorkflowConfig,
-        container: Optional[SwimContainer] = None,
+        container: SwimContainer | None = None,
     ):
         """
         Initialize the workflow engine.
@@ -104,14 +102,14 @@ class WorkflowEngine:
         """
         self.config = config
         self._container = container
-        self._steps: List[WorkflowStep] = []
+        self._steps: list[WorkflowStep] = []
         self._progress = WorkflowProgress()
 
         # Build execution plan
         self._build_execution_plan()
 
     @classmethod
-    def from_yaml(cls, config_path: Union[str, Path]) -> "WorkflowEngine":
+    def from_yaml(cls, config_path: str | Path) -> WorkflowEngine:
         """
         Create workflow engine from YAML configuration file.
 
@@ -138,15 +136,11 @@ class WorkflowEngine:
 
         # Meteorology step
         if self.config.sources.meteorology:
-            self._steps.append(
-                IngestMeteorologyStep(config=self.config.sources.meteorology)
-            )
+            self._steps.append(IngestMeteorologyStep(config=self.config.sources.meteorology))
 
         # Properties step
         if self.config.sources.properties:
-            self._steps.append(
-                IngestPropertiesStep(config=self.config.sources.properties)
-            )
+            self._steps.append(IngestPropertiesStep(config=self.config.sources.properties))
 
         # Compute steps
         if self.config.compute.compute_fused_ndvi:
@@ -173,9 +167,7 @@ class WorkflowEngine:
         if project.output_path:
             container_path = self.config.resolve_path(project.output_path)
         else:
-            container_path = self.config.resolve_path(
-                f"{project.name}.swim"
-            )
+            container_path = self.config.resolve_path(f"{project.name}.swim")
 
         # Check if container exists
         if container_path.exists():
@@ -197,7 +189,7 @@ class WorkflowEngine:
     def run(
         self,
         resume: bool = True,
-        step: Optional[str] = None,
+        step: str | None = None,
         dry_run: bool = False,
     ) -> WorkflowProgress:
         """
@@ -218,7 +210,9 @@ class WorkflowEngine:
         if step:
             steps_to_run = [s for s in self._steps if s.name == step]
             if not steps_to_run:
-                raise ValueError(f"Step not found: {step}. Available: {[s.name for s in self._steps]}")
+                raise ValueError(
+                    f"Step not found: {step}. Available: {[s.name for s in self._steps]}"
+                )
 
         logger.info(
             "starting_workflow",
@@ -330,7 +324,7 @@ class WorkflowEngine:
 
         return "\n".join(lines)
 
-    def list_steps(self) -> List[str]:
+    def list_steps(self) -> list[str]:
         """Get list of step names in execution order."""
         return [step.name for step in self._steps]
 
@@ -340,6 +334,6 @@ class WorkflowEngine:
         return self._progress
 
     @property
-    def container(self) -> Optional[SwimContainer]:
+    def container(self) -> SwimContainer | None:
         """Get the container (if opened)."""
         return self._container

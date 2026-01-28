@@ -4,34 +4,33 @@ Shared utilities for OpenET ETf zonal statistics export modules.
 This module provides common constants, helper functions, and Earth Engine
 utilities used by the SSEBop, DisALEXI, and geeSEBAL export modules.
 """
-import os
+
 import time
 
 import ee
 import geopandas as gpd
-from tqdm import tqdm
 
 # Landsat Collection 2 Level 2 Surface Reflectance collections
 LANDSAT_COLLECTIONS = [
-    'LANDSAT/LT04/C02/T1_L2',
-    'LANDSAT/LT05/C02/T1_L2',
-    'LANDSAT/LE07/C02/T1_L2',
-    'LANDSAT/LC08/C02/T1_L2',
-    'LANDSAT/LC09/C02/T1_L2',
+    "LANDSAT/LT04/C02/T1_L2",
+    "LANDSAT/LT05/C02/T1_L2",
+    "LANDSAT/LE07/C02/T1_L2",
+    "LANDSAT/LC08/C02/T1_L2",
+    "LANDSAT/LC09/C02/T1_L2",
 ]
 
 # Reference ET source configuration
-GRIDMET_SOURCE = 'IDAHO_EPSCOR/GRIDMET'
-GRIDMET_BAND = 'eto'
+GRIDMET_SOURCE = "IDAHO_EPSCOR/GRIDMET"
+GRIDMET_BAND = "eto"
 GRIDMET_FACTOR = 1.0
 
 # Irrigation mask sources and regions
-IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
-WEST_STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
-EAST_STATES_FC = 'users/dgketchum/boundaries/eastern_38_dissolved'
+IRR = "projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp"
+WEST_STATES = ["AZ", "CA", "CO", "ID", "MT", "NM", "NV", "OR", "UT", "WA", "WY"]
+EAST_STATES_FC = "users/dgketchum/boundaries/eastern_38_dissolved"
 
 # LANID irrigation dataset for eastern states
-LANID_ASSET = 'projects/ee-dgketchum/assets/lanid/LANID_V1'
+LANID_ASSET = "projects/ee-dgketchum/assets/lanid/LANID_V1"
 
 
 def get_lanid() -> ee.Image:
@@ -68,7 +67,7 @@ def load_shapefile(
         df.geometry = df.geometry.buffer(buffer)
 
     original_crs = df.crs
-    if original_crs and original_crs.srs != 'EPSG:4326':
+    if original_crs and original_crs.srs != "EPSG:4326":
         df = df.to_crs(4326)
 
     return df
@@ -108,14 +107,11 @@ def get_irrigation_mask(
     """
     if state in WEST_STATES:
         irr = (
-            irr_coll
-            .filterDate(f'{year}-01-01', f'{year}-12-31')
-            .select('classification')
-            .mosaic()
+            irr_coll.filterDate(f"{year}-01-01", f"{year}-12-31").select("classification").mosaic()
         )
         irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
     else:
-        irr_mask = lanid.select(f'irr_{year}').clip(east_fc)
+        irr_mask = lanid.select(f"irr_{year}").clip(east_fc)
         irr = ee.Image(1).subtract(irr_mask)
 
     return irr, irr_mask
@@ -131,8 +127,8 @@ def setup_irrigation_masks() -> tuple[ee.ImageCollection, ee.Image, ee.Image, ee
         (irr_coll, irr_min_yr_mask, lanid, east_fc) - EE objects for irrigation masking.
     """
     irr_coll = ee.ImageCollection(IRR)
-    s, e = '1987-01-01', '2025-12-31'
-    remap = irr_coll.filterDate(s, e).select('classification').map(lambda img: img.lt(1))
+    s, e = "1987-01-01", "2025-12-31"
+    remap = irr_coll.filterDate(s, e).select("classification").map(lambda img: img.lt(1))
     irr_min_yr_mask = remap.sum().gte(5)
     east_fc = ee.FeatureCollection(EAST_STATES_FC)
     lanid = get_lanid()
@@ -197,7 +193,7 @@ def export_table_to_gcs(
         description=desc,
         bucket=bucket,
         fileNamePrefix=fn_prefix,
-        fileFormat='CSV',
+        fileFormat="CSV",
         selectors=selectors,
     )
 
@@ -208,12 +204,12 @@ def export_table_to_gcs(
     except ee.ee_exception.EEException as e:
         error_message = str(e)
 
-        if 'payload size exceeds the limit' in error_message:
-            print(f'Payload size limit exceeded for {desc}. Skipping task.')
+        if "payload size exceeds the limit" in error_message:
+            print(f"Payload size limit exceeded for {desc}. Skipping task.")
             return False
 
-        elif 'many tasks already in the queue' in error_message:
-            print(f'Task queue full. Waiting 10 minutes to retry {desc}...')
+        elif "many tasks already in the queue" in error_message:
+            print(f"Task queue full. Waiting 10 minutes to retry {desc}...")
             time.sleep(600)
             task.start()
             print(desc, flush=True)
@@ -257,7 +253,7 @@ def get_scene_ids(
     )
     scenes = coll.get_image_ids()
     scenes = list(set(scenes))
-    scenes = sorted(scenes, key=lambda item: item.split('_')[-1])
+    scenes = sorted(scenes, key=lambda item: item.split("_")[-1])
     return scenes
 
 
@@ -275,5 +271,5 @@ def parse_scene_name(img_id: str) -> str:
     str
         Short scene name (e.g., 'LC08_044033_20170716').
     """
-    splt = img_id.split('/')[-1].split('_')
-    return '_'.join(splt[-3:])
+    splt = img_id.split("/")[-1].split("_")
+    return "_".join(splt[-3:])

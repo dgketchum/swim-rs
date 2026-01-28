@@ -10,18 +10,17 @@ Each step represents a discrete operation that can be:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from swimrs.container import SwimContainer
-    from swimrs.container.inventory import Inventory
+
     from .config import (
-        NDVISourceConfig,
         ETFSourceConfig,
         MeteorologyConfig,
+        NDVISourceConfig,
         PropertiesConfig,
     )
 
@@ -44,7 +43,7 @@ class StepResult:
     message: str = ""
     records_processed: int = 0
     duration_seconds: float = 0.0
-    error: Optional[str] = None
+    error: str | None = None
 
     @property
     def success(self) -> bool:
@@ -76,7 +75,7 @@ class WorkflowStep(ABC):
         pass
 
     @abstractmethod
-    def check_complete(self, container: "SwimContainer") -> bool:
+    def check_complete(self, container: SwimContainer) -> bool:
         """
         Check if step output already exists in container.
 
@@ -89,7 +88,7 @@ class WorkflowStep(ABC):
         pass
 
     @abstractmethod
-    def execute(self, container: "SwimContainer") -> StepResult:
+    def execute(self, container: SwimContainer) -> StepResult:
         """
         Execute the step.
 
@@ -109,7 +108,7 @@ class WorkflowStep(ABC):
 class IngestNDVIStep(WorkflowStep):
     """Step for ingesting NDVI data."""
 
-    config: "NDVISourceConfig"
+    config: NDVISourceConfig
 
     @property
     def name(self) -> str:
@@ -119,11 +118,11 @@ class IngestNDVIStep(WorkflowStep):
     def description(self) -> str:
         return f"Ingest NDVI from {self.config.instrument} ({self.config.mask} mask)"
 
-    def check_complete(self, container: "SwimContainer") -> bool:
+    def check_complete(self, container: SwimContainer) -> bool:
         path = f"remote_sensing/ndvi/{self.config.instrument}/{self.config.mask}"
         return path in container._root
 
-    def execute(self, container: "SwimContainer") -> StepResult:
+    def execute(self, container: SwimContainer) -> StepResult:
         import time
 
         start = time.perf_counter()
@@ -153,7 +152,7 @@ class IngestNDVIStep(WorkflowStep):
 class IngestETFStep(WorkflowStep):
     """Step for ingesting ETF data."""
 
-    config: "ETFSourceConfig"
+    config: ETFSourceConfig
 
     @property
     def name(self) -> str:
@@ -163,11 +162,11 @@ class IngestETFStep(WorkflowStep):
     def description(self) -> str:
         return f"Ingest ETF from {self.config.model} ({self.config.mask} mask)"
 
-    def check_complete(self, container: "SwimContainer") -> bool:
+    def check_complete(self, container: SwimContainer) -> bool:
         path = f"remote_sensing/etf/{self.config.instrument}/{self.config.model}/{self.config.mask}"
         return path in container._root
 
-    def execute(self, container: "SwimContainer") -> StepResult:
+    def execute(self, container: SwimContainer) -> StepResult:
         import time
 
         start = time.perf_counter()
@@ -198,7 +197,7 @@ class IngestETFStep(WorkflowStep):
 class IngestMeteorologyStep(WorkflowStep):
     """Step for ingesting meteorology data."""
 
-    config: "MeteorologyConfig"
+    config: MeteorologyConfig
 
     @property
     def name(self) -> str:
@@ -208,11 +207,11 @@ class IngestMeteorologyStep(WorkflowStep):
     def description(self) -> str:
         return f"Ingest meteorology from {self.config.source}"
 
-    def check_complete(self, container: "SwimContainer") -> bool:
+    def check_complete(self, container: SwimContainer) -> bool:
         path = f"meteorology/{self.config.source}/eto"
         return path in container._root
 
-    def execute(self, container: "SwimContainer") -> StepResult:
+    def execute(self, container: SwimContainer) -> StepResult:
         import time
 
         start = time.perf_counter()
@@ -250,7 +249,7 @@ class IngestMeteorologyStep(WorkflowStep):
 class IngestPropertiesStep(WorkflowStep):
     """Step for ingesting field properties."""
 
-    config: "PropertiesConfig"
+    config: PropertiesConfig
 
     @property
     def name(self) -> str:
@@ -260,11 +259,14 @@ class IngestPropertiesStep(WorkflowStep):
     def description(self) -> str:
         return "Ingest field properties (LULC, soils, irrigation)"
 
-    def check_complete(self, container: "SwimContainer") -> bool:
+    def check_complete(self, container: SwimContainer) -> bool:
         # Check for at least one property
-        return "properties/soils/awc" in container._root or "properties/land_cover/modis_lc" in container._root
+        return (
+            "properties/soils/awc" in container._root
+            or "properties/land_cover/modis_lc" in container._root
+        )
 
-    def execute(self, container: "SwimContainer") -> StepResult:
+    def execute(self, container: SwimContainer) -> StepResult:
         import time
 
         start = time.perf_counter()
@@ -303,10 +305,10 @@ class ComputeFusedNDVIStep(WorkflowStep):
     def description(self) -> str:
         return "Compute fused Landsat+Sentinel NDVI"
 
-    def check_complete(self, container: "SwimContainer") -> bool:
+    def check_complete(self, container: SwimContainer) -> bool:
         return "derived/merged_ndvi/irr" in container._root
 
-    def execute(self, container: "SwimContainer") -> StepResult:
+    def execute(self, container: SwimContainer) -> StepResult:
         import time
 
         start = time.perf_counter()
@@ -349,7 +351,7 @@ class ComputeDynamicsStep(WorkflowStep):
         """Optional dependencies - fused_ndvi is preferred but not required."""
         return ["compute_fused_ndvi"]
 
-    def check_dependencies(self, container: "SwimContainer") -> tuple:
+    def check_dependencies(self, container: SwimContainer) -> tuple:
         """
         Check if dependencies are satisfied or skippable.
 
@@ -363,14 +365,17 @@ class ComputeDynamicsStep(WorkflowStep):
         if fused_path in container._root:
             return True, "Using fused NDVI (recommended)"
         elif ndvi_path in container._root:
-            return True, f"Using single-instrument NDVI from {self.instrument} (fused not available)"
+            return (
+                True,
+                f"Using single-instrument NDVI from {self.instrument} (fused not available)",
+            )
         else:
             return False, "No NDVI data available. Run ingest.ndvi() first."
 
-    def check_complete(self, container: "SwimContainer") -> bool:
+    def check_complete(self, container: SwimContainer) -> bool:
         return "derived/dynamics/ke_max" in container._root
 
-    def execute(self, container: "SwimContainer") -> StepResult:
+    def execute(self, container: SwimContainer) -> StepResult:
         import time
 
         start = time.perf_counter()

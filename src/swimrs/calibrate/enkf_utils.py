@@ -1,22 +1,28 @@
 import copy
+
 import numpy as np
 import pandas as pd
 
-from swimrs.swim.config import ProjectConfig
-from swimrs.swim.sampleplots import SamplePlots
+from swimrs.model import TRACKER_PARAMS
 from swimrs.model.obs_field_cycle import field_day_loop
 from swimrs.model.tracker import TUNABLE_PARAMS
-from swimrs.model import TRACKER_PARAMS
-
-
+from swimrs.swim.config import ProjectConfig
+from swimrs.swim.sampleplots import SamplePlots
 
 
 def _pred_at_dt_from_state(config, plots, start_dt, end_dt, params, state_in):
     cfg = copy.copy(config)
     cfg.start_dt = start_dt
     cfg.end_dt = end_dt
-    kc, swe = field_day_loop(cfg, plots, debug_flag=False, params=params, state_in=state_in,
-                             capture_state=False, single_fid_idx=0)
+    kc, swe = field_day_loop(
+        cfg,
+        plots,
+        debug_flag=False,
+        params=params,
+        state_in=state_in,
+        capture_state=False,
+        single_fid_idx=0,
+    )
     val = float(kc[-1, 0])
     return val
 
@@ -32,10 +38,10 @@ def _make_ensemble_plots_from_single(single_plots: SamplePlots, fid: str, ne: in
     efids = [f"{fid.lower()}__e{i}" for i in range(ne)]
 
     ts_sub = {}
-    for dt, vals in base['time_series'].items():
+    for dt, vals in base["time_series"].items():
         d = {}
         for k, v in vals.items():
-            if k == 'doy':
+            if k == "doy":
                 d[k] = v
             else:
                 # single-fid inputs hold lists of length 1; replicate to ne
@@ -44,44 +50,45 @@ def _make_ensemble_plots_from_single(single_plots: SamplePlots, fid: str, ne: in
         ts_sub[dt] = d
 
     props_sub = {}
-    if 'props' in base and fid in base['props']:
+    if "props" in base and fid in base["props"]:
         for ef in efids:
-            props_sub[ef] = base['props'][fid]
+            props_sub[ef] = base["props"][fid]
 
     irr_sub = {}
-    if 'irr_data' in base and fid in base['irr_data']:
+    if "irr_data" in base and fid in base["irr_data"]:
         for ef in efids:
-            irr_sub[ef] = base['irr_data'][fid]
+            irr_sub[ef] = base["irr_data"][fid]
 
     gwsub_sub = {}
-    if 'gwsub_data' in base and fid in base['gwsub_data']:
+    if "gwsub_data" in base and fid in base["gwsub_data"]:
         for ef in efids:
-            gwsub_sub[ef] = base['gwsub_data'][fid]
+            gwsub_sub[ef] = base["gwsub_data"][fid]
 
     kc_max_sub = {}
-    if 'kc_max' in base and fid in base['kc_max']:
+    if "kc_max" in base and fid in base["kc_max"]:
         for ef in efids:
-            kc_max_sub[ef] = base['kc_max'][fid]
+            kc_max_sub[ef] = base["kc_max"][fid]
 
     ke_max_sub = {}
-    if 'ke_max' in base and fid in base['ke_max']:
+    if "ke_max" in base and fid in base["ke_max"]:
         for ef in efids:
-            ke_max_sub[ef] = base['ke_max'][fid]
+            ke_max_sub[ef] = base["ke_max"][fid]
 
     sp.input = {
-        'order': efids,
-        'time_series': ts_sub,
-        'props': props_sub,
-        'irr_data': irr_sub,
-        'gwsub_data': gwsub_sub,
-        'kc_max': kc_max_sub,
-        'ke_max': ke_max_sub,
+        "order": efids,
+        "time_series": ts_sub,
+        "props": props_sub,
+        "irr_data": irr_sub,
+        "gwsub_data": gwsub_sub,
+        "kc_max": kc_max_sub,
+        "ke_max": ke_max_sub,
     }
     return sp
 
 
-def _preds_ensemble_at_dt_from_state_func(cfg, single_plots, fid, start_dt, end_dt,
-                                          theta_mat, enkf_params, base_params_by_fid, state0):
+def _preds_ensemble_at_dt_from_state_func(
+    cfg, single_plots, fid, start_dt, end_dt, theta_mat, enkf_params, base_params_by_fid, state0
+):
     """Vectorized ensemble propagation for a single field using replicated inputs.
 
     Builds ne synthetic fields (one per ensemble member), sets per-member
@@ -101,7 +108,7 @@ def _preds_ensemble_at_dt_from_state_func(cfg, single_plots, fid, start_dt, end_
     fid_l = fid.lower()
     base_by_group = {}
     for p in TUNABLE_PARAMS:
-        key = f'{p}_{fid_l}'
+        key = f"{p}_{fid_l}"
         if base_params_by_fid is not None and key in base_params_by_fid:
             base_by_group[p] = float(base_params_by_fid[key])
         else:
@@ -115,15 +122,22 @@ def _preds_ensemble_at_dt_from_state_func(cfg, single_plots, fid, start_dt, end_
         for p in TUNABLE_PARAMS:
             if p in enkf_params:
                 j = enkf_params.index(p)
-                fp[f'{p}_{ef}'] = float(theta_mat[i, j])
+                fp[f"{p}_{ef}"] = float(theta_mat[i, j])
             else:
-                fp[f'{p}_{ef}'] = base_by_group[p]
+                fp[f"{p}_{ef}"] = base_by_group[p]
 
     # Install the ensemble forecast parameters
     cfg2.forecast_parameters = pd.Series(fp)
 
-    kc, swe = field_day_loop(cfg2, plots_e, debug_flag=False, params=None,
-                              state_in=state0, capture_state=False, single_fid_idx=None)
+    kc, swe = field_day_loop(
+        cfg2,
+        plots_e,
+        debug_flag=False,
+        params=None,
+        state_in=state0,
+        capture_state=False,
+        single_fid_idx=None,
+    )
     return kc[-1, :]
 
 
@@ -157,14 +171,29 @@ class _RingStates:
         return self.buf[pos]
 
 
-def _assim_fid_step(cfg, plots, start_dt, end_dt, theta_mat, enkf_params, base_params_by_fid,
-                    bounds, q_field, q_global, r_fid, y_obs, fid, stochastic_obs, state0):
+def _assim_fid_step(
+    cfg,
+    plots,
+    start_dt,
+    end_dt,
+    theta_mat,
+    enkf_params,
+    base_params_by_fid,
+    bounds,
+    q_field,
+    q_global,
+    r_fid,
+    y_obs,
+    fid,
+    stochastic_obs,
+    state0,
+):
     ne = theta_mat.shape[0]
 
     def _build_params(theta_vec):
         params = dict(base_params_by_fid)
         for j, p in enumerate(enkf_params):
-            key = f'{p}_{fid}'
+            key = f"{p}_{fid}"
             if key in params:
                 params[key] = float(theta_vec[j])
         return params
@@ -178,8 +207,9 @@ def _assim_fid_step(cfg, plots, start_dt, end_dt, theta_mat, enkf_params, base_p
         return arr
 
     # Vectorized ensemble propagation: replicate the single-fid inputs to ne synthetic fields.
-    preds = _preds_ensemble_at_dt_from_state_func(cfg, plots, fid, start_dt, end_dt,
-                                                  theta_mat, enkf_params, base_params_by_fid, state0)
+    preds = _preds_ensemble_at_dt_from_state_func(
+        cfg, plots, fid, start_dt, end_dt, theta_mat, enkf_params, base_params_by_fid, state0
+    )
 
     y_bar = float(np.mean(preds))
     theta_bar = np.mean(theta_mat, axis=0)
@@ -208,48 +238,57 @@ def _assim_fid_step(cfg, plots, start_dt, end_dt, theta_mat, enkf_params, base_p
     fid_l = fid.lower()
     base_by_group = {}
     for p in TUNABLE_PARAMS:
-        key = f'{p}_{fid_l}'
+        key = f"{p}_{fid_l}"
         base_by_group[p] = float(base_params_by_fid.get(key, 0.0))
     fp_single = {}
     for j, p in enumerate(enkf_params):
-        fp_single[f'{p}_{fid_l}'] = float(theta_mean[j])
+        fp_single[f"{p}_{fid_l}"] = float(theta_mean[j])
     # include non-updated parameters from baseline
     for p in TUNABLE_PARAMS:
         if p not in enkf_params:
-            fp_single[f'{p}_{fid_l}'] = base_by_group[p]
+            fp_single[f"{p}_{fid_l}"] = base_by_group[p]
     cfg3 = copy.copy(cfg)
     cfg3.forecast_parameters = pd.Series(fp_single)
     cfg3.calibrate = False
     cfg3.forecast = True
-    kc_win, states_win = field_day_loop(cfg3, plots, debug_flag=False, params=None,
-                                        state_in=state0, capture_state=True, single_fid_idx=0)
+    kc_win, states_win = field_day_loop(
+        cfg3,
+        plots,
+        debug_flag=False,
+        params=None,
+        state_in=state0,
+        capture_state=True,
+        single_fid_idx=0,
+    )
     kc_vec = kc_win[:, 0]
     res = {
-        'theta': theta_upd,
-        'theta_mean': theta_mean,
-        'kc_win': kc_vec,
-        'states_win': states_win,
+        "theta": theta_upd,
+        "theta_mean": theta_mean,
+        "kc_win": kc_vec,
+        "states_win": states_win,
     }
     return res
 
 
-def _field_worker(single_cfg: ProjectConfig,
-                  single_plots: SamplePlots,
-                  dates,
-                  obs_values,
-                  enkf_params,
-                  theta_init,
-                  bounds,
-                  q_field,
-                  q_global,
-                  r_fid,
-                  fid,
-                  stochastic_obs,
-                  lag_days,
-                  smooth_within_window,
-                  base_params_by_fid,
-                  spinup_state,
-                  baseline_kc_col):
+def _field_worker(
+    single_cfg: ProjectConfig,
+    single_plots: SamplePlots,
+    dates,
+    obs_values,
+    enkf_params,
+    theta_init,
+    bounds,
+    q_field,
+    q_global,
+    r_fid,
+    fid,
+    stochastic_obs,
+    lag_days,
+    smooth_within_window,
+    base_params_by_fid,
+    spinup_state,
+    baseline_kc_col,
+):
     """Run full assimilation for one field across all dates in a separate process.
 
     Returns a dict with the final kc time series, updated theta, and param trace.
@@ -279,14 +318,14 @@ def _field_worker(single_cfg: ProjectConfig,
     def _params_series_from_theta(theta_vec):
         base_by_group = {}
         for p in TUNABLE_PARAMS:
-            key = f'{p}_{fid_l}'
+            key = f"{p}_{fid_l}"
             base_by_group[p] = float(base_params_by_fid.get(key, 0.0))
         fps = {}
         for j, p in enumerate(enkf_params):
-            fps[f'{p}_{fid_l}'] = float(theta_vec[j])
+            fps[f"{p}_{fid_l}"] = float(theta_vec[j])
         for p in TUNABLE_PARAMS:
             if p not in enkf_params:
-                fps[f'{p}_{fid_l}'] = base_by_group[p]
+                fps[f"{p}_{fid_l}"] = base_by_group[p]
         return pd.Series(fps)
 
     def _ensure_state_local(target_ix, theta_mean_vec):
@@ -295,7 +334,7 @@ def _field_worker(single_cfg: ProjectConfig,
             return st_at_target
 
         base = ring.base
-        count = ring.count if hasattr(ring, 'count') else 0
+        count = ring.count if hasattr(ring, "count") else 0
         if base is None or count == 0:
             if spinup_state is None:
                 return None
@@ -327,8 +366,15 @@ def _field_worker(single_cfg: ProjectConfig,
         cfg2.calibrate = False
         cfg2.forecast = True
         cfg2.forecast_parameters = _params_series_from_theta(theta_mean_vec)
-        kc_seg, swe_seg, states_seg = field_day_loop(cfg2, single_plots, debug_flag=False, params=None,
-                                                     state_in=seed_state, capture_state=True, single_fid_idx=0)
+        kc_seg, swe_seg, states_seg = field_day_loop(
+            cfg2,
+            single_plots,
+            debug_flag=False,
+            params=None,
+            state_in=seed_state,
+            capture_state=True,
+            single_fid_idx=0,
+        )
         for k, st in enumerate(states_seg):
             ring.set(seed_ix + k, st)
         return ring.get(target_ix)
@@ -345,9 +391,17 @@ def _field_worker(single_cfg: ProjectConfig,
         if state0 is None:
             continue
 
-        preds = _preds_ensemble_at_dt_from_state_func(single_cfg, single_plots, fid,
-                                                       dates[start_ix], dt, theta,
-                                                       enkf_params, base_params_by_fid, state0)
+        preds = _preds_ensemble_at_dt_from_state_func(
+            single_cfg,
+            single_plots,
+            fid,
+            dates[start_ix],
+            dt,
+            theta,
+            enkf_params,
+            base_params_by_fid,
+            state0,
+        )
 
         y_bar = float(np.mean(preds))
         theta_bar = np.mean(theta, axis=0)
@@ -382,19 +436,27 @@ def _field_worker(single_cfg: ProjectConfig,
             cfg3.calibrate = False
             cfg3.forecast = True
             cfg3.forecast_parameters = _params_series_from_theta(theta_mean)
-            kc_win, swe_win, states_win = field_day_loop(cfg3, single_plots, debug_flag=False, params=None,
-                                                         state_in=state0, capture_state=True, single_fid_idx=0)
-            final_kc_col[start_ix:t_idx + 1] = kc_win[:, 0]
+            kc_win, swe_win, states_win = field_day_loop(
+                cfg3,
+                single_plots,
+                debug_flag=False,
+                params=None,
+                state_in=state0,
+                capture_state=True,
+                single_fid_idx=0,
+            )
+            final_kc_col[start_ix : t_idx + 1] = kc_win[:, 0]
             for k, st in enumerate(states_win):
                 ring.set(start_ix + k, st)
 
     return {
-        'fid': fid,
-        'theta': theta,
-        'param_trace': param_trace,
-        'final_kc_col': final_kc_col,
+        "fid": fid,
+        "theta": theta,
+        "param_trace": param_trace,
+        "final_kc_col": final_kc_col,
     }
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     pass
 # ========================= EOF ====================================================================

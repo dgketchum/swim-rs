@@ -25,7 +25,6 @@ from conftest import (
     load_golden_json,
 )
 
-
 # =============================================================================
 # Test Constants
 # =============================================================================
@@ -39,6 +38,7 @@ END_DATE = "2022-12-31"
 # =============================================================================
 # Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def multi_station_shapefile(multi_station_fixture_path) -> Path:
@@ -74,12 +74,11 @@ def multi_station_has_input_data(multi_station_input_dir) -> bool:
 # Container Creation Tests
 # =============================================================================
 
+
 class TestMultiStationContainerCreation:
     """Tests for multi-station SwimContainer creation."""
 
-    def test_container_creates_with_multiple_fields(
-        self, multi_station_shapefile, tmp_path
-    ):
+    def test_container_creates_with_multiple_fields(self, multi_station_shapefile, tmp_path):
         """Container creates successfully with multiple fields."""
         if not multi_station_shapefile.exists():
             pytest.skip(f"Multi-station shapefile not found: {multi_station_shapefile}")
@@ -101,9 +100,7 @@ class TestMultiStationContainerCreation:
 
         container.close()
 
-    def test_container_field_order_consistent(
-        self, multi_station_shapefile, tmp_path
-    ):
+    def test_container_field_order_consistent(self, multi_station_shapefile, tmp_path):
         """Container maintains consistent field ordering."""
         if not multi_station_shapefile.exists():
             pytest.skip(f"Multi-station shapefile not found: {multi_station_shapefile}")
@@ -136,6 +133,7 @@ class TestMultiStationContainerCreation:
 # Per-Station Dynamics Tests
 # =============================================================================
 
+
 class TestPerStationDynamics:
     """Tests for per-station dynamics values against golden files."""
 
@@ -159,8 +157,6 @@ class TestPerStationDynamics:
             pytest.skip("Golden files not found")
         if not multi_station_has_input_data:
             pytest.skip("Multi-station input data not found")
-
-        from swimrs.container import SwimContainer
 
         # Load golden ke_max
         golden_ke = load_golden_json(multi_station_golden_dir, "ke_max")
@@ -189,7 +185,8 @@ class TestPerStationDynamics:
         actual_ke = container._state.root[ke_path][station_idx]
 
         compare_scalars_with_tolerance(
-            actual_ke, expected_ke,
+            actual_ke,
+            expected_ke,
             rtol=tolerance["rtol"],
             atol=tolerance["atol"],
             name=f"ke_max[{station_uid}]",
@@ -218,8 +215,6 @@ class TestPerStationDynamics:
         if not multi_station_has_input_data:
             pytest.skip("Multi-station input data not found")
 
-        from swimrs.container import SwimContainer
-
         # Load golden kc_max
         golden_kc = load_golden_json(multi_station_golden_dir, "kc_max")
         expected_kc = golden_kc.get(station_uid)
@@ -247,7 +242,8 @@ class TestPerStationDynamics:
         actual_kc = container._state.root[kc_path][station_idx]
 
         compare_scalars_with_tolerance(
-            actual_kc, expected_kc,
+            actual_kc,
+            expected_kc,
             rtol=tolerance["rtol"],
             atol=tolerance["atol"],
             name=f"kc_max[{station_uid}]",
@@ -276,8 +272,6 @@ class TestPerStationDynamics:
         if not multi_station_has_input_data:
             pytest.skip("Multi-station input data not found")
 
-        from swimrs.container import SwimContainer
-
         # Load golden irr_data
         golden_irr = load_golden_json(multi_station_golden_dir, "irr_data")
         expected_irr = golden_irr.get(station_uid)
@@ -305,12 +299,13 @@ class TestPerStationDynamics:
         irr_arr = container._state.root[irr_path]
         # zarr v3 returns 0-d ndarray for scalar indexing, use .item() to extract string
         actual_irr_json = irr_arr[station_idx]
-        if hasattr(actual_irr_json, 'item'):
+        if hasattr(actual_irr_json, "item"):
             actual_irr_json = actual_irr_json.item()
         actual_irr = json.loads(actual_irr_json) if actual_irr_json else None
 
         compare_json_with_tolerance(
-            actual_irr, expected_irr,
+            actual_irr,
+            expected_irr,
             rtol=tolerance["rtol"],
         )
 
@@ -336,8 +331,6 @@ class TestPerStationDynamics:
             pytest.skip("Golden files not found")
         if not multi_station_has_input_data:
             pytest.skip("Multi-station input data not found")
-
-        from swimrs.container import SwimContainer
 
         # Load golden gwsub_data
         golden_gwsub = load_golden_json(multi_station_golden_dir, "gwsub_data")
@@ -366,12 +359,13 @@ class TestPerStationDynamics:
         gwsub_arr = container._state.root[gwsub_path]
         # zarr v3 returns 0-d ndarray for scalar indexing, use .item() to extract string
         actual_gwsub_json = gwsub_arr[station_idx]
-        if hasattr(actual_gwsub_json, 'item'):
+        if hasattr(actual_gwsub_json, "item"):
             actual_gwsub_json = actual_gwsub_json.item()
         actual_gwsub = json.loads(actual_gwsub_json) if actual_gwsub_json else None
 
         compare_json_with_tolerance(
-            actual_gwsub, expected_gwsub,
+            actual_gwsub,
+            expected_gwsub,
             rtol=tolerance["rtol"],
         )
 
@@ -381,6 +375,7 @@ class TestPerStationDynamics:
 # =============================================================================
 # Field Independence Tests
 # =============================================================================
+
 
 class TestFieldIndependence:
     """Tests that verify field computations are independent."""
@@ -409,8 +404,6 @@ class TestFieldIndependence:
         if not multi_station_has_input_data:
             pytest.skip("Multi-station input data not found")
 
-        from swimrs.container import SwimContainer
-
         # Load all golden values
         golden_ke = load_golden_json(multi_station_golden_dir, "ke_max")
         golden_kc = load_golden_json(multi_station_golden_dir, "kc_max")
@@ -436,7 +429,8 @@ class TestFieldIndependence:
             actual_ke = container._state.root["derived/dynamics/ke_max"][i]
             expected_ke = golden_ke[uid]
             compare_scalars_with_tolerance(
-                actual_ke, expected_ke,
+                actual_ke,
+                expected_ke,
                 rtol=tolerance["rtol"],
                 atol=tolerance["atol"],
                 name=f"ke_max[{uid}]",
@@ -446,7 +440,8 @@ class TestFieldIndependence:
             actual_kc = container._state.root["derived/dynamics/kc_max"][i]
             expected_kc = golden_kc[uid]
             compare_scalars_with_tolerance(
-                actual_kc, expected_kc,
+                actual_kc,
+                expected_kc,
                 rtol=tolerance["rtol"],
                 atol=tolerance["atol"],
                 name=f"kc_max[{uid}]",
@@ -458,6 +453,7 @@ class TestFieldIndependence:
 # =============================================================================
 # Full Workflow Test
 # =============================================================================
+
 
 class TestMultiStationFullWorkflow:
     """End-to-end multi-station workflow test."""
@@ -482,8 +478,6 @@ class TestMultiStationFullWorkflow:
         if not multi_station_has_input_data:
             pytest.skip("Multi-station input data not found")
 
-        from swimrs.container import SwimContainer
-
         # Create container
         container = _create_full_multi_station_container(
             multi_station_shapefile, multi_station_input_dir, tmp_path
@@ -505,7 +499,8 @@ class TestMultiStationFullWorkflow:
             if uid in golden_ke:
                 actual_ke = container._state.root["derived/dynamics/ke_max"][i]
                 compare_scalars_with_tolerance(
-                    actual_ke, golden_ke[uid],
+                    actual_ke,
+                    golden_ke[uid],
                     rtol=tolerance["rtol"],
                     atol=tolerance["atol"],
                     name=f"ke_max[{uid}]",
@@ -514,7 +509,8 @@ class TestMultiStationFullWorkflow:
             if uid in golden_kc:
                 actual_kc = container._state.root["derived/dynamics/kc_max"][i]
                 compare_scalars_with_tolerance(
-                    actual_kc, golden_kc[uid],
+                    actual_kc,
+                    golden_kc[uid],
                     rtol=tolerance["rtol"],
                     atol=tolerance["atol"],
                     name=f"kc_max[{uid}]",
@@ -527,9 +523,8 @@ class TestMultiStationFullWorkflow:
 # Helper Functions
 # =============================================================================
 
-def _create_full_multi_station_container(
-    shapefile: Path, input_dir: Path, tmp_path: Path
-):
+
+def _create_full_multi_station_container(shapefile: Path, input_dir: Path, tmp_path: Path):
     """Create and populate multi-station container with all input data."""
     from swimrs.container import SwimContainer
 

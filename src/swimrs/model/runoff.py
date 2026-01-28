@@ -4,9 +4,10 @@ Includes two alternatives:
 - Infiltration-excess runoff using hourly precipitation vs. infiltration rate.
 - SCS Curve Number method with dynamic antecedent moisture condition.
 """
-import numpy as np
 
 import warnings
+
+import numpy as np
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
@@ -18,8 +19,11 @@ def runoff_infiltration_excess(foo, foo_day):
     - foo: SampleTracker with `ksat_hourly` infiltration capacity (mm/h).
     - foo_day: DayData with `hr_precip` 24xN hourly precipitation (mm/h).
     """
-    foo.sro = np.maximum(foo_day.hr_precip - foo.ksat_hourly,
-                         np.zeros_like(foo_day.hr_precip)).sum(axis=0).reshape(1, -1)
+    foo.sro = (
+        np.maximum(foo_day.hr_precip - foo.ksat_hourly, np.zeros_like(foo_day.hr_precip))
+        .sum(axis=0)
+        .reshape(1, -1)
+    )
 
 
 def runoff_curve_number(foo, foo_day):
@@ -44,9 +48,11 @@ def runoff_curve_number(foo, foo_day):
 
     # CN adjusted for surface depletion
     ds = foo.depl_surface  # likely maps to depl_ze in this model  # FIXME review mapping
-    cn = np.where(ds < AWCIII, CNIII,
-                  np.where(ds > AWCI, CNI,
-                           ((ds - AWCIII) * CNI + (AWCI - ds) * CNIII) / (AWCI - AWCIII)))
+    cn = np.where(
+        ds < AWCIII,
+        CNIII,
+        np.where(ds > AWCI, CNI, ((ds - AWCIII) * CNI + (AWCI - ds) * CNIII) / (AWCI - AWCIII)),
+    )
 
     # Potential maximum retention S (mm)
     foo.s = 250.0 * (100.0 / cn - 1.0)
@@ -58,10 +64,10 @@ def runoff_curve_number(foo, foo_day):
         ppt_net2 = np.maximum(foo_day.precip - 0.2 * foo.s2, 0.0)
         ppt_net1 = np.maximum(foo_day.precip - 0.2 * foo.s1, 0.0)
         foo.sro = 0.25 * (
-            (ppt_net4 * ppt_net4) / (foo_day.precip + 0.8 * foo.s4) +
-            (ppt_net3 * ppt_net3) / (foo_day.precip + 0.8 * foo.s3) +
-            (ppt_net2 * ppt_net2) / (foo_day.precip + 0.8 * foo.s2) +
-            (ppt_net1 * ppt_net1) / (foo_day.precip + 0.8 * foo.s1)
+            (ppt_net4 * ppt_net4) / (foo_day.precip + 0.8 * foo.s4)
+            + (ppt_net3 * ppt_net3) / (foo_day.precip + 0.8 * foo.s3)
+            + (ppt_net2 * ppt_net2) / (foo_day.precip + 0.8 * foo.s2)
+            + (ppt_net1 * ppt_net1) / (foo_day.precip + 0.8 * foo.s1)
         )
         foo.s4 = foo.s3
         foo.s3 = foo.s2

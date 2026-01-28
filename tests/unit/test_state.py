@@ -9,13 +9,12 @@ Tests verify:
 """
 
 import numpy as np
-import pytest
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 from swimrs.process.state import (
-    WaterBalanceState,
-    FieldProperties,
     CalibrationParameters,
+    FieldProperties,
+    WaterBalanceState,
 )
 
 
@@ -199,9 +198,7 @@ class TestCalibrationParameters:
             "swe_alpha": np.array([1.5, 1.5, 1.5]),
         }
 
-        params = CalibrationParameters.from_base_with_multipliers(
-            base, multipliers
-        )
+        params = CalibrationParameters.from_base_with_multipliers(base, multipliers)
 
         assert_array_almost_equal(params.ndvi_k, [8.4, 7.0, 5.6])
         assert_array_almost_equal(params.swe_alpha, [0.75, 0.75, 0.75])
@@ -242,9 +239,7 @@ class TestCalibrationParameters:
         }
 
         # Should not raise
-        params = CalibrationParameters.from_base_with_multipliers(
-            base, multipliers
-        )
+        params = CalibrationParameters.from_base_with_multipliers(base, multipliers)
 
         # Params should be unchanged from base
         assert_array_equal(params.ndvi_k, base.ndvi_k)

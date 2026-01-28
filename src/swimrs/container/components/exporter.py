@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -17,8 +17,9 @@ from .base import Component
 
 if TYPE_CHECKING:
     import xarray as xr
-    from swimrs.container.state import ContainerState
+
     from swimrs.container.provenance import ProvenanceEvent
+    from swimrs.container.state import ContainerState
 
 
 class Exporter(Component):
@@ -34,7 +35,7 @@ class Exporter(Component):
         container.export.observations("output/obs/", etf_model="ssebop")
     """
 
-    def __init__(self, state: "ContainerState", container=None):
+    def __init__(self, state: ContainerState, container=None):
         """
         Initialize the Exporter.
 
@@ -46,9 +47,9 @@ class Exporter(Component):
 
     def shapefile(
         self,
-        output_path: Union[str, Path],
-        fields: Optional[List[str]] = None,
-    ) -> "ProvenanceEvent":
+        output_path: str | Path,
+        fields: list[str] | None = None,
+    ) -> ProvenanceEvent:
         """
         Export field geometries to shapefile.
 
@@ -126,10 +127,10 @@ class Exporter(Component):
     def csv(
         self,
         path: str,
-        output_dir: Union[str, Path],
+        output_dir: str | Path,
         format: str = "wide",
-        fields: Optional[List[str]] = None,
-    ) -> "ProvenanceEvent":
+        fields: list[str] | None = None,
+    ) -> ProvenanceEvent:
         """
         Export data at a zarr path to CSV files.
 
@@ -184,11 +185,11 @@ class Exporter(Component):
 
     def model_inputs(
         self,
-        output_dir: Union[str, Path],
+        output_dir: str | Path,
         etf_model: str = "ssebop",
         met_source: str = "gridmet",
-        fields: Optional[List[str]] = None,
-    ) -> "ProvenanceEvent":
+        fields: list[str] | None = None,
+    ) -> ProvenanceEvent:
         """
         Export model inputs to directory structure.
 
@@ -264,10 +265,10 @@ class Exporter(Component):
 
     def to_xarray(
         self,
-        output_path: Union[str, Path],
-        variables: Optional[List[str]] = None,
-        fields: Optional[List[str]] = None,
-    ) -> "ProvenanceEvent":
+        output_path: str | Path,
+        variables: list[str] | None = None,
+        fields: list[str] | None = None,
+    ) -> ProvenanceEvent:
         """
         Export data as a NetCDF file via xarray.
 
@@ -279,7 +280,6 @@ class Exporter(Component):
         Returns:
             ProvenanceEvent recording the operation
         """
-        import xarray as xr
 
         output_path = Path(output_path)
 
@@ -303,7 +303,9 @@ class Exporter(Component):
                 target=str(output_path),
                 source_format="netcdf",
                 params={"variables": variables or list(ds.data_vars)},
-                fields_affected=list(ds.coords.get("site", {}).values) if "site" in ds.coords else [],
+                fields_affected=list(ds.coords.get("site", {}).values)
+                if "site" in ds.coords
+                else [],
             )
 
             return event
@@ -311,7 +313,7 @@ class Exporter(Component):
     def to_dataframe(
         self,
         path: str,
-        fields: Optional[List[str]] = None,
+        fields: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Export a single variable as a pandas DataFrame.
@@ -328,14 +330,14 @@ class Exporter(Component):
 
     def observations(
         self,
-        output_dir: Union[str, Path],
+        output_dir: str | Path,
         etf_model: str = "ssebop",
-        masks: Tuple[str, ...] = ("irr", "inv_irr"),
+        masks: tuple[str, ...] = ("irr", "inv_irr"),
         irr_threshold: float = 0.1,
-        fields: Optional[List[str]] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> "ProvenanceEvent":
+        fields: list[str] | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> ProvenanceEvent:
         """
         Export observation files for model calibration.
 
@@ -383,8 +385,7 @@ class Exporter(Component):
                 etf_path = f"remote_sensing/etf/landsat/{etf_model}/{mask}"
                 if etf_path in self._state.root:
                     etf_data[mask] = self._state.get_xarray(
-                        etf_path, fields=target_fields,
-                        start_date=start_date, end_date=end_date
+                        etf_path, fields=target_fields, start_date=start_date, end_date=end_date
                     )
 
             # Load SWE data
@@ -393,8 +394,7 @@ class Exporter(Component):
                 swe_path = f"snow/{source}/swe"
                 if swe_path in self._state.root:
                     swe_data = self._state.get_xarray(
-                        swe_path, fields=target_fields,
-                        start_date=start_date, end_date=end_date
+                        swe_path, fields=target_fields, start_date=start_date, end_date=end_date
                     )
                     break
 
@@ -447,12 +447,12 @@ class Exporter(Component):
     def _build_switched_etf(
         self,
         fid: str,
-        etf_data: Dict[str, "xr.DataArray"],
-        irr_data: Dict[str, Dict],
-        masks: Tuple[str, ...],
+        etf_data: dict[str, xr.DataArray],
+        irr_data: dict[str, dict],
+        masks: tuple[str, ...],
         irr_threshold: float,
         time_index: pd.DatetimeIndex,
-    ) -> Optional[np.ndarray]:
+    ) -> np.ndarray | None:
         """
         Build ETf array with mask switching based on irrigation status.
 
@@ -508,7 +508,7 @@ class Exporter(Component):
     # Helper Methods
     # -------------------------------------------------------------------------
 
-    def _get_properties_dict(self, fields: List[str]) -> Dict[str, Dict]:
+    def _get_properties_dict(self, fields: list[str]) -> dict[str, dict]:
         """
         Get field properties as a dictionary.
 
@@ -568,7 +568,7 @@ class Exporter(Component):
 
         return props
 
-    def _get_dynamics_dict(self, fields: List[str]) -> Dict[str, Dict]:
+    def _get_dynamics_dict(self, fields: list[str]) -> dict[str, dict]:
         """Get dynamics data for all fields as a dictionary."""
         dynamics = {"irr": {}, "gwsub": {}, "ke_max": {}, "kc_max": {}}
 
@@ -595,7 +595,7 @@ class Exporter(Component):
                         idx = self._state._uid_to_index[field_uid]
                         data = arr[idx]
                         # zarr v3 returns 0-d ndarray for scalar indexing
-                        if hasattr(data, 'item'):
+                        if hasattr(data, "item"):
                             data = data.item()
                         if data is not None and data != "":
                             try:

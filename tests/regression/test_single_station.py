@@ -9,7 +9,6 @@ Run with: pytest tests/test_container_single_station.py -v
 
 import json
 from pathlib import Path
-from typing import Any, Dict
 
 import numpy as np
 import pytest
@@ -20,11 +19,9 @@ pytestmark = [pytest.mark.regression, pytest.mark.slow]
 from conftest import (
     compare_json_with_tolerance,
     compare_scalars_with_tolerance,
-    create_test_container,
     get_container_dynamics_values,
     load_golden_json,
 )
-
 
 # =============================================================================
 # Test Constants
@@ -39,6 +36,7 @@ END_DATE = "2022-12-31"
 # =============================================================================
 # Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def s2_shapefile(s2_fixture_path) -> Path:
@@ -73,6 +71,7 @@ def s2_has_input_data(s2_input_dir) -> bool:
 # =============================================================================
 # Container Creation Tests
 # =============================================================================
+
 
 class TestContainerCreation:
     """Tests for SwimContainer creation with S2 data."""
@@ -130,6 +129,7 @@ class TestContainerCreation:
 # =============================================================================
 # Data Ingestion Tests
 # =============================================================================
+
 
 class TestDataIngestion:
     """Tests for data ingestion into S2 container."""
@@ -270,6 +270,7 @@ class TestDataIngestion:
 # Dynamics Computation Tests
 # =============================================================================
 
+
 class TestDynamicsComputation:
     """Tests for dynamics computation against golden files."""
 
@@ -291,8 +292,6 @@ class TestDynamicsComputation:
             pytest.skip("Golden files not found - run generate_golden_files.py first")
         if not s2_has_input_data:
             pytest.skip("S2 input data not found")
-
-        from swimrs.container import SwimContainer
 
         # Load golden ke_max
         golden_ke = load_golden_json(s2_golden_dir, "ke_max")
@@ -316,7 +315,8 @@ class TestDynamicsComputation:
         expected_ke = golden_ke.get(S2_UID, golden_ke.get("S2"))
 
         compare_scalars_with_tolerance(
-            actual_ke, expected_ke,
+            actual_ke,
+            expected_ke,
             rtol=tolerance["rtol"],
             atol=tolerance["atol"],
             name="ke_max",
@@ -343,8 +343,6 @@ class TestDynamicsComputation:
         if not s2_has_input_data:
             pytest.skip("S2 input data not found")
 
-        from swimrs.container import SwimContainer
-
         # Load golden kc_max
         golden_kc = load_golden_json(s2_golden_dir, "kc_max")
 
@@ -367,7 +365,8 @@ class TestDynamicsComputation:
         expected_kc = golden_kc.get(S2_UID, golden_kc.get("S2"))
 
         compare_scalars_with_tolerance(
-            actual_kc, expected_kc,
+            actual_kc,
+            expected_kc,
             rtol=tolerance["rtol"],
             atol=tolerance["atol"],
             name="kc_max",
@@ -394,8 +393,6 @@ class TestDynamicsComputation:
         if not s2_has_input_data:
             pytest.skip("S2 input data not found")
 
-        from swimrs.container import SwimContainer
-
         # Load golden irr_data
         golden_irr = load_golden_json(s2_golden_dir, "irr_data")
 
@@ -417,7 +414,7 @@ class TestDynamicsComputation:
         irr_arr = container._state.root[irr_path]
         actual_irr_json = irr_arr[0]
         # Handle zarr v3 ndarray returns
-        if hasattr(actual_irr_json, 'item'):
+        if hasattr(actual_irr_json, "item"):
             actual_irr_json = actual_irr_json.item()
         actual_irr = json.loads(actual_irr_json) if actual_irr_json else None
 
@@ -425,7 +422,8 @@ class TestDynamicsComputation:
 
         # Compare structure and key values
         compare_json_with_tolerance(
-            actual_irr, expected_irr,
+            actual_irr,
+            expected_irr,
             rtol=tolerance["rtol"],
             atol=tolerance["atol"],
         )
@@ -451,8 +449,6 @@ class TestDynamicsComputation:
         if not s2_has_input_data:
             pytest.skip("S2 input data not found")
 
-        from swimrs.container import SwimContainer
-
         # Load golden gwsub_data
         golden_gwsub = load_golden_json(s2_golden_dir, "gwsub_data")
 
@@ -474,7 +470,7 @@ class TestDynamicsComputation:
         gwsub_arr = container._state.root[gwsub_path]
         actual_gwsub_json = gwsub_arr[0]
         # Handle zarr v3 ndarray returns
-        if hasattr(actual_gwsub_json, 'item'):
+        if hasattr(actual_gwsub_json, "item"):
             actual_gwsub_json = actual_gwsub_json.item()
         actual_gwsub = json.loads(actual_gwsub_json) if actual_gwsub_json else None
 
@@ -482,7 +478,8 @@ class TestDynamicsComputation:
 
         # Compare structure and key values
         compare_json_with_tolerance(
-            actual_gwsub, expected_gwsub,
+            actual_gwsub,
+            expected_gwsub,
             rtol=tolerance["rtol"],
             atol=tolerance["atol"],
         )
@@ -493,6 +490,7 @@ class TestDynamicsComputation:
 # =============================================================================
 # Full Workflow Test
 # =============================================================================
+
 
 class TestFullWorkflow:
     """End-to-end workflow test."""
@@ -516,8 +514,6 @@ class TestFullWorkflow:
             pytest.skip("Golden files not found")
         if not s2_has_input_data:
             pytest.skip("S2 input data not found")
-
-        from swimrs.container import SwimContainer
 
         # Create container
         container = _create_full_s2_container(s2_shapefile, s2_input_dir, tmp_path)
@@ -543,14 +539,16 @@ class TestFullWorkflow:
 
                 if isinstance(actual_value, (int, float)):
                     compare_scalars_with_tolerance(
-                        actual_value, expected_value,
+                        actual_value,
+                        expected_value,
                         rtol=tolerance["rtol"],
                         atol=tolerance["atol"],
                         name=name,
                     )
                 else:
                     compare_json_with_tolerance(
-                        actual_value, expected_value,
+                        actual_value,
+                        expected_value,
                         rtol=tolerance["rtol"],
                     )
 
@@ -560,6 +558,7 @@ class TestFullWorkflow:
 # =============================================================================
 # Properties Ingestion Tests
 # =============================================================================
+
 
 class TestPropertiesIngestion:
     """Tests for static property ingestion into S2 container."""
@@ -693,7 +692,7 @@ class TestPropertiesIngestion:
 
         yearly_json = container._state.root[yearly_path][0]
         # Handle zarr v3 ndarray returns
-        if hasattr(yearly_json, 'item'):
+        if hasattr(yearly_json, "item"):
             yearly_json = yearly_json.item()
         assert yearly_json, "Yearly irrigation JSON should not be empty"
 
@@ -761,6 +760,7 @@ class TestPropertiesIngestion:
 # =============================================================================
 # Query Tests
 # =============================================================================
+
 
 class TestQuery:
     """Tests for container query operations."""
@@ -846,15 +846,18 @@ class TestQuery:
 
         container.close()
 
-    def test_dataframe_returns_pandas(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+    def test_dataframe_returns_pandas(
+        self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path
+    ):
         """dataframe() returns a pandas DataFrame with correct structure."""
         if not s2_shapefile.exists():
             pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
         if not s2_has_input_data:
             pytest.skip("S2 input data not found")
 
-        from swimrs.container import SwimContainer
         import pandas as pd
+
+        from swimrs.container import SwimContainer
 
         container_path = tmp_path / "test.swim"
         container = SwimContainer.create(
@@ -885,15 +888,18 @@ class TestQuery:
 
         container.close()
 
-    def test_xarray_returns_dataarray(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+    def test_xarray_returns_dataarray(
+        self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path
+    ):
         """xarray() returns an xarray DataArray with correct coordinates."""
         if not s2_shapefile.exists():
             pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
         if not s2_has_input_data:
             pytest.skip("S2 input data not found")
 
-        from swimrs.container import SwimContainer
         import xarray as xr
+
+        from swimrs.container import SwimContainer
 
         container_path = tmp_path / "test.swim"
         container = SwimContainer.create(
@@ -929,6 +935,7 @@ class TestQuery:
 # =============================================================================
 # Error Handling Tests
 # =============================================================================
+
 
 class TestErrorHandling:
     """Tests for error handling and edge cases."""
@@ -1022,7 +1029,9 @@ class TestErrorHandling:
         with pytest.raises(FileNotFoundError, match="not found"):
             SwimContainer.open(str(nonexistent_path))
 
-    def test_ingest_ndvi_fails_without_overwrite(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+    def test_ingest_ndvi_fails_without_overwrite(
+        self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path
+    ):
         """Re-ingesting NDVI without overwrite raises error."""
         if not s2_shapefile.exists():
             pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
@@ -1064,9 +1073,11 @@ class TestErrorHandling:
 
     @pytest.mark.xfail(
         reason="ZipStore in zarr v3 does not support overwriting existing arrays. "
-               "See ContainsArrayError when _safe_delete_path fails to remove arrays."
+        "See ContainsArrayError when _safe_delete_path fails to remove arrays."
     )
-    def test_ingest_ndvi_succeeds_with_overwrite(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+    def test_ingest_ndvi_succeeds_with_overwrite(
+        self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path
+    ):
         """Re-ingesting NDVI with overwrite=True succeeds."""
         if not s2_shapefile.exists():
             pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
@@ -1127,7 +1138,9 @@ class TestErrorHandling:
 
         container.close()
 
-    def test_read_only_container_prevents_writes(self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path):
+    def test_read_only_container_prevents_writes(
+        self, s2_shapefile, s2_input_dir, s2_has_input_data, tmp_path
+    ):
         """Container opened in read-only mode prevents ingestion."""
         if not s2_shapefile.exists():
             pytest.skip(f"S2 shapefile not found: {s2_shapefile}")
@@ -1167,6 +1180,7 @@ class TestErrorHandling:
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
 
 def _create_full_s2_container(shapefile: Path, input_dir: Path, tmp_path: Path):
     """Create and populate S2 container with all input data."""

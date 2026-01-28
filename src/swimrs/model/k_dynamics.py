@@ -9,7 +9,7 @@ def ke_damper(swb):
     """
     kr_current = np.clip((swb.tew - swb.depl_ze) / (swb.tew - swb.rew + 1e-6), 0.0, 1.0)
 
-    if not hasattr(swb, 'kr_prev'):
+    if not hasattr(swb, "kr_prev"):
         swb.kr_prev = kr_current
 
     kr_change = kr_current - swb.kr_prev
@@ -25,7 +25,7 @@ def ke_momentum(swb):
     """Compute Ke using a momentum-based update of the Kr term."""
     kr_current = np.clip((swb.tew - swb.depl_ze) / (swb.tew - swb.rew + 1e-6), 0.0, 1.0)
 
-    if not hasattr(swb, 'kr_prev_delta'):
+    if not hasattr(swb, "kr_prev_delta"):
         swb.kr_prev = kr_current
         swb.kr_prev_delta = 0.0
 
@@ -64,10 +64,13 @@ def ks_damper(swb):
     Applies a linear damping factor `ks_alpha` to transitions in Ks, with Ks
     defined as a function of depletion (`depl_root`), TAW, and RAW.
     """
-    ks_current = np.where(swb.depl_root > swb.raw,
-                          np.clip((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0.0, 1.0), 1)
+    ks_current = np.where(
+        swb.depl_root > swb.raw,
+        np.clip((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0.0, 1.0),
+        1,
+    )
 
-    if not hasattr(swb, 'ks_prev'):
+    if not hasattr(swb, "ks_prev"):
         swb.ks_prev = ks_current
 
     ks_change = ks_current - swb.ks_prev
@@ -78,10 +81,13 @@ def ks_damper(swb):
 
 def ks_momentum(swb):
     """Compute Ks using a momentum-based update of prior-day changes."""
-    ks_current = np.where(swb.depl_root > swb.raw,
-                          np.clip((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0.0, 1.0), 1)
+    ks_current = np.where(
+        swb.depl_root > swb.raw,
+        np.clip((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0.0, 1.0),
+        1,
+    )
 
-    if not hasattr(swb, 'ks_prev_delta'):
+    if not hasattr(swb, "ks_prev_delta"):
         swb.ks_prev = ks_current
         swb.ks_prev_delta = 0.0
 
@@ -94,10 +100,13 @@ def ks_momentum(swb):
 
 def ks_exponential(swb):
     """Compute Ks with an exponential decay relative to prior state."""
-    ks_current = np.where(swb.depl_root > swb.raw,
-                          np.clip((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0.0, 1.0), 1)
+    ks_current = np.where(
+        swb.depl_root > swb.raw,
+        np.clip((swb.taw - swb.depl_root) / (swb.taw - swb.raw), 0.0, 1.0),
+        1,
+    )
 
-    if not hasattr(swb, 'ks_prev'):
+    if not hasattr(swb, "ks_prev"):
         swb.ks_prev = ks_current
 
     swb.ks = ks_current * np.exp(-swb.ks_alpha * swb.ks_prev)

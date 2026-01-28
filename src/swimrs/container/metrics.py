@@ -13,11 +13,9 @@ making it easier to track and optimize long-running data operations.
 from __future__ import annotations
 
 import time
-import traceback
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from swimrs.container.provenance import ProvenanceLog
@@ -51,9 +49,9 @@ class OperationMetrics:
     missing_value_count: int = 0
     fields_processed: int = 0
     fields_skipped: int = 0
-    peak_memory_mb: Optional[float] = None
-    warnings: List[str] = field(default_factory=list)
-    error: Optional[str] = None
+    peak_memory_mb: float | None = None
+    warnings: list[str] = field(default_factory=list)
+    error: str | None = None
 
     @property
     def success(self) -> bool:
@@ -68,7 +66,7 @@ class OperationMetrics:
             return 1.0
         return self.records_processed / total
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert metrics to dictionary for serialization."""
         return {
             "duration_seconds": round(self.duration_seconds, 3),
@@ -126,10 +124,10 @@ class OperationContext:
 
     def __init__(
         self,
-        provenance: "ProvenanceLog",
+        provenance: ProvenanceLog,
         operation: str,
-        target: Optional[str] = None,
-        source: Optional[str] = None,
+        target: str | None = None,
+        source: str | None = None,
         **extra_params: Any,
     ):
         """
@@ -154,19 +152,19 @@ class OperationContext:
         self.missing_value_count: int = 0
         self.fields_processed: int = 0
         self.fields_skipped: int = 0
-        self.fields_affected: List[str] = []
-        self.warnings: List[str] = []
+        self.fields_affected: list[str] = []
+        self.warnings: list[str] = []
 
         # Internal state
-        self._start_time: Optional[float] = None
-        self._start_memory: Optional[float] = None
-        self._metrics: Optional[OperationMetrics] = None
+        self._start_time: float | None = None
+        self._start_memory: float | None = None
+        self._metrics: OperationMetrics | None = None
 
     def add_warning(self, message: str) -> None:
         """Add a warning message to the operation."""
         self.warnings.append(message)
 
-    def __enter__(self) -> "OperationContext":
+    def __enter__(self) -> OperationContext:
         """Start timing and memory tracking."""
         self._start_time = time.perf_counter()
         self._start_memory = self._get_memory_usage()
@@ -225,14 +223,15 @@ class OperationContext:
         return False
 
     @property
-    def metrics(self) -> Optional[OperationMetrics]:
+    def metrics(self) -> OperationMetrics | None:
         """Get the collected metrics (available after context exit)."""
         return self._metrics
 
-    def _get_memory_usage(self) -> Optional[float]:
+    def _get_memory_usage(self) -> float | None:
         """Get current memory usage in MB."""
         try:
             import psutil
+
             process = psutil.Process()
             return process.memory_info().rss / (1024 * 1024)
         except ImportError:
@@ -243,10 +242,10 @@ class OperationContext:
 
 @contextmanager
 def track_operation(
-    provenance: "ProvenanceLog",
+    provenance: ProvenanceLog,
     operation: str,
-    target: Optional[str] = None,
-    source: Optional[str] = None,
+    target: str | None = None,
+    source: str | None = None,
     **params: Any,
 ):
     """
@@ -294,7 +293,7 @@ class MetricsSummary:
     total_duration_seconds: float = 0.0
     total_records_processed: int = 0
     total_missing_values: int = 0
-    operations_by_type: Dict[str, int] = field(default_factory=dict)
+    operations_by_type: dict[str, int] = field(default_factory=dict)
 
     def add_operation(self, operation: str, metrics: OperationMetrics) -> None:
         """Add an operation's metrics to the summary."""
@@ -347,7 +346,7 @@ class MetricsCollector:
     """
 
     def __init__(self):
-        self._operations: List[tuple] = []  # (operation, metrics)
+        self._operations: list[tuple] = []  # (operation, metrics)
 
     def add(self, operation: str, metrics: OperationMetrics) -> None:
         """Add operation metrics."""
@@ -357,9 +356,9 @@ class MetricsCollector:
     def track(
         self,
         operation: str,
-        provenance: "ProvenanceLog",
-        target: Optional[str] = None,
-        source: Optional[str] = None,
+        provenance: ProvenanceLog,
+        target: str | None = None,
+        source: str | None = None,
         **params: Any,
     ):
         """

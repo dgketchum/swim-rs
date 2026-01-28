@@ -30,8 +30,6 @@ Usage
 """
 
 import argparse
-import os
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -40,11 +38,11 @@ import pandas as pd
 
 # Columns to retain from metadata (in order)
 # Note: 'classification' is renamed to 'lc_class' for shapefile 10-char limit
-METADATA_COLUMNS = ['site_id', 'classification', 'state', 'source', 'record', 'lat', 'lon', 'elev']
+METADATA_COLUMNS = ["site_id", "classification", "state", "source", "record", "lat", "lon", "elev"]
 
 # Column name mapping for shapefile format (10 char max)
 SHAPEFILE_COLUMN_MAP = {
-    'classification': 'lc_class',
+    "classification": "lc_class",
 }
 SHAPEFILE_COLUMN_MAP_REVERSE = {v: k for k, v in SHAPEFILE_COLUMN_MAP.items()}
 
@@ -64,7 +62,7 @@ def _write_provenance(output_shp, command, sources, extra_info=None):
         Additional information to include in provenance.
     """
     output_shp = Path(output_shp)
-    provenance_file = output_shp.with_name('shapefile_provenance.txt')
+    provenance_file = output_shp.with_name("shapefile_provenance.txt")
 
     lines = [
         "SHAPEFILE PROVENANCE",
@@ -84,16 +82,18 @@ def _write_provenance(output_shp, command, sources, extra_info=None):
         for key, value in extra_info.items():
             lines.append(f"  {key}: {value}")
 
-    lines.extend([
-        "",
-        "Command:",
-        f"  {command}",
-        "",
-        "=" * 60,
-    ])
+    lines.extend(
+        [
+            "",
+            "Command:",
+            f"  {command}",
+            "",
+            "=" * 60,
+        ]
+    )
 
-    with open(provenance_file, 'w') as f:
-        f.write('\n'.join(lines) + '\n')
+    with open(provenance_file, "w") as f:
+        f.write("\n".join(lines) + "\n")
 
     print(f"  Provenance written to: {provenance_file}")
 
@@ -110,10 +110,10 @@ def _shp_columns(gdf):
 
 def _get_classification_col(gdf):
     """Get the classification column name (handles both standard and shapefile names)."""
-    if 'classification' in gdf.columns:
-        return 'classification'
-    elif 'lc_class' in gdf.columns:
-        return 'lc_class'
+    if "classification" in gdf.columns:
+        return "classification"
+    elif "lc_class" in gdf.columns:
+        return "lc_class"
     else:
         raise KeyError("No classification column found (tried 'classification' and 'lc_class')")
 
@@ -146,13 +146,17 @@ def create_master_shapefile(footprints_shp, metadata_csv, output_shp, overwrite=
 
     # Load footprints
     footprints = gpd.read_file(footprints_shp)
-    if 'site_id' not in footprints.columns:
-        raise ValueError(f"Footprints shapefile must have 'site_id' column. Found: {list(footprints.columns)}")
+    if "site_id" not in footprints.columns:
+        raise ValueError(
+            f"Footprints shapefile must have 'site_id' column. Found: {list(footprints.columns)}"
+        )
 
     # Load metadata
     metadata = pd.read_csv(metadata_csv)
-    if 'site_id' not in metadata.columns:
-        raise ValueError(f"Metadata CSV must have 'site_id' column. Found: {list(metadata.columns)}")
+    if "site_id" not in metadata.columns:
+        raise ValueError(
+            f"Metadata CSV must have 'site_id' column. Found: {list(metadata.columns)}"
+        )
 
     # Check for required columns
     missing = [c for c in METADATA_COLUMNS if c not in metadata.columns]
@@ -163,15 +167,15 @@ def create_master_shapefile(footprints_shp, metadata_csv, output_shp, overwrite=
     metadata = metadata[METADATA_COLUMNS].copy()
 
     # Merge on site_id (inner join keeps only common stations)
-    merged = footprints.merge(metadata, on='site_id', how='inner', suffixes=('_fp', '_meta'))
+    merged = footprints.merge(metadata, on="site_id", how="inner", suffixes=("_fp", "_meta"))
 
     # Handle duplicate 'state' column (prefer metadata version)
-    if 'state_fp' in merged.columns and 'state_meta' in merged.columns:
-        merged['state'] = merged['state_meta']
-        merged.drop(columns=['state_fp', 'state_meta'], inplace=True)
+    if "state_fp" in merged.columns and "state_meta" in merged.columns:
+        merged["state"] = merged["state_meta"]
+        merged.drop(columns=["state_fp", "state_meta"], inplace=True)
 
     # Keep only the final columns we want
-    final_columns = METADATA_COLUMNS + ['geometry']
+    final_columns = METADATA_COLUMNS + ["geometry"]
     merged = merged[[c for c in final_columns if c in merged.columns]]
 
     # Ensure CRS is set (use footprints CRS)
@@ -200,13 +204,13 @@ def create_master_shapefile(footprints_shp, metadata_csv, output_shp, overwrite=
         output_shp,
         command,
         sources={
-            'footprints': str(Path(footprints_shp).resolve()),
-            'metadata': str(Path(metadata_csv).resolve()),
+            "footprints": str(Path(footprints_shp).resolve()),
+            "metadata": str(Path(metadata_csv).resolve()),
         },
         extra_info={
-            'stations_count': len(merged),
-            'crs': str(merged.crs),
-        }
+            "stations_count": len(merged),
+            "crs": str(merged.crs),
+        },
     )
 
     return merged
@@ -240,14 +244,16 @@ def extract_stations(master_shp, site_ids, output_shp, overwrite=False):
     master = gpd.read_file(master_shp)
 
     # Filter to requested sites
-    extracted = master[master['site_id'].isin(site_ids)].copy()
+    extracted = master[master["site_id"].isin(site_ids)].copy()
 
     if len(extracted) == 0:
-        available = master['site_id'].tolist()
-        raise ValueError(f"No matching stations found. Requested: {site_ids}. Available: {available[:10]}...")
+        available = master["site_id"].tolist()
+        raise ValueError(
+            f"No matching stations found. Requested: {site_ids}. Available: {available[:10]}..."
+        )
 
     # Check for missing sites
-    found = set(extracted['site_id'].tolist())
+    found = set(extracted["site_id"].tolist())
     missing = set(site_ids) - found
     if missing:
         print(f"  Warning: {len(missing)} site(s) not found: {list(missing)}")
@@ -259,11 +265,11 @@ def extract_stations(master_shp, site_ids, output_shp, overwrite=False):
     extracted.to_file(output_shp)
 
     print(f"Extracted {len(extracted)} station(s) to: {output_shp}")
-    for sid in extracted['site_id']:
+    for sid in extracted["site_id"]:
         print(f"  - {sid}")
 
     # Write provenance
-    sites_str = ' '.join(site_ids)
+    sites_str = " ".join(site_ids)
     command = f"python -m swimrs.utils.flux_stations extract --master {master_shp} --sites {sites_str} --output {output_shp}"
     if overwrite:
         command += " --overwrite"
@@ -271,13 +277,13 @@ def extract_stations(master_shp, site_ids, output_shp, overwrite=False):
         output_shp,
         command,
         sources={
-            'master': str(Path(master_shp).resolve()),
+            "master": str(Path(master_shp).resolve()),
         },
         extra_info={
-            'sites_requested': ', '.join(site_ids),
-            'sites_extracted': ', '.join(extracted['site_id'].tolist()),
-            'stations_count': len(extracted),
-        }
+            "sites_requested": ", ".join(site_ids),
+            "sites_extracted": ", ".join(extracted["site_id"].tolist()),
+            "stations_count": len(extracted),
+        },
     )
 
     return extracted
@@ -316,7 +322,9 @@ def filter_by_classification(master_shp, classification, output_shp, overwrite=F
 
     if len(filtered) == 0:
         available = master[cls_col].unique().tolist()
-        raise ValueError(f"No stations with classification '{classification}'. Available: {available}")
+        raise ValueError(
+            f"No stations with classification '{classification}'. Available: {available}"
+        )
 
     # Create output directory if needed
     output_shp.parent.mkdir(parents=True, exist_ok=True)
@@ -334,13 +342,13 @@ def filter_by_classification(master_shp, classification, output_shp, overwrite=F
         output_shp,
         command,
         sources={
-            'master': str(Path(master_shp).resolve()),
+            "master": str(Path(master_shp).resolve()),
         },
         extra_info={
-            'classification': classification,
-            'sites_extracted': ', '.join(filtered['site_id'].tolist()),
-            'stations_count': len(filtered),
-        }
+            "classification": classification,
+            "sites_extracted": ", ".join(filtered["site_id"].tolist()),
+            "stations_count": len(filtered),
+        },
     )
 
     return filtered
@@ -368,7 +376,7 @@ def list_stations(master_shp, classification=None):
         master = master[master[cls_col] == classification]
 
     # Drop geometry for display
-    info = master.drop(columns=['geometry'])
+    info = master.drop(columns=["geometry"])
 
     return info
 
@@ -388,84 +396,73 @@ def print_summary(master_shp):
         print(f"  {cls}: {count}")
 
     print("\nState counts:")
-    for state, count in master['state'].value_counts().head(10).items():
+    for state, count in master["state"].value_counts().head(10).items():
         print(f"  {state}: {count}")
-    if len(master['state'].unique()) > 10:
+    if len(master["state"].unique()) > 10:
         print(f"  ... and {len(master['state'].unique()) - 10} more states")
 
 
 def main():
     """CLI entrypoint."""
     parser = argparse.ArgumentParser(
-        description='Manage flux stations master shapefile',
+        description="Manage flux stations master shapefile",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
-    subparsers = parser.add_subparsers(dest='command', help='Command to run')
+    subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     # Create command
-    create_parser = subparsers.add_parser('create', help='Create master shapefile')
-    create_parser.add_argument('--footprints', required=True, help='Footprints shapefile')
-    create_parser.add_argument('--metadata', required=True, help='Metadata CSV')
-    create_parser.add_argument('--output', required=True, help='Output shapefile path')
-    create_parser.add_argument('--overwrite', action='store_true', help='Overwrite existing')
+    create_parser = subparsers.add_parser("create", help="Create master shapefile")
+    create_parser.add_argument("--footprints", required=True, help="Footprints shapefile")
+    create_parser.add_argument("--metadata", required=True, help="Metadata CSV")
+    create_parser.add_argument("--output", required=True, help="Output shapefile path")
+    create_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing")
 
     # List command
-    list_parser = subparsers.add_parser('list', help='List stations')
-    list_parser.add_argument('--master', required=True, help='Master shapefile')
-    list_parser.add_argument('--classification', help='Filter by classification')
-    list_parser.add_argument('--verbose', '-v', action='store_true', help='Show all columns')
+    list_parser = subparsers.add_parser("list", help="List stations")
+    list_parser.add_argument("--master", required=True, help="Master shapefile")
+    list_parser.add_argument("--classification", help="Filter by classification")
+    list_parser.add_argument("--verbose", "-v", action="store_true", help="Show all columns")
 
     # Extract command
-    extract_parser = subparsers.add_parser('extract', help='Extract specific stations')
-    extract_parser.add_argument('--master', required=True, help='Master shapefile')
-    extract_parser.add_argument('--sites', nargs='+', required=True, help='Site IDs to extract')
-    extract_parser.add_argument('--output', required=True, help='Output shapefile path')
-    extract_parser.add_argument('--overwrite', action='store_true', help='Overwrite existing')
+    extract_parser = subparsers.add_parser("extract", help="Extract specific stations")
+    extract_parser.add_argument("--master", required=True, help="Master shapefile")
+    extract_parser.add_argument("--sites", nargs="+", required=True, help="Site IDs to extract")
+    extract_parser.add_argument("--output", required=True, help="Output shapefile path")
+    extract_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing")
 
     # Filter command
-    filter_parser = subparsers.add_parser('filter', help='Filter by classification')
-    filter_parser.add_argument('--master', required=True, help='Master shapefile')
-    filter_parser.add_argument('--classification', required=True, help='Classification to filter')
-    filter_parser.add_argument('--output', required=True, help='Output shapefile path')
-    filter_parser.add_argument('--overwrite', action='store_true', help='Overwrite existing')
+    filter_parser = subparsers.add_parser("filter", help="Filter by classification")
+    filter_parser.add_argument("--master", required=True, help="Master shapefile")
+    filter_parser.add_argument("--classification", required=True, help="Classification to filter")
+    filter_parser.add_argument("--output", required=True, help="Output shapefile path")
+    filter_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing")
 
     args = parser.parse_args()
 
-    if args.command == 'create':
+    if args.command == "create":
         create_master_shapefile(
-            args.footprints,
-            args.metadata,
-            args.output,
-            overwrite=args.overwrite
+            args.footprints, args.metadata, args.output, overwrite=args.overwrite
         )
 
-    elif args.command == 'list':
+    elif args.command == "list":
         if args.verbose:
             info = list_stations(args.master, args.classification)
             print(info.to_string())
         else:
             print_summary(args.master)
 
-    elif args.command == 'extract':
-        extract_stations(
-            args.master,
-            args.sites,
-            args.output,
-            overwrite=args.overwrite
-        )
+    elif args.command == "extract":
+        extract_stations(args.master, args.sites, args.output, overwrite=args.overwrite)
 
-    elif args.command == 'filter':
+    elif args.command == "filter":
         filter_by_classification(
-            args.master,
-            args.classification,
-            args.output,
-            overwrite=args.overwrite
+            args.master, args.classification, args.output, overwrite=args.overwrite
         )
 
     else:
         parser.print_help()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

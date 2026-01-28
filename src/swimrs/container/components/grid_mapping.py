@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union
 
 import pandas as pd
 
@@ -44,7 +43,7 @@ class GridMapping:
 
     def __init__(
         self,
-        uid_to_grid: Dict[str, Union[int, str]],
+        uid_to_grid: dict[str, int | str],
         source_name: str = "grid",
     ):
         """
@@ -58,18 +57,18 @@ class GridMapping:
         self.source_name = source_name
 
         # Build reverse mapping: grid_id -> [uids]
-        self.grid_to_uids: Dict[Union[int, str], List[str]] = defaultdict(list)
+        self.grid_to_uids: dict[int | str, list[str]] = defaultdict(list)
         for uid, grid_id in uid_to_grid.items():
             self.grid_to_uids[grid_id].append(uid)
 
     @classmethod
     def from_shapefile(
         cls,
-        shapefile: Union[str, Path],
+        shapefile: str | Path,
         uid_column: str,
         grid_column: str,
         source_name: str = "grid",
-    ) -> "GridMapping":
+    ) -> GridMapping:
         """
         Create mapping from a shapefile with UID and grid ID columns.
 
@@ -95,11 +94,15 @@ class GridMapping:
         gdf = gpd.read_file(shapefile)
 
         if uid_column not in gdf.columns:
-            raise KeyError(f"UID column '{uid_column}' not found in shapefile. "
-                          f"Available columns: {list(gdf.columns)}")
+            raise KeyError(
+                f"UID column '{uid_column}' not found in shapefile. "
+                f"Available columns: {list(gdf.columns)}"
+            )
         if grid_column not in gdf.columns:
-            raise KeyError(f"Grid column '{grid_column}' not found in shapefile. "
-                          f"Available columns: {list(gdf.columns)}")
+            raise KeyError(
+                f"Grid column '{grid_column}' not found in shapefile. "
+                f"Available columns: {list(gdf.columns)}"
+            )
 
         uid_to_grid = {}
         for _, row in gdf.iterrows():
@@ -116,9 +119,9 @@ class GridMapping:
     @classmethod
     def from_json(
         cls,
-        json_path: Union[str, Path],
+        json_path: str | Path,
         source_name: str = "grid",
-    ) -> "GridMapping":
+    ) -> GridMapping:
         """
         Create mapping from a JSON file.
 
@@ -149,7 +152,7 @@ class GridMapping:
         uid_column: str,
         grid_column: str,
         source_name: str = "grid",
-    ) -> "GridMapping":
+    ) -> GridMapping:
         """
         Create mapping from a pandas DataFrame.
 
@@ -173,7 +176,7 @@ class GridMapping:
 
         return cls(uid_to_grid, source_name)
 
-    def get_grid_id(self, uid: str) -> Optional[Union[int, str]]:
+    def get_grid_id(self, uid: str) -> int | str | None:
         """
         Get grid ID for a field UID.
 
@@ -185,7 +188,7 @@ class GridMapping:
         """
         return self.uid_to_grid.get(uid)
 
-    def get_uids_for_grid(self, grid_id: Union[int, str]) -> List[str]:
+    def get_uids_for_grid(self, grid_id: int | str) -> list[str]:
         """
         Get all field UIDs mapped to a grid cell.
 
@@ -197,7 +200,7 @@ class GridMapping:
         """
         return self.grid_to_uids.get(grid_id, [])
 
-    def filter_to_valid_uids(self, valid_uids: Set[str]) -> "GridMapping":
+    def filter_to_valid_uids(self, valid_uids: set[str]) -> GridMapping:
         """
         Return new mapping containing only the specified UIDs.
 
@@ -209,15 +212,11 @@ class GridMapping:
         Returns:
             New GridMapping with filtered UIDs
         """
-        filtered = {
-            uid: gid
-            for uid, gid in self.uid_to_grid.items()
-            if uid in valid_uids
-        }
+        filtered = {uid: gid for uid, gid in self.uid_to_grid.items() if uid in valid_uids}
         return GridMapping(filtered, self.source_name)
 
     @property
-    def unique_grid_ids(self) -> List[Union[int, str]]:
+    def unique_grid_ids(self) -> list[int | str]:
         """List of unique grid/station IDs in the mapping."""
         return list(self.grid_to_uids.keys())
 
