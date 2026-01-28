@@ -10,7 +10,7 @@ import numpy as np
 from numba import njit, prange
 from numpy.typing import NDArray
 
-__all__ = ["fractional_cover", "exposed_soil_fraction"]
+__all__ = ["fractional_cover", "fractional_cover_from_ndvi", "exposed_soil_fraction"]
 
 
 @njit(cache=True, fastmath=True, parallel=True)
@@ -69,6 +69,68 @@ def fractional_cover(
                 kcb_clipped = kc_min[i]
 
             fc_raw = (kcb_clipped - kc_min[i]) / kc_range
+
+            # Clip to [0, 0.99] range
+            if fc_raw > 0.99:
+                fc[i] = 0.99
+            elif fc_raw < 0.0:
+                fc[i] = 0.0
+            else:
+                fc[i] = fc_raw
+
+    return fc
+
+
+@njit(cache=True, fastmath=True, parallel=True)
+def fractional_cover_from_ndvi(
+    ndvi: NDArray[np.float64],
+    ndvi_bare: NDArray[np.float64],
+    ndvi_full: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """
+    Calculate fractional vegetation cover directly from NDVI.
+
+    fc = (NDVI - NDVIs) / (NDVIv - NDVIs)  # Carlson & Ripley (1997)
+
+    This approach decouples canopy cover from transpiration demand (Kcb),
+    allowing the evaporation shading effect to reflect actual vegetation
+    density rather than the calibrated NDVI-Kcb relationship.
+
+    Physical constraints:
+        - 0 <= fc < 1 (capped at 0.99 for numerical stability)
+        - fc = 0 when NDVI <= NDVIs (bare soil)
+        - fc approaches 1 when NDVI >= NDVIv (full cover)
+
+    Parameters
+    ----------
+    ndvi : (n_fields,)
+        Normalized Difference Vegetation Index, typically [0, 1]
+    ndvi_bare : (n_fields,)
+        NDVI of bare/dormant conditions, typically 5th percentile of site record
+    ndvi_full : (n_fields,)
+        NDVI of full vegetation cover, typically 95th percentile of site record
+
+    Returns
+    -------
+    fc : (n_fields,)
+        Fractional vegetation cover, bounded [0, 0.99]
+
+    References
+    ----------
+    Carlson, T.N. and Ripley, D.A. (1997). On the relation between NDVI,
+    fractional vegetation cover, and leaf area index. Remote Sensing of
+    Environment, 62(3), 241-252.
+    """
+    n = ndvi.shape[0]
+    fc = np.empty(n, dtype=np.float64)
+
+    for i in prange(n):
+        ndvi_range = ndvi_full[i] - ndvi_bare[i]
+        if ndvi_range < 1e-6:
+            # Avoid division by zero
+            fc[i] = 0.0
+        else:
+            fc_raw = (ndvi[i] - ndvi_bare[i]) / ndvi_range
 
             # Clip to [0, 0.99] range
             if fc_raw > 0.99:

@@ -316,6 +316,14 @@ class FieldProperties:
     f_sub : NDArray[np.float64]
         Groundwater subsidy fraction (0-1), derived from ETa/PPT ratio
         where f_sub = (ratio - 1) / ratio when ratio > 1
+    ndvi_bare : NDArray[np.float64]
+        NDVI value representing bare/dormant soil conditions, used for
+        computing fractional cover directly from NDVI. Typically the 5th
+        percentile of the site's NDVI record. Default: 0.15.
+    ndvi_full : NDArray[np.float64]
+        NDVI value representing full vegetation cover, used for computing
+        fractional cover directly from NDVI. Typically the 95th percentile
+        of the site's NDVI record. Default: 0.85.
     """
 
     n_fields: int
@@ -334,6 +342,8 @@ class FieldProperties:
     ke_max: NDArray[np.float64] = field(default=None)
     kc_max: NDArray[np.float64] = field(default=None)
     f_sub: NDArray[np.float64] = field(default=None)
+    ndvi_bare: NDArray[np.float64] = field(default=None)
+    ndvi_full: NDArray[np.float64] = field(default=None)
 
     def __post_init__(self):
         """Initialize arrays with reasonable defaults if not provided."""
@@ -368,6 +378,11 @@ class FieldProperties:
             self.kc_max = np.full(n, 1.25, dtype=np.float64)  # Default: typical crop max
         if self.f_sub is None:
             self.f_sub = np.zeros(n, dtype=np.float64)  # Default: no GW subsidy
+        # NDVI thresholds for fc calculation - Carlson & Ripley (1997)
+        if self.ndvi_bare is None:
+            self.ndvi_bare = np.full(n, 0.15, dtype=np.float64)  # Bare soil NDVI
+        if self.ndvi_full is None:
+            self.ndvi_full = np.full(n, 0.85, dtype=np.float64)  # Full cover NDVI
 
     def compute_taw(self, zr: NDArray[np.float64]) -> NDArray[np.float64]:
         """Compute total available water for given root depth.
