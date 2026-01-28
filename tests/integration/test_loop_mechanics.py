@@ -129,7 +129,7 @@ class TestStepDay:
         )
 
         # ETa <= Kc_max * ETr (with some margin for numerical issues)
-        max_et = params.kc_max * etr
+        max_et = props.kc_max * etr
         assert np.all(result["eta"] <= max_et * 1.01)
 
     def test_snow_partitioning_cold(self, simple_setup):
