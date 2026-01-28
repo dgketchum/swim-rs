@@ -314,9 +314,7 @@ def run_step_with_balance_check(
     )
 
     # Check water balance
-    error = compute_water_balance_error(
-        state_before, state, props, day_out, inputs["prcp"]
-    )
+    error = compute_water_balance_error(state_before, state, props, day_out, inputs["prcp"])
 
     # Get total water for relative tolerance
     water_before = compute_total_water(state_before, props)
@@ -365,16 +363,20 @@ class TestWaterBalanceHelpers:
         # With zero ET and zero precip, very little should change
         state_before = state.copy()
         day_out = step_day(
-            state, props, params,
-            inputs["ndvi"], inputs["etr"], inputs["prcp"],
-            inputs["tmin"], inputs["tmax"], inputs["srad"],
+            state,
+            props,
+            params,
+            inputs["ndvi"],
+            inputs["etr"],
+            inputs["prcp"],
+            inputs["tmin"],
+            inputs["tmax"],
+            inputs["srad"],
             inputs["irr_flag"],
         )
 
         # With perennial and no inputs/outputs, balance should be perfect
-        error = compute_water_balance_error(
-            state_before, state, props, day_out, inputs["prcp"]
-        )
+        error = compute_water_balance_error(state_before, state, props, day_out, inputs["prcp"])
         # May have small numerical error but should be very close to zero
         assert np.abs(error[0]) < 1e-3
 
@@ -654,8 +656,9 @@ class TestIrrigationConservation:
             # Layer 3 should have increased by at least the bypass amount
             # (unless it was already full and overflowed)
             daw3_after = state.daw3[0]
-            assert daw3_after >= daw3_before or day_out["dperc"][0] > 0, \
+            assert daw3_after >= daw3_before or day_out["dperc"][0] > 0, (
                 "Layer 3 should receive bypass water or overflow to dperc"
+            )
 
 
 class TestGroundwaterConservation:
@@ -790,15 +793,19 @@ class TestRootGrowthConservation:
         state_before = state.copy()
 
         day_out = step_day(
-            state, props, params,
-            inputs["ndvi"], inputs["etr"], inputs["prcp"],
-            inputs["tmin"], inputs["tmax"], inputs["srad"],
+            state,
+            props,
+            params,
+            inputs["ndvi"],
+            inputs["etr"],
+            inputs["prcp"],
+            inputs["tmin"],
+            inputs["tmax"],
+            inputs["srad"],
             inputs["irr_flag"],
         )
 
-        error = compute_water_balance_error(
-            state_before, state, props, day_out, inputs["prcp"]
-        )
+        error = compute_water_balance_error(state_before, state, props, day_out, inputs["prcp"])
 
         # Document that significant error can occur with rapid root growth
         # This is a known limitation of the legacy algorithm
@@ -966,9 +973,15 @@ class TestMultiDayConservation:
 
             state_before = state.copy()
             day_out = step_day(
-                state, props, params,
-                inputs["ndvi"], inputs["etr"], inputs["prcp"],
-                inputs["tmin"], inputs["tmax"], inputs["srad"],
+                state,
+                props,
+                params,
+                inputs["ndvi"],
+                inputs["etr"],
+                inputs["prcp"],
+                inputs["tmin"],
+                inputs["tmax"],
+                inputs["srad"],
                 inputs["irr_flag"],
             )
 
@@ -981,9 +994,7 @@ class TestMultiDayConservation:
             total_gw += day_out["gw_sim"][0]
 
             # Verify daily balance
-            error = compute_water_balance_error(
-                state_before, state, props, day_out, inputs["prcp"]
-            )
+            error = compute_water_balance_error(state_before, state, props, day_out, inputs["prcp"])
             assert np.abs(error[0]) < WATER_BALANCE_ATOL
 
         water_end = compute_total_water(state, props)[0]
@@ -991,8 +1002,7 @@ class TestMultiDayConservation:
         # Verify cumulative balance
         # No extra bypass adjustment needed - mass is properly conserved
         expected_change = (
-            total_precip - total_runoff - total_eta - total_dperc
-            + total_irr + total_gw
+            total_precip - total_runoff - total_eta - total_dperc + total_irr + total_gw
         )
         actual_change = water_end - water_start
 
@@ -1035,9 +1045,15 @@ class TestEdgeCases:
         for _day in range(5):
             state_before = state.copy()
             day_out = step_day(
-                state, props, params,
-                inputs["ndvi"], inputs["etr"], inputs["prcp"],
-                inputs["tmin"], inputs["tmax"], inputs["srad"],
+                state,
+                props,
+                params,
+                inputs["ndvi"],
+                inputs["etr"],
+                inputs["prcp"],
+                inputs["tmin"],
+                inputs["tmax"],
+                inputs["srad"],
                 inputs["irr_flag"],
             )
 
@@ -1083,9 +1099,15 @@ class TestEdgeCases:
 
         state_before = state.copy()
         day_out = step_day(
-            state, props, params,
-            inputs["ndvi"], inputs["etr"], inputs["prcp"],
-            inputs["tmin"], inputs["tmax"], inputs["srad"],
+            state,
+            props,
+            params,
+            inputs["ndvi"],
+            inputs["etr"],
+            inputs["prcp"],
+            inputs["tmin"],
+            inputs["tmax"],
+            inputs["srad"],
             inputs["irr_flag"],
         )
 
@@ -1100,9 +1122,7 @@ class TestEdgeCases:
         )
 
         # Mass balance must be conserved even during drought
-        error = compute_water_balance_error(
-            state_before, state, props, day_out, inputs["prcp"]
-        )
+        error = compute_water_balance_error(state_before, state, props, day_out, inputs["prcp"])
         assert np.abs(error[0]) < WATER_BALANCE_ATOL, (
             f"Mass balance error ({error[0]:.6f} mm) during drought - "
             f"phantom ET constraint may be broken"
@@ -1164,7 +1184,10 @@ class TestEdgeCases:
         )
 
         run_step_with_balance_check(
-            state, props, params, inputs,
+            state,
+            props,
+            params,
+            inputs,
             atol=1e-9,  # Tighter tolerance for small values
         )
 
@@ -1229,15 +1252,19 @@ class TestIERRunoff:
 
         state_before = state.copy()
         day_out = step_day(
-            state, props, params,
-            inputs["ndvi"], inputs["etr"], inputs["prcp"],
-            inputs["tmin"], inputs["tmax"], inputs["srad"],
+            state,
+            props,
+            params,
+            inputs["ndvi"],
+            inputs["etr"],
+            inputs["prcp"],
+            inputs["tmin"],
+            inputs["tmax"],
+            inputs["srad"],
             inputs["irr_flag"],
             runoff_process="ier",
             prcp_hr=prcp_hr,
         )
 
-        error = compute_water_balance_error(
-            state_before, state, props, day_out, inputs["prcp"]
-        )
+        error = compute_water_balance_error(state_before, state, props, day_out, inputs["prcp"])
         assert_allclose(error, [0.0], atol=WATER_BALANCE_ATOL)

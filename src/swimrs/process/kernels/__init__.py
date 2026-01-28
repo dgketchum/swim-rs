@@ -10,15 +10,15 @@ Design Rules:
 """
 
 from swimrs.process.kernels import (
-    crop_coefficient,
     cover,
+    crop_coefficient,
     evaporation,
-    transpiration,
+    irrigation,
+    root_growth,
     runoff,
     snow,
+    transpiration,
     water_balance,
-    root_growth,
-    irrigation,
 )
 
 __all__ = [

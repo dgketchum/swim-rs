@@ -6,31 +6,36 @@ coverage statistics, and readiness checks.
 """
 
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional, Set
 from enum import Enum
+from typing import TYPE_CHECKING, Any
 
 from swimrs.container.schema import SwimSchema
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 class DataStatus(str, Enum):
     """Status of a data path in the container."""
-    COMPLETE = "complete"       # All fields have data
-    PARTIAL = "partial"         # Some fields have data
-    NOT_PRESENT = "not_present" # No data ingested
-    ERROR = "error"             # Data exists but has issues
+
+    COMPLETE = "complete"  # All fields have data
+    PARTIAL = "partial"  # Some fields have data
+    NOT_PRESENT = "not_present"  # No data ingested
+    ERROR = "error"  # Data exists but has issues
 
 
 @dataclass
 class Coverage:
     """Coverage statistics for a data path."""
+
     path: str
     status: DataStatus
     fields_present: int
     fields_total: int
-    fields_missing: List[str]
-    date_range: Optional[tuple] = None
-    date_gaps: List[tuple] = None
-    event_ids: List[str] = None
+    fields_missing: list[str]
+    date_range: tuple | None = None
+    date_gaps: list[tuple] = None
+    event_ids: list[str] = None
 
     @property
     def percent_complete(self) -> float:
@@ -67,6 +72,7 @@ class Coverage:
 @dataclass
 class FieldIssue:
     """A single issue found during field validation."""
+
     field_uid: str
     issue_type: str
     message: str
@@ -82,12 +88,13 @@ class FieldValidationReport:
     Provides detailed breakdown of which fields pass/fail validation
     and why, with easy-to-read formatting for observability.
     """
+
     total_fields: int
-    valid_fields: List[str]
-    invalid_fields: List[str]
-    issues_by_field: Dict[str, List[FieldIssue]]
-    issues_by_type: Dict[str, List[str]]  # issue_type -> list of field UIDs
-    thresholds: Dict[str, Any]
+    valid_fields: list[str]
+    invalid_fields: list[str]
+    issues_by_field: dict[str, list[FieldIssue]]
+    issues_by_type: dict[str, list[str]]  # issue_type -> list of field UIDs
+    thresholds: dict[str, Any]
 
     @property
     def valid_count(self) -> int:
@@ -173,7 +180,9 @@ class FieldValidationReport:
         lines = [f"{field_uid}: INVALID ({len(issues)} issues)"]
         for issue in issues:
             if issue.value is not None and issue.threshold is not None:
-                lines.append(f"  - {issue.issue_type}: {issue.message} (value={issue.value}, threshold={issue.threshold})")
+                lines.append(
+                    f"  - {issue.issue_type}: {issue.message} (value={issue.value}, threshold={issue.threshold})"
+                )
             elif issue.value is not None:
                 lines.append(f"  - {issue.issue_type}: {issue.message} (value={issue.value})")
             else:
@@ -186,22 +195,26 @@ class FieldValidationReport:
 
         records = []
         for uid in self.valid_fields:
-            records.append({
-                "field_uid": uid,
-                "valid": True,
-                "issue_count": 0,
-                "issues": "",
-            })
+            records.append(
+                {
+                    "field_uid": uid,
+                    "valid": True,
+                    "issue_count": 0,
+                    "issues": "",
+                }
+            )
 
         for uid in self.invalid_fields:
             issues = self.issues_by_field.get(uid, [])
             issue_types = [i.issue_type for i in issues]
-            records.append({
-                "field_uid": uid,
-                "valid": False,
-                "issue_count": len(issues),
-                "issues": ", ".join(issue_types),
-            })
+            records.append(
+                {
+                    "field_uid": uid,
+                    "valid": False,
+                    "issue_count": len(issues),
+                    "issues": ", ".join(issue_types),
+                }
+            )
 
         return pd.DataFrame(records)
 
@@ -209,13 +222,14 @@ class FieldValidationReport:
 @dataclass
 class ValidationResult:
     """Result of validating readiness for an operation."""
+
     operation: str
     ready: bool
-    missing_data: List[str]
-    incomplete_data: List[Coverage]
-    warnings: List[str]
-    ready_fields: List[str]
-    not_ready_fields: List[str]
+    missing_data: list[str]
+    incomplete_data: list[Coverage]
+    warnings: list[str]
+    ready_fields: list[str]
+    not_ready_fields: list[str]
 
     def summary(self) -> str:
         """Generate summary of validation result."""
@@ -224,22 +238,22 @@ class ValidationResult:
         if self.ready:
             lines.append(f"  Status: READY ({len(self.ready_fields)} fields)")
         else:
-            lines.append(f"  Status: NOT READY")
+            lines.append("  Status: NOT READY")
 
         if self.missing_data:
-            lines.append(f"  Missing data:")
+            lines.append("  Missing data:")
             for path in self.missing_data[:5]:
                 lines.append(f"    - {path}")
             if len(self.missing_data) > 5:
                 lines.append(f"    ... and {len(self.missing_data) - 5} more")
 
         if self.incomplete_data:
-            lines.append(f"  Incomplete data:")
+            lines.append("  Incomplete data:")
             for cov in self.incomplete_data[:3]:
                 lines.append(f"    - {cov.path}: {cov.percent_complete:.0f}% complete")
 
         if self.warnings:
-            lines.append(f"  Warnings:")
+            lines.append("  Warnings:")
             for w in self.warnings:
                 lines.append(f"    - {w}")
 
@@ -254,7 +268,7 @@ class Inventory:
     Tracks what data exists in a SwimContainer and provides coverage statistics.
     """
 
-    def __init__(self, zarr_root, field_uids: List[str]):
+    def __init__(self, zarr_root, field_uids: list[str]):
         """
         Args:
             zarr_root: The root Zarr group of the container
@@ -262,7 +276,7 @@ class Inventory:
         """
         self._root = zarr_root
         self._field_uids = field_uids
-        self._coverage_cache: Dict[str, Coverage] = {}
+        self._coverage_cache: dict[str, Coverage] = {}
 
     @property
     def field_count(self) -> int:
@@ -344,7 +358,7 @@ class Inventory:
         self._coverage_cache[path] = coverage
         return coverage
 
-    def list_present_paths(self) -> List[str]:
+    def list_present_paths(self) -> list[str]:
         """List all data paths that have at least some data."""
         present = []
         for path in SwimSchema.list_all_paths():
@@ -353,7 +367,7 @@ class Inventory:
                 present.append(path)
         return present
 
-    def list_missing_paths(self) -> List[str]:
+    def list_missing_paths(self) -> list[str]:
         """List all schema paths that have no data."""
         missing = []
         for path in SwimSchema.list_all_paths():
@@ -362,27 +376,38 @@ class Inventory:
                 missing.append(path)
         return missing
 
-    def validate_for_calibration(self, model: str = "ssebop", mask: str = "irr",
-                                  met_source: str = "gridmet",
-                                  snow_source: str = "snodas",
-                                  instrument: str = "landsat") -> ValidationResult:
+    def validate_for_calibration(
+        self,
+        model: str = "ssebop",
+        mask: str = "irr",
+        met_source: str = "gridmet",
+        snow_source: str = "snodas",
+        instrument: str = "landsat",
+    ) -> ValidationResult:
         """Check if container has data required for calibration."""
         required = SwimSchema.required_for_calibration(
-            model=model, mask=mask, met_source=met_source,
-            snow_source=snow_source, instrument=instrument
+            model=model,
+            mask=mask,
+            met_source=met_source,
+            snow_source=snow_source,
+            instrument=instrument,
         )
         return self._validate_requirements(required, f"calibration ({model}, {met_source})")
 
-    def validate_for_forward_run(self, model: str = "ssebop", mask: str = "irr",
-                                  met_source: str = "gridmet",
-                                  instrument: str = "landsat") -> ValidationResult:
+    def validate_for_forward_run(
+        self,
+        model: str = "ssebop",
+        mask: str = "irr",
+        met_source: str = "gridmet",
+        instrument: str = "landsat",
+    ) -> ValidationResult:
         """Check if container has data required for forward model run."""
         required = SwimSchema.required_for_forward_run(
             model=model, mask=mask, met_source=met_source, instrument=instrument
         )
         return self._validate_requirements(required, f"forward_run ({model}, {mask}, {met_source})")
 
-    def _validate_requirements(self, required_paths: List[str], operation: str) -> ValidationResult:
+    def _validate_requirements(self, required_paths: list[str], operation: str) -> ValidationResult:
         """Validate that required data paths are present and complete."""
         missing_data = []
         incomplete_data = []
@@ -409,8 +434,11 @@ class Inventory:
                     field_ready_count[uid] += 1
 
         # A field is ready if it has all required data
-        ready_fields = [uid for uid, count in field_ready_count.items()
-                       if count == total_requirements - len(missing_data)]
+        ready_fields = [
+            uid
+            for uid, count in field_ready_count.items()
+            if count == total_requirements - len(missing_data)
+        ]
         not_ready_fields = [uid for uid in self._field_uids if uid not in ready_fields]
 
         # Generate warnings for partial data
@@ -430,17 +458,22 @@ class Inventory:
             not_ready_fields=not_ready_fields,
         )
 
-    def suggest_next_steps(self) -> List[str]:
+    def suggest_next_steps(self) -> list[str]:
         """Suggest what the user should do next based on current state."""
         suggestions = []
 
         # Check for missing core data
-        has_ndvi = self.get_coverage("remote_sensing/ndvi/landsat/irr").status != DataStatus.NOT_PRESENT
+        has_ndvi = (
+            self.get_coverage("remote_sensing/ndvi/landsat/irr").status != DataStatus.NOT_PRESENT
+        )
         has_etf = any(
-            self.get_coverage(f"remote_sensing/etf/landsat/{m.value}/irr").status != DataStatus.NOT_PRESENT
+            self.get_coverage(f"remote_sensing/etf/landsat/{m.value}/irr").status
+            != DataStatus.NOT_PRESENT
             for m in SwimSchema.REMOTE_SENSING_STRUCTURE["etf"]["models"]
         )
-        has_met_gridmet = self.get_coverage("meteorology/gridmet/eto").status != DataStatus.NOT_PRESENT
+        has_met_gridmet = (
+            self.get_coverage("meteorology/gridmet/eto").status != DataStatus.NOT_PRESENT
+        )
         has_met_era5 = self.get_coverage("meteorology/era5/eto").status != DataStatus.NOT_PRESENT
         has_met = has_met_gridmet or has_met_era5
         has_soils = self.get_coverage("properties/soils/awc").status != DataStatus.NOT_PRESENT
@@ -448,19 +481,29 @@ class Inventory:
         has_dynamics = self.get_coverage("derived/dynamics/ke_max").status != DataStatus.NOT_PRESENT
 
         if not has_ndvi:
-            suggestions.append("Ingest Landsat NDVI: container.ingest_ee_ndvi(source_dir, instrument='landsat', mask='irr')")
+            suggestions.append(
+                "Ingest Landsat NDVI: container.ingest_ee_ndvi(source_dir, instrument='landsat', mask='irr')"
+            )
 
         if not has_etf:
-            suggestions.append("Ingest ETF data: container.ingest_ee_etf(source_dir, model='ssebop', mask='irr')")
+            suggestions.append(
+                "Ingest ETF data: container.ingest_ee_etf(source_dir, model='ssebop', mask='irr')"
+            )
 
         if not has_met:
-            suggestions.append("Ingest meteorology: container.ingest_gridmet(met_dir) or container.ingest_era5(era5_dir)")
+            suggestions.append(
+                "Ingest meteorology: container.ingest_gridmet(met_dir) or container.ingest_era5(era5_dir)"
+            )
 
         if not has_soils:
-            suggestions.append("Ingest properties: container.ingest_properties(soils_csv='path/to/soils.csv')")
+            suggestions.append(
+                "Ingest properties: container.ingest_properties(soils_csv='path/to/soils.csv')"
+            )
 
         if not has_irr:
-            suggestions.append("Ingest irrigation: container.ingest_properties(irrigation_csv='path/to/irr.csv')")
+            suggestions.append(
+                "Ingest irrigation: container.ingest_properties(irrigation_csv='path/to/irr.csv')"
+            )
 
         if has_ndvi and has_etf and has_met and has_irr and not has_dynamics:
             suggestions.append("Compute dynamics: container.compute_dynamics()")
@@ -469,6 +512,8 @@ class Inventory:
             suggestions.append("Export model inputs: container.export_model_inputs(...)")
 
         if not suggestions:
-            suggestions.append("Container appears ready. Run validation: container.validate_for_calibration()")
+            suggestions.append(
+                "Container appears ready. Run validation: container.validate_for_calibration()"
+            )
 
         return suggestions

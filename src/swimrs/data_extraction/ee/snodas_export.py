@@ -1,6 +1,8 @@
 import os
+
 import ee
 from tqdm import tqdm
+
 from swimrs.data_extraction.ee.ee_utils import as_ee_feature_collection
 
 
@@ -12,11 +14,11 @@ def sample_snodas_swe(
     overwrite: bool = False,
     start_yr: int = 2004,
     end_yr: int = 2023,
-    feature_id: str = 'FID',
+    feature_id: str = "FID",
     select: list[str] | None = None,
-    dest: str = 'drive',
-    drive_folder: str = 'swim',
-    file_prefix: str = 'swim',
+    dest: str = "drive",
+    drive_folder: str = "swim",
+    file_prefix: str = "swim",
     drive_categorize: bool = False,
 ) -> None:
     feature_coll = as_ee_feature_collection(feature_coll, feature_id=feature_id)
@@ -24,33 +26,33 @@ def sample_snodas_swe(
     # Optionally filter to a subset of features by ID
     if select is not None:
         feature_coll = feature_coll.filter(ee.Filter.inList(feature_id, select))
-    snodas = ee.ImageCollection('projects/earthengine-legacy/assets/projects/climate-engine/snodas/daily')
+    snodas = ee.ImageCollection(
+        "projects/earthengine-legacy/assets/projects/climate-engine/snodas/daily"
+    )
     skipped, exported = 0, 0
     dtimes = [(y, m) for y in range(start_yr, end_yr + 1) for m in range(1, 13)]
-    for year, month in tqdm(dtimes, desc='Extracting SNODAS', total=len(dtimes)):
-
+    for year, month in tqdm(dtimes, desc="Extracting SNODAS", total=len(dtimes)):
         first, bands = True, None
         selectors = [feature_id]
 
-        desc = 'swe_{}_{}'.format(year, str(month).zfill(2))
+        desc = f"swe_{year}_{str(month).zfill(2)}"
 
         if check_dir and not overwrite:
-            f = os.path.join(check_dir, '{}.csv'.format(desc))
+            f = os.path.join(check_dir, f"{desc}.csv")
             if os.path.exists(f):
                 skipped += 1
                 continue
 
-        s = '{}-{}-01'.format(year, str(month).zfill(2))
-        e = ee.Date(s).advance(1, 'month').format('YYYY-MM-dd').getInfo()
-        coll = snodas.filterDate(s, e).select('SWE')
+        s = f"{year}-{str(month).zfill(2)}-01"
+        e = ee.Date(s).advance(1, "month").format("YYYY-MM-dd").getInfo()
+        coll = snodas.filterDate(s, e).select("SWE")
 
-        days = coll.aggregate_histogram('system:index').getInfo()
+        days = coll.aggregate_histogram("system:index").getInfo()
 
         for img_id in days:
             selectors.append(img_id)
 
-            swe_img = coll.filterMetadata(
-                'system:index', 'equals', img_id).first().rename(img_id)
+            swe_img = coll.filterMetadata("system:index", "equals", img_id).first().rename(img_id)
 
             # SWIM-RS assumes this SWE band is in meters; ingestion converts to mm.
             # See `src/swimrs/units.py` (SNODAS_DAILY_UNITS).
@@ -64,35 +66,33 @@ def sample_snodas_swe(
 
         if debug:
             # the below 'FID_1' value ('043_000160') was taken from the tutorial dataset
-            fc = ee.FeatureCollection([feature_coll.filterMetadata(feature_id, 'equals', 'MB_Pch').first()])
-            data = bands.reduceRegions(collection=fc,
-                                       reducer=ee.Reducer.mean(),
-                                       scale=30).getInfo()
-            print(data['features'])
+            fc = ee.FeatureCollection(
+                [feature_coll.filterMetadata(feature_id, "equals", "MB_Pch").first()]
+            )
+            data = bands.reduceRegions(collection=fc, reducer=ee.Reducer.mean(), scale=30).getInfo()
+            print(data["features"])
 
-        data = bands.reduceRegions(collection=feature_coll,
-                                   reducer=ee.Reducer.mean(),
-                                   scale=30)
+        data = bands.reduceRegions(collection=feature_coll, reducer=ee.Reducer.mean(), scale=30)
 
-        if dest == 'bucket':
+        if dest == "bucket":
             if not bucket:
                 raise ValueError('SNODAS export dest="bucket" requires a bucket name/url')
             task = ee.batch.Export.table.toCloudStorage(
                 data,
                 description=desc,
                 bucket=bucket,
-                fileNamePrefix=f'{file_prefix}/snow/snodas/extracts/{desc}',
-                fileFormat='CSV',
+                fileNamePrefix=f"{file_prefix}/snow/snodas/extracts/{desc}",
+                fileFormat="CSV",
                 selectors=selectors,
             )
-        elif dest == 'drive':
+        elif dest == "drive":
             drive_folder_name = f"{drive_folder}_snodas" if drive_categorize else drive_folder
             task = ee.batch.Export.table.toDrive(
                 collection=data,
                 description=desc,
                 folder=drive_folder_name,
-                fileNamePrefix=f'snodas/{desc}',
-                fileFormat='CSV',
+                fileNamePrefix=f"snodas/{desc}",
+                fileFormat="CSV",
                 selectors=selectors,
             )
         else:
@@ -101,8 +101,9 @@ def sample_snodas_swe(
         task.start()
         exported += 1
 
-    print(f'SNODAS exported {exported}, skipped {skipped} existing files')
+    print(f"SNODAS exported {exported}, skipped {skipped} existing files")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     pass
 # ========================= EOF ====================================================================

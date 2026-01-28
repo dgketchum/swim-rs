@@ -24,9 +24,9 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from scipy import stats
 
 
 def load_flux(flux_dir: Path, site: str, project_dir: Path = None) -> pd.Series | None:
@@ -37,21 +37,25 @@ def load_flux(flux_dir: Path, site: str, project_dir: Path = None) -> pd.Series 
         flux_dir / f"{site}.csv",
     ]
     if project_dir:
-        candidates.extend([
-            project_dir / "data" / f"{site}_daily_data.csv",
-            project_dir / "data" / f"{site}_daily_data.zip",
-        ])
+        candidates.extend(
+            [
+                project_dir / "data" / f"{site}_daily_data.csv",
+                project_dir / "data" / f"{site}_daily_data.zip",
+            ]
+        )
 
-    flux_file = next((p for p in candidates if p.exists() and p.suffix == '.csv'), None)
+    flux_file = next((p for p in candidates if p.exists() and p.suffix == ".csv"), None)
     if flux_file is None:
         # Try zip file
-        zip_file = next((p for p in candidates if p.exists() and p.suffix == '.zip'), None)
+        zip_file = next((p for p in candidates if p.exists() and p.suffix == ".zip"), None)
         if zip_file:
             import zipfile
+
             with zipfile.ZipFile(zip_file) as zf:
                 csv_name = f"{site}_daily_data.csv"
                 if csv_name in zf.namelist():
                     import io
+
                     with zf.open(csv_name) as f:
                         df = pd.read_csv(io.BytesIO(f.read()), parse_dates=["date"])
                         df.set_index("date", inplace=True)
@@ -86,63 +90,64 @@ def calc_metrics(y_true, y_pred):
 def plot_timeseries(df: pd.DataFrame, flux_et: pd.Series, site: str, save_path: Path = None):
     """Plot 2006 time series comparison using Plotly dark theme."""
     # Filter to 2006
-    df_2006 = df.loc['2006-01-01':'2006-12-31'].copy()
+    df_2006 = df.loc["2006-01-01":"2006-12-31"].copy()
 
     if flux_et is not None:
-        flux_2006 = flux_et.loc['2006-01-01':'2006-12-31']
+        flux_2006 = flux_et.loc["2006-01-01":"2006-12-31"]
     else:
         flux_2006 = None
 
     # Build PT-JPL ET from ETf * ETref if available
     ptjpl_et = None
-    for etf_col in ['etf_inv_irr', 'etf_irr']:
-        if etf_col in df_2006.columns and 'etref' in df_2006.columns:
-            ptjpl_et = df_2006[etf_col] * df_2006['etref']
+    for etf_col in ["etf_inv_irr", "etf_irr"]:
+        if etf_col in df_2006.columns and "etref" in df_2006.columns:
+            ptjpl_et = df_2006[etf_col] * df_2006["etref"]
             break
 
     fig = go.Figure()
 
     # SWIM ET
-    fig.add_trace(go.Scatter(
-        x=df_2006.index,
-        y=df_2006['et_act'],
-        name='SWIM ET',
-        line=dict(color='#3498db', width=1.5),
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=df_2006.index,
+            y=df_2006["et_act"],
+            name="SWIM ET",
+            line=dict(color="#3498db", width=1.5),
+        )
+    )
 
     # Flux tower ET
     if flux_2006 is not None and len(flux_2006.dropna()) > 0:
-        fig.add_trace(go.Scatter(
-            x=flux_2006.index,
-            y=flux_2006,
-            name='Flux Tower ET',
-            line=dict(color='#2ecc71', width=1.5),
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=flux_2006.index,
+                y=flux_2006,
+                name="Flux Tower ET",
+                line=dict(color="#2ecc71", width=1.5),
+            )
+        )
 
     # PT-JPL ET (interpolated)
     if ptjpl_et is not None:
-        ptjpl_interp = ptjpl_et.interpolate(method='linear')
-        fig.add_trace(go.Scatter(
-            x=df_2006.index,
-            y=ptjpl_interp,
-            name='PT-JPL ET (interp)',
-            line=dict(color='#e74c3c', width=1, dash='dot'),
-            opacity=0.7,
-        ))
+        ptjpl_interp = ptjpl_et.interpolate(method="linear")
+        fig.add_trace(
+            go.Scatter(
+                x=df_2006.index,
+                y=ptjpl_interp,
+                name="PT-JPL ET (interp)",
+                line=dict(color="#e74c3c", width=1, dash="dot"),
+                opacity=0.7,
+            )
+        )
 
     fig.update_layout(
-        title=f'{site} Daily ET - 2006',
-        xaxis_title='Date',
-        yaxis_title='ET (mm/day)',
-        template='plotly_dark',
+        title=f"{site} Daily ET - 2006",
+        xaxis_title="Date",
+        yaxis_title="ET (mm/day)",
+        template="plotly_dark",
         height=500,
         width=1200,
-        legend=dict(
-            yanchor="top",
-            y=0.99,
-            xanchor="left",
-            x=0.01
-        ),
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
         xaxis=dict(showgrid=False),
         yaxis=dict(showgrid=False),
     )
@@ -154,48 +159,49 @@ def plot_timeseries(df: pd.DataFrame, flux_et: pd.Series, site: str, save_path: 
         fig.show()
 
 
-def plot_scatter_comparison(df: pd.DataFrame, flux_et: pd.Series, site: str, save_path: Path = None):
+def plot_scatter_comparison(
+    df: pd.DataFrame, flux_et: pd.Series, site: str, save_path: Path = None
+):
     """Create 1x2 scatter comparison plot matching notebook style."""
     # Build comparison DataFrames
-    model_et = df['et_act']
+    model_et = df["et_act"]
 
     # PT-JPL ET from ETf * ETref
     ptjpl_et_sparse = None
-    for etf_col in ['etf_inv_irr', 'etf_irr']:
-        if etf_col in df.columns and 'etref' in df.columns:
-            ptjpl_et_sparse = df[etf_col] * df['etref']
+    for etf_col in ["etf_inv_irr", "etf_irr"]:
+        if etf_col in df.columns and "etref" in df.columns:
+            ptjpl_et_sparse = df[etf_col] * df["etref"]
             break
 
     if ptjpl_et_sparse is None:
         print("Warning: Could not compute PT-JPL ET (missing etf or etref columns)")
         return
 
-    ptjpl_et_interp = ptjpl_et_sparse.interpolate(method='linear')
+    ptjpl_et_interp = ptjpl_et_sparse.interpolate(method="linear")
     n_ptjpl_obs = ptjpl_et_sparse.notna().sum()
 
     # FULL TIME SERIES (PT-JPL interpolated)
-    full_df = pd.DataFrame({
-        'swim_et': model_et,
-        'ptjpl_et': ptjpl_et_interp,
-        'flux_et': flux_et
-    }).dropna()
+    full_df = pd.DataFrame(
+        {"swim_et": model_et, "ptjpl_et": ptjpl_et_interp, "flux_et": flux_et}
+    ).dropna()
 
     # Calculate metrics
     r2_swim, r_swim, rmse_swim, _ = calc_metrics(
-        full_df['flux_et'].values, full_df['swim_et'].values)
+        full_df["flux_et"].values, full_df["swim_et"].values
+    )
     r2_ptjpl, r_ptjpl, rmse_ptjpl, _ = calc_metrics(
-        full_df['flux_et'].values, full_df['ptjpl_et'].values)
+        full_df["flux_et"].values, full_df["ptjpl_et"].values
+    )
 
     # Axis limits
-    max_et = max(
-        full_df['flux_et'].max(),
-        full_df['swim_et'].max(),
-        full_df['ptjpl_et'].max()
-    ) * 1.1
+    max_et = (
+        max(full_df["flux_et"].max(), full_df["swim_et"].max(), full_df["ptjpl_et"].max()) * 1.1
+    )
 
     # Create 1x2 subplot
     fig = make_subplots(
-        rows=1, cols=2,
+        rows=1,
+        cols=2,
         subplot_titles=[
             f"SWIM vs Flux (n={len(full_df)})<br>"
             f"R² = {r2_swim:.3f}, r = {r_swim:.3f}, RMSE = {rmse_swim:.2f} mm",
@@ -206,75 +212,89 @@ def plot_scatter_comparison(df: pd.DataFrame, flux_et: pd.Series, site: str, sav
     )
 
     # Colors
-    scatter_color = '#3498db'
-    line_color = '#e74c3c'
+    scatter_color = "#3498db"
+    line_color = "#e74c3c"
 
     # Left: SWIM vs Flux
-    fig.add_trace(go.Scatter(
-        x=full_df['flux_et'],
-        y=full_df['swim_et'],
-        mode='markers',
-        marker=dict(color=scatter_color, size=5, opacity=0.4),
-        showlegend=False,
-    ), row=1, col=1)
-    fig.add_trace(go.Scatter(
-        x=[0, max_et],
-        y=[0, max_et],
-        mode='lines',
-        line=dict(color=line_color, dash='dash'),
-        name='1:1 line',
-        showlegend=False,
-    ), row=1, col=1)
+    fig.add_trace(
+        go.Scatter(
+            x=full_df["flux_et"],
+            y=full_df["swim_et"],
+            mode="markers",
+            marker=dict(color=scatter_color, size=5, opacity=0.4),
+            showlegend=False,
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[0, max_et],
+            y=[0, max_et],
+            mode="lines",
+            line=dict(color=line_color, dash="dash"),
+            name="1:1 line",
+            showlegend=False,
+        ),
+        row=1,
+        col=1,
+    )
 
     # Right: PT-JPL vs Flux
-    fig.add_trace(go.Scatter(
-        x=full_df['flux_et'],
-        y=full_df['ptjpl_et'],
-        mode='markers',
-        marker=dict(color=scatter_color, size=5, opacity=0.4),
-        showlegend=False,
-    ), row=1, col=2)
-    fig.add_trace(go.Scatter(
-        x=[0, max_et],
-        y=[0, max_et],
-        mode='lines',
-        line=dict(color=line_color, dash='dash'),
-        showlegend=False,
-    ), row=1, col=2)
+    fig.add_trace(
+        go.Scatter(
+            x=full_df["flux_et"],
+            y=full_df["ptjpl_et"],
+            mode="markers",
+            marker=dict(color=scatter_color, size=5, opacity=0.4),
+            showlegend=False,
+        ),
+        row=1,
+        col=2,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[0, max_et],
+            y=[0, max_et],
+            mode="lines",
+            line=dict(color=line_color, dash="dash"),
+            showlegend=False,
+        ),
+        row=1,
+        col=2,
+    )
 
     # Update axes
     for col in [1, 2]:
         fig.update_xaxes(
-            title_text='Flux ET (mm/day)',
-            range=[0, max_et],
-            showgrid=False,
-            row=1, col=col
+            title_text="Flux ET (mm/day)", range=[0, max_et], showgrid=False, row=1, col=col
         )
         fig.update_yaxes(
-            title_text='SWIM ET (mm/day)' if col == 1 else 'PT-JPL ET (mm/day)',
+            title_text="SWIM ET (mm/day)" if col == 1 else "PT-JPL ET (mm/day)",
             range=[0, max_et],
             showgrid=False,
-            row=1, col=col
+            row=1,
+            col=col,
         )
 
     fig.update_layout(
-        title=dict(text=f'{site}: ET Comparison - SWIM vs PT-JPL', x=0.5, xanchor='center'),
-        template='plotly_dark',
+        title=dict(text=f"{site}: ET Comparison - SWIM vs PT-JPL", x=0.5, xanchor="center"),
+        template="plotly_dark",
         height=500,
         width=1000,
         showlegend=False,
     )
 
     # Print metrics summary
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"FULL TIME SERIES ({len(full_df)} days, PT-JPL interpolated from {n_ptjpl_obs} obs)")
-    print(f"{'-'*70}")
+    print(f"{'-' * 70}")
     print(f"{'Metric':<12} {'SWIM ET':>12} {'PT-JPL ET':>12}")
-    print(f"{'-'*38}")
+    print(f"{'-' * 38}")
     print(f"{'R²':<12} {r2_swim:>12.3f} {r2_ptjpl:>12.3f}")
     print(f"{'Pearson r':<12} {r_swim:>12.3f} {r_ptjpl:>12.3f}")
     print(f"{'RMSE (mm)':<12} {rmse_swim:>12.3f} {rmse_ptjpl:>12.3f}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     if save_path:
         fig.write_image(str(save_path), scale=2)
@@ -287,8 +307,12 @@ def main():
     parser = argparse.ArgumentParser(description="Visualize model ET vs flux/PT-JPL")
     parser.add_argument("--results", required=True, help="Directory containing model output CSV")
     parser.add_argument("--site", default="US-FPe", help="Site ID (default: US-FPe)")
-    parser.add_argument("--flux-dir", default=None, help="Flux directory (default: data/daily_flux_files)")
-    parser.add_argument("--save", default=None, help="Directory to save plots (default: show interactively)")
+    parser.add_argument(
+        "--flux-dir", default=None, help="Flux directory (default: data/daily_flux_files)"
+    )
+    parser.add_argument(
+        "--save", default=None, help="Directory to save plots (default: show interactively)"
+    )
     args = parser.parse_args()
 
     results_dir = Path(args.results)
@@ -307,8 +331,8 @@ def main():
     calibrated_path = next((p for p in candidates if p.exists()), None)
     if calibrated_path is None:
         raise FileNotFoundError(
-            f"Output CSV not found for site {site}. Looked in:\n  " +
-            "\n  ".join(str(p) for p in candidates)
+            f"Output CSV not found for site {site}. Looked in:\n  "
+            + "\n  ".join(str(p) for p in candidates)
         )
 
     flux_dir = Path(args.flux_dir) if args.flux_dir else project_dir / "data" / "daily_flux_files"

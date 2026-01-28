@@ -15,11 +15,11 @@ def run():
     from swimrs.swim.config import ProjectConfig
 
     here = os.path.dirname(os.path.abspath(__file__))
-    conf_file = os.path.join(here, '3_Crane.toml')
+    conf_file = os.path.join(here, "3_Crane.toml")
     if not os.path.exists(conf_file):
-        conf_file = os.path.join(here, 'config.toml')
+        conf_file = os.path.join(here, "config.toml")
     if not os.path.exists(conf_file):
-        raise FileNotFoundError(f'Expected config at {conf_file}')
+        raise FileNotFoundError(f"Expected config at {conf_file}")
 
     # Resolve input_data path from config
     cfg = ProjectConfig()
@@ -28,10 +28,10 @@ def run():
 
     # PEST++ worker CWD
     cwd = os.getcwd()
-    calibration_dir = os.path.join(cwd, 'mult')
+    calibration_dir = os.path.join(cwd, "mult")
 
     optimize_fields(conf_file, input_data_path, cwd, calibration_dir)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run()

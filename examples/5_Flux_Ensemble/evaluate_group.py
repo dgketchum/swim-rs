@@ -12,16 +12,15 @@ import time
 from datetime import datetime
 from pathlib import Path
 from pprint import pprint
-from typing import Optional, List, Tuple
 
 import numpy as np
 import pandas as pd
-
 from openet_evaluation import evaluate_openet_site
+
 from swimrs.container import SwimContainer
+from swimrs.prep import get_flux_sites
 from swimrs.process.input import build_swim_input
 from swimrs.process.loop import run_daily_loop
-from swimrs.prep import get_flux_sites
 from swimrs.swim.config import ProjectConfig
 
 
@@ -45,7 +44,7 @@ def run_single_site(config, container, site_id, output_csv):
         Combined input/output DataFrame
     """
     # Create temporary HDF5 for SwimInput
-    with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
         temp_h5_path = tmp.name
 
     try:
@@ -53,9 +52,9 @@ def run_single_site(config, container, site_id, output_csv):
         swim_input = build_swim_input(
             container,
             output_h5=temp_h5_path,
-            runoff_process=getattr(config, 'runoff_process', 'cn'),
-            etf_model=getattr(config, 'etf_target_model', 'ssebop'),
-            met_source=getattr(config, 'met_source', 'gridmet'),
+            runoff_process=getattr(config, "runoff_process", "cn"),
+            etf_model=getattr(config, "etf_target_model", "ssebop"),
+            met_source=getattr(config, "met_source", "gridmet"),
             fields=[site_id],
         )
 
@@ -64,46 +63,46 @@ def run_single_site(config, container, site_id, output_csv):
 
         # Get time series data
         n_days = swim_input.n_days
-        dates = pd.date_range(swim_input.start_date, periods=n_days, freq='D')
+        dates = pd.date_range(swim_input.start_date, periods=n_days, freq="D")
 
         # Get input time series
-        etr = swim_input.get_time_series('etr')
-        prcp = swim_input.get_time_series('prcp')
-        tmin = swim_input.get_time_series('tmin')
-        tmax = swim_input.get_time_series('tmax')
-        ndvi = swim_input.get_time_series('ndvi')
+        etr = swim_input.get_time_series("etr")
+        prcp = swim_input.get_time_series("prcp")
+        tmin = swim_input.get_time_series("tmin")
+        tmax = swim_input.get_time_series("tmax")
+        ndvi = swim_input.get_time_series("ndvi")
 
         # Build DataFrame (field index 0 since we're doing single field)
         i = 0
         df_data = {
             # Model outputs
-            'et_act': output.eta[:, i],
-            'etref': etr[:, i],
-            'kc_act': output.etf[:, i],
-            'kc_bas': output.kcb[:, i],
-            'ks': output.ks[:, i],
-            'ke': output.ke[:, i],
-            'melt': output.melt[:, i],
-            'rain': output.rain[:, i],
-            'depl_root': output.depl_root[:, i],
-            'dperc': output.dperc[:, i],
-            'runoff': output.runoff[:, i],
-            'swe': output.swe[:, i],
-            'irrigation': output.irr_sim[:, i],
-            'gw_sim': output.gw_sim[:, i],
+            "et_act": output.eta[:, i],
+            "etref": etr[:, i],
+            "kc_act": output.etf[:, i],
+            "kc_bas": output.kcb[:, i],
+            "ks": output.ks[:, i],
+            "ke": output.ke[:, i],
+            "melt": output.melt[:, i],
+            "rain": output.rain[:, i],
+            "depl_root": output.depl_root[:, i],
+            "dperc": output.dperc[:, i],
+            "runoff": output.runoff[:, i],
+            "swe": output.swe[:, i],
+            "irrigation": output.irr_sim[:, i],
+            "gw_sim": output.gw_sim[:, i],
             # Input time series
-            'ppt': prcp[:, i],
-            'tmin': tmin[:, i],
-            'tmax': tmax[:, i],
-            'tavg': (tmin[:, i] + tmax[:, i]) / 2.0,
-            'ndvi': ndvi[:, i],
+            "ppt": prcp[:, i],
+            "tmin": tmin[:, i],
+            "tmax": tmax[:, i],
+            "tavg": (tmin[:, i] + tmax[:, i]) / 2.0,
+            "ndvi": ndvi[:, i],
         }
 
         # Calculate derived columns
-        df_data['soil_water'] = swim_input.properties.awc[i] - output.depl_root[:, i]
+        df_data["soil_water"] = swim_input.properties.awc[i] - output.depl_root[:, i]
 
         # Add ETf observations for comparison
-        etf_model = getattr(config, 'etf_target_model', 'ssebop')
+        etf_model = getattr(config, "etf_target_model", "ssebop")
 
         # Determine irrigation status
         try:
@@ -114,21 +113,21 @@ def run_single_site(config, container, site_id, output_csv):
         except Exception:
             is_irr = False
 
-        mask = 'irr' if is_irr else 'inv_irr'
+        mask = "irr" if is_irr else "inv_irr"
 
-        for m in ['inv_irr', 'irr']:
+        for m in ["inv_irr", "irr"]:
             etf_path = f"remote_sensing/etf/landsat/{etf_model}/{m}"
             try:
                 etf_df = container.query.dataframe(etf_path, fields=[site_id])
                 etf_series = etf_df[site_id].reindex(dates)
-                df_data[f'etf_{m}'] = etf_series.values
+                df_data[f"etf_{m}"] = etf_series.values
             except Exception:
-                df_data[f'etf_{m}'] = np.nan
+                df_data[f"etf_{m}"] = np.nan
 
         df = pd.DataFrame(df_data, index=dates)
 
         # Trim to config date range
-        df = df.loc[config.start_dt:config.end_dt]
+        df = df.loc[config.start_dt : config.end_dt]
 
         swim_input.close()
 
@@ -152,9 +151,15 @@ def get_irrigation_status(container, site_id):
         return False
 
 
-def compare_openet(fid: str, flux_file: str, model_output: str, openet_dir: str,
-                   irr: bool, gap_tolerance: int = 5,
-                   ensemble_members: Optional[List[str]] = None):
+def compare_openet(
+    fid: str,
+    flux_file: str,
+    model_output: str,
+    openet_dir: str,
+    irr: bool,
+    gap_tolerance: int = 5,
+    ensemble_members: list[str] | None = None,
+):
     """Compare SWIM and OpenET ensemble against flux observations for a single site."""
     openet_daily = os.path.join(openet_dir, "daily_data", f"{fid}.csv")
     openet_monthly = os.path.join(openet_dir, "monthly_data", f"{fid}.csv")
@@ -171,8 +176,9 @@ def compare_openet(fid: str, flux_file: str, model_output: str, openet_dir: str,
     return monthly
 
 
-def _verbose_monthly_summary(site_id: str, monthly: dict,
-                             ensemble_members: Optional[List[str]] = None) -> Tuple[Optional[str], Optional[str]]:
+def _verbose_monthly_summary(
+    site_id: str, monthly: dict, ensemble_members: list[str] | None = None
+) -> tuple[str | None, str | None]:
     """Print summary statistics for SWIM vs OpenET comparison."""
     rmse_all = {
         k.split("_", 1)[1]: v
@@ -208,7 +214,9 @@ def _verbose_monthly_summary(site_id: str, monthly: dict,
             rmse_key = f"rmse_{member}"
             mean_key = f"mean_{member}"
             if rmse_key in monthly:
-                print(f"  {member.upper()} RMSE: {monthly.get(rmse_key)}, Mean: {monthly.get(mean_key)}")
+                print(
+                    f"  {member.upper()} RMSE: {monthly.get(rmse_key)}, Mean: {monthly.get(mean_key)}"
+                )
 
     return best_overall_model, best_pair_model
 
@@ -233,7 +241,9 @@ if __name__ == "__main__":
     flux_dir = os.path.join(cfg.data_dir, "daily_flux_files")
 
     station_metadata = os.path.join(cfg.data_dir, "station_metadata.csv")
-    ec_sites, sdf = get_flux_sites(station_metadata, crop_only=True, return_df=True, western_only=False, header=1)
+    ec_sites, sdf = get_flux_sites(
+        station_metadata, crop_only=True, return_df=True, western_only=False, header=1
+    )
 
     cfg.calibrate = False
     cfg.forecast = True
@@ -245,7 +255,7 @@ if __name__ == "__main__":
 
     # Open container
     container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}.swim")
-    container = SwimContainer.open(container_path, mode='r')
+    container = SwimContainer.open(container_path, mode="r")
 
     try:
         # Get sites available in container that are also EC sites
@@ -255,7 +265,7 @@ if __name__ == "__main__":
         print(f"{len(sites)} sites to evaluate in 5_Flux_Ensemble")
 
         # Use ensemble_members for comparison models
-        ensemble_members = getattr(cfg, 'etf_ensemble_members', ['ssebop', 'ptjpl', 'sims'])
+        ensemble_members = getattr(cfg, "etf_ensemble_members", ["ssebop", "ptjpl", "sims"])
         print(f"Ensemble members for comparison: {ensemble_members}")
 
         incomplete, complete = [], []
@@ -285,12 +295,20 @@ if __name__ == "__main__":
             flux_file = os.path.join(flux_dir, f"{site_id}_daily_data.csv")
             irr = get_irrigation_status(container, site_id)
 
-            monthly = compare_openet(site_id, flux_file, out_csv, openet_dir, irr,
-                                     gap_tolerance=5, ensemble_members=ensemble_members)
+            monthly = compare_openet(
+                site_id,
+                flux_file,
+                out_csv,
+                openet_dir,
+                irr,
+                gap_tolerance=5,
+                ensemble_members=ensemble_members,
+            )
             if monthly and isinstance(monthly, dict):
                 results[site_id] = monthly
-                best_overall, best_pair = _verbose_monthly_summary(site_id, monthly,
-                                                                   ensemble_members=ensemble_members)
+                best_overall, best_pair = _verbose_monthly_summary(
+                    site_id, monthly, ensemble_members=ensemble_members
+                )
                 if best_overall:
                     results_overall.append((best_overall, lulc))
                 if best_pair:
@@ -303,12 +321,16 @@ if __name__ == "__main__":
         container.close()
 
     pprint({k: v.get("rmse_swim") for k, v in results.items() if isinstance(v, dict)})
-    pprint({s: [t[0] for t in results_overall].count(s) for s in set(t[0] for t in results_overall)})
+    pprint(
+        {s: [t[0] for t in results_overall].count(s) for s in set(t[0] for t in results_overall)}
+    )
     pprint(
         {
             category: [
                 item[0]
-                for item in collections.Counter(t[0] for t in results_overall if t[1] == category).most_common(3)
+                for item in collections.Counter(
+                    t[0] for t in results_overall if t[1] == category
+                ).most_common(3)
             ]
             for category in set(t[1] for t in results_overall)
         }
@@ -318,7 +340,9 @@ if __name__ == "__main__":
         {
             category: [
                 item[0]
-                for item in collections.Counter(t[0] for t in results_pair if t[1] == category).most_common(3)
+                for item in collections.Counter(
+                    t[0] for t in results_pair if t[1] == category
+                ).most_common(3)
             ]
             for category in set(t[1] for t in results_pair)
         }

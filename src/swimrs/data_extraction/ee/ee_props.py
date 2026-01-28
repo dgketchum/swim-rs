@@ -1,31 +1,28 @@
-import os
+import ee
 import pandas as pd
 
-import ee
-from swimrs.data_extraction.ee.ee_utils import get_lanid, as_ee_feature_collection
+from swimrs.data_extraction.ee.ee_utils import as_ee_feature_collection, get_lanid
 
-
-IRR = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
+IRR = "projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp"
 
 # See https://websoilsurvey.nrcs.usda.gov/app/WebSoilSurvey.aspx
 # to check soil parameters
 
 
+STATES = ["AZ", "CA", "CO", "ID", "MT", "NM", "NV", "OR", "UT", "WA", "WY"]
 
-STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
-
-WEST_STATES = 'users/dgketchum/boundaries/western_11_union'
-EAST_STATES = 'users/dgketchum/boundaries/eastern_38_dissolved'
+WEST_STATES = "users/dgketchum/boundaries/western_11_union"
+EAST_STATES = "users/dgketchum/boundaries/eastern_38_dissolved"
 
 
 def get_cdl(
     fields: str | ee.FeatureCollection,
     desc: str,
-    selector: str = 'FID',
-    dest: str = 'drive',
+    selector: str = "FID",
+    dest: str = "drive",
     bucket: str | None = None,
-    drive_folder: str = 'swim',
-    file_prefix: str = 'swim',
+    drive_folder: str = "swim",
+    file_prefix: str = "swim",
     drive_categorize: bool = False,
 ) -> None:
     """Export per-feature CDL crop class mode by year to GCS.
@@ -45,10 +42,9 @@ def get_cdl(
     _selectors = [selector]
 
     for y in cdl_years:
-
-        image = ee.Image('USDA/NASS/CDL/{}'.format(y))
-        crop = image.select('cropland')
-        _name = 'crop_{}'.format(y)
+        image = ee.Image(f"USDA/NASS/CDL/{y}")
+        crop = image.select("cropland")
+        _name = f"crop_{y}"
         _selectors.append(_name)
         if first:
             crops = crop.rename(_name)
@@ -56,30 +52,28 @@ def get_cdl(
         else:
             crops = crops.addBands(crop.rename(_name))
 
-    modes = crops.reduceRegions(collection=plots,
-                                reducer=ee.Reducer.mode(),
-                                scale=30)
+    modes = crops.reduceRegions(collection=plots, reducer=ee.Reducer.mode(), scale=30)
 
-    out_ = '{}'.format(desc)
-    if dest == 'bucket':
+    out_ = f"{desc}"
+    if dest == "bucket":
         if not bucket:
             raise ValueError('CDL export dest="bucket" requires a bucket name/url')
         task = ee.batch.Export.table.toCloudStorage(
             modes,
             description=out_,
             bucket=bucket,
-            fileNamePrefix=f'{file_prefix}/properties/{out_}',
-            fileFormat='CSV',
+            fileNamePrefix=f"{file_prefix}/properties/{out_}",
+            fileFormat="CSV",
             selectors=_selectors,
         )
-    elif dest == 'drive':
+    elif dest == "drive":
         drive_folder_name = f"{drive_folder}_properties" if drive_categorize else drive_folder
         task = ee.batch.Export.table.toDrive(
             collection=modes,
             description=out_,
             folder=drive_folder_name,
-            fileNamePrefix=f'properties/{out_}',
-            fileFormat='CSV',
+            fileNamePrefix=f"properties/{out_}",
+            fileFormat="CSV",
             selectors=_selectors,
         )
     else:
@@ -93,13 +87,13 @@ def get_irrigation(
     fields: str | ee.FeatureCollection,
     desc: str,
     debug: bool = False,
-    selector: str = 'FID',
+    selector: str = "FID",
     select: list[str] | None = None,
     lanid: bool = False,
-    dest: str = 'drive',
+    dest: str = "drive",
     bucket: str | None = None,
-    drive_folder: str = 'swim',
-    file_prefix: str = 'swim',
+    drive_folder: str = "swim",
+    file_prefix: str = "swim",
     drive_categorize: bool = False,
 ) -> None:
     """Export annual irrigation fraction per feature using IrrMapper (and LANID).
@@ -128,23 +122,23 @@ def get_irrigation(
         west = ee.FeatureCollection(WEST_STATES)
         east = ee.FeatureCollection(EAST_STATES)
 
-    _selectors = [selector, 'LAT', 'LON']
+    _selectors = [selector, "LAT", "LON"]
     first = True
 
     area, irr_img = ee.Image.pixelArea(), None
 
     for year in range(1987, 2025):
-
-        irr = irr_coll.filterDate('{}-01-01'.format(year),
-                                  '{}-12-31'.format(year)).select('classification').mosaic()
-        irr = irr.lt(1).rename('irr_{}'.format(year)).int()
+        irr = (
+            irr_coll.filterDate(f"{year}-01-01", f"{year}-12-31").select("classification").mosaic()
+        )
+        irr = irr.lt(1).rename(f"irr_{year}").int()
 
         if lanid:
             irr = irr.clip(west)
-            lanid_yr = lanid.select(f'irr_{year}').clip(east)
+            lanid_yr = lanid.select(f"irr_{year}").clip(east)
             irr = ee.ImageCollection([irr, lanid_yr]).mosaic()
 
-        _name = 'irr_{}'.format(year)
+        _name = f"irr_{year}"
         _selectors.append(_name)
 
         if first:
@@ -153,32 +147,30 @@ def get_irrigation(
         else:
             irr_img = irr_img.addBands(irr.rename(_name))
 
-    means = irr_img.reduceRegions(collection=plots,
-                                  reducer=ee.Reducer.mean(),
-                                  scale=30)
+    means = irr_img.reduceRegions(collection=plots, reducer=ee.Reducer.mean(), scale=30)
 
     if debug:
-        debug = means.filterMetadata('FID', 'equals', 'US-FPe').getInfo()
+        debug = means.filterMetadata("FID", "equals", "US-FPe").getInfo()
 
-    if dest == 'bucket':
+    if dest == "bucket":
         if not bucket:
             raise ValueError('Irrigation export dest="bucket" requires a bucket name/url')
         task = ee.batch.Export.table.toCloudStorage(
             means,
             description=desc,
             bucket=bucket,
-            fileNamePrefix=f'{file_prefix}/properties/{desc}',
-            fileFormat='CSV',
+            fileNamePrefix=f"{file_prefix}/properties/{desc}",
+            fileFormat="CSV",
             selectors=_selectors,
         )
-    elif dest == 'drive':
+    elif dest == "drive":
         drive_folder_name = f"{drive_folder}_properties" if drive_categorize else drive_folder
         task = ee.batch.Export.table.toDrive(
             collection=means,
             description=desc,
             folder=drive_folder_name,
-            fileNamePrefix=f'properties/{desc}',
-            fileFormat='CSV',
+            fileNamePrefix=f"properties/{desc}",
+            fileFormat="CSV",
             selectors=_selectors,
         )
     else:
@@ -192,12 +184,12 @@ def get_ssurgo(
     fields: str | ee.FeatureCollection,
     desc: str,
     debug: bool = False,
-    selector: str = 'FID',
+    selector: str = "FID",
     select: list[str] | None = None,
-    dest: str = 'drive',
+    dest: str = "drive",
     bucket: str | None = None,
-    drive_folder: str = 'swim',
-    file_prefix: str = 'swim',
+    drive_folder: str = "swim",
+    file_prefix: str = "swim",
     drive_categorize: bool = False,
 ) -> None:
     """Export SSURGO-derived soil attributes averaged per feature.
@@ -213,11 +205,11 @@ def get_ssurgo(
     - Starts ee.batch table export (columns: awc, ksat, clay, sand) to `wudr`.
     """
     # OpenET AWC is in cm/cm
-    awc_asset = 'projects/openet/soil/ssurgo_AWC_WTA_0to152cm_composite'
+    awc_asset = "projects/openet/soil/ssurgo_AWC_WTA_0to152cm_composite"
     # OpenET KSAT is in micrometers/sec
-    ksat_asset = 'projects/openet/soil/ssurgo_Ksat_WTA_0to152cm_composite'
-    clay_asset = 'projects/openet/soil/ssurgo_Clay_WTA_0to152cm_composite'
-    sand_asset = 'projects/openet/soil/ssurgo_Sand_WTA_0to152cm_composite'
+    ksat_asset = "projects/openet/soil/ssurgo_Ksat_WTA_0to152cm_composite"
+    clay_asset = "projects/openet/soil/ssurgo_Clay_WTA_0to152cm_composite"
+    sand_asset = "projects/openet/soil/ssurgo_Sand_WTA_0to152cm_composite"
 
     plots = as_ee_feature_collection(fields, feature_id=selector)
 
@@ -225,41 +217,39 @@ def get_ssurgo(
     if select is not None:
         plots = plots.filter(ee.Filter.inList(selector, select))
 
-    ksat_ = ee.Image(ksat_asset).select('b1').rename('ksat')
-    awc_ = ee.Image(awc_asset).select('b1').rename('awc')
-    clay_ = ee.Image(clay_asset).select('b1').rename('clay')
-    sand_ = ee.Image(sand_asset).select('b1').rename('sand')
+    ksat_ = ee.Image(ksat_asset).select("b1").rename("ksat")
+    awc_ = ee.Image(awc_asset).select("b1").rename("awc")
+    clay_ = ee.Image(clay_asset).select("b1").rename("clay")
+    sand_ = ee.Image(sand_asset).select("b1").rename("sand")
 
     img = ksat_.addBands([awc_, clay_, sand_])
 
-    _selectors = [selector] + ['awc', 'ksat', 'clay', 'sand']
+    _selectors = [selector] + ["awc", "ksat", "clay", "sand"]
 
-    means = img.reduceRegions(collection=plots,
-                              reducer=ee.Reducer.mean(),
-                              scale=30)
+    means = img.reduceRegions(collection=plots, reducer=ee.Reducer.mean(), scale=30)
 
     if debug:
-        debug = means.filterMetadata('FID', 'equals', 1789).getInfo()
+        debug = means.filterMetadata("FID", "equals", 1789).getInfo()
 
-    if dest == 'bucket':
+    if dest == "bucket":
         if not bucket:
             raise ValueError('SSURGO export dest="bucket" requires a bucket name/url')
         task = ee.batch.Export.table.toCloudStorage(
             means,
             description=desc,
             bucket=bucket,
-            fileNamePrefix=f'{file_prefix}/properties/{desc}',
-            fileFormat='CSV',
+            fileNamePrefix=f"{file_prefix}/properties/{desc}",
+            fileFormat="CSV",
             selectors=_selectors,
         )
-    elif dest == 'drive':
+    elif dest == "drive":
         drive_folder_name = f"{drive_folder}_properties" if drive_categorize else drive_folder
         task = ee.batch.Export.table.toDrive(
             collection=means,
             description=desc,
             folder=drive_folder_name,
-            fileNamePrefix=f'properties/{desc}',
-            fileFormat='CSV',
+            fileNamePrefix=f"properties/{desc}",
+            fileFormat="CSV",
             selectors=_selectors,
         )
     else:
@@ -273,13 +263,13 @@ def get_hwsd(
     fields: str | ee.FeatureCollection,
     desc: str,
     debug: bool = False,
-    selector: str = 'FID',
-    out_fmt: str = 'CSV',
+    selector: str = "FID",
+    out_fmt: str = "CSV",
     local_file: str | None = None,
-    dest: str = 'drive',
+    dest: str = "drive",
     bucket: str | None = None,
-    drive_folder: str = 'swim',
-    file_prefix: str = 'swim',
+    drive_folder: str = "swim",
+    file_prefix: str = "swim",
     drive_categorize: bool = False,
 ) -> None:
     """Export or save HWSD v2 soil property (AWC) per feature.
@@ -294,43 +284,46 @@ def get_hwsd(
     """
     plots = as_ee_feature_collection(fields, feature_id=selector)
 
-    stype = ee.Image('projects/sat-io/open-datasets/FAO/HWSD_V2_SMU').select('AWC').rename('awc')
+    stype = ee.Image("projects/sat-io/open-datasets/FAO/HWSD_V2_SMU").select("AWC").rename("awc")
 
-    modes = stype.reduceRegions(collection=plots,
-                                reducer=ee.Reducer.mode(),
-                                scale=30)
+    modes = stype.reduceRegions(collection=plots, reducer=ee.Reducer.mode(), scale=30)
 
     # single value reduction results in stat name: 'mode' instead of image name
-    _selectors = [selector, 'mode']
+    _selectors = [selector, "mode"]
 
     if debug:
-        debug = modes.filterMetadata('FID', 'equals', 'US-CRT').getInfo()
+        debug = modes.filterMetadata("FID", "equals", "US-CRT").getInfo()
 
     if local_file:
         modes = modes.getInfo()
-        df = pd.DataFrame([v['properties'] for v in modes['features']]).rename(columns={'mode': 'awc'})
+        df = pd.DataFrame([v["properties"] for v in modes["features"]]).rename(
+            columns={"mode": "awc"}
+        )
         df.to_csv(local_file)
 
     else:
-
-        if dest == 'bucket':
+        if dest == "bucket":
             if not bucket:
                 raise ValueError('HWSD export dest="bucket" requires a bucket name/url')
-            export_kwargs = dict(description=desc,
-                                 bucket=bucket,
-                                 fileNamePrefix=f'{file_prefix}/properties/{desc}',
-                                 fileFormat=out_fmt)
-            if out_fmt == 'CSV':
-                export_kwargs.update({'selectors': _selectors})
+            export_kwargs = dict(
+                description=desc,
+                bucket=bucket,
+                fileNamePrefix=f"{file_prefix}/properties/{desc}",
+                fileFormat=out_fmt,
+            )
+            if out_fmt == "CSV":
+                export_kwargs.update({"selectors": _selectors})
             task = ee.batch.Export.table.toCloudStorage(modes, **export_kwargs)
-        elif dest == 'drive':
+        elif dest == "drive":
             drive_folder_name = f"{drive_folder}_properties" if drive_categorize else drive_folder
-            export_kwargs = dict(description=desc,
-                                 folder=drive_folder_name,
-                                 fileNamePrefix=f'properties/{desc}',
-                                 fileFormat=out_fmt)
-            if out_fmt == 'CSV':
-                export_kwargs.update({'selectors': _selectors})
+            export_kwargs = dict(
+                description=desc,
+                folder=drive_folder_name,
+                fileNamePrefix=f"properties/{desc}",
+                fileFormat=out_fmt,
+            )
+            if out_fmt == "CSV":
+                export_kwargs.update({"selectors": _selectors})
             task = ee.batch.Export.table.toDrive(collection=modes, **export_kwargs)
         else:
             raise ValueError('dest must be one of {"drive","bucket"}')
@@ -342,14 +335,14 @@ def get_landcover(
     fields: str | ee.FeatureCollection,
     desc: str,
     debug: bool = False,
-    selector: str = 'FID',
+    selector: str = "FID",
     select: list[str] | None = None,
-    out_fmt: str = 'CSV',
+    out_fmt: str = "CSV",
     local_file: str | None = None,
-    dest: str = 'drive',
+    dest: str = "drive",
     bucket: str | None = None,
-    drive_folder: str = 'swim',
-    file_prefix: str = 'swim',
+    drive_folder: str = "swim",
+    file_prefix: str = "swim",
     drive_categorize: bool = False,
 ) -> None:
     """Export dominant landcover from MODIS and FROM-GLC10 per feature.
@@ -369,43 +362,45 @@ def get_landcover(
     if select is not None:
         plots = plots.filter(ee.Filter.inList(selector, select))
 
-    vtype = ee.ImageCollection('MODIS/061/MCD12Q1').select('LC_Type1').first().rename('modis_lc')
-    vtype = vtype.addBands([ee.ImageCollection('projects/sat-io/open-datasets/FROM-GLC10')
-                           .mosaic().rename('glc10_lc')])
+    vtype = ee.ImageCollection("MODIS/061/MCD12Q1").select("LC_Type1").first().rename("modis_lc")
+    vtype = vtype.addBands(
+        [ee.ImageCollection("projects/sat-io/open-datasets/FROM-GLC10").mosaic().rename("glc10_lc")]
+    )
 
-    modes = vtype.reduceRegions(collection=plots,
-                                reducer=ee.Reducer.mode(),
-                                scale=30)
-    _selectors = [selector, 'modis_lc', 'glc10_lc']
+    modes = vtype.reduceRegions(collection=plots, reducer=ee.Reducer.mode(), scale=30)
+    _selectors = [selector, "modis_lc", "glc10_lc"]
 
     if debug:
-        debug = modes.filterMetadata('FID', 'equals', 'US-CRT').getInfo()
+        debug = modes.filterMetadata("FID", "equals", "US-CRT").getInfo()
 
     if local_file:
         modes = modes.getInfo()
-        df = pd.DataFrame([v['properties'] for v in modes['features']])[_selectors]
+        df = pd.DataFrame([v["properties"] for v in modes["features"]])[_selectors]
         df.to_csv(local_file)
 
     else:
-
-        if dest == 'bucket':
+        if dest == "bucket":
             if not bucket:
                 raise ValueError('Landcover export dest="bucket" requires a bucket name/url')
-            export_kwargs = dict(description=desc,
-                                 bucket=bucket,
-                                 fileNamePrefix=f'{file_prefix}/properties/{desc}',
-                                 fileFormat=out_fmt)
-            if out_fmt == 'CSV':
-                export_kwargs.update({'selectors': _selectors})
+            export_kwargs = dict(
+                description=desc,
+                bucket=bucket,
+                fileNamePrefix=f"{file_prefix}/properties/{desc}",
+                fileFormat=out_fmt,
+            )
+            if out_fmt == "CSV":
+                export_kwargs.update({"selectors": _selectors})
             task = ee.batch.Export.table.toCloudStorage(modes, **export_kwargs)
-        elif dest == 'drive':
+        elif dest == "drive":
             drive_folder_name = f"{drive_folder}_properties" if drive_categorize else drive_folder
-            export_kwargs = dict(description=desc,
-                                 folder=drive_folder_name,
-                                 fileNamePrefix=f'properties/{desc}',
-                                 fileFormat=out_fmt)
-            if out_fmt == 'CSV':
-                export_kwargs.update({'selectors': _selectors})
+            export_kwargs = dict(
+                description=desc,
+                folder=drive_folder_name,
+                fileNamePrefix=f"properties/{desc}",
+                fileFormat=out_fmt,
+            )
+            if out_fmt == "CSV":
+                export_kwargs.update({"selectors": _selectors})
             task = ee.batch.Export.table.toDrive(collection=modes, **export_kwargs)
         else:
             raise ValueError('dest must be one of {"drive","bucket"}')
@@ -413,6 +408,6 @@ def get_landcover(
         print(desc)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass
 # ========================= EOF ====================================================================

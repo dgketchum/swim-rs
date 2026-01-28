@@ -13,6 +13,7 @@ Key differences from CONUS examples:
 Usage:
     python evaluate.py [--output-dir PATH] [--sites SITE1,SITE2,...] [--gap-tolerance N]
 """
+
 import os
 import time
 from pathlib import Path
@@ -30,66 +31,71 @@ from swimrs.swim.config import ProjectConfig
 
 def output_to_dataframe(output, swim_input, field_idx: int) -> pd.DataFrame:
     """Convert DailyOutput arrays to DataFrame for a single field."""
-    dates = pd.date_range(swim_input.start_date, periods=output.n_days, freq='D')
+    dates = pd.date_range(swim_input.start_date, periods=output.n_days, freq="D")
 
-    df = pd.DataFrame({
-        'et_act': output.eta[:, field_idx],
-        'kc_act': output.etf[:, field_idx],
-        'kc_bas': output.kcb[:, field_idx],
-        'ke': output.ke[:, field_idx],
-        'ks': output.ks[:, field_idx],
-        'kr': output.kr[:, field_idx],
-        'runoff': output.runoff[:, field_idx],
-        'rain': output.rain[:, field_idx],
-        'melt': output.melt[:, field_idx],
-        'swe': output.swe[:, field_idx],
-        'depl_root': output.depl_root[:, field_idx],
-        'dperc': output.dperc[:, field_idx],
-        'irrigation': output.irr_sim[:, field_idx],
-        'soil_water': output.gw_sim[:, field_idx],
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "et_act": output.eta[:, field_idx],
+            "kc_act": output.etf[:, field_idx],
+            "kc_bas": output.kcb[:, field_idx],
+            "ke": output.ke[:, field_idx],
+            "ks": output.ks[:, field_idx],
+            "kr": output.kr[:, field_idx],
+            "runoff": output.runoff[:, field_idx],
+            "rain": output.rain[:, field_idx],
+            "melt": output.melt[:, field_idx],
+            "swe": output.swe[:, field_idx],
+            "depl_root": output.depl_root[:, field_idx],
+            "dperc": output.dperc[:, field_idx],
+            "irrigation": output.irr_sim[:, field_idx],
+            "soil_water": output.gw_sim[:, field_idx],
+        },
+        index=dates,
+    )
 
     return df
 
 
 def input_to_dataframe(swim_input, field_idx: int) -> pd.DataFrame:
     """Extract input time series for a field."""
-    dates = pd.date_range(swim_input.start_date, periods=swim_input.n_days, freq='D')
+    dates = pd.date_range(swim_input.start_date, periods=swim_input.n_days, freq="D")
 
     # ERA5 uses 'eto' as the reference ET variable
     try:
-        etr = swim_input.get_time_series('eto')
+        etr = swim_input.get_time_series("eto")
     except (KeyError, ValueError):
-        etr = swim_input.get_time_series('etr')
+        etr = swim_input.get_time_series("etr")
 
-    prcp = swim_input.get_time_series('prcp')
-    tmin = swim_input.get_time_series('tmin')
-    tmax = swim_input.get_time_series('tmax')
+    prcp = swim_input.get_time_series("prcp")
+    tmin = swim_input.get_time_series("tmin")
+    tmax = swim_input.get_time_series("tmax")
 
-    df = pd.DataFrame({
-        'etref': etr[:, field_idx],
-        'ppt': prcp[:, field_idx],
-        'tmin': tmin[:, field_idx],
-        'tmax': tmax[:, field_idx],
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "etref": etr[:, field_idx],
+            "ppt": prcp[:, field_idx],
+            "tmin": tmin[:, field_idx],
+            "tmax": tmax[:, field_idx],
+        },
+        index=dates,
+    )
 
     # Add ETf observations if available (no mask for international)
     try:
-        etf = swim_input.get_time_series('etf_no_mask')
-        df['etf'] = etf[:, field_idx]
+        etf = swim_input.get_time_series("etf_no_mask")
+        df["etf"] = etf[:, field_idx]
     except (KeyError, ValueError):
         pass
 
     return df
 
 
-def run_flux_site(fid: str, cfg: ProjectConfig, container: SwimContainer,
-                  outfile: str) -> None:
+def run_flux_site(fid: str, cfg: ProjectConfig, container: SwimContainer, outfile: str) -> None:
     """Run SWIM model for a single flux site and save output."""
     start_time = time.time()
 
     # Build swim_input.h5 for this site (use temp location)
-    h5_path = outfile.replace('.csv', '.h5')
+    h5_path = outfile.replace(".csv", ".h5")
 
     swim_input = build_swim_input(
         container,
@@ -112,12 +118,11 @@ def run_flux_site(fid: str, cfg: ProjectConfig, container: SwimContainer,
     df = pd.concat([out_df, in_df], axis=1)
 
     # Filter to config date range
-    df = df.loc[cfg.start_dt: cfg.end_dt]
+    df = df.loc[cfg.start_dt : cfg.end_dt]
     df.to_csv(outfile)
 
 
-def compare_with_flux(fid: str, model_output: str, flux_file: str,
-                      return_comparison: bool = False):
+def compare_with_flux(fid: str, model_output: str, flux_file: str, return_comparison: bool = False):
     """Compare model output against flux tower observations.
 
     Args:
@@ -138,7 +143,7 @@ def compare_with_flux(fid: str, model_output: str, flux_file: str,
         model_df = pd.read_csv(model_output, index_col=0, parse_dates=True)
 
         # Load flux data (assumes 'ET' or 'LE' column exists)
-        flux_df = pd.read_csv(flux_file, index_col='date', parse_dates=True)
+        flux_df = pd.read_csv(flux_file, index_col="date", parse_dates=True)
 
         # Find common dates
         common_idx = model_df.index.intersection(flux_df.index)
@@ -147,16 +152,16 @@ def compare_with_flux(fid: str, model_output: str, flux_file: str,
             return None
 
         # Get ET values (model uses 'et_act', flux may use 'ET' or 'LE_corr')
-        model_et = model_df.loc[common_idx, 'et_act']
+        model_et = model_df.loc[common_idx, "et_act"]
 
-        if 'ET' in flux_df.columns:
-            flux_et = flux_df.loc[common_idx, 'ET']
-        elif 'LE_corr' in flux_df.columns:
+        if "ET" in flux_df.columns:
+            flux_et = flux_df.loc[common_idx, "ET"]
+        elif "LE_corr" in flux_df.columns:
             # Convert latent heat flux to ET (mm/day)
             # LE (W/m2) * 86400 / 2.45e6 = ET (mm/day)
-            flux_et = flux_df.loc[common_idx, 'LE_corr'] * 86400 / 2.45e6
+            flux_et = flux_df.loc[common_idx, "LE_corr"] * 86400 / 2.45e6
         else:
-            print(f"  No ET or LE column in flux file")
+            print("  No ET or LE column in flux file")
             return None
 
         # Drop NaN values
@@ -174,12 +179,12 @@ def compare_with_flux(fid: str, model_output: str, flux_file: str,
         bias = (model_et - flux_et).mean()
 
         comparison = {
-            'n_samples': len(model_et),
-            'rmse': rmse,
-            'r2': r2,
-            'bias': bias,
-            'mean_flux': flux_et.mean(),
-            'mean_model': model_et.mean(),
+            "n_samples": len(model_et),
+            "rmse": rmse,
+            "r2": r2,
+            "bias": bias,
+            "mean_flux": flux_et.mean(),
+            "mean_model": model_et.mean(),
         }
 
         print(f"  n={comparison['n_samples']}, RMSE={rmse:.2f}, R2={r2:.3f}, Bias={bias:.2f}")
@@ -259,7 +264,7 @@ if __name__ == "__main__":
             "Run container_prep.py first to create the container."
         )
 
-    container = SwimContainer.open(container_path, mode='r')
+    container = SwimContainer.open(container_path, mode="r")
 
     # If no sites from metadata or CLI, use container field UIDs
     if sites is None:
@@ -288,14 +293,14 @@ if __name__ == "__main__":
                 results.append((site_id, result))
             complete.append(site_id)
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Complete: {len(complete)}")
         print(f"Incomplete: {len(incomplete)}")
 
         if results:
-            print(f"\nSummary Statistics:")
-            rmses = [r[1]['rmse'] for r in results]
-            r2s = [r[1]['r2'] for r in results]
+            print("\nSummary Statistics:")
+            rmses = [r[1]["rmse"] for r in results]
+            r2s = [r[1]["r2"] for r in results]
             print(f"  Mean RMSE: {np.mean(rmses):.2f} mm/day")
             print(f"  Mean R2: {np.mean(r2s):.3f}")
 

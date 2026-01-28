@@ -8,23 +8,20 @@ Tests the changes from DIRECTORY_STORE_PLAN.md:
 4. pack() and unpack() methods work correctly
 """
 
-import shutil
-from pathlib import Path
-
 import pytest
 
-from swimrs.container import SwimContainer, create_container, open_container
+from swimrs.container import SwimContainer, open_container
 from swimrs.container.storage import (
-    detect_storage_type,
-    StorageProviderFactory,
     DirectoryStoreProvider,
+    StorageProviderFactory,
     ZipStoreProvider,
+    detect_storage_type,
 )
-
 
 # =============================================================================
 # Test Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def simple_shapefile(tmp_path):
@@ -45,6 +42,7 @@ def simple_shapefile(tmp_path):
 # =============================================================================
 # detect_storage_type() Tests
 # =============================================================================
+
 
 class TestDetectStorageType:
     """Tests for detect_storage_type helper function."""
@@ -72,6 +70,7 @@ class TestDetectStorageType:
 # StorageProviderFactory Tests
 # =============================================================================
 
+
 class TestStorageProviderFactory:
     """Tests for factory storage selection."""
 
@@ -86,6 +85,7 @@ class TestStorageProviderFactory:
         file_path = tmp_path / "test.swim"
         # Create a minimal zip file
         import zipfile
+
         with zipfile.ZipFile(file_path, "w") as zf:
             zf.writestr(".zgroup", '{"zarr_format": 3}')
 
@@ -110,9 +110,7 @@ class TestStorageProviderFactory:
     def test_explicit_directory_storage(self, tmp_path):
         """storage='directory' forces DirectoryStoreProvider."""
         new_path = tmp_path / "new.swim"
-        provider = StorageProviderFactory.from_uri(
-            new_path, mode="w", storage="directory"
-        )
+        provider = StorageProviderFactory.from_uri(new_path, mode="w", storage="directory")
         assert isinstance(provider, DirectoryStoreProvider)
 
     def test_invalid_storage_raises(self, tmp_path):
@@ -125,6 +123,7 @@ class TestStorageProviderFactory:
 # =============================================================================
 # SwimContainer.create() Tests
 # =============================================================================
+
 
 class TestContainerCreate:
     """Tests for container creation with storage parameter."""
@@ -183,6 +182,7 @@ class TestContainerCreate:
 # open_container() Auto-detection Tests
 # =============================================================================
 
+
 class TestOpenContainerAutoDetection:
     """Tests for auto-detection when opening containers."""
 
@@ -232,6 +232,7 @@ class TestOpenContainerAutoDetection:
 # =============================================================================
 # pack() and unpack() Tests
 # =============================================================================
+
 
 class TestPackUnpack:
     """Tests for pack() and unpack() methods."""
@@ -385,6 +386,7 @@ class TestPackUnpack:
 # Behavior Matrix Tests (from plan)
 # =============================================================================
 
+
 class TestBehaviorMatrix:
     """Tests for the behavior matrix from the plan."""
 
@@ -411,9 +413,7 @@ class TestBehaviorMatrix:
         with pytest.raises(FileNotFoundError):
             open_container(str(container_path))
 
-    def test_create_existing_file_without_overwrite_raises(
-        self, simple_shapefile, tmp_path
-    ):
+    def test_create_existing_file_without_overwrite_raises(self, simple_shapefile, tmp_path):
         """create() on existing file without overwrite raises FileExistsError."""
         container_path = tmp_path / "test.swim"
 

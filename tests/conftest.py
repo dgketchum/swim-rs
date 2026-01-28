@@ -15,50 +15,53 @@ This module provides:
 import sys
 import types
 
+
 def _setup_mock_ee():
     """Create a mock ee module that supports type hints and basic operations."""
     mock_ee = types.SimpleNamespace()
     # These must be types (not SimpleNamespace) to support union type hints
     # like ee.Geometry | ee.FeatureCollection
-    mock_ee.Image = type('Image', (), {})
-    mock_ee.ImageCollection = type('ImageCollection', (), {})
-    mock_ee.FeatureCollection = type('FeatureCollection', (), {})
-    mock_ee.Feature = type('Feature', (), {})
-    mock_ee.Geometry = type('Geometry', (), {'Point': type('Point', (), {})})
-    mock_ee.String = type('String', (), {})
-    mock_ee.Number = type('Number', (), {})
-    mock_ee.List = type('List', (), {})
-    mock_ee.Dictionary = type('Dictionary', (), {})
-    mock_ee.Date = type('Date', (), {})
-    mock_ee.Filter = type('Filter', (), {})
+    mock_ee.Image = type("Image", (), {})
+    mock_ee.ImageCollection = type("ImageCollection", (), {})
+    mock_ee.FeatureCollection = type("FeatureCollection", (), {})
+    mock_ee.Feature = type("Feature", (), {})
+    mock_ee.Geometry = type("Geometry", (), {"Point": type("Point", (), {})})
+    mock_ee.String = type("String", (), {})
+    mock_ee.Number = type("Number", (), {})
+    mock_ee.List = type("List", (), {})
+    mock_ee.Dictionary = type("Dictionary", (), {})
+    mock_ee.Date = type("Date", (), {})
+    mock_ee.Filter = type("Filter", (), {})
     mock_ee.Algorithms = types.SimpleNamespace()
     mock_ee.Reducer = types.SimpleNamespace()
     mock_ee.Initialize = lambda *args, **kwargs: None
     mock_ee.Authenticate = lambda *args, **kwargs: None
     return mock_ee
 
+
 # Always set up/update the mock to ensure it has all required attributes
 # (previous partial mocks from other test files might be incomplete)
-if 'ee' not in sys.modules:
-    sys.modules['ee'] = _setup_mock_ee()
+if "ee" not in sys.modules:
+    sys.modules["ee"] = _setup_mock_ee()
 else:
     # Update existing mock to ensure it has all required type attributes
-    existing_ee = sys.modules['ee']
+    existing_ee = sys.modules["ee"]
     # Only update if it looks like our mock (has no real ee methods)
-    if not hasattr(existing_ee, 'data') or isinstance(existing_ee, types.SimpleNamespace):
-        sys.modules['ee'] = _setup_mock_ee()
+    if not hasattr(existing_ee, "data") or isinstance(existing_ee, types.SimpleNamespace):
+        sys.modules["ee"] = _setup_mock_ee()
 
 # =============================================================================
 # Standard imports
 # =============================================================================
 import json
-import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
 
+if TYPE_CHECKING:
+    from swimrs.container import SwimContainer
 
 # =============================================================================
 # Tolerance Settings
@@ -69,7 +72,7 @@ DEFAULT_ATOL = 1e-6  # Absolute tolerance for near-zero values
 
 
 @pytest.fixture
-def tolerance() -> Dict[str, float]:
+def tolerance() -> dict[str, float]:
     """Default tolerance settings for floating-point comparisons."""
     return {"rtol": DEFAULT_RTOL, "atol": DEFAULT_ATOL}
 
@@ -77,6 +80,7 @@ def tolerance() -> Dict[str, float]:
 # =============================================================================
 # Fixture Path Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def fixtures_path() -> Path:
@@ -99,6 +103,7 @@ def multi_station_fixture_path(fixtures_path) -> Path:
 # =============================================================================
 # Comparison Helpers
 # =============================================================================
+
 
 def compare_scalars_with_tolerance(
     actual: float,
@@ -128,7 +133,7 @@ def compare_scalars_with_tolerance(
 
     if not np.isclose(actual, expected, rtol=rtol, atol=atol):
         diff = abs(actual - expected)
-        rel_diff = diff / abs(expected) if expected != 0 else float('inf')
+        rel_diff = diff / abs(expected) if expected != 0 else float("inf")
         raise AssertionError(
             f"{name}: actual={actual}, expected={expected}, "
             f"diff={diff:.6e}, rel_diff={rel_diff:.4%}"
@@ -173,9 +178,7 @@ def compare_arrays_with_tolerance(
 
     if not np.array_equal(actual_nan, expected_nan):
         nan_diff = np.sum(actual_nan != expected_nan)
-        raise AssertionError(
-            f"{name}: NaN pattern mismatch - {nan_diff} positions differ"
-        )
+        raise AssertionError(f"{name}: NaN pattern mismatch - {nan_diff} positions differ")
 
     # Compare non-NaN values
     mask = ~actual_nan
@@ -187,7 +190,7 @@ def compare_arrays_with_tolerance(
         max_diff_idx = np.argmax(diffs)
         max_diff = diffs[max_diff_idx]
         expected_val = expected[mask].flat[max_diff_idx]
-        rel_diff = max_diff / abs(expected_val) if expected_val != 0 else float('inf')
+        rel_diff = max_diff / abs(expected_val) if expected_val != 0 else float("inf")
 
         raise AssertionError(
             f"{name}: max difference at idx {max_diff_idx}, "
@@ -235,7 +238,7 @@ def compare_json_with_tolerance(
         raise AssertionError(f"None mismatch{loc}: actual={actual}, expected={expected}")
 
     # Type check
-    if type(actual) != type(expected):
+    if type(actual) is not type(expected):
         # Allow int/float comparison
         if isinstance(actual, (int, float)) and isinstance(expected, (int, float)):
             pass
@@ -262,9 +265,7 @@ def compare_json_with_tolerance(
 
         for key in expected_keys:
             child_path = f"{path}.{key}" if path else str(key)
-            compare_json_with_tolerance(
-                actual[key], expected[key], rtol, atol, child_path
-            )
+            compare_json_with_tolerance(actual[key], expected[key], rtol, atol, child_path)
         return True
 
     # List comparison
@@ -281,9 +282,7 @@ def compare_json_with_tolerance(
 
     # Numeric comparison
     if isinstance(expected, (int, float)):
-        compare_scalars_with_tolerance(
-            float(actual), float(expected), rtol, atol, path or "value"
-        )
+        compare_scalars_with_tolerance(float(actual), float(expected), rtol, atol, path or "value")
         return True
 
     # String/bool comparison (exact)
@@ -296,6 +295,7 @@ def compare_json_with_tolerance(
 # =============================================================================
 # Golden File Utilities
 # =============================================================================
+
 
 def load_golden_json(golden_dir: Path, filename: str) -> Any:
     """
@@ -311,14 +311,14 @@ def load_golden_json(golden_dir: Path, filename: str) -> Any:
     Raises:
         FileNotFoundError: If golden file doesn't exist
     """
-    if not filename.endswith('.json'):
+    if not filename.endswith(".json"):
         filename = f"{filename}.json"
 
     filepath = golden_dir / filename
     if not filepath.exists():
         raise FileNotFoundError(f"Golden file not found: {filepath}")
 
-    with open(filepath, 'r') as f:
+    with open(filepath) as f:
         return json.load(f)
 
 
@@ -334,13 +334,13 @@ def save_golden_json(golden_dir: Path, filename: str, data: Any) -> Path:
     Returns:
         Path to saved file
     """
-    if not filename.endswith('.json'):
+    if not filename.endswith(".json"):
         filename = f"{filename}.json"
 
     golden_dir.mkdir(parents=True, exist_ok=True)
     filepath = golden_dir / filename
 
-    with open(filepath, 'w') as f:
+    with open(filepath, "w") as f:
         json.dump(data, f, indent=2, default=_json_serializer)
 
     return filepath
@@ -360,6 +360,7 @@ def _json_serializer(obj):
 # =============================================================================
 # Container Test Helpers
 # =============================================================================
+
 
 def create_test_container(
     tmp_path: Path,
@@ -394,7 +395,7 @@ def create_test_container(
     )
 
 
-def get_container_dynamics_values(container) -> Dict[str, Any]:
+def get_container_dynamics_values(container) -> dict[str, Any]:
     """
     Extract dynamics values from a container for comparison.
 
@@ -407,15 +408,19 @@ def get_container_dynamics_values(container) -> Dict[str, Any]:
     result = {}
 
     # Scalar arrays
-    for name, path in [("ke_max", "derived/dynamics/ke_max"),
-                       ("kc_max", "derived/dynamics/kc_max")]:
+    for name, path in [
+        ("ke_max", "derived/dynamics/ke_max"),
+        ("kc_max", "derived/dynamics/kc_max"),
+    ]:
         if path in container._state.root:
             arr = container._state.root[path][:]
             result[name] = arr.tolist()
 
     # JSON-stored data
-    for name, path in [("irr_data", "derived/dynamics/irr_data"),
-                       ("gwsub_data", "derived/dynamics/gwsub_data")]:
+    for name, path in [
+        ("irr_data", "derived/dynamics/irr_data"),
+        ("gwsub_data", "derived/dynamics/gwsub_data"),
+    ]:
         if path in container._state.root:
             arr = container._state.root[path]
             # These are string arrays containing JSON
@@ -423,7 +428,7 @@ def get_container_dynamics_values(container) -> Dict[str, Any]:
             for i in range(arr.shape[0]):
                 val = arr[i]
                 # Handle zarr v3 ndarray returns
-                if hasattr(val, 'item'):
+                if hasattr(val, "item"):
                     val = val.item()
                 if val:
                     data.append(json.loads(val))
@@ -438,17 +443,12 @@ def get_container_dynamics_values(container) -> Dict[str, Any]:
 # Pytest Configuration
 # =============================================================================
 
+
 def pytest_configure(config):
     """Register custom markers."""
-    config.addinivalue_line(
-        "markers", "unit: fast isolated unit tests"
-    )
-    config.addinivalue_line(
-        "markers", "integration: marks integration tests"
-    )
-    config.addinivalue_line(
-        "markers", "regression: marks regression tests against golden files"
-    )
+    config.addinivalue_line("markers", "unit: fast isolated unit tests")
+    config.addinivalue_line("markers", "integration: marks integration tests")
+    config.addinivalue_line("markers", "regression: marks regression tests against golden files")
     config.addinivalue_line(
         "markers", "parity: marks parity tests comparing container vs legacy implementations"
     )
@@ -459,7 +459,8 @@ def pytest_configure(config):
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
     config.addinivalue_line(
-        "markers", "requires_ee: marks tests requiring Earth Engine authentication (run with --run-ee)"
+        "markers",
+        "requires_ee: marks tests requiring Earth Engine authentication (run with --run-ee)",
     )
 
 

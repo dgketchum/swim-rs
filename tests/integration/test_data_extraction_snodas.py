@@ -1,7 +1,6 @@
 """Tests for swimrs.data_extraction.snodas.snodas module."""
 
 import json
-from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -152,7 +151,7 @@ class TestCreateTimeseriesJsonValues:
             {
                 "FID": ["test_field"],
                 "2020-01-15": [0.123],  # 123 mm
-                "2020-01-16": [0.0],    # 0 mm (no snow)
+                "2020-01-16": [0.0],  # 0 mm (no snow)
                 "2020-01-17": [0.456],  # 456 mm
             }
         )

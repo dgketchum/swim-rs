@@ -39,8 +39,7 @@ def _load_config() -> ProjectConfig:
     return cfg
 
 
-def create_project_container(cfg: ProjectConfig = None,
-                             overwrite: bool = False) -> SwimContainer:
+def create_project_container(cfg: ProjectConfig = None, overwrite: bool = False) -> SwimContainer:
     """
     Create a new SwimContainer for this project.
 
@@ -102,9 +101,13 @@ def ingest_meteorology(container: SwimContainer, cfg: ProjectConfig, overwrite: 
     )
 
 
-def ingest_remote_sensing(container: SwimContainer, cfg: ProjectConfig,
-                          sites: list = None, overwrite: bool = False,
-                          add_sentinel: bool = True):
+def ingest_remote_sensing(
+    container: SwimContainer,
+    cfg: ProjectConfig,
+    sites: list = None,
+    overwrite: bool = False,
+    add_sentinel: bool = True,
+):
     """
     Ingest remote sensing data (NDVI, ETf) into the container.
 
@@ -263,8 +266,13 @@ def compute_dynamics(container: SwimContainer, cfg: ProjectConfig, overwrite: bo
     )
 
 
-def prep_all(container: SwimContainer, cfg: ProjectConfig = None, sites: list = None,
-             overwrite: bool = False, add_sentinel: bool = True):
+def prep_all(
+    container: SwimContainer,
+    cfg: ProjectConfig = None,
+    sites: list = None,
+    overwrite: bool = False,
+    add_sentinel: bool = True,
+):
     """
     Run the complete data preparation workflow.
 
@@ -282,8 +290,9 @@ def prep_all(container: SwimContainer, cfg: ProjectConfig = None, sites: list = 
     ingest_meteorology(container, cfg, overwrite=overwrite)
 
     # Step 2: Ingest remote sensing (NDVI, ETf)
-    ingest_remote_sensing(container, cfg, sites=sites,
-                          overwrite=overwrite, add_sentinel=add_sentinel)
+    ingest_remote_sensing(
+        container, cfg, sites=sites, overwrite=overwrite, add_sentinel=add_sentinel
+    )
 
     # Step 3: Ingest snow
     ingest_snow(container, cfg, overwrite=overwrite)

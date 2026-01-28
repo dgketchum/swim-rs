@@ -14,15 +14,15 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from numpy.testing import assert_array_almost_equal, assert_array_less
+from numpy.testing import assert_array_almost_equal
 
-from swimrs.process.state import (
-    WaterBalanceState,
-    FieldProperties,
-    CalibrationParameters,
-)
 from swimrs.process.input import build_swim_input
-from swimrs.process.loop import DailyOutput, step_day, run_daily_loop
+from swimrs.process.loop import DailyOutput, run_daily_loop, step_day
+from swimrs.process.state import (
+    CalibrationParameters,
+    FieldProperties,
+    WaterBalanceState,
+)
 
 
 class TestDailyOutput:
@@ -80,10 +80,7 @@ class TestStepDay:
         srad = np.array([20.0, 20.0, 20.0])
         irr_flag = np.array([False, True, False])
 
-        result = step_day(
-            state, props, params,
-            ndvi, etr, prcp, tmin, tmax, srad, irr_flag
-        )
+        result = step_day(state, props, params, ndvi, etr, prcp, tmin, tmax, srad, irr_flag)
 
         assert "eta" in result
         assert "etf" in result
@@ -102,10 +99,7 @@ class TestStepDay:
         srad = np.array([20.0, 20.0, 20.0])
         irr_flag = np.array([False, False, False])
 
-        result = step_day(
-            state, props, params,
-            ndvi, etr, prcp, tmin, tmax, srad, irr_flag
-        )
+        result = step_day(state, props, params, ndvi, etr, prcp, tmin, tmax, srad, irr_flag)
 
         assert np.all(result["eta"] >= 0)
 
@@ -123,10 +117,7 @@ class TestStepDay:
         srad = np.array([20.0, 20.0, 20.0])
         irr_flag = np.array([False, False, False])
 
-        result = step_day(
-            state, props, params,
-            ndvi, etr, prcp, tmin, tmax, srad, irr_flag
-        )
+        result = step_day(state, props, params, ndvi, etr, prcp, tmin, tmax, srad, irr_flag)
 
         # ETa <= Kc_max * ETr (with some margin for numerical issues)
         max_et = props.kc_max * etr
@@ -144,10 +135,7 @@ class TestStepDay:
         srad = np.array([15.0, 15.0, 15.0])
         irr_flag = np.array([False, False, False])
 
-        result = step_day(
-            state, props, params,
-            ndvi, etr, prcp, tmin, tmax, srad, irr_flag
-        )
+        result = step_day(state, props, params, ndvi, etr, prcp, tmin, tmax, srad, irr_flag)
 
         # Should have accumulated SWE
         assert np.all(result["swe"] > 0)
@@ -169,10 +157,7 @@ class TestStepDay:
         srad = np.array([20.0, 20.0, 20.0])
         irr_flag = np.array([True, True, True])
 
-        result = step_day(
-            state, props, params,
-            ndvi, etr, prcp, tmin, tmax, srad, irr_flag
-        )
+        result = step_day(state, props, params, ndvi, etr, prcp, tmin, tmax, srad, irr_flag)
 
         # Should have irrigation
         assert np.all(result["irr_sim"] > 0)

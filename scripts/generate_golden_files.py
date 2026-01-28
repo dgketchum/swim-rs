@@ -37,7 +37,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 
@@ -69,14 +69,14 @@ def generate_golden_files(
     ndvi_dir: Path,
     etf_dir: Path,
     met_dir: Path,
-    properties_dir: Optional[Path],
+    properties_dir: Path | None,
     start_date: str,
     end_date: str,
     output_dir: Path,
     etf_model: str = "ssebop",
     instrument: str = "landsat",
     mask: str = "irr",
-) -> Dict[str, Path]:
+) -> dict[str, Path]:
     """
     Generate golden files for a container configuration.
 
@@ -97,8 +97,9 @@ def generate_golden_files(
     Returns:
         Dict mapping output names to file paths
     """
-    from swimrs.container import SwimContainer
     import tempfile
+
+    from swimrs.container import SwimContainer
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -179,9 +180,7 @@ def generate_golden_files(
         ke_path = "derived/dynamics/ke_max"
         if ke_path in container._state.root:
             ke_values = container._state.root[ke_path][:].tolist()
-            ke_data = {
-                uid: val for uid, val in zip(container.field_uids, ke_values)
-            }
+            ke_data = {uid: val for uid, val in zip(container.field_uids, ke_values)}
             golden_outputs["ke_max"] = ke_data
             logger.info(f"Extracted ke_max: {ke_data}")
 
@@ -189,9 +188,7 @@ def generate_golden_files(
         kc_path = "derived/dynamics/kc_max"
         if kc_path in container._state.root:
             kc_values = container._state.root[kc_path][:].tolist()
-            kc_data = {
-                uid: val for uid, val in zip(container.field_uids, kc_values)
-            }
+            kc_data = {uid: val for uid, val in zip(container.field_uids, kc_values)}
             golden_outputs["kc_max"] = kc_data
             logger.info(f"Extracted kc_max: {kc_data}")
 
@@ -233,7 +230,7 @@ def generate_golden_files(
         )
 
         # Read and parse the prepped input
-        with open(prepped_path, 'r') as f:
+        with open(prepped_path) as f:
             # It's a JSONL file, so read first line as sample
             first_line = f.readline()
             if first_line:
@@ -248,14 +245,15 @@ def generate_golden_files(
 
         # Save full prepped input (copy the file)
         import shutil
+
         shutil.copy(prepped_path, output_dir / "prepped_input.json")
 
         # 6. Generate spinup by running the model
         logger.info("Generating spinup state by running model...")
         try:
+            from swimrs.model.obs_field_cycle import field_day_loop
             from swimrs.swim.config import ProjectConfig
             from swimrs.swim.sampleplots import SamplePlots
-            from swimrs.model.obs_field_cycle import field_day_loop
 
             # Create a minimal config for running the model
             # We need to run with the prepped_input.json we just generated
@@ -297,7 +295,7 @@ def generate_golden_files(
 
     for name, data in golden_outputs.items():
         filepath = output_dir / f"{name}.json"
-        with open(filepath, 'w') as f:
+        with open(filepath, "w") as f:
             json.dump(data, f, indent=2, default=json_serializer)
         saved_files[name] = filepath
         logger.info(f"Saved {filepath}")
@@ -312,10 +310,10 @@ def generate_golden_files(
         "etf_model": etf_model,
         "instrument": instrument,
         "mask": mask,
-        "field_uids": container.field_uids if hasattr(container, 'field_uids') else [],
+        "field_uids": container.field_uids if hasattr(container, "field_uids") else [],
     }
     metadata_path = output_dir / "metadata.json"
-    with open(metadata_path, 'w') as f:
+    with open(metadata_path, "w") as f:
         json.dump(metadata, f, indent=2)
     saved_files["metadata"] = metadata_path
 
@@ -335,66 +333,49 @@ def main():
     # Common arguments for both commands
     common_parser = argparse.ArgumentParser(add_help=False)
     common_parser.add_argument(
-        "--shapefile", type=Path, required=True,
-        help="Path to fields shapefile"
+        "--shapefile", type=Path, required=True, help="Path to fields shapefile"
     )
     common_parser.add_argument(
-        "--uid-column", type=str, required=True,
-        help="Column name for field UIDs"
+        "--uid-column", type=str, required=True, help="Column name for field UIDs"
     )
     common_parser.add_argument(
-        "--ndvi-dir", type=Path, required=True,
-        help="Directory containing NDVI CSV exports"
+        "--ndvi-dir", type=Path, required=True, help="Directory containing NDVI CSV exports"
     )
     common_parser.add_argument(
-        "--etf-dir", type=Path, required=True,
-        help="Directory containing ETf CSV exports"
+        "--etf-dir", type=Path, required=True, help="Directory containing ETf CSV exports"
     )
     common_parser.add_argument(
-        "--met-dir", type=Path, required=True,
-        help="Directory containing meteorology parquet files"
+        "--met-dir", type=Path, required=True, help="Directory containing meteorology parquet files"
     )
     common_parser.add_argument(
-        "--properties-dir", type=Path, default=None,
-        help="Directory containing property CSV files (lulc.csv, ssurgo.csv, irr.csv)"
+        "--properties-dir",
+        type=Path,
+        default=None,
+        help="Directory containing property CSV files (lulc.csv, ssurgo.csv, irr.csv)",
     )
     common_parser.add_argument(
-        "--start-date", type=str, required=True,
-        help="Start date (YYYY-MM-DD)"
+        "--start-date", type=str, required=True, help="Start date (YYYY-MM-DD)"
+    )
+    common_parser.add_argument("--end-date", type=str, required=True, help="End date (YYYY-MM-DD)")
+    common_parser.add_argument(
+        "--output-dir", type=Path, required=True, help="Directory to save golden files"
     )
     common_parser.add_argument(
-        "--end-date", type=str, required=True,
-        help="End date (YYYY-MM-DD)"
+        "--etf-model", type=str, default="ssebop", help="ET model name (default: ssebop)"
     )
     common_parser.add_argument(
-        "--output-dir", type=Path, required=True,
-        help="Directory to save golden files"
+        "--instrument", type=str, default="landsat", help="Instrument name (default: landsat)"
     )
-    common_parser.add_argument(
-        "--etf-model", type=str, default="ssebop",
-        help="ET model name (default: ssebop)"
-    )
-    common_parser.add_argument(
-        "--instrument", type=str, default="landsat",
-        help="Instrument name (default: landsat)"
-    )
-    common_parser.add_argument(
-        "--mask", type=str, default="irr",
-        help="Mask type (default: irr)"
-    )
+    common_parser.add_argument("--mask", type=str, default="irr", help="Mask type (default: irr)")
 
     # S2 single-station command
     s2_parser = subparsers.add_parser(
-        "s2",
-        parents=[common_parser],
-        help="Generate golden files for S2 single-station test"
+        "s2", parents=[common_parser], help="Generate golden files for S2 single-station test"
     )
 
     # Multi-station command
     multi_parser = subparsers.add_parser(
-        "multi",
-        parents=[common_parser],
-        help="Generate golden files for multi-station test"
+        "multi", parents=[common_parser], help="Generate golden files for multi-station test"
     )
 
     args = parser.parse_args()

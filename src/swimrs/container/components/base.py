@@ -7,14 +7,14 @@ Exporter, Query) that operate on the shared ContainerState.
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Generator, Optional
+from typing import TYPE_CHECKING, Any
 
 from swimrs.container.logging import ContainerLogger, get_logger
 
 if TYPE_CHECKING:
     from swimrs.container.state import ContainerState
-    from swimrs.container.provenance import ProvenanceEvent
 
 
 class Component:
@@ -45,7 +45,7 @@ class Component:
                 self._log.info("operation_complete", records=100)
     """
 
-    def __init__(self, state: "ContainerState", container: Optional[Any] = None):
+    def __init__(self, state: ContainerState, container: Any | None = None):
         """
         Initialize the component.
 
@@ -58,7 +58,7 @@ class Component:
         self._log = get_logger(self.__class__.__name__.lower())
 
     @property
-    def state(self) -> "ContainerState":
+    def state(self) -> ContainerState:
         """Access the container state."""
         return self._state
 
@@ -110,9 +110,9 @@ class Component:
     def _track_operation(
         self,
         operation: str,
-        target: Optional[str] = None,
+        target: str | None = None,
         **params: Any,
-    ) -> Generator[dict, None, None]:
+    ) -> Generator[dict]:
         """
         Context manager for tracking operations with logging and provenance.
 
