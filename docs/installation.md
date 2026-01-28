@@ -4,11 +4,71 @@ This guide walks through setting up SWIM-RS from scratch, including dependencies
 
 ## Prerequisites
 
-- **Python 3.13** (required)
-- **conda** (recommended; see [Non-Conda Installation](#non-conda-installation) below for alternatives)
-- **Git** (for installing from source)
+- **Python 3.13** (recommended stable version)
+- **uv** (recommended; fastest way to create a clean environment)
+- **Git** (optional; only needed for installing from source)
+- **conda** (optional; can simplify geospatial dependencies)
 
-## Conda Installation (Recommended)
+## uv Installation (Recommended)
+
+This is the quickest way to get a modern, reproducible environment with SWIM-RS.
+
+### 1. Create a project and install SWIM-RS
+
+If you're starting from scratch:
+
+```bash
+mkdir swim-rs && cd swim-rs
+uv init --python 3.13
+uv add swimrs
+```
+
+If you already have a `pyproject.toml`, run:
+
+```bash
+uv add swimrs
+```
+
+Optional extras:
+
+```bash
+uv add "swimrs[openet]"
+```
+
+If geospatial dependencies fail to install (GDAL/PROJ issues), use the **Conda Installation** section below or see **Install Geospatial Dependencies** under **Non-Conda Installation** for system-library instructions.
+
+### 2. Install PEST++ binaries (required for calibration)
+
+SWIM-RS uses PEST++ for calibration. You can download the executables automatically via `pyemu`:
+
+```bash
+uv run python -c "import pyemu; pyemu.helpers.get_pestpp_binaries(dest_dir='./bin')"
+```
+
+### 3. Add `./bin` to your PATH
+
+Ensure the `pestpp-*` executables are discoverable (so the `swim` CLI can find the PEST++ engine):
+
+**Linux/macOS:**
+```bash
+export PATH="$PWD/bin:$PATH"
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:Path = "$PWD\\bin;$env:Path"
+```
+
+### 4. Verify installation
+
+```bash
+uv run swim --help
+uv run pestpp-ies --version
+```
+
+---
+
+## Conda Installation (Alternative)
 
 ### 1. Install Conda (if needed)
 
@@ -187,7 +247,26 @@ pip install -e .
 
 ### 3. Install PEST++ Executables
 
-Download pre-built PEST++ binaries from the official releases:
+PEST++ is required for calibration. Recommended: download the executables automatically via `pyemu`:
+
+**Linux/macOS/Windows (from your activated venv):**
+```bash
+python -c "import pyemu; pyemu.helpers.get_pestpp_binaries(dest_dir='./bin')"
+```
+
+Add `./bin` to your PATH so `swim` can find the PEST++ engine:
+
+**Linux/macOS:**
+```bash
+export PATH="$PWD/bin:$PATH"
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:Path = "$PWD\\bin;$env:Path"
+```
+
+Alternative: download pre-built PEST++ binaries from the official releases:
 
 **Download:** https://github.com/usgs/pestpp/releases
 
@@ -261,6 +340,37 @@ python -c "import geopandas; print('geopandas OK')"
 
 ## Complete Setup Scripts
 
+### uv (Linux/macOS)
+
+```bash
+#!/bin/bash
+mkdir swim-rs && cd swim-rs
+uv init --python 3.13
+uv add swimrs
+
+# Download PEST++ binaries to ./bin
+uv run python -c "import pyemu; pyemu.helpers.get_pestpp_binaries(dest_dir='./bin')"
+export PATH="$PWD/bin:$PATH"
+
+uv run swim --help && uv run pestpp-ies --version
+```
+
+### uv (Windows — PowerShell)
+
+```powershell
+mkdir swim-rs
+cd swim-rs
+uv init --python 3.13
+uv add swimrs
+
+# Download PEST++ binaries to ./bin
+uv run python -c "import pyemu; pyemu.helpers.get_pestpp_binaries(dest_dir='./bin')"
+$env:Path = "$PWD\\bin;$env:Path"
+
+uv run swim --help
+uv run pestpp-ies --version
+```
+
 ### Conda (Linux/macOS)
 
 ```bash
@@ -311,10 +421,17 @@ conda install -c conda-forge gdal fiona rasterio --force-reinstall -y
 
 ### PEST++ not found
 
-Ensure conda-forge channel is available:
+If you're using `uv` (recommended), download the binaries and ensure `./bin` is on your PATH:
+
 ```bash
-conda config --add channels conda-forge
-conda install pestpp -y
+uv run python -c "import pyemu; pyemu.helpers.get_pestpp_binaries(dest_dir='./bin')"
+export PATH="$PWD/bin:$PATH"
+```
+
+If you're using conda, install via conda-forge:
+
+```bash
+conda install -c conda-forge pestpp -y
 ```
 
 ### Earth Engine authentication fails
@@ -342,7 +459,13 @@ conda install -c conda-forge numpy scipy pandas --force-reinstall -y
 
 ### Windows: "swim" command not found
 
-If `swim` isn't recognized after installation, ensure you're in the Anaconda/Miniforge Prompt (not regular Command Prompt or PowerShell). Alternatively, use:
+If you installed with `uv`, run commands via:
+
+```powershell
+uv run swim --help
+```
+
+If you installed with conda, ensure you're in the Anaconda/Miniforge Prompt (not regular Command Prompt or PowerShell). Alternatively, use:
 ```batch
 python -m swimrs.cli --help
 ```

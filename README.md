@@ -34,6 +34,7 @@ See the [Installation Guide](docs/installation.md) for detailed setup instructio
 
 **Quick install (uv, recommended; Python 3.13):**
 ```bash
+mkdir swim-rs && cd swim-rs
 uv init --python 3.13
 uv add swimrs
 
