@@ -32,7 +32,17 @@ flowchart LR
 
 See the [Installation Guide](docs/installation.md) for detailed setup instructions including conda, PEST++, and Earth Engine authentication.
 
-**Quick install** (assumes conda and Python 3.13):
+**Quick install (uv, recommended; Python 3.13):**
+```bash
+uv init --python 3.13
+uv add swimrs
+
+# Calibration requires PEST++ binaries
+uv run python -c "import pyemu; pyemu.helpers.get_pestpp_binaries(dest_dir='./bin')"
+export PATH="$PWD/bin:$PATH"
+```
+
+**Alternative (conda):**
 ```bash
 conda create -n swim python=3.13 -y && conda activate swim
 conda install -c conda-forge pestpp geopandas rasterio -y
