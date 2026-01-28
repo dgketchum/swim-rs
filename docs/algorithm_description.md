@@ -3,27 +3,26 @@
 ## Overview
 
 SWIM-RS (**S**oil **W**ater **I**nverse **M**odeling with **R**emote
-**S**ensing) implements a FAO-56 dual crop coefficient soil water balance
+**S**ensing) implements a modified FAO-56 dual crop coefficient soil water balance
 model driven by remote sensing observations. The model simulates daily
 evapotranspiration, soil moisture dynamics, irrigation, and groundwater
 interactions for agricultural fields. We use NDVI time series from satellite
 imagery to estimate crop coefficients dynamically, enabling spatially
 distributed ET estimation without crop-specific parameterization.
 
-A complex architecture surrounds the model: we use special extraction and
-data storage objects to help organize the data and relieve the user of dealing
-with the many files that are required to run the model, see [container architecture](container_architecture.md) 
-for a description of the SwimContainer.
+SWIM-RS includes supporting infrastructure around the core water-balance model:
 
-We use special water balance state, properties, calibrated parameter, and input 
-data objects to organize information required to run the algorithm. This modular approach 
-makes all components testable, enabling new features. See [process architecture](process_architecture.md)
-for a description of SwimInput, FieldProperties, CalibrationParameters, and WaterBalanceState classes.
+- **Data ingestion and storage** are handled by `SwimContainer`, which organizes the many
+  inputs and derived datasets needed to run the model. See
+  [container architecture](container_architecture.md).
 
-We've made a considerable investment to design the software in such a way that it is testable and usable
-by non-developers. The architecture, while complex, will allow easier integration of expected 
-future features, such as specialized irrigation scheduling and simulation, different snow, runoff,
-and soil water models, and new proxies for ET and Kcb.
+- **Simulation inputs and state** are represented with a small set of explicit objects:
+  `SwimInput`, `FieldProperties`, `CalibrationParameters`, and `WaterBalanceState`. See
+  [process architecture](process_architecture.md).
+
+This modular design keeps components testable and makes it easier to extend SWIM-RS with
+new features (e.g., alternative snow/runoff/soil-water formulations, richer irrigation
+scheduling, and new remote-sensing proxies for ET and `Kcb`).
 
 While this software has been completely rewritten, it was originally based on a fork
 of [et-demands](https://github.com/WSWUP/et-demands); shoutout to Dr. Richard Allen, Chris Pearson, Charles Morton, Blake Minor,
@@ -194,7 +193,7 @@ For **perennial crops**, root depth remains constant at `zr_max`.
 When roots grow or shrink, we redistribute water between the root zone
 and layer 3 to conserve mass.
 
-### Step 6: Surface Evaporation (Kr and Ke)
+### Step 6: Surface Evaporation (Kr and Ke; FAO-56 Modification)
 
 **Evaporation reduction coefficient (Kr)**:
 
@@ -209,6 +208,11 @@ We apply damping to smooth day-to-day transitions:
 Kr_new = Kr_prev + kr_damp × (Kr_current - Kr_prev)
 ```
 
+This is a simple “inertia” term: each day, `Kr` moves a fraction `kr_damp` of the way from
+its previous value toward the current value implied by surface wetness. Increasing `kr_damp`
+makes evaporation respond more quickly to wetting and drying (sharper post-rain `Ke` pulses),
+while decreasing `kr_damp` makes the response slower and more memory dominated.
+
 **Evaporation coefficient (Ke)**:
 
 ```
@@ -222,7 +226,7 @@ or exposed soil area.
 **Parameters**: `kr_damp` (damping factor), `ke_max` (maximum soil
 evaporation)
 
-### Step 7: Root Zone Stress Coefficient (Ks)
+### Step 7: Root Zone Stress Coefficient (Ks; FAO-56 Modification)
 
 When root zone depletion exceeds RAW, transpiration stress begins:
 
@@ -236,15 +240,26 @@ Where:
 - `RAW = MAD × TAW` (readily available water)
 - `MAD` is the management allowed depletion fraction
 
+**Note on MAD in SWIM-RS (parameter overloading)**: In FAO-56, MAD (denoted `p`)
+primarily defines the stress onset threshold (`RAW`) used to compute `Ks`. In SWIM-RS, the
+same `RAW` threshold is also reused to trigger irrigation and groundwater subsidy (both
+check `Dr > RAW`), so calibrated MAD is best interpreted as a tuned control/stress
+threshold rather than a directly measured management depletion fraction.
+
 We apply damping for smooth response:
 
 ```
 Ks_new = Ks_prev + ks_damp × (Ks_current - Ks_prev)
 ```
 
+This damping has the same intuition as `Kr`: each day, `Ks` moves a fraction `ks_damp` from
+yesterday’s stress state toward the current stress implied by depletion. Increasing `ks_damp`
+makes stress onset and recovery more immediate, while decreasing `ks_damp` slows the response,
+reducing day-to-day noise but introducing lag in stress and recovery dynamics.
+
 **Parameters**: `ks_damp` (damping factor), `p_depletion` (MAD value)
 
-### Step 8: Actual Evapotranspiration
+### Step 8: Actual Evapotranspiration (FAO-56 Modification)
 
 We calculate actual ET from the stress and evaporation coefficients:
 
@@ -252,6 +267,29 @@ We calculate actual ET from the stress and evaporation coefficients:
 Kc_act = min(Ks × Kcb × fc + Ke, Kc_max)
 ETc_act = Kc_act × ETref
 ```
+
+In Allen (2005) / FAO-56, this step is commonly written as `Kc_act = Ks × Kcb + Ke`;
+`fc` primarily constrains evaporation through `few = 1 - fc` rather than scaling the
+transpiration term directly.
+
+SWIM-RS relies heavily on remote sensing, so we compute `Kcb` from NDVI and include a
+fractional cover term (`fc`) to scale the transpiration component:
+`Kc_act = min(fc × Ks × Kcb + Ke, Kc_max)`. Although both `Kcb` and `fc` are
+NDVI-derived, `fc` couples canopy closure to both increased transpiring area and
+reduced exposed-soil evaporation opportunity (`few = 1 - fc`). Without `fc`,
+calibration can match total ET by shifting flux into soil evaporation (`Ke`) and
+suppressing transpiration (`Kcb`), yielding physically implausible E/T partitioning
+(evaporation-dominated ET at high NDVI). Including `fc` preserves total ET skill while
+improving management interpretability (e.g., irrigated full-canopy periods dominated
+by transpiration).
+
+This trade-off was settled upon after extensive testing of the functional relationship
+in `Kcb = f(NDVI)`, which has a rich history of investigation and deserves further
+research. At the end of the day, inverse modeling demands that we come to terms with
+our assumptions about the functional form of our models and with parameter equifinality.
+This decision represents a balance between data-driven, performance-oriented ET
+modeling, and the practical necessity to provide the user with a good estimate of the
+E/T partitioning in our water use models.
 
 Where:
 - Transpiration component: `T = Ks × Kcb × fc × ETref`
