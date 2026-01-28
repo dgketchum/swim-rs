@@ -7,7 +7,7 @@ name = "swimrs"
 version = "0.1.0"
 description = "Soil Water balance Inverse Modeling using Remote Sensing"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13,<3.14"
 license = { text = "CC-BY-NC-4.0" }
 authors = [{ name = "SWIM-RS Developers" }]
 dependencies = [
@@ -34,6 +34,12 @@ openet = [
   "openet-disalexi",
   "openet-geesebal",
 ]
+dev = [
+  "pytest",
+  "pytest-cov",
+  "ruff",
+  "black",
+]
 
 [project.scripts]
 swim = "swimrs.cli:main"
@@ -50,7 +56,7 @@ include = ["swimrs*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py313"
 src = ["src","tests"]
 
 [tool.ruff.lint]
@@ -58,7 +64,7 @@ select = ["E","F","I","UP","B"]
 
 [tool.black]
 line-length = 100
-target-version = ["py311"]
+target-version = ["py313"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

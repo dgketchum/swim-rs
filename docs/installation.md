@@ -4,7 +4,7 @@ This guide walks through setting up SWIM-RS from scratch, including dependencies
 
 ## Prerequisites
 
-- **Python 3.11+** (required)
+- **Python 3.13** (required)
 - **conda** (recommended; see [Non-Conda Installation](#non-conda-installation) below for alternatives)
 - **Git** (for installing from source)
 
@@ -71,7 +71,7 @@ After installation:
 Create a dedicated environment for SWIM-RS. These commands work the same on Windows (Anaconda Prompt), macOS, and Linux:
 
 ```bash
-conda create -n swim python=3.11 -y
+conda create -n swim python=3.13 -y
 conda activate swim
 ```
 
@@ -155,7 +155,7 @@ If you prefer not to use conda, you can install SWIM-RS with pip and download PE
 
 **Linux/macOS:**
 ```bash
-python3.11 -m venv ~/.venvs/swim
+python3.13 -m venv ~/.venvs/swim
 source ~/.venvs/swim/bin/activate
 ```
 
@@ -265,7 +265,7 @@ python -c "import geopandas; print('geopandas OK')"
 
 ```bash
 #!/bin/bash
-conda create -n swim python=3.11 -y && conda activate swim
+conda create -n swim python=3.13 -y && conda activate swim
 conda install -c conda-forge pestpp geopandas rasterio pyproj fiona shapely -y
 git clone https://github.com/dgketchum/swim-rs.git && cd swim-rs
 pip install -e .
@@ -275,7 +275,7 @@ swim --help && pestpp-ies --version
 ### Conda (Windows — Anaconda Prompt)
 
 ```batch
-conda create -n swim python=3.11 -y && conda activate swim
+conda create -n swim python=3.13 -y && conda activate swim
 conda install -c conda-forge pestpp geopandas rasterio pyproj fiona shapely -y
 git clone https://github.com/dgketchum/swim-rs.git && cd swim-rs
 pip install -e .
@@ -286,7 +286,7 @@ swim --help && pestpp-ies --version
 
 ```bash
 #!/bin/bash
-python3.11 -m venv ~/.venvs/swim && source ~/.venvs/swim/bin/activate
+python3.13 -m venv ~/.venvs/swim && source ~/.venvs/swim/bin/activate
 pip install --upgrade pip
 
 # Install GDAL system library first (Ubuntu: sudo apt-get install gdal-bin libgdal-dev)
@@ -378,7 +378,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.11
+  - python=3.13
   - pestpp
   - geopandas
   - rasterio

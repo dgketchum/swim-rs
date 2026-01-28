@@ -1,5 +1,8 @@
 # SWIM-RS
 
+[![CI](https://github.com/dgketchum/swim-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/dgketchum/swim-rs/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/dgketchum/swim-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/dgketchum/swim-rs)
+
 **S**oil **W**ater balance **I**nverse **M**odeling using **R**emote **S**ensing
 
 SWIM-RS combines the desirable qualities of remote sensing and hydrological modeling into an easy-to-use, rigorous
@@ -10,7 +13,7 @@ packaged into easy-to-manage containers with provenance and coverage checks.
 The process engine uses numba-accelerated FAO-56 kernels; calibration is field-level via PEST++ IES (ensemble ETf optional). 
 A 40-year run on a single field completes in under a second; shipped examples run end-to-end with a few commands.
 
-**Modern workflow (container-first)**
+**The Workflow**
 
 ```
 swim extract (EE + met) → swim prep (build .swim container) → build_swim_input (HDF5) → run_daily_loop / calibrate
@@ -29,12 +32,24 @@ flowchart LR
 
 See the [Installation Guide](docs/installation.md) for detailed setup instructions including conda, PEST++, and Earth Engine authentication.
 
-**Quick install** (assumes conda and Python 3.11+):
+**Quick install** (assumes conda and Python 3.13):
 ```bash
-conda create -n swim python=3.11 -y && conda activate swim
+conda create -n swim python=3.13 -y && conda activate swim
 conda install -c conda-forge pestpp geopandas rasterio -y
 pip install git+https://github.com/dgketchum/swim-rs.git
 ```
+
+## Testing
+
+```bash
+pip install -e ".[dev]"
+pytest
+
+# Coverage (line + branch)
+pytest --cov=swimrs --cov-branch --cov-report=term-missing
+```
+
+By default, tests requiring Earth Engine auth are skipped; run them with `pytest --run-ee`.
 
 ## Quick start (Fort Peck, Montana)
 
@@ -67,9 +82,9 @@ Outputs:
 <img src="https://raw.githubusercontent.com/dgketchum/swim-rs/reform-data-container/docs/images/US-FPe_scatter.png" alt="SWIM vs PT-JPL comparison" width="600">
 <!--/img-placeholder-->
 
-SWIM-RS uses remote sensing ET to calibrate a process-based model rather than drive it directly — the result is daily ET 
-estimates that outperform the satellite retrievals they were trained on. Here, SWIM-RS, *itself calibrated on PT-JPL*, achieves 
-R² = 0.63 vs PT-JPL's 0.55 against flux tower observations, a 10% improvement in the estimate of water use.
+SWIM-RS uses remote sensing ET to calibrate a process-based model rather than drive it directly — the result is daily ET
+estimates that outperform the satellite retrievals they were trained on. Here, SWIM-RS, *itself calibrated on PT-JPL*, achieves
+R² = 0.68 vs PT-JPL's 0.55 against flux tower observations, a 24% improvement in explained variance.
 
 Further, we automatically get estimates of snow accumulation and melt, groundwater recharge, runoff, and consumption of 
 irrigation-applied water (in cases where irrigation is detected, see Example 3 - Crane, OR).
