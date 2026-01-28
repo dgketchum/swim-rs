@@ -8,7 +8,7 @@ Usage: container.compute.dynamics(...) instead of container.compute_dynamics(...
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -17,8 +17,9 @@ from .base import Component
 
 if TYPE_CHECKING:
     import xarray as xr
-    from swimrs.container.state import ContainerState
+
     from swimrs.container.provenance import ProvenanceEvent
+    from swimrs.container.state import ContainerState
 
 
 class Calculator(Component):
@@ -33,7 +34,7 @@ class Calculator(Component):
         container.compute.merged_ndvi()
     """
 
-    def __init__(self, state: "ContainerState", container=None):
+    def __init__(self, state: ContainerState, container=None):
         """
         Initialize the Calculator.
 
@@ -45,11 +46,11 @@ class Calculator(Component):
 
     def merged_ndvi(
         self,
-        masks: Tuple[str, ...] = ("irr", "inv_irr"),
-        instruments: Tuple[str, ...] = ("landsat", "sentinel"),
-        preference_order: Tuple[str, ...] = ("landsat", "sentinel"),
+        masks: tuple[str, ...] = ("irr", "inv_irr"),
+        instruments: tuple[str, ...] = ("landsat", "sentinel"),
+        preference_order: tuple[str, ...] = ("landsat", "sentinel"),
         overwrite: bool = False,
-    ) -> "ProvenanceEvent":
+    ) -> ProvenanceEvent:
         """
         Merge harmonized sensor time series into a unified NDVI dataset.
 
@@ -140,7 +141,7 @@ class Calculator(Component):
             return event
 
     # Keep fused_ndvi as alias for backward compatibility
-    def fused_ndvi(self, *args, **kwargs) -> "ProvenanceEvent":
+    def fused_ndvi(self, *args, **kwargs) -> ProvenanceEvent:
         """Deprecated: Use merged_ndvi() instead."""
         return self.merged_ndvi(*args, **kwargs)
 
@@ -148,17 +149,17 @@ class Calculator(Component):
         self,
         etf_model: str = "ssebop",
         irr_threshold: float = 0.1,
-        masks: Tuple[str, ...] = ("irr", "inv_irr"),
-        instruments: Tuple[str, ...] = ("landsat", "sentinel"),
+        masks: tuple[str, ...] = ("irr", "inv_irr"),
+        instruments: tuple[str, ...] = ("landsat", "sentinel"),
         use_mask: bool = False,
         use_lulc: bool = True,
         lookback: int = 10,
         ndvi_threshold: float = 0.3,
         min_pos_days: int = 10,
         met_source: str = "gridmet",
-        fields: Optional[List[str]] = None,
+        fields: list[str] | None = None,
         overwrite: bool = False,
-    ) -> "ProvenanceEvent":
+    ) -> ProvenanceEvent:
         """
         Compute field dynamics: irrigation detection, groundwater subsidy, K-parameters.
 
@@ -251,8 +252,14 @@ class Calculator(Component):
 
             # Compute irrigation windows
             irr_data = self._compute_irrigation_data(
-                ds, irr_threshold, lookback, ndvi_threshold, min_pos_days,
-                use_mask, use_lulc, irr_props
+                ds,
+                irr_threshold,
+                lookback,
+                ndvi_threshold,
+                min_pos_days,
+                use_mask,
+                use_lulc,
+                irr_props,
             )
 
             # Write results
@@ -288,8 +295,8 @@ class Calculator(Component):
     def irrigation_windows(
         self,
         etf_model: str = "ssebop",
-        fields: Optional[List[str]] = None,
-    ) -> Dict[str, Dict]:
+        fields: list[str] | None = None,
+    ) -> dict[str, dict]:
         """
         Get irrigation windows for specific fields.
 
@@ -332,9 +339,9 @@ class Calculator(Component):
 
     def _merge_sensors(
         self,
-        sensor_data: List[Tuple[str, "xr.DataArray"]],
-        preference_order: Tuple[str, ...],
-    ) -> "xr.DataArray":
+        sensor_data: list[tuple[str, xr.DataArray]],
+        preference_order: tuple[str, ...],
+    ) -> xr.DataArray:
         """
         Merge multiple sensor DataArrays chronologically.
 
@@ -351,10 +358,7 @@ class Calculator(Component):
         """
         # Sort sensors by preference order
         pref_rank = {inst: i for i, inst in enumerate(preference_order)}
-        sorted_data = sorted(
-            sensor_data,
-            key=lambda x: pref_rank.get(x[0], len(pref_rank))
-        )
+        sorted_data = sorted(sensor_data, key=lambda x: pref_rank.get(x[0], len(pref_rank)))
 
         # Start with highest preference sensor
         result = sorted_data[0][1].copy()
@@ -370,12 +374,12 @@ class Calculator(Component):
 
     def _load_dynamics_dataset(
         self,
-        fields: List[str],
+        fields: list[str],
         etf_model: str,
-        masks: Tuple[str, ...],
-        instruments: Tuple[str, ...],
+        masks: tuple[str, ...],
+        instruments: tuple[str, ...],
         met_source: str,
-    ) -> Optional["xr.Dataset"]:
+    ) -> xr.Dataset | None:
         """
         Load all data needed for dynamics computation.
 
@@ -438,18 +442,18 @@ class Calculator(Component):
         prcp_data = self._state.get_xarray(prcp_path, fields=fields)
 
         # Combine into dataset
-        ds = xr.Dataset({
-            "ndvi": ndvi_data,
-            "etf": etf_data,
-            "eto": eto_data,
-            "prcp": prcp_data,
-        })
+        ds = xr.Dataset(
+            {
+                "ndvi": ndvi_data,
+                "etf": etf_data,
+                "eto": eto_data,
+                "prcp": prcp_data,
+            }
+        )
 
         return ds
 
-    def _compute_k_parameters(
-        self, ds: "xr.Dataset"
-    ) -> Tuple["xr.DataArray", "xr.DataArray"]:
+    def _compute_k_parameters(self, ds: xr.Dataset) -> tuple[xr.DataArray, xr.DataArray]:
         """
         Compute ke_max and kc_max from ETf and NDVI data.
 
@@ -504,11 +508,11 @@ class Calculator(Component):
                 ke_max = 1.0
                 self._log.debug("no_low_ndvi", site=site_str)
 
-            # kc_max: 90th percentile of ALL ETf observations
+            # kc_max: 90th percentile of ALL ETf observations, with floor of 1.25
             # (does NOT require NDVI to be present)
             all_etf_obs = site_etf.dropna().values
             if len(all_etf_obs) > 0:
-                kc_max = float(np.percentile(all_etf_obs, 90))
+                kc_max = max(float(np.percentile(all_etf_obs, 90)), 1.25)
             else:
                 kc_max = 1.25
 
@@ -525,9 +529,7 @@ class Calculator(Component):
 
         return ke_da, kc_da
 
-    def _compute_groundwater_subsidy(
-        self, ds: "xr.Dataset", irr_threshold: float
-    ) -> Dict[str, Dict]:
+    def _compute_groundwater_subsidy(self, ds: xr.Dataset, irr_threshold: float) -> dict[str, dict]:
         """
         Compute groundwater subsidy for each field and year.
 
@@ -560,7 +562,7 @@ class Calculator(Component):
             etf_yearly = site_etf_s.groupby(years_idx).sum()
 
             # Pre-compute monthly sums for subsidy month detection
-            monthly_idx = site_eta_s.index.to_period('M')
+            monthly_idx = site_eta_s.index.to_period("M")
             eta_monthly = site_eta_s.groupby(monthly_idx).sum()
             ppt_monthly = site_ppt_s.groupby(monthly_idx).sum()
 
@@ -594,7 +596,7 @@ class Calculator(Component):
                 # Find months where eta > ppt for this year
                 months = []
                 for month in range(1, 13):
-                    period = pd.Period(year=yr, month=month, freq='M')
+                    period = pd.Period(year=yr, month=month, freq="M")
                     if period in eta_monthly.index and period in ppt_monthly.index:
                         e = eta_monthly[period]
                         p = ppt_monthly[period]
@@ -616,9 +618,7 @@ class Calculator(Component):
             # Impute missing years if >50% of years with data are subsidized
             missing_years = [y for y in all_years if y not in etf_years]
             if len(etf_years) > 0 and gw_count / len(etf_years) > 0.5 and missing_years:
-                site_data = self._impute_missing_gwsub(
-                    site_data, etf_years, missing_years
-                )
+                site_data = self._impute_missing_gwsub(site_data, etf_years, missing_years)
 
             results[site_str] = site_data
 
@@ -626,10 +626,10 @@ class Calculator(Component):
 
     def _impute_missing_gwsub(
         self,
-        site_data: Dict,
-        etf_years: List[int],
-        missing_years: List[int],
-    ) -> Dict:
+        site_data: dict,
+        etf_years: list[int],
+        missing_years: list[int],
+    ) -> dict:
         """
         Impute groundwater subsidy for years without ETf data.
 
@@ -638,10 +638,9 @@ class Calculator(Component):
         Matches original SamplePlotDynamics behavior.
         """
         # Calculate means from years with data
-        mean_sub = np.mean([
-            site_data[y]["f_sub"] for y in etf_years
-            if y in site_data and "f_sub" in site_data[y]
-        ])
+        mean_sub = np.mean(
+            [site_data[y]["f_sub"] for y in etf_years if y in site_data and "f_sub" in site_data[y]]
+        )
 
         # Collect all subsidy months across years
         all_months = []
@@ -650,14 +649,12 @@ class Calculator(Component):
                 all_months.extend(site_data[y]["months"])
         unique_months = list(set(all_months))
 
-        mean_ppt = np.mean([
-            site_data[y]["ppt"] for y in etf_years
-            if y in site_data and "ppt" in site_data[y]
-        ])
-        mean_eta = np.mean([
-            site_data[y]["eta"] for y in etf_years
-            if y in site_data and "eta" in site_data[y]
-        ])
+        mean_ppt = np.mean(
+            [site_data[y]["ppt"] for y in etf_years if y in site_data and "ppt" in site_data[y]]
+        )
+        mean_eta = np.mean(
+            [site_data[y]["eta"] for y in etf_years if y in site_data and "eta" in site_data[y]]
+        )
 
         for yr in missing_years:
             site_data[int(yr)] = {
@@ -674,15 +671,15 @@ class Calculator(Component):
 
     def _compute_irrigation_data(
         self,
-        ds: "xr.Dataset",
+        ds: xr.Dataset,
         irr_threshold: float,
         lookback: int,
         ndvi_threshold: float,
         min_pos_days: int,
         use_mask: bool,
         use_lulc: bool,
-        irr_props: Optional[Dict[str, Dict[str, float]]] = None,
-    ) -> Dict[str, Dict]:
+        irr_props: dict[str, dict[str, float]] | None = None,
+    ) -> dict[str, dict]:
         """
         Compute irrigation windows for each field and year.
 
@@ -738,7 +735,7 @@ class Calculator(Component):
                 etf_interp = site_etf_s.interpolate()
                 etf_interp = etf_interp.bfill().ffill()
                 site_eta_s = etf_interp * site_eto_s
-                monthly_idx = site_eta_s.index.to_period('M')
+                monthly_idx = site_eta_s.index.to_period("M")
                 eta_monthly_all = site_eta_s.groupby(monthly_idx).sum()
                 ppt_monthly_all = site_ppt_s.groupby(monthly_idx).sum()
 
@@ -757,7 +754,7 @@ class Calculator(Component):
                     # International mode: compute from water balance using pre-computed monthly data
                     subsidy_months = 0
                     for month in range(1, 13):
-                        period = pd.Period(year=yr, month=month, freq='M')
+                        period = pd.Period(year=yr, month=month, freq="M")
                         if period in eta_monthly_all.index and period in ppt_monthly_all.index:
                             e = eta_monthly_all[period]
                             p = ppt_monthly_all[period]
@@ -784,9 +781,7 @@ class Calculator(Component):
                     continue
 
                 # Get NDVI with extended-year context for boundary handling (using pre-extracted pandas)
-                ndvi_series = self._get_extended_year_ndvi_fast(
-                    site_ndvi_s, yr, years
-                )
+                ndvi_series = self._get_extended_year_ndvi_fast(site_ndvi_s, yr, years)
 
                 # Detect irrigation windows from NDVI patterns
                 irr_doys = self._detect_irrigation_windows(
@@ -812,7 +807,7 @@ class Calculator(Component):
 
         return results
 
-    def _get_lulc_by_site(self, sites: np.ndarray) -> Dict[str, int]:
+    def _get_lulc_by_site(self, sites: np.ndarray) -> dict[str, int]:
         """Get LULC code for each site from container properties."""
         lulc_path = "properties/land_cover/modis_lc"
         if lulc_path not in self._state.root:
@@ -829,7 +824,7 @@ class Calculator(Component):
                     result[site_str] = int(value)
         return result
 
-    def _get_yearly_irrigation_properties(self) -> Dict[str, Dict[str, float]]:
+    def _get_yearly_irrigation_properties(self) -> dict[str, dict[str, float]]:
         """
         Get per-year irrigation fraction from container properties.
 
@@ -851,7 +846,7 @@ class Calculator(Component):
                 idx = self._state._uid_to_index[site_str]
                 json_str = arr[idx]
                 # Handle zarr v3 ndarray returns
-                if hasattr(json_str, 'item'):
+                if hasattr(json_str, "item"):
                     json_str = json_str.item()
                 if json_str:
                     try:
@@ -862,10 +857,10 @@ class Calculator(Component):
 
     def _get_extended_year_ndvi(
         self,
-        ndvi: "xr.DataArray",
+        ndvi: xr.DataArray,
         site: str,
         year: int,
-        years: List[int],
+        years: list[int],
         time_index: pd.DatetimeIndex,
     ) -> pd.Series:
         """
@@ -889,7 +884,7 @@ class Calculator(Component):
         self,
         site_ndvi_s: pd.Series,
         year: int,
-        years: List[int],
+        years: list[int],
     ) -> pd.Series:
         """
         Get NDVI with extended year context for boundary handling (pandas version).
@@ -910,9 +905,9 @@ class Calculator(Component):
 
     def _backfill_irrigation_windows(
         self,
-        irr_data: Dict[str, Dict],
-        backfill_tracker: Dict[str, List[int]],
-    ) -> Dict[str, Dict]:
+        irr_data: dict[str, dict],
+        backfill_tracker: dict[str, list[int]],
+    ) -> dict[str, dict]:
         """
         Backfill irrigation DOYs from nearest year with data.
 
@@ -928,7 +923,8 @@ class Calculator(Component):
 
             # Find candidate years with actual irrigation windows
             candidates = [
-                int(y) for y, v in site_data.items()
+                int(y)
+                for y, v in site_data.items()
                 if isinstance(v, dict)
                 and v.get("f_irr", 0) > 0
                 and v.get("irr_doys")
@@ -953,7 +949,7 @@ class Calculator(Component):
         ndvi_threshold: float,
         min_pos_days: int,
         year: int,
-    ) -> List[int]:
+    ) -> list[int]:
         """
         Detect irrigation windows from NDVI time series.
 
@@ -1044,11 +1040,11 @@ class Calculator(Component):
 
     def _write_dynamics_results(
         self,
-        ke_max: "xr.DataArray",
-        kc_max: "xr.DataArray",
-        irr_data: Dict[str, Dict],
-        gwsub_data: Dict[str, Dict],
-        fields: List[str],
+        ke_max: xr.DataArray,
+        kc_max: xr.DataArray,
+        irr_data: dict[str, dict],
+        gwsub_data: dict[str, dict],
+        fields: list[str],
         overwrite: bool,
     ) -> None:
         """Write computed dynamics results to container."""
