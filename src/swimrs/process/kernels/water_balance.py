@@ -227,15 +227,15 @@ def actual_et(
     refet: NDArray[np.float64],
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
-    Calculate actual evapotranspiration using FAO-56 dual crop coefficient.
+    Calculate actual evapotranspiration using dual crop coefficient.
 
-    Kc_act = min(Ks * Kcb + Ke, Kc_max)
+    Kc_act = min(fc * Ks * Kcb + Ke, Kc_max)
     ETc_act = Kc_act * RefET
 
     Physical constraints:
         - 0 <= Kc_act <= Kc_max
         - ETc_act = 0 when RefET = 0
-        - Transpiration reduced by Ks (stress)
+        - Transpiration reduced by Ks (stress) and fc (cover)
 
     Parameters
     ----------
@@ -244,7 +244,7 @@ def actual_et(
     kcb : (n_fields,)
         Basal crop coefficient
     fc : (n_fields,)
-        Fractional vegetation cover [0, 1] (unused, kept for API compatibility)
+        Fractional vegetation cover [0, 1]
     ke : (n_fields,)
         Soil evaporation coefficient
     kc_max : (n_fields,)
@@ -264,8 +264,8 @@ def actual_et(
     etc_act = np.empty(n, dtype=np.float64)
 
     for i in prange(n):
-        # FAO-56 dual crop coefficient: Kc = Ks*Kcb + Ke
-        kc_raw = ks[i] * kcb[i] + ke[i]
+        # Kc_act = fc * Ks * Kcb + Ke (FAO-56 dual crop coefficient)
+        kc_raw = fc[i] * ks[i] * kcb[i] + ke[i]
 
         # Cap at maximum
         if kc_raw > kc_max[i]:

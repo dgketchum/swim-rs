@@ -21,14 +21,14 @@ def kcb_sigmoid(
     ndvi_0: NDArray[np.float64],
 ) -> NDArray[np.float64]:
     """
-    Basal crop coefficient from NDVI using sigmoid relationship.
+    Basal crop coefficient from NDVI using sigmoid function.
 
     Kcb = Kc_max / (1 + exp(-k * (NDVI - NDVI_0)))
 
     Physical constraints:
         - 0 <= Kcb <= Kc_max
         - Monotonically increasing with NDVI
-        - At NDVI = NDVI_0: Kcb = Kc_max / 2
+        - At NDVI = NDVI_0: Kcb = Kc_max * 0.5
 
     Parameters
     ----------
@@ -40,19 +40,12 @@ def kcb_sigmoid(
         Sigmoid steepness parameter, typically [4, 10]
         Higher values = sharper transition from bare to vegetated
     ndvi_0 : (n_fields,)
-        Sigmoid inflection point (NDVI at Kcb = Kc_max/2), typically [0.1, 0.7]
+        Sigmoid inflection point, typically [0.1, 0.7]
 
     Returns
     -------
     kcb : (n_fields,)
         Basal crop coefficient, bounded [0, Kc_max]
-
-    Notes
-    -----
-    The sigmoid provides a smooth, bounded relationship between NDVI and Kcb
-    that avoids extrapolation issues at extreme NDVI values. The inflection
-    point ndvi_0 controls where the transition occurs, while ndvi_k controls
-    how sharp the transition is.
 
     References
     ----------
@@ -69,7 +62,8 @@ def kcb_sigmoid(
         elif exponent < -20.0:
             exponent = -20.0
 
-        kcb_raw = kc_max[i] / (1.0 + np.exp(exponent))
+        sigmoid = 1.0 / (1.0 + np.exp(exponent))
+        kcb_raw = kc_max[i] * sigmoid
 
         # Ensure Kcb doesn't exceed Kc_max
         if kcb_raw > kc_max[i]:

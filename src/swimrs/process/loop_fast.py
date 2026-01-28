@@ -48,6 +48,8 @@ def _run_loop_jit(
     gw_status: np.ndarray,
     ke_max: np.ndarray,
     f_sub: np.ndarray,
+    ndvi_bare: np.ndarray,
+    ndvi_full: np.ndarray,
     # Parameters: (n_fields,)
     kc_max: np.ndarray,
     kc_min: np.ndarray,
@@ -235,19 +237,20 @@ def _run_loop_jit(
         infiltration = precip_eff - runoff
 
         # ================================================================
-        # 3. CROP COEFFICIENT (Kcb from NDVI - sigmoid)
+        # 3. CROP COEFFICIENT (Kcb from NDVI via sigmoid)
+        # Kcb = Kc_max / (1 + exp(-k * (NDVI - NDVI_0)))
         # ================================================================
         exp_val = -ndvi_k * (ndvi - ndvi_0)
         exp_val = np.maximum(-20.0, np.minimum(20.0, exp_val))
-        kcb = kc_max / (1.0 + np.exp(exp_val))
+        sigmoid = 1.0 / (1.0 + np.exp(exp_val))
+        kcb = kc_max * sigmoid
         kcb = np.maximum(0.0, np.minimum(kc_max, kcb))
 
         # ================================================================
-        # 4. FRACTIONAL COVER
+        # 4. FRACTIONAL COVER from Kcb (FAO-56)
         # ================================================================
         kc_range = kc_max - kc_min
-        kcb_for_fc = np.maximum(kcb, kc_min)  # Clip kcb for fc only
-        fc = np.where(kc_range > 1e-6, (kcb_for_fc - kc_min) / kc_range, 0.0)
+        fc = np.where(kc_range > 1e-6, (kcb - kc_min) / kc_range, 0.0)
         fc = np.maximum(0.0, np.minimum(0.99, fc))
         few = 1.0 - fc
 
@@ -311,9 +314,10 @@ def _run_loop_jit(
 
         # ================================================================
         # 10. ACTUAL ET (FAO-56 dual crop coefficient)
-        # Kc_act = Ks * Kcb + Ke, capped at Kc_max
+        # Kc_act = fc * Ks * Kcb + Ke, capped at Kc_max
+        # fc scales transpiration by fractional cover
         # ================================================================
-        kc_act = ks * kcb + ke
+        kc_act = fc * ks * kcb + ke
         kc_act = np.minimum(kc_max, kc_act)
         eta = kc_act * etr
         evap = ke * etr
@@ -574,7 +578,6 @@ def run_daily_loop_fast(
     properties : FieldProperties, optional
         Field properties. If not provided, uses swim_input.properties.
         Pass custom properties to use PEST++ calibrated values (awc, mad).
-
     Returns
     -------
     output : DailyOutput
@@ -614,6 +617,10 @@ def run_daily_loop_fast(
               if props.kc_max is not None else np.full(n_fields, 1.25))
     f_sub = (props.f_sub.astype(np.float64)
              if props.f_sub is not None else np.zeros(n_fields))
+    ndvi_bare = (props.ndvi_bare.astype(np.float64)
+                 if props.ndvi_bare is not None else np.full(n_fields, 0.15))
+    ndvi_full = (props.ndvi_full.astype(np.float64)
+                 if props.ndvi_full is not None else np.full(n_fields, 0.85))
 
     # Extract parameter arrays
     kc_min = params.kc_min.astype(np.float64)
@@ -668,7 +675,9 @@ def run_daily_loop_fast(
         all_ndvi, all_ref_et, all_prcp, all_tmin, all_tmax, all_srad, all_irr_flag,
         awc, rew, tew, cn2, zr_max, zr_min, mad,
         irr_status, perennial, gw_status, ke_max, f_sub,
-        kc_max, kc_min, ndvi_k, ndvi_0, swe_alpha, swe_beta,
+        ndvi_bare, ndvi_full,
+        kc_max, kc_min, ndvi_k, ndvi_0,
+        swe_alpha, swe_beta,
         kr_damp, ks_damp, max_irr_rate,
         depl_root_init, depl_ze_init, swe_init, albedo_init,
         kr_init, ks_init, zr_init,

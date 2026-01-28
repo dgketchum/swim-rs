@@ -11,7 +11,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from swimrs.process.kernels.cover import exposed_soil_fraction, fractional_cover
+from swimrs.process.kernels.cover import (
+    exposed_soil_fraction,
+    fractional_cover,
+    fractional_cover_from_ndvi,
+)
 from swimrs.process.kernels.crop_coefficient import kcb_sigmoid
 from swimrs.process.kernels.evaporation import ke_coefficient, kr_damped, kr_reduction
 from swimrs.process.kernels.irrigation import groundwater_subsidy, irrigation_demand
@@ -420,10 +424,10 @@ def step_day(
     # Net infiltration
     infiltration = precip_eff - runoff
 
-    # 3. Crop coefficient calculation
+    # 3. Crop coefficient calculation (sigmoid)
     kcb = kcb_sigmoid(ndvi, props.kc_max, params.ndvi_k, params.ndvi_0)
 
-    # 4. Fractional cover
+    # 4. Fractional cover from Kcb (FAO-56)
     fc = fractional_cover(kcb, params.kc_min, props.kc_max)
     few = exposed_soil_fraction(fc)
 
