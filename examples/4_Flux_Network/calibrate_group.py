@@ -23,10 +23,10 @@ def _load_config() -> ProjectConfig:
     conf = project_dir / "4_Flux_Network.toml"
 
     cfg = ProjectConfig()
-    if os.path.isdir("/data/ssd2/swim"):
-        cfg.read_config(str(conf), calibrate=True)
+    if os.path.isdir("/data/ssd1/swim"):
+        cfg.read_config(str(conf))
     else:
-        cfg.read_config(str(conf), project_root_override=str(project_dir.parent), calibrate=True)
+        cfg.read_config(str(conf), project_root_override=str(project_dir.parent))
 
     # Match pattern in existing examples: forward runner lives in the project directory
     cfg.python_script = str(project_dir / "custom_forward_run.py")

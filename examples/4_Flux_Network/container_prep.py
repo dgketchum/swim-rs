@@ -213,7 +213,7 @@ def ingest_properties(container: SwimContainer, cfg: ProjectConfig, overwrite: b
     container.ingest.properties(
         soils_csv=cfg.ssurgo_csv,
         lulc_csv=cfg.lulc_csv,
-        irrigation_csv=cfg.irr_csv,
+        irr_csv=cfg.irr_csv,
         uid_column=cfg.feature_id_col,
         overwrite=overwrite,
     )
@@ -221,21 +221,20 @@ def ingest_properties(container: SwimContainer, cfg: ProjectConfig, overwrite: b
 
 def compute_fused_ndvi(container: SwimContainer, overwrite: bool = False):
     """
-    Compute fused NDVI from Landsat and Sentinel observations.
+    Compute merged NDVI from Landsat and Sentinel observations.
 
-    Uses quantile mapping to adjust Sentinel NDVI to match Landsat,
-    then combines both sources.
+    Combines Landsat and Sentinel NDVI with Landsat as the preferred source.
 
     Args:
         container: SwimContainer instance
-        overwrite: If True, replace existing fused NDVI
+        overwrite: If True, replace existing merged NDVI
     """
-    print("\n=== Computing Fused NDVI ===")
+    print("\n=== Computing Merged NDVI ===")
 
-    container.compute.fused_ndvi(
+    container.compute.merged_ndvi(
         masks=("irr", "inv_irr"),
-        min_pairs=20,
-        window_days=1,
+        instruments=("landsat", "sentinel"),
+        preference_order=("landsat", "sentinel"),
         overwrite=overwrite,
     )
 
