@@ -1,0 +1,84 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swimrs"
+version = "0.1.0"
+description = "Soil Water balance Inverse Modeling using Remote Sensing"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+license = { text = "CC-BY-NC-4.0" }
+authors = [{ name = "SWIM-RS Developers" }]
+dependencies = [
+  "pyemu",
+  "pandas",
+  "geopandas",
+  "xarray",
+  "toml",
+  "scikit-learn",
+  "plotly",
+  "earthengine-api",
+  "pydantic>=1.10",
+  "zarr>=2.18",
+  "filelock",
+  "tqdm",
+]
+
+[project.optional-dependencies]
+openet = [
+  "openet-refet-gee",
+  "openet-ptjpl",
+  "openet-sims",
+  "openet-ssebop",
+  "openet-disalexi",
+  "openet-geesebal",
+]
+dev = [
+  "pytest",
+  "pytest-cov",
+  "ruff",
+  "black",
+]
+
+[project.scripts]
+swim = "swimrs.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/dgketchum/swim-rs"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["swimrs*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src","tests"]
+
+[tool.ruff.lint]
+select = ["E","F","I","UP","B"]
+
+[tool.black]
+line-length = 100
+target-version = ["py313"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: Fast, isolated unit tests (physics kernels, pure functions)",
+    "integration: Tests requiring multiple modules, network, or external services",
+    "regression: Golden file comparison tests",
+    "parity: Legacy compatibility tests (container vs legacy implementations)",
+    "conservation: Mass balance and water conservation verification tests",
+    "slow: Tests taking > 5 seconds",
+    "requires_ee: Tests requiring Earth Engine authentication (skip with default, run with --run-ee)",
+    "pest: Tests requiring PEST++ binaries",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+addopts = "-v --tb=short"

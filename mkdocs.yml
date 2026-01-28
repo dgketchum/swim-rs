@@ -1,0 +1,94 @@
+site_name: SWIM-RS
+site_description: Soil Water Inverse Modeling with Remote Sensing
+site_url: https://swim-rs.readthedocs.io
+repo_url: https://github.com/dgketchum/swim-rs
+repo_name: dgketchum/swim-rs
+
+theme:
+  name: material
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - header.autohide
+
+plugins:
+  - search
+  - include-markdown
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            heading_level: 2
+            members_order: source
+            docstring_style: google
+
+markdown_extensions:
+  - tables
+  - fenced_code
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.arithmatex:
+      generic: true
+  - admonition
+  - toc:
+      permalink: true
+
+extra_javascript:
+  - https://unpkg.com/mermaid@10/dist/mermaid.min.js
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Data Extraction Guide: data_extraction.md
+  - Algorithm Description: algorithm_description.md
+  - ET-Demands Comparison: et-demands-compare.md
+  - Architecture:
+      - Process Package: process_architecture.md
+      - Container: container_architecture.md
+  - API Reference:
+      - Overview: api/index.md
+      - Container: api/container.md
+      - Process: api/process.md
+      - Calibrate: api/calibrate.md
+      - Data Extraction: api/data_extraction.md
+      - Swim (Config): api/swim.md
+      - Legacy: api/legacy.md
+  - CLI Cheat Sheet: swim_cli_cheatsheet.md

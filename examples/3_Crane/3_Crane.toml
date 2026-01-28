@@ -1,0 +1,72 @@
+project = "3_Crane"
+root = "."
+
+[paths]
+project_workspace = "{root}"
+data = "{root}/data"
+
+# SwimContainer file path
+container = "{data}/{project}.swim"
+
+remote_sensing = "{data}/remote_sensing"
+landsat = "{remote_sensing}/landsat"
+
+met = "{data}/met"
+gis = "{data}/gis"
+fields_shapefile = "{gis}/flux_fields.shp"
+gridmet_centroids = "{gis}/gridmet_centroids.shp"
+gridmet_mapping = "{gis}/flux_fields_gfid.shp"
+correction_tifs = "{data}/corrections"
+gridmet_factors = "{data}/gridmet_factors.json"
+
+properties = "{data}/properties"
+irr = "{properties}/irr.csv"
+ssurgo = "{properties}/ssurgo.csv"
+lulc = "{properties}/lulc.csv"
+properties_json = "{properties}/properties.json"
+snodas_in = "{data}/snow/snodas/extracts"
+
+
+[earth_engine]
+bucket = "wudr"
+
+[ids]
+feature_id = "site_id"  # Station identifier column in master shapefile
+gridmet_join_id = "GFID"
+gridmet_id = "GFID"  # Column name for GridMET cell ID in mapping shapefile
+state_col = "state"  # Column containing US state codes for irrigation masking
+
+[data_sources]
+met_source = "gridmet"
+snow_source = "snodas"
+soil_source = "ssurgo"
+mask_mode = "irrigation"
+
+[misc]
+irrigation_threshold = 0.3
+elev_units = "m"
+refet_type = "eto"
+runoff_process = "cn"
+
+[date_range]
+start_date = "1987-01-01"
+end_date = "2022-12-31"
+
+[crop_coefficient]
+kc_proxy = "etf"
+cover_proxy = "ndvi"
+
+[calibration]
+pest_run_dir = "{project_workspace}/data/pestrun"
+etf_target_model = "ensemble"  # Primary model for calibration observations
+etf_ensemble_members = ["ptjpl", "sims", "ssebop", "geesebal"]  # OpenET ensemble models for comparison
+workers = 6
+realizations = 20
+calibration_dir = "{pest_run_dir}/pest/mult"
+obs_folder = "{pest_run_dir}/obs"
+initial_values_csv = "{pest_run_dir}/params.csv"
+spinup = "{pest_run_dir}/spinup.json"
+python_script = "{project_workspace}/custom_forward_run.py"
+
+[forecast]
+forecast_parameters = "{pest_run_dir}/pest/archive/{project}.3.par.csv"
