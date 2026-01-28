@@ -210,3 +210,5 @@ cython_debug/
 
 examples/6_Flux_International/data/landsat/
 examples/6_Flux_International/data/ecostress/
+# Diagnostic scratch work
+examples/diagnostics/
