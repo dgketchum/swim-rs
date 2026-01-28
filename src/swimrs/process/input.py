@@ -927,11 +927,11 @@ def _write_parameters_from_container(
 
     # Default values
     kc_min = np.full(n_fields, 0.15)
-    ndvi_k = np.full(n_fields, 7.0)
+    ndvi_k = np.full(n_fields, 10.0)
     # ndvi_0 default based on irrigation status (see PARAMETER_SEARCH.md):
-    #   - Irrigated crops: 0.85 (full transpiration only at canopy closure)
+    #   - Irrigated crops: 0.55 (moderate NDVI onset with fc scaling)
     #   - Non-irrigated/grassland: 0.15 (transpiration begins at low NDVI)
-    ndvi_0 = np.where(irr_status, 0.85, 0.15)
+    ndvi_0 = np.where(irr_status, 0.55, 0.15)
     swe_alpha = np.full(n_fields, 0.5)
     swe_beta = np.full(n_fields, 2.0)
     kr_damp = np.full(n_fields, 0.2)

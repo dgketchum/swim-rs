@@ -315,6 +315,29 @@ class PestBuilder:
                     else:
                         params.append((k, 0.6, 'p_{}_0_constant.csv'.format(k)))
 
+                elif 'ndvi_0_' in k:
+                    # Informed prior based on irrigation status (see PARAMETER_SEARCH.md):
+                    # With fc in kc_act equation (kc_act = fc*ks*kcb + ke):
+                    #   - Grassland/non-irrigated: ndvi_0 ~ 0.20 (transpiration begins at low NDVI)
+                    #   - Irrigated crops: ndvi_0 ~ 0.55 (optimal region 0.50-0.60)
+                    try:
+                        irr = np.nanmean([self.plot_properties[fid]['irr'][str(yr)] for yr in range(1987, 2023)])
+                    except Exception:
+                        irr_data = self.irr.get(fid, {})
+                        irr_vals = []
+                        for yy, vv in irr_data.items():
+                            if yy == 'fallow_years':
+                                continue
+                            try:
+                                irr_vals.append(float(vv.get('f_irr', np.nan)))
+                            except Exception:
+                                continue
+                        irr = float(np.nanmean(irr_vals)) if irr_vals else 0.0
+                    if irr > 0.2:
+                        params.append((k, 0.55, 'p_{}_0_constant.csv'.format(k)))
+                    else:
+                        params.append((k, 0.20, 'p_{}_0_constant.csv'.format(k)))
+
                 else:
                     params.append((k, pars[k]['initial_value'], 'p_{}_0_constant.csv'.format(k)))
 
@@ -325,7 +348,7 @@ class PestBuilder:
 
         for e, (ii, r) in enumerate(df.iterrows()):
             pars[ii]['use_rows'] = e
-            if any(prefix in ii for prefix in ['aw_', 'ke_max_', 'kc_max_', 'mad_']):
+            if any(prefix in ii for prefix in ['aw_', 'ke_max_', 'kc_max_', 'mad_', 'ndvi_0_']):
                 val = float(r['value'])
                 pars[ii]['initial_value'] = val
 
@@ -751,17 +774,15 @@ if __name__ == "__main__":
                          'initial_value': 0.5, 'lower_bound': 0.01, 'upper_bound': 1.0,
                          'pargp': 'kr_alpha', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
-            # NDVI-Kcb relationship (sigmoid: Kcb = kc_max / (1 + exp(-ndvi_k * (NDVI - ndvi_0))))
-            # Parameter search (examples/3_Crane/parameter_search.py) found:
-            #   - Optimal region: ndvi_k ∈ [5-11], ndvi_0 ∈ [0.70-0.85]
-            #   - Best: ndvi_k=7.0, ndvi_0=0.80 (R²=0.516)
-            #   - Trade-off: higher ndvi_k works with lower ndvi_0
-            'ndvi_k': {'file': self.params_file, 'std': 0.75,
-                       'initial_value': 7.0, 'lower_bound': 4.0, 'upper_bound': 20.0,
+            # NDVI-Kcb relationship: sigmoid function
+            # kcb = kc_max / (1 + exp(-k * (NDVI - ndvi_0)))
+            # kc_act = fc * ks * kcb + ke (FAO-56 dual crop coefficient)
+            'ndvi_k': {'file': self.params_file, 'std': 1.0,
+                       'initial_value': 10.0, 'lower_bound': 3.0, 'upper_bound': 20.0,
                        'pargp': 'ndvi_k', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_0': {'file': self.params_file, 'std': 0.15,
-                       'initial_value': 0.75, 'lower_bound': 0.5, 'upper_bound': 0.95,
+                       'initial_value': 0.55, 'lower_bound': 0.1, 'upper_bound': 0.85,
                        'pargp': 'ndvi_0', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             # Management allowed depletion
