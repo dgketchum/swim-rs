@@ -785,7 +785,7 @@ if __name__ == "__main__":
             # kcb = kc_max / (1 + exp(-k * (NDVI - ndvi_0)))
             # kc_act = fc * ks * kcb + ke (FAO-56 dual crop coefficient)
             'ndvi_k': {'file': self.params_file, 'std': 1.0,
-                       'initial_value': 10.0, 'lower_bound': 3.0, 'upper_bound': 20.0,
+                       'initial_value': 7.0, 'lower_bound': 3.0, 'upper_bound': 10.0,
                        'pargp': 'ndvi_k', 'index_cols': 0, 'use_cols': 1, 'use_rows': None},
 
             'ndvi_0': {'file': self.params_file, 'std': 0.15,
