@@ -58,6 +58,7 @@ class PestBuilder:
         python_script: str | None = None,
         prior_constraint: dict | None = None,
         conflicted_obs: str | None = None,
+        verbose: bool = True,
     ) -> None:
         """Initialize PestBuilder for PEST++ calibration.
 
@@ -69,6 +70,7 @@ class PestBuilder:
             python_script: Path to custom forward run script
             prior_constraint: Prior constraint settings
             conflicted_obs: Path to conflicted observations file
+            verbose: If False, suppress pyemu/PstFrom output. Default True.
         """
         self.config = config
         self.project_ws = config.project_ws
@@ -111,9 +113,12 @@ class PestBuilder:
 
         self.pest_args = self.get_pest_builder_args()
 
+        self.verbose = verbose
+
         if python_script is None:
             python_script = os.path.join(os.path.dirname(__file__), 'custom_forward_run.py')
-            print(f'Using default Python script at: {python_script}')
+            if verbose:
+                print(f'Using default Python script at: {python_script}')
 
         self.python_script = python_script
         self.pest_args.update({'python_script': self.python_script})
@@ -425,7 +430,7 @@ class PestBuilder:
         if os.path.exists(self.obs_dir):
             shutil.copytree(self.obs_dir, os.path.join(template_dir, 'obs'))
 
-        self.pest = PstFrom(template_dir, self.pest_dir, remove_existing=True)
+        self.pest = PstFrom(template_dir, self.pest_dir, remove_existing=True, echo=self.verbose)
 
         self._write_params()
 
@@ -448,13 +453,15 @@ class PestBuilder:
         self._write_forward_run_script()
 
         self._finalize_obs()
-        self.print_build_diagnostics()
+        if self.verbose:
+            self.print_build_diagnostics()
 
         # Clean up template directory
         if os.path.exists(template_dir):
             shutil.rmtree(template_dir)
 
-        print('Configured PEST++ for {} targets, '.format(len(self.pest_args['targets'])))
+        if self.verbose:
+            print('Configured PEST++ for {} targets, '.format(len(self.pest_args['targets'])))
 
     def print_build_diagnostics(self, max_groups: int = 25) -> pd.DataFrame:
         """Print a compact diagnostics table after building the PEST++ project.
@@ -760,7 +767,8 @@ if __name__ == "__main__":
         oe = ObservationEnsemble.from_gaussian_draw(pst=pst, num_reals=reals)
         oe.to_csv(self.pst_file.replace('.pst', '.oe.csv'))
         pst.write(self.pst_file, version=2)
-        print(f'writing {self.pst_file} with noptmax={noptmax}, {reals} realizations')
+        if self.verbose:
+            print(f'writing {self.pst_file} with noptmax={noptmax}, {reals} realizations')
 
     def initial_parameter_dict(self) -> OrderedDict:
 
@@ -834,7 +842,8 @@ if __name__ == "__main__":
         from swimrs.process.loop_fast import run_daily_loop_fast
 
         if not os.path.exists(self.config.spinup) or overwrite:
-            print('RUNNING SPINUP')
+            if self.verbose:
+                print('RUNNING SPINUP')
 
             if overwrite:
                 try:
@@ -881,10 +890,12 @@ if __name__ == "__main__":
             with open(self.config.spinup, 'w') as f:
                 json.dump(spn_dct, f, indent=2)
 
-            print(f'Spinup saved to {self.config.spinup}')
+            if self.verbose:
+                print(f'Spinup saved to {self.config.spinup}')
 
         else:
-            print('SPINUP exists, skipping')
+            if self.verbose:
+                print('SPINUP exists, skipping')
 
     def _build_swim_input(self) -> str:
         """Build portable swim_input.h5 file for workers with spinup state.
@@ -911,10 +922,12 @@ if __name__ == "__main__":
         # If h5 exists but no spinup, keep as-is (no spinup available)
         # If h5 exists and spinup exists, rebuild to bake in spinup state
         if os.path.exists(h5_path) and spinup_path is None:
-            print(f'swim_input.h5 exists at {h5_path} (no spinup), skipping')
+            if self.verbose:
+                print(f'swim_input.h5 exists at {h5_path} (no spinup), skipping')
             return h5_path
 
-        print('Building portable swim_input.h5 with spinup state...')
+        if self.verbose:
+            print('Building portable swim_input.h5 with spinup state...')
 
         # Build the HDF5 file from container
         build_swim_input(
@@ -927,7 +940,8 @@ if __name__ == "__main__":
             refet_type=getattr(self.config, "refet_type", "eto") or "eto",
         )
 
-        print(f'Created swim_input.h5 at {h5_path}')
+        if self.verbose:
+            print(f'Created swim_input.h5 at {h5_path}')
         return h5_path
 
     def _write_params(self) -> None:
