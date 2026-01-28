@@ -8,38 +8,30 @@ Tests verify:
 """
 
 import numpy as np
-import pytest
-from numpy.testing import assert_array_almost_equal, assert_array_less
+from numpy.testing import assert_array_almost_equal
+
+from swimrs.process.kernels.cover import exposed_soil_fraction, fractional_cover
 
 # Import kernels
-from swimrs.process.kernels.crop_coefficient import kcb_sigmoid, kcb_linear
-from swimrs.process.kernels.cover import fractional_cover, exposed_soil_fraction
-from swimrs.process.kernels.evaporation import kr_reduction, kr_damped, ke_coefficient
-from swimrs.process.kernels.transpiration import ks_stress, ks_damped
+from swimrs.process.kernels.crop_coefficient import kcb_sigmoid
+from swimrs.process.kernels.evaporation import kr_reduction
+from swimrs.process.kernels.irrigation import groundwater_subsidy, irrigation_demand
+from swimrs.process.kernels.root_growth import (
+    root_depth_from_kcb,
+)
 from swimrs.process.kernels.runoff import (
-    curve_number_adjust,
     scs_runoff,
-    scs_runoff_smoothed,
-    infiltration_excess,
 )
 from swimrs.process.kernels.snow import (
-    partition_precip,
     albedo_decay,
     degree_day_melt,
-    snow_water_equivalent,
+    partition_precip,
 )
+from swimrs.process.kernels.transpiration import ks_stress
 from swimrs.process.kernels.water_balance import (
     deep_percolation,
     layer3_storage,
-    root_zone_depletion,
-    total_soil_water,
-    actual_et,
 )
-from swimrs.process.kernels.root_growth import (
-    root_depth_from_kcb,
-    root_water_redistribution,
-)
-from swimrs.process.kernels.irrigation import irrigation_demand, groundwater_subsidy
 
 
 class TestKcbSigmoid:
@@ -354,8 +346,7 @@ class TestIrrigation:
         next_day_irr = np.array([0.0])
 
         irr_sim, _, _ = irrigation_demand(
-            depl_root, raw, max_irr_rate, irr_flag, temp_avg,
-            irr_continue, next_day_irr
+            depl_root, raw, max_irr_rate, irr_flag, temp_avg, irr_continue, next_day_irr
         )
 
         assert_array_almost_equal(irr_sim, [0.0])
@@ -371,8 +362,7 @@ class TestIrrigation:
         next_day_irr = np.array([0.0])
 
         irr_sim, _, _ = irrigation_demand(
-            depl_root, raw, max_irr_rate, irr_flag, temp_avg,
-            irr_continue, next_day_irr
+            depl_root, raw, max_irr_rate, irr_flag, temp_avg, irr_continue, next_day_irr
         )
 
         assert irr_sim[0] > 0

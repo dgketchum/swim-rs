@@ -18,14 +18,21 @@ def _load_config(calibrate: bool = True) -> ProjectConfig:
     if os.path.isdir("/data/ssd2/swim"):
         cfg.read_config(str(conf), calibrate=calibrate)
     else:
-        cfg.read_config(str(conf), project_root_override=str(project_dir.parent), calibrate=calibrate)
+        cfg.read_config(
+            str(conf), project_root_override=str(project_dir.parent), calibrate=calibrate
+        )
 
     cfg.python_script = str(project_dir / "custom_forward_run.py")
     return cfg
 
 
-def run_pest_sequence(cfg: ProjectConfig, results_dir: str, select_stations: list[str], pdc_remove: bool = False,
-                      overwrite: bool = False):
+def run_pest_sequence(
+    cfg: ProjectConfig,
+    results_dir: str,
+    select_stations: list[str],
+    pdc_remove: bool = False,
+    overwrite: bool = False,
+):
     project = cfg.project_name
 
     for i, fid in enumerate(select_stations, start=1):
@@ -54,7 +61,9 @@ def run_pest_sequence(cfg: ProjectConfig, results_dir: str, select_stations: lis
             preproc(cfg)
 
         shutil.copyfile(cfg.input_data, station_prepped_input)
-        shutil.copyfile(cfg.input_data, os.path.join(cfg.pest_run_dir, os.path.basename(cfg.input_data)))
+        shutil.copyfile(
+            cfg.input_data, os.path.join(cfg.pest_run_dir, os.path.basename(cfg.input_data))
+        )
 
         p_dir = os.path.join(cfg.pest_run_dir, "pest")
         m_dir = os.path.join(cfg.pest_run_dir, "master")
@@ -62,8 +71,12 @@ def run_pest_sequence(cfg: ProjectConfig, results_dir: str, select_stations: lis
 
         os.chdir(Path(__file__).resolve().parent)
 
-        builder = PestBuilder(cfg, use_existing=False, python_script=getattr(cfg, "python_script", None),
-                              conflicted_obs=None)
+        builder = PestBuilder(
+            cfg,
+            use_existing=False,
+            python_script=getattr(cfg, "python_script", None),
+            conflicted_obs=None,
+        )
         builder.build_pest(target_etf=cfg.etf_target_model, members=cfg.etf_ensemble_members)
         builder.build_localizer()
         builder.add_regularization()
@@ -84,9 +97,15 @@ def run_pest_sequence(cfg: ProjectConfig, results_dir: str, select_stations: lis
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_pdc = os.path.join(temp_dir, f"{project}.pdc.csv")
                 shutil.copyfile(pdc_file, temp_pdc)
-                builder = PestBuilder(cfg, use_existing=False, python_script=getattr(cfg, "python_script", None),
-                                      conflicted_obs=temp_pdc)
-                builder.build_pest(target_etf=cfg.etf_target_model, members=cfg.etf_ensemble_members)
+                builder = PestBuilder(
+                    cfg,
+                    use_existing=False,
+                    python_script=getattr(cfg, "python_script", None),
+                    conflicted_obs=temp_pdc,
+                )
+                builder.build_pest(
+                    target_etf=cfg.etf_target_model, members=cfg.etf_ensemble_members
+                )
                 builder.build_localizer()
                 builder.add_regularization()
                 builder.write_control_settings(noptmax=0)
@@ -94,8 +113,16 @@ def run_pest_sequence(cfg: ProjectConfig, results_dir: str, select_stations: lis
 
         builder.write_control_settings(noptmax=3, reals=cfg.realizations)
         pst_name = f"{project}.pst"
-        run_pst(p_dir, exe_, pst_name, num_workers=cfg.workers, worker_root=w_dir, master_dir=m_dir, verbose=False,
-                cleanup=False)
+        run_pst(
+            p_dir,
+            exe_,
+            pst_name,
+            num_workers=cfg.workers,
+            worker_root=w_dir,
+            master_dir=m_dir,
+            verbose=False,
+            cleanup=False,
+        )
 
         fcst_file = os.path.join(m_dir, f"{project}.3.par.csv")
         fcst_out = os.path.join(target_dir, f"{fid}.3.par.csv")
@@ -126,5 +153,6 @@ if __name__ == "__main__":
     non_crop_sites = [s for s in all_sites if s not in crop_sites]
     sites_ordered = crop_sites + non_crop_sites
 
-    run_pest_sequence(cfg, results_dir, select_stations=sites_ordered, pdc_remove=True, overwrite=False)
-
+    run_pest_sequence(
+        cfg, results_dir, select_stations=sites_ordered, pdc_remove=True, overwrite=False
+    )

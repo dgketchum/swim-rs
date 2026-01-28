@@ -8,7 +8,6 @@ allowing SwimContainer to work with different storage types
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional, Union
 
 import zarr
 
@@ -37,7 +36,7 @@ class StorageProvider(ABC):
                 - 'w': Write (overwrite if exists)
         """
         self._mode = mode
-        self._root: Optional[zarr.Group] = None
+        self._root: zarr.Group | None = None
         self._store = None  # Backend-specific store object
 
     @property
@@ -56,7 +55,7 @@ class StorageProvider(ABC):
         return self._mode in ("r+", "a", "w")
 
     @property
-    def root(self) -> Optional[zarr.Group]:
+    def root(self) -> zarr.Group | None:
         """The zarr root group, or None if not open."""
         return self._root
 
@@ -118,7 +117,7 @@ class StorageProvider(ABC):
 
     @property
     @abstractmethod
-    def location(self) -> Union[str, Path]:
+    def location(self) -> str | Path:
         """
         Return the location in the most appropriate native format.
 

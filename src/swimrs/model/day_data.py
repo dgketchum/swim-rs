@@ -1,9 +1,7 @@
-import os
-
 import numpy as np
 import pandas as pd
 
-hr_ppt_keys = ['prcp_hr_{}'.format(str(i).rjust(2, '0')) for i in range(0, 24)]
+hr_ppt_keys = ["prcp_hr_{}".format(str(i).rjust(2, "0")) for i in range(0, 24)]
 
 
 class DayData:
@@ -14,7 +12,6 @@ class DayData:
     """
 
     def __init__(self):
-
         self.sdays = 0
         self.doy_prev = 0
 
@@ -68,13 +65,13 @@ class DayData:
         Uses `plots.input['irr_data'][fid][year]` to set `irr_status` and
         store per-field lists of irrigation DOYs.
         """
-        self.irr_status = np.zeros((1, len(plots.input['order'])))
+        self.irr_status = np.zeros((1, len(plots.input["order"])))
         self.irr_doys = []
 
-        for i, fid in enumerate(plots.input['order']):
+        for i, fid in enumerate(plots.input["order"]):
             try:
-                irrigated = plots.input['irr_data'][fid][str(self.year)]['irrigated']
-                self.irr_doys.append(plots.input['irr_data'][fid][str(self.year)]['irr_doys'])
+                irrigated = plots.input["irr_data"][fid][str(self.year)]["irrigated"]
+                self.irr_doys.append(plots.input["irr_data"][fid][str(self.year)]["irr_doys"])
                 self.irr_status[0, i] = irrigated
             except KeyError:
                 self.irr_status[0, i] = 0
@@ -85,11 +82,11 @@ class DayData:
 
         Flags fields with fractional subsidy above a threshold (e.g., 0.2).
         """
-        self.gwsub_status = np.zeros((1, len(plots.input['order'])))
+        self.gwsub_status = np.zeros((1, len(plots.input["order"])))
 
-        for i, fid in enumerate(plots.input['order']):
+        for i, fid in enumerate(plots.input["order"]):
             try:
-                gw_sub = plots.input['gwsub_data'][fid][str(self.year)]['f_sub']
+                gw_sub = plots.input["gwsub_data"][fid][str(self.year)]["f_sub"]
                 if gw_sub > 0.2:
                     self.gwsub_status[0, i] = 1
             except KeyError:
@@ -102,16 +99,16 @@ class DayData:
         the field is irrigated and whether the day falls in irrigation DOYs.
         Also sets the daily binary `irr_day` flag.
         """
-        for i, fid in enumerate(plots.input['order']):
+        for i, fid in enumerate(plots.input["order"]):
             irrigated = self.irr_status[0, i]
             if irrigated:
-                self.ndvi[0, i] = vals['ndvi_irr'][i]
-                self.refet[0, i] = vals['{}_corr'.format(config.refet_type)][i]
+                self.ndvi[0, i] = vals["ndvi_irr"][i]
+                self.refet[0, i] = vals[f"{config.refet_type}_corr"][i]
                 self.irr_day[0, i] = int(self.doy in self.irr_doys[i])
 
             else:
-                self.ndvi[0, i] = vals['ndvi_inv_irr'][i]
-                self.refet[0, i] = vals['{}'.format(config.refet_type)][i]
+                self.ndvi[0, i] = vals["ndvi_inv_irr"][i]
+                self.refet[0, i] = vals[f"{config.refet_type}"][i]
                 self.irr_day[0, i] = 0
 
     def update_daily_inputs(self, vals, size):
@@ -124,14 +121,14 @@ class DayData:
         self.capture = self.capture.reshape(1, -1)
         self.refet = self.refet.reshape(1, -1)
 
-        self.min_temp = np.array(vals['tmin']).reshape(1, -1)
-        self.max_temp = np.array(vals['tmax']).reshape(1, -1)
-        self.temp_avg = (self.min_temp + self.max_temp) / 2.
-        self.srad = np.array(vals['srad']).reshape(1, -1)
-        self.precip = np.array(vals['prcp'])
+        self.min_temp = np.array(vals["tmin"]).reshape(1, -1)
+        self.max_temp = np.array(vals["tmax"]).reshape(1, -1)
+        self.temp_avg = (self.min_temp + self.max_temp) / 2.0
+        self.srad = np.array(vals["srad"]).reshape(1, -1)
+        self.precip = np.array(vals["prcp"])
 
         hr_ppt = np.array([vals[k] for k in hr_ppt_keys]).reshape(24, size)
-        if np.any(self.precip > 0.):
+        if np.any(self.precip > 0.0):
             self.hr_precip = hr_ppt
 
         else:
@@ -139,6 +136,7 @@ class DayData:
 
         self.precip = self.precip.reshape(1, -1)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     pass
 # ========================= EOF ====================================================================

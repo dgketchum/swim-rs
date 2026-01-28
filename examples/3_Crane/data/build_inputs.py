@@ -57,22 +57,22 @@ import sys
 # Add project root to path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
-ROOT_DIR = os.path.abspath(os.path.join(PROJECT_DIR, '../..'))
+ROOT_DIR = os.path.abspath(os.path.join(PROJECT_DIR, "../.."))
 sys.path.insert(0, ROOT_DIR)
 
-from swimrs.swim.config import ProjectConfig
 from swimrs.container import SwimContainer
+from swimrs.swim.config import ProjectConfig
 
 # Default field to process
-DEFAULT_FIELDS = ['S2']
+DEFAULT_FIELDS = ["S2"]
 
 # OpenET ensemble models to ingest
-ENSEMBLE_MODELS = ['ptjpl', 'sims', 'ssebop', 'geesebal']
+ENSEMBLE_MODELS = ["ptjpl", "sims", "ssebop", "geesebal"]
 
 
 def load_config():
     """Load project configuration."""
-    config_file = os.path.join(PROJECT_DIR, '3_Crane.toml')
+    config_file = os.path.join(PROJECT_DIR, "3_Crane.toml")
     cfg = ProjectConfig()
     cfg.read_config(config_file, project_root_override=PROJECT_DIR)
     return cfg
@@ -80,7 +80,7 @@ def load_config():
 
 def create_container(cfg, overwrite=False):
     """Create a new SwimContainer from the fields shapefile."""
-    container_path = os.path.join(SCRIPT_DIR, f'{cfg.project_name}.swim')
+    container_path = os.path.join(SCRIPT_DIR, f"{cfg.project_name}.swim")
 
     container = SwimContainer.create(
         container_path,
@@ -100,10 +100,10 @@ def ingest_data(container, cfg, select_fields=None):
 
     # 1. Ingest properties (landcover, soils, irrigation)
     print("\n=== Ingesting Properties ===")
-    props_dir = os.path.join(SCRIPT_DIR, 'properties')
-    lulc_csv = os.path.join(props_dir, f'{cfg.project_name}_landcover.csv')
-    soils_csv = os.path.join(props_dir, f'{cfg.project_name}_ssurgo.csv')
-    irr_csv = os.path.join(props_dir, f'{cfg.project_name}_irr.csv')
+    props_dir = os.path.join(SCRIPT_DIR, "properties")
+    lulc_csv = os.path.join(props_dir, f"{cfg.project_name}_landcover.csv")
+    soils_csv = os.path.join(props_dir, f"{cfg.project_name}_ssurgo.csv")
+    irr_csv = os.path.join(props_dir, f"{cfg.project_name}_irr.csv")
 
     container.ingest.properties(
         lulc_csv=lulc_csv if os.path.exists(lulc_csv) else None,
@@ -123,7 +123,7 @@ def ingest_data(container, cfg, select_fields=None):
             source_dir=met_dir,
             grid_shapefile=grid_shp,
             uid_column=uid_col,
-            grid_column='GFID',
+            grid_column="GFID",
             include_corrected=True,
             overwrite=True,
         )
@@ -132,7 +132,7 @@ def ingest_data(container, cfg, select_fields=None):
 
     # 3. Ingest SNODAS SWE
     print("\n=== Ingesting SNODAS ===")
-    snodas_dir = os.path.join(SCRIPT_DIR, 'snow', 'snodas', 'extracts')
+    snodas_dir = os.path.join(SCRIPT_DIR, "snow", "snodas", "extracts")
 
     if os.path.exists(snodas_dir):
         container.ingest.snodas(
@@ -147,12 +147,12 @@ def ingest_data(container, cfg, select_fields=None):
     # 4. Ingest ETf data from all OpenET ensemble models
     print("\n=== Ingesting ETf (OpenET Ensemble) ===")
     for model in ENSEMBLE_MODELS:
-        etf_base = os.path.join(SCRIPT_DIR, 'remote_sensing', 'landsat', 'extracts', f'{model}_etf')
+        etf_base = os.path.join(SCRIPT_DIR, "remote_sensing", "landsat", "extracts", f"{model}_etf")
         if not os.path.exists(etf_base):
             print(f"  Skipping {model} - directory not found: {etf_base}")
             continue
 
-        for mask in ['irr', 'inv_irr']:
+        for mask in ["irr", "inv_irr"]:
             mask_dir = os.path.join(etf_base, mask)
             if os.path.exists(mask_dir):
                 print(f"  Ingesting {model} ETf ({mask})...")
@@ -161,7 +161,7 @@ def ingest_data(container, cfg, select_fields=None):
                     uid_column=uid_col,
                     model=model,
                     mask=mask,
-                    instrument='landsat',
+                    instrument="landsat",
                     fields=select_fields,
                     overwrite=True,
                 )
@@ -171,32 +171,31 @@ def ingest_data(container, cfg, select_fields=None):
     # (e.g., 'S2' instead of 'site_id'). The ingestor auto-detects and converts
     # these to standard format if the column header matches a known field ID.
     print("\n=== Ingesting Landsat NDVI ===")
-    ndvi_base = os.path.join(SCRIPT_DIR, 'remote_sensing', 'landsat', 'extracts', 'ndvi')
+    ndvi_base = os.path.join(SCRIPT_DIR, "remote_sensing", "landsat", "extracts", "ndvi")
 
-    for mask in ['irr', 'inv_irr']:
+    for mask in ["irr", "inv_irr"]:
         mask_dir = os.path.join(ndvi_base, mask)
         if os.path.exists(mask_dir):
             container.ingest.ndvi(
                 source_dir=mask_dir,
                 uid_column=uid_col,
-                instrument='landsat',
+                instrument="landsat",
                 mask=mask,
                 fields=select_fields,
                 overwrite=True,
             )
 
 
-
 def compute_dynamics(container, select_fields=None):
     """Compute merged NDVI and field dynamics (ke_max, kc_max, irrigation)."""
 
     # Use Landsat-only NDVI by default
-    instruments = ('landsat',)
+    instruments = ("landsat",)
 
     # 1. Merge NDVI
     print(f"\n=== Computing Merged NDVI (instruments: {list(instruments)}) ===")
     container.compute.merged_ndvi(
-        masks=('irr', 'inv_irr'),
+        masks=("irr", "inv_irr"),
         instruments=instruments,
         overwrite=True,
     )
@@ -204,8 +203,8 @@ def compute_dynamics(container, select_fields=None):
     # 2. Compute dynamics (ke_max, kc_max, irrigation detection)
     print("\n=== Computing Dynamics ===")
     container.compute.dynamics(
-        etf_model='ssebop',
-        masks=('irr', 'inv_irr'),
+        etf_model="ssebop",
+        masks=("irr", "inv_irr"),
         instruments=instruments,
         use_mask=True,  # Use irrigation mask for CONUS
         use_lulc=False,
@@ -216,16 +215,19 @@ def compute_dynamics(container, select_fields=None):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Build SWIM-RS model inputs using SwimContainer',
+        description="Build SWIM-RS model inputs using SwimContainer",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
-    parser.add_argument('--all-fields', action='store_true',
-                        help='Process all fields (default: S2 only)')
-    parser.add_argument('--fields', nargs='+', default=None,
-                        help='Specific field IDs to process')
-    parser.add_argument('--rebuild', action='store_true',
-                        help='Rebuild container from scratch (overwrites existing)')
+    parser.add_argument(
+        "--all-fields", action="store_true", help="Process all fields (default: S2 only)"
+    )
+    parser.add_argument("--fields", nargs="+", default=None, help="Specific field IDs to process")
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Rebuild container from scratch (overwrites existing)",
+    )
     args = parser.parse_args()
 
     # Determine fields to process
@@ -242,7 +244,7 @@ def main():
     print(f"Fields: {select_fields if select_fields else 'ALL'}")
 
     # Check if container exists
-    container_path = os.path.join(SCRIPT_DIR, f'{cfg.project_name}.swim')
+    container_path = os.path.join(SCRIPT_DIR, f"{cfg.project_name}.swim")
     container_exists = os.path.exists(container_path)
 
     if args.rebuild or not container_exists:
@@ -250,7 +252,7 @@ def main():
         container = create_container(cfg, overwrite=True)
     else:
         print(f"\nOpening existing container at {container_path}")
-        container = SwimContainer.open(container_path, mode='r+')
+        container = SwimContainer.open(container_path, mode="r+")
 
     try:
         # Ingest all data
@@ -262,13 +264,13 @@ def main():
         # Save container
         container.save()
 
-        print(f"\nDone! Built inputs for fields:")
-        for fid in (select_fields or container.field_uids):
+        print("\nDone! Built inputs for fields:")
+        for fid in select_fields or container.field_uids:
             print(f"  - {fid}")
 
     finally:
         container.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

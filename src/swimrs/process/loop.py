@@ -14,7 +14,6 @@ import numpy as np
 from swimrs.process.kernels.cover import (
     exposed_soil_fraction,
     fractional_cover,
-    fractional_cover_from_ndvi,
 )
 from swimrs.process.kernels.crop_coefficient import kcb_sigmoid
 from swimrs.process.kernels.evaporation import ke_coefficient, kr_damped, kr_reduction
@@ -377,8 +376,7 @@ def step_day(
     # (compute_snow.py: foo.swe += sf, then melt = min(foo.swe, melt_potential)).
     swe_before_melt = state.swe + snow
     melt = degree_day_melt(
-        swe_before_melt, tmax, temp_avg, srad, state.albedo,
-        params.swe_alpha, params.swe_beta
+        swe_before_melt, tmax, temp_avg, srad, state.albedo, params.swe_alpha, params.swe_beta
     )
 
     # Update SWE
@@ -397,16 +395,12 @@ def step_day(
         runoff = infiltration_excess(prcp_hr, ksat_hourly)
     else:
         # SCS Curve Number with antecedent moisture adjustment
-        cn_adj = curve_number_adjust(
-            props.cn2, state.depl_ze, props.rew, props.tew
-        )
+        cn_adj = curve_number_adjust(props.cn2, state.depl_ze, props.rew, props.tew)
 
         if np.any(props.irr_status):
             # Irrigated fields: use smoothed runoff over 4-day S history
             runoff_std, s_new = scs_runoff(precip_eff, cn_adj)
-            runoff_smooth = scs_runoff_smoothed(
-                precip_eff, state.s1, state.s2, state.s3, state.s4
-            )
+            runoff_smooth = scs_runoff_smoothed(precip_eff, state.s1, state.s2, state.s3, state.s4)
             runoff = np.where(props.irr_status, runoff_smooth, runoff_std)
 
             # Shift S history (newest to oldest: s_new -> s1 -> s2 -> s3 -> s4)
@@ -434,10 +428,7 @@ def step_day(
     # 5. Calculate new root depth from kcb (but don't apply redistribution yet)
     # Legacy model: root growth is applied at END of daily loop
     zr_prev = state.zr.copy()
-    zr_new = root_depth_from_kcb(
-        kcb, params.kc_min, props.kc_max,
-        props.zr_max, props.zr_min
-    )
+    zr_new = root_depth_from_kcb(kcb, params.kc_min, props.kc_max, props.zr_max, props.zr_min)
 
     # For perennials, keep root depth constant at max
     zr_new = np.where(props.perennial, props.zr_max, zr_new)
@@ -451,7 +442,7 @@ def step_day(
     # Matches legacy model compute_field_et.py line 64:
     # swb.depl_ze = swb.depl_ze - (swb.melt + swb.rain + swb.irr_sim)
     # Note: uses previous day's irr_sim (stored in state.prev_irr_sim)
-    prev_irr = state.prev_irr_sim if hasattr(state, 'prev_irr_sim') else np.zeros(n)
+    prev_irr = state.prev_irr_sim if hasattr(state, "prev_irr_sim") else np.zeros(n)
     state.depl_ze = state.depl_ze - (melt + rain + prev_irr)
     state.depl_ze = np.maximum(state.depl_ze, 0.0)  # Can't be negative
 
@@ -499,9 +490,7 @@ def step_day(
         evap = evap * e_factor
         # Recalculate ET with adjusted evaporation
         state.depl_ze = np.where(
-            state.depl_ze > props.tew,
-            np.maximum(depl_ze_prev, 0.0) + evap,
-            state.depl_ze
+            state.depl_ze > props.tew, np.maximum(depl_ze_prev, 0.0) + evap, state.depl_ze
         )
 
     # Calculate ETf
@@ -514,9 +503,13 @@ def step_day(
 
     # 14. Irrigation demand (based on UPDATED depletion)
     irr_sim, irr_cont_new, next_irr_new = irrigation_demand(
-        depl_after_et, raw, params.max_irr_rate,
-        irr_flag, temp_avg,
-        state.irr_continue, state.next_day_irr
+        depl_after_et,
+        raw,
+        params.max_irr_rate,
+        irr_flag,
+        temp_avg,
+        state.irr_continue,
+        state.next_day_irr,
     )
     state.irr_continue = irr_cont_new
     state.next_day_irr = next_irr_new
@@ -525,9 +518,7 @@ def step_day(
     # Matches legacy model compute_field_et.py lines 150-152
     # Use year-specific f_sub if provided, otherwise fall back to props.f_sub
     f_sub_to_use = f_sub if f_sub is not None else props.f_sub
-    gw_sim = groundwater_subsidy(
-        depl_after_et, raw, props.gw_status, f_sub_to_use
-    )
+    gw_sim = groundwater_subsidy(depl_after_et, raw, props.gw_status, f_sub_to_use)
 
     # 16. Apply irrigation and groundwater subsidy
     # Note: Only (1 - IRR_BYPASS_FRAC) of irrigation reaches the root zone.
@@ -551,9 +542,7 @@ def step_day(
     gross_dperc = dperc + irr_bypass
 
     if state.taw3 is not None and np.any(state.taw3 > 0):
-        state.daw3, dperc_out = layer3_storage(
-            state.daw3, state.taw3, gross_dperc
-        )
+        state.daw3, dperc_out = layer3_storage(state.daw3, state.taw3, gross_dperc)
     else:
         dperc_out = gross_dperc
 
@@ -565,16 +554,22 @@ def step_day(
     # Uses values BEFORE today's fluxes for consistency
     # Note: Use irr_to_root (not irr_sim) since that's what enters the root zone
     state.irr_frac_root, et_irr = update_irrigation_fraction_root(
-        props.awc, zr_prev, depl_root_before, irr_frac_root_before,
-        infiltration, irr_to_root, gw_sim, eta, dperc
+        props.awc,
+        zr_prev,
+        depl_root_before,
+        irr_frac_root_before,
+        infiltration,
+        irr_to_root,
+        gw_sim,
+        eta,
+        dperc,
     )
 
     # 19b. Update layer 3 irrigation fraction
     # The gross_dperc includes the irrigation bypass. For fraction tracking,
     # we treat the bypass as having 100% irrigation fraction (it's pure irrigation water).
     state.irr_frac_l3, dperc_irr = update_irrigation_fraction_l3(
-        daw3_before, irr_frac_l3_before,
-        gross_dperc, state.irr_frac_root, dperc_out
+        daw3_before, irr_frac_l3_before, gross_dperc, state.irr_frac_root, dperc_out
     )
 
     # 20. Root growth water redistribution (at END of daily loop, matches legacy)
@@ -588,8 +583,7 @@ def step_day(
     irr_frac_l3_pre_redist = state.irr_frac_l3.copy()
 
     state.depl_root, state.daw3, state.taw3 = root_water_redistribution(
-        zr_new, zr_prev, props.zr_max, props.awc,
-        depl_root_pre_redist, daw3_pre_redist
+        zr_new, zr_prev, props.zr_max, props.awc, depl_root_pre_redist, daw3_pre_redist
     )
     state.zr = zr_new
 
@@ -608,27 +602,27 @@ def step_day(
     # Transfer from L3 to root zone (roots growing)
     if np.any(transfer_positive > 1e-6):
         _, irr_frac_root_after_grow = transfer_fraction_with_water(
-            daw3_pre_redist, irr_frac_l3_pre_redist,
-            water_root_pre, irr_frac_root_pre_redist,
-            transfer_positive
+            daw3_pre_redist,
+            irr_frac_l3_pre_redist,
+            water_root_pre,
+            irr_frac_root_pre_redist,
+            transfer_positive,
         )
         state.irr_frac_root = np.where(
-            transfer_positive > 1e-6,
-            irr_frac_root_after_grow,
-            state.irr_frac_root
+            transfer_positive > 1e-6, irr_frac_root_after_grow, state.irr_frac_root
         )
 
     # Transfer from root zone to L3 (roots receding)
     if np.any(transfer_negative > 1e-6):
         _, irr_frac_l3_after_recede = transfer_fraction_with_water(
-            water_root_pre, irr_frac_root_pre_redist,
-            daw3_pre_redist, irr_frac_l3_pre_redist,
-            transfer_negative
+            water_root_pre,
+            irr_frac_root_pre_redist,
+            daw3_pre_redist,
+            irr_frac_l3_pre_redist,
+            transfer_negative,
         )
         state.irr_frac_l3 = np.where(
-            transfer_negative > 1e-6,
-            irr_frac_l3_after_recede,
-            state.irr_frac_l3
+            transfer_negative > 1e-6, irr_frac_l3_after_recede, state.irr_frac_l3
         )
 
     # 21. Store irr_sim for next day's Ze update

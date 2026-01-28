@@ -70,39 +70,43 @@ import ee
 # Add project root to path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
-ROOT_DIR = os.path.abspath(os.path.join(PROJECT_DIR, '../..'))
+ROOT_DIR = os.path.abspath(os.path.join(PROJECT_DIR, "../.."))
 sys.path.insert(0, ROOT_DIR)
 
-from swimrs.swim.config import ProjectConfig
-from swimrs.data_extraction.ee.ptjpl_export import export_ptjpl_zonal_stats
-from swimrs.data_extraction.ee.sims_export import export_sims_zonal_stats
-from swimrs.data_extraction.ee.ssebop_export import export_ssebop_zonal_stats
+from swimrs.data_extraction.ee.ee_props import get_irrigation, get_landcover, get_ssurgo
+from swimrs.data_extraction.ee.ee_utils import is_authorized
 from swimrs.data_extraction.ee.geesebal_export import export_geesebal_zonal_stats
 from swimrs.data_extraction.ee.ndvi_export import sparse_sample_ndvi
+from swimrs.data_extraction.ee.ptjpl_export import export_ptjpl_zonal_stats
+from swimrs.data_extraction.ee.sims_export import export_sims_zonal_stats
 from swimrs.data_extraction.ee.snodas_export import sample_snodas_swe
-from swimrs.data_extraction.ee.ee_props import get_irrigation, get_ssurgo, get_landcover
-from swimrs.data_extraction.ee.ee_utils import is_authorized
-from swimrs.data_extraction.gridmet.gridmet import assign_gridmet_ids, sample_gridmet_corrections, download_gridmet
+from swimrs.data_extraction.ee.ssebop_export import export_ssebop_zonal_stats
+from swimrs.data_extraction.gridmet.gridmet import (
+    assign_gridmet_ids,
+    download_gridmet,
+    sample_gridmet_corrections,
+)
+from swimrs.swim.config import ProjectConfig
 from swimrs.utils.flux_stations import extract_stations
 
 # OpenET ensemble models available for extraction
-OPENET_MODELS = ['ptjpl', 'sims', 'ssebop', 'geesebal']
+OPENET_MODELS = ["ptjpl", "sims", "ssebop", "geesebal"]
 
 # Map model names to their export functions
 MODEL_EXPORTERS = {
-    'ptjpl': export_ptjpl_zonal_stats,
-    'sims': export_sims_zonal_stats,
-    'ssebop': export_ssebop_zonal_stats,
-    'geesebal': export_geesebal_zonal_stats,
+    "ptjpl": export_ptjpl_zonal_stats,
+    "sims": export_sims_zonal_stats,
+    "ssebop": export_ssebop_zonal_stats,
+    "geesebal": export_geesebal_zonal_stats,
 }
 
 sys.setrecursionlimit(5000)
 
 # Default: extract only S2 (Crane irrigated alfalfa site)
-DEFAULT_FIELDS = ['S2']
+DEFAULT_FIELDS = ["S2"]
 
 # Path to master flux stations shapefile
-MASTER_SHAPEFILE = os.path.abspath(os.path.join(ROOT_DIR, 'examples', 'gis', 'flux_stations.shp'))
+MASTER_SHAPEFILE = os.path.abspath(os.path.join(ROOT_DIR, "examples", "gis", "flux_stations.shp"))
 
 
 def init_earth_engine():
@@ -116,7 +120,7 @@ def init_earth_engine():
 
 def load_config():
     """Load project configuration from TOML file."""
-    config_file = os.path.join(PROJECT_DIR, '3_Crane.toml')
+    config_file = os.path.join(PROJECT_DIR, "3_Crane.toml")
     cfg = ProjectConfig()
     cfg.read_config(config_file, project_root_override=PROJECT_DIR)
     return cfg
@@ -132,8 +136,8 @@ def setup_local_shapefile(select_fields, overwrite=False):
     overwrite : bool
         If True, overwrite existing shapefile
     """
-    gis_dir = os.path.join(SCRIPT_DIR, 'gis')
-    local_shp = os.path.join(gis_dir, 'flux_fields.shp')
+    gis_dir = os.path.join(SCRIPT_DIR, "gis")
+    local_shp = os.path.join(gis_dir, "flux_fields.shp")
 
     if os.path.exists(local_shp) and not overwrite:
         print(f"Using existing local shapefile: {local_shp}")
@@ -145,18 +149,15 @@ def setup_local_shapefile(select_fields, overwrite=False):
             f"Run: python -m swimrs.utils.flux_stations create --help"
         )
 
-    print(f"\nExtracting stations from master shapefile...")
-    extract_stations(
-        MASTER_SHAPEFILE,
-        select_fields,
-        local_shp,
-        overwrite=True
-    )
+    print("\nExtracting stations from master shapefile...")
+    extract_stations(MASTER_SHAPEFILE, select_fields, local_shp, overwrite=True)
 
     return local_shp
 
 
-def extract_openet_etf(cfg, select_fields, use_drive, models=None, mask_types=None, overwrite=False):
+def extract_openet_etf(
+    cfg, select_fields, use_drive, models=None, mask_types=None, overwrite=False
+):
     """Extract ETf (evapotranspiration fraction) from OpenET ensemble models.
 
     Parameters
@@ -177,7 +178,7 @@ def extract_openet_etf(cfg, select_fields, use_drive, models=None, mask_types=No
     if models is None:
         models = OPENET_MODELS
     if mask_types is None:
-        mask_types = ['irr', 'inv_irr']
+        mask_types = ["irr", "inv_irr"]
 
     # OpenET export functions only support GCS bucket export
     if use_drive:
@@ -186,11 +187,13 @@ def extract_openet_etf(cfg, select_fields, use_drive, models=None, mask_types=No
 
     for model in models:
         if model not in MODEL_EXPORTERS:
-            print(f"  Warning: Unknown model '{model}', skipping. Available: {list(MODEL_EXPORTERS.keys())}")
+            print(
+                f"  Warning: Unknown model '{model}', skipping. Available: {list(MODEL_EXPORTERS.keys())}"
+            )
             continue
 
         export_func = MODEL_EXPORTERS[model]
-        etf_base = os.path.join(SCRIPT_DIR, 'remote_sensing', 'landsat', 'extracts', f'{model}_etf')
+        etf_base = os.path.join(SCRIPT_DIR, "remote_sensing", "landsat", "extracts", f"{model}_etf")
 
         for mask in mask_types:
             print(f"\nExtracting {model.upper()} ETf ({mask})...")
@@ -210,7 +213,9 @@ def extract_openet_etf(cfg, select_fields, use_drive, models=None, mask_types=No
             )
 
 
-def extract_ndvi(cfg, select_fields, use_drive, satellite='landsat', mask_types=None, overwrite=False):
+def extract_ndvi(
+    cfg, select_fields, use_drive, satellite="landsat", mask_types=None, overwrite=False
+):
     """Extract NDVI from Landsat or Sentinel-2.
 
     Parameters
@@ -229,14 +234,14 @@ def extract_ndvi(cfg, select_fields, use_drive, satellite='landsat', mask_types=
         If True, overwrite existing exported data
     """
     if mask_types is None:
-        mask_types = ['irr', 'inv_irr']
+        mask_types = ["irr", "inv_irr"]
 
-    dest = 'drive' if use_drive else 'bucket'
+    dest = "drive" if use_drive else "bucket"
     bucket = None if use_drive else cfg.ee_bucket
-    drive_folder = cfg.resolved_config.get('earth_engine', {}).get('drive_folder', cfg.project_name)
+    drive_folder = cfg.resolved_config.get("earth_engine", {}).get("drive_folder", cfg.project_name)
 
     # Check directory for existing exports (use satellite-specific path)
-    ndvi_base = os.path.join(SCRIPT_DIR, 'remote_sensing', satellite, 'extracts', 'ndvi')
+    ndvi_base = os.path.join(SCRIPT_DIR, "remote_sensing", satellite, "extracts", "ndvi")
 
     for mask in mask_types:
         print(f"\nExtracting {satellite} NDVI ({mask})...")
@@ -258,7 +263,7 @@ def extract_ndvi(cfg, select_fields, use_drive, satellite='landsat', mask_types=
             dest=dest,
             file_prefix=cfg.project_name,
             drive_folder=drive_folder,
-            drive_categorize=use_drive
+            drive_categorize=use_drive,
         )
 
 
@@ -277,12 +282,12 @@ def extract_snodas(cfg, select_fields, use_drive, overwrite=False):
         If True, overwrite existing exported data
     """
     print("\nExtracting SNODAS SWE...")
-    dest = 'drive' if use_drive else 'bucket'
+    dest = "drive" if use_drive else "bucket"
     bucket = None if use_drive else cfg.ee_bucket
-    drive_folder = cfg.resolved_config.get('earth_engine', {}).get('drive_folder', cfg.project_name)
+    drive_folder = cfg.resolved_config.get("earth_engine", {}).get("drive_folder", cfg.project_name)
 
     # Check directory for existing exports
-    check_dir = None if overwrite else os.path.join(SCRIPT_DIR, 'snow', 'snodas', 'extracts')
+    check_dir = None if overwrite else os.path.join(SCRIPT_DIR, "snow", "snodas", "extracts")
 
     sample_snodas_swe(
         cfg.fields_shapefile,
@@ -295,7 +300,7 @@ def extract_snodas(cfg, select_fields, use_drive, overwrite=False):
         dest=dest,
         file_prefix=cfg.project_name,
         drive_folder=drive_folder,
-        drive_categorize=use_drive
+        drive_categorize=use_drive,
     )
 
 
@@ -314,14 +319,14 @@ def extract_properties(cfg, select_fields, use_drive, overwrite=False):
         If True, overwrite existing exported data (currently unused for properties)
     """
     _ = overwrite  # Properties don't have check_dir, always re-export
-    dest = 'drive' if use_drive else 'bucket'
+    dest = "drive" if use_drive else "bucket"
     bucket = None if use_drive else cfg.ee_bucket
-    drive_folder = cfg.resolved_config.get('earth_engine', {}).get('drive_folder', cfg.project_name)
+    drive_folder = cfg.resolved_config.get("earth_engine", {}).get("drive_folder", cfg.project_name)
 
     print("\nExtracting irrigation data...")
     get_irrigation(
         cfg.fields_shapefile,
-        desc=f'{cfg.project_name}_irr',
+        desc=f"{cfg.project_name}_irr",
         debug=False,
         selector=cfg.feature_id_col,
         select=select_fields,
@@ -330,13 +335,13 @@ def extract_properties(cfg, select_fields, use_drive, overwrite=False):
         bucket=bucket,
         file_prefix=cfg.project_name,
         drive_folder=drive_folder,
-        drive_categorize=use_drive
+        drive_categorize=use_drive,
     )
 
     print("\nExtracting land cover data...")
     get_landcover(
         cfg.fields_shapefile,
-        desc=f'{cfg.project_name}_landcover',
+        desc=f"{cfg.project_name}_landcover",
         debug=False,
         selector=cfg.feature_id_col,
         select=select_fields,
@@ -344,13 +349,13 @@ def extract_properties(cfg, select_fields, use_drive, overwrite=False):
         bucket=bucket,
         file_prefix=cfg.project_name,
         drive_folder=drive_folder,
-        drive_categorize=use_drive
+        drive_categorize=use_drive,
     )
 
     print("\nExtracting SSURGO soil data...")
     get_ssurgo(
         cfg.fields_shapefile,
-        desc=f'{cfg.project_name}_ssurgo',
+        desc=f"{cfg.project_name}_ssurgo",
         debug=False,
         selector=cfg.feature_id_col,
         select=select_fields,
@@ -358,7 +363,7 @@ def extract_properties(cfg, select_fields, use_drive, overwrite=False):
         bucket=bucket,
         file_prefix=cfg.project_name,
         drive_folder=drive_folder,
-        drive_categorize=use_drive
+        drive_categorize=use_drive,
     )
 
 
@@ -396,11 +401,11 @@ def extract_gridmet(cfg, select_fields, overwrite=False):
         cfg.gridmet_mapping_shp,
         cfg.gridmet_factors,
         cfg.met_dir,
-        start=cfg.start_dt.strftime('%Y-%m-%d'),
-        end=cfg.end_dt.strftime('%Y-%m-%d'),
+        start=cfg.start_dt.strftime("%Y-%m-%d"),
+        end=cfg.end_dt.strftime("%Y-%m-%d"),
         target_fields=select_fields,
         overwrite=overwrite,
-        feature_id=cfg.feature_id_col
+        feature_id=cfg.feature_id_col,
     )
 
 
@@ -448,31 +453,46 @@ Next steps:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Extract SWIM-RS input data from Earth Engine and GridMET',
+        description="Extract SWIM-RS input data from Earth Engine and GridMET",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
-    parser.add_argument('--drive', action='store_true',
-                        help='Export to Google Drive instead of GCS bucket')
-    parser.add_argument('--all-fields', action='store_true',
-                        help='Extract all flux sites (default: S2 only)')
-    parser.add_argument('--fields', nargs='+', default=None,
-                        help='Specific field IDs to extract')
-    parser.add_argument('--models', nargs='+', default=None,
-                        choices=OPENET_MODELS,
-                        help=f'OpenET models to extract (default: all). Choices: {OPENET_MODELS}')
-    parser.add_argument('--skip-ee', action='store_true',
-                        help='Skip Earth Engine exports (GridMET only)')
-    parser.add_argument('--sync-only', action='store_true',
-                        help='Only sync from bucket, no new exports')
-    parser.add_argument('--overwrite', action='store_true',
-                        help='Overwrite existing exported data')
-    parser.add_argument('--build-shp', action='store_true',
-                        help='Only rebuild local shapefile from master and exit (writes provenance)')
-    parser.add_argument('--sentinel', action='store_true',
-                        help='Extract Sentinel-2 NDVI (in addition to or instead of Landsat)')
-    parser.add_argument('--sentinel-only', action='store_true',
-                        help='Extract only Sentinel-2 NDVI (skip Landsat and ETf)')
+    parser.add_argument(
+        "--drive", action="store_true", help="Export to Google Drive instead of GCS bucket"
+    )
+    parser.add_argument(
+        "--all-fields", action="store_true", help="Extract all flux sites (default: S2 only)"
+    )
+    parser.add_argument("--fields", nargs="+", default=None, help="Specific field IDs to extract")
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        default=None,
+        choices=OPENET_MODELS,
+        help=f"OpenET models to extract (default: all). Choices: {OPENET_MODELS}",
+    )
+    parser.add_argument(
+        "--skip-ee", action="store_true", help="Skip Earth Engine exports (GridMET only)"
+    )
+    parser.add_argument(
+        "--sync-only", action="store_true", help="Only sync from bucket, no new exports"
+    )
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing exported data")
+    parser.add_argument(
+        "--build-shp",
+        action="store_true",
+        help="Only rebuild local shapefile from master and exit (writes provenance)",
+    )
+    parser.add_argument(
+        "--sentinel",
+        action="store_true",
+        help="Extract Sentinel-2 NDVI (in addition to or instead of Landsat)",
+    )
+    parser.add_argument(
+        "--sentinel-only",
+        action="store_true",
+        help="Extract only Sentinel-2 NDVI (skip Landsat and ETf)",
+    )
     args = parser.parse_args()
 
     # Determine which fields to extract
@@ -516,7 +536,9 @@ def main():
             print("\n" + "=" * 60)
             print("SENTINEL-2 NDVI EXTRACTION ONLY")
             print("=" * 60)
-            extract_ndvi(cfg, select_fields, args.drive, satellite='sentinel', overwrite=args.overwrite)
+            extract_ndvi(
+                cfg, select_fields, args.drive, satellite="sentinel", overwrite=args.overwrite
+            )
 
         else:
             etf_models = args.models if args.models else OPENET_MODELS
@@ -526,13 +548,19 @@ def main():
             print("PART A: Remote Sensing Extraction (Earth Engine)")
             print("=" * 60)
 
-            extract_openet_etf(cfg, select_fields, args.drive, models=etf_models, overwrite=args.overwrite)
-            extract_ndvi(cfg, select_fields, args.drive, satellite='landsat', overwrite=args.overwrite)
+            extract_openet_etf(
+                cfg, select_fields, args.drive, models=etf_models, overwrite=args.overwrite
+            )
+            extract_ndvi(
+                cfg, select_fields, args.drive, satellite="landsat", overwrite=args.overwrite
+            )
 
             # Extract Sentinel-2 NDVI if --sentinel flag is set
             if args.sentinel:
                 print("\n--- Extracting Sentinel-2 NDVI ---")
-                extract_ndvi(cfg, select_fields, args.drive, satellite='sentinel', overwrite=args.overwrite)
+                extract_ndvi(
+                    cfg, select_fields, args.drive, satellite="sentinel", overwrite=args.overwrite
+                )
 
             # Properties and snow
             print("\n" + "=" * 60)
@@ -560,5 +588,5 @@ def main():
     print_summary(args.drive, cfg, sentinel=(args.sentinel or args.sentinel_only))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -19,9 +19,9 @@ Example:
 """
 
 from .base import Component
-from .ingestor import Ingestor
 from .calculator import Calculator
 from .exporter import Exporter
+from .ingestor import Ingestor
 from .query import Query
 
 __all__ = [

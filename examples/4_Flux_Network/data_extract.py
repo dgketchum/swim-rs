@@ -25,7 +25,7 @@ def extract_snodas(cfg: ProjectConfig) -> None:
     sample_snodas_swe(
         feature_coll=cfg.fields_shapefile,
         bucket=cfg.ee_bucket,
-        dest='bucket',
+        dest="bucket",
         debug=False,
         check_dir=None,
         feature_id=cfg.feature_id_col,
@@ -35,13 +35,51 @@ def extract_snodas(cfg: ProjectConfig) -> None:
 
 def extract_properties(cfg: ProjectConfig) -> None:
     is_authorized()
-    from swimrs.data_extraction.ee.ee_props import get_cdl, get_irrigation, get_landcover, get_ssurgo
+    from swimrs.data_extraction.ee.ee_props import (
+        get_cdl,
+        get_irrigation,
+        get_landcover,
+        get_ssurgo,
+    )
 
     project = cfg.project_name
-    get_cdl(cfg.fields_shapefile, f"{project}_cdl", selector=cfg.feature_id_col, dest='bucket', bucket=cfg.ee_bucket, file_prefix=project)
-    get_irrigation(cfg.fields_shapefile, f"{project}_irr", debug=True, selector=cfg.feature_id_col, lanid=True, dest='bucket', bucket=cfg.ee_bucket, file_prefix=project)
-    get_ssurgo(cfg.fields_shapefile, f"{project}_ssurgo", debug=False, selector=cfg.feature_id_col, dest='bucket', bucket=cfg.ee_bucket, file_prefix=project)
-    get_landcover(cfg.fields_shapefile, f"{project}_landcover", debug=False, selector=cfg.feature_id_col, out_fmt="CSV", dest='bucket', bucket=cfg.ee_bucket, file_prefix=project)
+    get_cdl(
+        cfg.fields_shapefile,
+        f"{project}_cdl",
+        selector=cfg.feature_id_col,
+        dest="bucket",
+        bucket=cfg.ee_bucket,
+        file_prefix=project,
+    )
+    get_irrigation(
+        cfg.fields_shapefile,
+        f"{project}_irr",
+        debug=True,
+        selector=cfg.feature_id_col,
+        lanid=True,
+        dest="bucket",
+        bucket=cfg.ee_bucket,
+        file_prefix=project,
+    )
+    get_ssurgo(
+        cfg.fields_shapefile,
+        f"{project}_ssurgo",
+        debug=False,
+        selector=cfg.feature_id_col,
+        dest="bucket",
+        bucket=cfg.ee_bucket,
+        file_prefix=project,
+    )
+    get_landcover(
+        cfg.fields_shapefile,
+        f"{project}_landcover",
+        debug=False,
+        selector=cfg.feature_id_col,
+        out_fmt="CSV",
+        dest="bucket",
+        bucket=cfg.ee_bucket,
+        file_prefix=project,
+    )
 
 
 def extract_remote_sensing(cfg: ProjectConfig, sites=None, get_sentinel: bool = True) -> None:
@@ -56,7 +94,7 @@ def extract_remote_sensing(cfg: ProjectConfig, sites=None, get_sentinel: bool = 
         sparse_sample_ndvi(
             cfg.fields_shapefile,
             bucket=cfg.ee_bucket,
-            dest='bucket',
+            dest="bucket",
             debug=False,
             mask_type=mask,
             check_dir=dst,
@@ -74,7 +112,7 @@ def extract_remote_sensing(cfg: ProjectConfig, sites=None, get_sentinel: bool = 
             sparse_sample_ndvi(
                 cfg.fields_shapefile,
                 bucket=cfg.ee_bucket,
-                dest='bucket',
+                dest="bucket",
                 debug=False,
                 mask_type=mask,
                 check_dir=dst,
@@ -95,7 +133,7 @@ def extract_remote_sensing(cfg: ProjectConfig, sites=None, get_sentinel: bool = 
             sparse_sample_etf(
                 cfg.fields_shapefile,
                 bucket=cfg.ee_bucket,
-                dest='bucket',
+                dest="bucket",
                 debug=False,
                 mask_type=mask,
                 check_dir=dst,
@@ -116,7 +154,7 @@ def extract_gridmet(cfg: ProjectConfig, sites=None) -> None:
         sample_gridmet_corrections,
     )
 
-    nldas_needed = (cfg.runoff_process == "ier")
+    nldas_needed = cfg.runoff_process == "ier"
     join_path = cfg.gridmet_mapping_shp
     factors_path = cfg.gridmet_factors
 

@@ -8,7 +8,6 @@ dperc_irr, irr_frac_root, irr_frac_l3). Only the 14 common output fields
 are compared.
 """
 
-import json
 import sys
 import tempfile
 from pathlib import Path

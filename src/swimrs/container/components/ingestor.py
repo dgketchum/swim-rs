@@ -8,7 +8,7 @@ Usage: container.ingest.ndvi(...) instead of container.ingest_ee_ndvi(...)
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -16,9 +16,9 @@ import pandas as pd
 from .base import Component
 
 if TYPE_CHECKING:
-    import xarray as xr
-    from swimrs.container.state import ContainerState
+    from swimrs.container.components.grid_mapping import GridMapping
     from swimrs.container.provenance import ProvenanceEvent
+    from swimrs.container.state import ContainerState
 
 
 class Ingestor(Component):
@@ -35,7 +35,7 @@ class Ingestor(Component):
         container.ingest.properties(lulc_csv="lulc.csv", soils_csv="soils.csv")
     """
 
-    def __init__(self, state: "ContainerState", container=None):
+    def __init__(self, state: ContainerState, container=None):
         """
         Initialize the Ingestor.
 
@@ -51,15 +51,15 @@ class Ingestor(Component):
 
     def ndvi(
         self,
-        source_dir: Union[str, Path],
+        source_dir: str | Path,
         uid_column: str = "FID",
         instrument: str = "landsat",
         mask: str = "irr",
-        fields: Optional[List[str]] = None,
+        fields: list[str] | None = None,
         overwrite: bool = False,
         min_ndvi: float = 0.05,
         apply_consecutive_filter: bool = True,
-    ) -> "ProvenanceEvent":
+    ) -> ProvenanceEvent:
         """
         Ingest NDVI data from Earth Engine CSV exports.
 
@@ -92,7 +92,9 @@ class Ingestor(Component):
                 raise ValueError(f"Data exists at {path}. Use overwrite=True.")
 
             # Parse all CSVs into unified DataFrame
-            all_data = self._parse_ee_remote_sensing_csvs(source_dir, instrument, "ndvi", uid_column, fields, mask=mask)
+            all_data = self._parse_ee_remote_sensing_csvs(
+                source_dir, instrument, "ndvi", uid_column, fields, mask=mask
+            )
 
             if all_data.empty:
                 self._log.warning("no_data_found", source=str(source_dir))
@@ -106,9 +108,7 @@ class Ingestor(Component):
                 )
 
             # Apply quality filters
-            all_data = self._apply_ndvi_filters(
-                all_data, min_ndvi, apply_consecutive_filter
-            )
+            all_data = self._apply_ndvi_filters(all_data, min_ndvi, apply_consecutive_filter)
 
             # Align to container grid and write
             records = self._write_timeseries(path, all_data, fields, overwrite=overwrite)
@@ -139,15 +139,15 @@ class Ingestor(Component):
 
     def etf(
         self,
-        source_dir: Union[str, Path],
+        source_dir: str | Path,
         uid_column: str = "FID",
         model: str = "ssebop",
         mask: str = "irr",
         instrument: str = "landsat",
-        fields: Optional[List[str]] = None,
+        fields: list[str] | None = None,
         overwrite: bool = False,
         min_etf: float = 0.05,
-    ) -> "ProvenanceEvent":
+    ) -> ProvenanceEvent:
         """
         Ingest ET fraction data from Earth Engine CSV exports.
 
@@ -182,7 +182,9 @@ class Ingestor(Component):
                 raise ValueError(f"Data exists at {path}. Use overwrite=True.")
 
             # Parse all CSVs into unified DataFrame
-            all_data = self._parse_ee_remote_sensing_csvs(source_dir, instrument, "etf", uid_column, fields, mask=mask)
+            all_data = self._parse_ee_remote_sensing_csvs(
+                source_dir, instrument, "etf", uid_column, fields, mask=mask
+            )
 
             if all_data.empty:
                 self._log.warning("no_data_found", source=str(source_dir))
@@ -228,15 +230,15 @@ class Ingestor(Component):
 
     def gridmet(
         self,
-        source_dir: Union[str, Path],
-        grid_shapefile: Optional[Union[str, Path]] = None,
-        grid_mapping: Optional[Union[str, Path, Dict[str, int], "GridMapping"]] = None,
+        source_dir: str | Path,
+        grid_shapefile: str | Path | None = None,
+        grid_mapping: str | Path | dict[str, int] | GridMapping | None = None,
         uid_column: str = "FID",
         grid_column: str = "GFID",
-        variables: Optional[List[str]] = None,
+        variables: list[str] | None = None,
         include_corrected: bool = True,
         overwrite: bool = False,
-    ) -> "ProvenanceEvent":
+    ) -> ProvenanceEvent:
         """
         Ingest GridMET meteorology data from Parquet files.
 
@@ -367,11 +369,11 @@ class Ingestor(Component):
 
     def era5(
         self,
-        source_dir: Union[str, Path],
-        variables: Optional[List[str]] = None,
-        field_mapping: Optional[Dict[str, str]] = None,
+        source_dir: str | Path,
+        variables: list[str] | None = None,
+        field_mapping: dict[str, str] | None = None,
         overwrite: bool = False,
-    ) -> "ProvenanceEvent":
+    ) -> ProvenanceEvent:
         """
         Ingest ERA5 meteorology data from monthly CSV exports.
 
@@ -466,11 +468,11 @@ class Ingestor(Component):
 
     def snodas(
         self,
-        source_dir: Union[str, Path],
+        source_dir: str | Path,
         uid_column: str = "FID",
-        fields: Optional[List[str]] = None,
+        fields: list[str] | None = None,
         overwrite: bool = False,
-    ) -> "ProvenanceEvent":
+    ) -> ProvenanceEvent:
         """
         Ingest SNODAS snow water equivalent data from Earth Engine CSV extracts.
 
@@ -538,15 +540,15 @@ class Ingestor(Component):
 
     def properties(
         self,
-        lulc_csv: Optional[Union[str, Path]] = None,
-        soils_csv: Optional[Union[str, Path]] = None,
-        irr_csv: Optional[Union[str, Path]] = None,
-        location_csv: Optional[Union[str, Path]] = None,
+        lulc_csv: str | Path | None = None,
+        soils_csv: str | Path | None = None,
+        irr_csv: str | Path | None = None,
+        location_csv: str | Path | None = None,
         uid_column: str = "FID",
         lulc_column: str = "modis_lc",
-        extra_lulc_column: Optional[str] = "glc10_lc",
+        extra_lulc_column: str | None = "glc10_lc",
         overwrite: bool = False,
-    ) -> "ProvenanceEvent":
+    ) -> ProvenanceEvent:
         """
         Ingest static field properties from CSV files.
 
@@ -632,9 +634,9 @@ class Ingestor(Component):
 
     def dynamics(
         self,
-        dynamics_json: Union[str, Path],
+        dynamics_json: str | Path,
         overwrite: bool = False,
-    ) -> "ProvenanceEvent":
+    ) -> ProvenanceEvent:
         """
         Ingest pre-computed dynamics data from JSON file.
 
@@ -738,8 +740,8 @@ class Ingestor(Component):
         instrument: str,
         parameter: str,
         uid_column: str,
-        fields: Optional[List[str]] = None,
-        mask: Optional[str] = None,
+        fields: list[str] | None = None,
+        mask: str | None = None,
     ) -> pd.DataFrame:
         """
         Parse Earth Engine CSV exports into a unified DataFrame.
@@ -832,8 +834,12 @@ class Ingestor(Component):
                     df.iloc[0, 0] = field_id
                     self._log.debug("converted_sparse_csv", file=str(csv_file), field_id=field_id)
                 else:
-                    self._log.warning("uid_column_missing", file=str(csv_file), uid_column=uid_column,
-                                      available_columns=list(df.columns[:5]))
+                    self._log.warning(
+                        "uid_column_missing",
+                        file=str(csv_file),
+                        uid_column=uid_column,
+                        available_columns=list(df.columns[:5]),
+                    )
                     continue
 
             # Parse data columns (those with dates in the column name) - do once per file
@@ -864,8 +870,9 @@ class Ingestor(Component):
                     continue
 
             if not data_cols:
-                self._log.warning("no_date_columns_found", file=str(csv_file),
-                                  sample_columns=list(df.columns[:5]))
+                self._log.warning(
+                    "no_date_columns_found", file=str(csv_file), sample_columns=list(df.columns[:5])
+                )
                 continue
 
             # Iterate over all rows (each row is a field)
@@ -894,12 +901,16 @@ class Ingestor(Component):
                 all_series.append(series)
 
         if not all_series:
-            self._log.warning("no_series_created", fields_found=list(fields_found),
-                              container_fields_sample=list(self._state._uid_to_index.keys())[:5])
+            self._log.warning(
+                "no_series_created",
+                fields_found=list(fields_found),
+                container_fields_sample=list(self._state._uid_to_index.keys())[:5],
+            )
             return pd.DataFrame()
 
         # Group series by field ID and combine (handle multiple CSV files per field)
         from collections import defaultdict
+
         field_series = defaultdict(list)
         for s in all_series:
             field_series[s.name].append(s)
@@ -971,7 +982,7 @@ class Ingestor(Component):
         self,
         path: str,
         data: pd.DataFrame,
-        fields: Optional[List[str]],
+        fields: list[str] | None,
         overwrite: bool = False,
     ) -> int:
         """
@@ -986,7 +997,6 @@ class Ingestor(Component):
         Returns:
             Number of non-NaN values written
         """
-        import xarray as xr
 
         # Create the array
         arr = self._state.create_timeseries_array(path, overwrite=overwrite)
@@ -1004,7 +1014,7 @@ class Ingestor(Component):
         aligned = data.reindex(index=self._state.time_index, columns=common_fields)
 
         # Ensure numeric dtype (CSV parsing can produce object dtype)
-        aligned = aligned.apply(pd.to_numeric, errors='coerce')
+        aligned = aligned.apply(pd.to_numeric, errors="coerce")
 
         # Write each field
         for field_uid in common_fields:
@@ -1019,7 +1029,7 @@ class Ingestor(Component):
         self,
         source_dir: Path,
         variable: str,
-        grid_mapping: "GridMapping",
+        grid_mapping: GridMapping,
     ) -> pd.DataFrame:
         """
         Load a variable from grid-cell-based parquet files.
@@ -1039,7 +1049,6 @@ class Ingestor(Component):
         Raises:
             ValueError: If legacy MultiIndex format is detected
         """
-        from .grid_mapping import GridMapping
 
         result_series = []
         valid_uids = set(self._state._uid_to_index.keys())
@@ -1187,8 +1196,8 @@ class Ingestor(Component):
     def _parse_era5_csvs(
         self,
         source_dir: Path,
-        param_mapping: Dict[str, str],
-    ) -> Dict[str, pd.DataFrame]:
+        param_mapping: dict[str, str],
+    ) -> dict[str, pd.DataFrame]:
         """
         Parse ERA5 monthly CSV exports using vectorized operations.
 
@@ -1270,9 +1279,7 @@ class Ingestor(Component):
 
                 if uid in site_data:
                     site_data[uid] = pd.concat([site_data[uid], site_df])
-                    site_data[uid] = site_data[uid][
-                        ~site_data[uid].index.duplicated(keep="last")
-                    ]
+                    site_data[uid] = site_data[uid][~site_data[uid].index.duplicated(keep="last")]
                 else:
                     site_data[uid] = site_df
 
@@ -1280,7 +1287,7 @@ class Ingestor(Component):
 
     def _extract_variable_from_site_data(
         self,
-        site_data: Dict[str, pd.DataFrame],
+        site_data: dict[str, pd.DataFrame],
         variable: str,
     ) -> pd.DataFrame:
         """Extract a single variable from site-level DataFrames."""
@@ -1304,7 +1311,7 @@ class Ingestor(Component):
         self,
         source_dir: Path,
         uid_column: str,
-        fields: Optional[List[str]],
+        fields: list[str] | None,
     ) -> pd.DataFrame:
         """
         Load SNODAS SWE data from Earth Engine CSV extracts.
@@ -1327,7 +1334,7 @@ class Ingestor(Component):
             return pd.DataFrame()
 
         # Accumulate data across all CSV files (each file is one month)
-        all_data: Dict[str, Dict[str, float]] = {}  # {field_uid: {date: value}}
+        all_data: dict[str, dict[str, float]] = {}  # {field_uid: {date: value}}
 
         for csv_file in csv_files:
             try:
@@ -1373,8 +1380,8 @@ class Ingestor(Component):
         lulc_csv: Path,
         uid_column: str,
         lulc_column: str,
-        extra_lulc_column: Optional[str],
-        irrigation_csv: Optional[Union[str, Path]],
+        extra_lulc_column: str | None,
+        irrigation_csv: str | Path | None,
         overwrite: bool,
     ) -> None:
         """Ingest LULC data with override logic."""
@@ -1507,8 +1514,9 @@ class Ingestor(Component):
                 self._safe_delete_path(yearly_path)
 
             if year_cols:
-                from zarr.core.dtype import VariableLengthUTF8
                 import json
+
+                from zarr.core.dtype import VariableLengthUTF8
 
                 parent = self._state.ensure_group("properties/irrigation")
                 arr = parent.create_array(

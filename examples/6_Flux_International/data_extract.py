@@ -2,8 +2,6 @@ import os
 import sys
 from pathlib import Path
 
-import geopandas as gpd
-
 # Add this directory to path so etf package can be imported
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -52,8 +50,24 @@ def extract_properties(conf: ProjectConfig) -> None:
 
     is_authorized()
     project = conf.project_name or "swim"
-    get_landcover(conf.fields_shapefile, f"{project}_landcover", debug=False, selector=conf.feature_id_col, dest='bucket', bucket=conf.ee_bucket, file_prefix=project)
-    get_hwsd(conf.fields_shapefile, f"{project}_hwsd", debug=False, selector=conf.feature_id_col, dest='bucket', bucket=conf.ee_bucket, file_prefix=project)
+    get_landcover(
+        conf.fields_shapefile,
+        f"{project}_landcover",
+        debug=False,
+        selector=conf.feature_id_col,
+        dest="bucket",
+        bucket=conf.ee_bucket,
+        file_prefix=project,
+    )
+    get_hwsd(
+        conf.fields_shapefile,
+        f"{project}_hwsd",
+        debug=False,
+        selector=conf.feature_id_col,
+        dest="bucket",
+        bucket=conf.ee_bucket,
+        file_prefix=project,
+    )
 
 
 def extract_ndvi(conf: ProjectConfig, overwrite=False) -> None:
@@ -74,7 +88,7 @@ def extract_ndvi(conf: ProjectConfig, overwrite=False) -> None:
     sparse_sample_ndvi(
         conf.fields_shapefile,
         bucket=conf.ee_bucket,
-        dest='bucket',
+        dest="bucket",
         debug=False,
         satellite="landsat",
         mask_type=mask,
@@ -89,7 +103,7 @@ def extract_ndvi(conf: ProjectConfig, overwrite=False) -> None:
     sparse_sample_ndvi(
         conf.fields_shapefile,
         bucket=conf.ee_bucket,
-        dest='bucket',
+        dest="bucket",
         debug=False,
         satellite="sentinel",
         mask_type=mask,
@@ -119,6 +133,7 @@ def extract_etf(conf: ProjectConfig, sites=None, overwrite: bool = False) -> Non
         If True, skip check_dir and re-export all data. Default is False.
     """
     import ee
+
     ee.Initialize()
 
     from etf import export_ptjpl_zonal_stats
@@ -126,11 +141,11 @@ def extract_etf(conf: ProjectConfig, sites=None, overwrite: bool = False) -> Non
     if overwrite:
         chk_dir = None
     else:
-        chk_dir = os.path.join(conf.landsat_dir, 'extracts', 'ptjpl_etf')
+        chk_dir = os.path.join(conf.landsat_dir, "extracts", "ptjpl_etf")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Extracting PT-JPL ETf zonal statistics (ERA5LAND)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     export_ptjpl_zonal_stats(
         shapefile=conf.fields_shapefile,

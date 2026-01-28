@@ -21,6 +21,7 @@ warnings.filterwarnings(
 # Also suppress the UnstableSpecificationWarning directly
 try:
     from zarr.core.dtype.common import UnstableSpecificationWarning
+
     warnings.filterwarnings("ignore", category=UnstableSpecificationWarning)
 except ImportError:
     pass
@@ -49,8 +50,7 @@ def create_container(cfg: ProjectConfig, overwrite: bool = False) -> SwimContain
             print(f"Removed existing container: {container_path}")
         else:
             raise FileExistsError(
-                f"Container already exists: {container_path}. "
-                "Use overwrite=True to replace."
+                f"Container already exists: {container_path}. Use overwrite=True to replace."
             )
 
     print(f"Creating container: {container_path}")
@@ -70,8 +70,9 @@ def create_container(cfg: ProjectConfig, overwrite: bool = False) -> SwimContain
     return container
 
 
-def ingest_ndvi(container: SwimContainer, cfg: ProjectConfig,
-                sites: list = None, add_sentinel: bool = True):
+def ingest_ndvi(
+    container: SwimContainer, cfg: ProjectConfig, sites: list = None, add_sentinel: bool = True
+):
     """Ingest NDVI data from Landsat and Sentinel.
 
     Args:
@@ -220,8 +221,7 @@ def export_model_inputs(container: SwimContainer, cfg: ProjectConfig, output_pat
     print(f"  Exported to: {output_path}")
 
 
-def run_full_pipeline(overwrite: bool = False, sites: list = None,
-                      add_sentinel: bool = True):
+def run_full_pipeline(overwrite: bool = False, sites: list = None, add_sentinel: bool = True):
     """Run the complete container preparation pipeline.
 
     Args:
@@ -304,4 +304,3 @@ if __name__ == "__main__":
         sites=select_sites,
         add_sentinel=not args.skip_sentinel,
     )
-

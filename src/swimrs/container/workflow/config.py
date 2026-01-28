@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import yaml
 
@@ -22,10 +22,10 @@ class ProjectConfig:
     uid_column: str
     start_date: str
     end_date: str
-    output_path: Optional[Path] = None
+    output_path: Path | None = None
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ProjectConfig":
+    def from_dict(cls, data: dict[str, Any]) -> ProjectConfig:
         """Create from dictionary."""
         return cls(
             name=data.get("name", "unnamed_project"),
@@ -46,7 +46,7 @@ class NDVISourceConfig:
     path: Path
 
     @classmethod
-    def from_dict(cls, instrument: str, mask: str, path: str) -> "NDVISourceConfig":
+    def from_dict(cls, instrument: str, mask: str, path: str) -> NDVISourceConfig:
         return cls(instrument=instrument, mask=mask, path=Path(path))
 
 
@@ -60,9 +60,7 @@ class ETFSourceConfig:
     path: Path
 
     @classmethod
-    def from_dict(
-        cls, instrument: str, model: str, mask: str, path: str
-    ) -> "ETFSourceConfig":
+    def from_dict(cls, instrument: str, model: str, mask: str, path: str) -> ETFSourceConfig:
         return cls(instrument=instrument, model=model, mask=mask, path=Path(path))
 
 
@@ -72,10 +70,10 @@ class MeteorologyConfig:
 
     source: str
     path: Path
-    variables: Optional[List[str]] = None
+    variables: list[str] | None = None
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MeteorologyConfig":
+    def from_dict(cls, data: dict[str, Any]) -> MeteorologyConfig:
         return cls(
             source=data.get("source", "gridmet"),
             path=Path(data["path"]),
@@ -87,13 +85,13 @@ class MeteorologyConfig:
 class PropertiesConfig:
     """Properties source configuration."""
 
-    lulc: Optional[Path] = None
-    soils: Optional[Path] = None
-    irrigation: Optional[Path] = None
-    location: Optional[Path] = None
+    lulc: Path | None = None
+    soils: Path | None = None
+    irrigation: Path | None = None
+    location: Path | None = None
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "PropertiesConfig":
+    def from_dict(cls, data: dict[str, Any]) -> PropertiesConfig:
         return cls(
             lulc=Path(data["lulc"]) if data.get("lulc") else None,
             soils=Path(data["soils"]) if data.get("soils") else None,
@@ -106,14 +104,14 @@ class PropertiesConfig:
 class SourcesConfig:
     """All data sources configuration."""
 
-    ndvi: List[NDVISourceConfig] = field(default_factory=list)
-    etf: List[ETFSourceConfig] = field(default_factory=list)
-    meteorology: Optional[MeteorologyConfig] = None
-    properties: Optional[PropertiesConfig] = None
-    snow: Optional[Dict[str, Any]] = None
+    ndvi: list[NDVISourceConfig] = field(default_factory=list)
+    etf: list[ETFSourceConfig] = field(default_factory=list)
+    meteorology: MeteorologyConfig | None = None
+    properties: PropertiesConfig | None = None
+    snow: dict[str, Any] | None = None
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SourcesConfig":
+    def from_dict(cls, data: dict[str, Any]) -> SourcesConfig:
         """Parse sources configuration."""
         config = cls()
 
@@ -122,9 +120,7 @@ class SourcesConfig:
         for instrument, masks in ndvi_data.items():
             if isinstance(masks, dict):
                 for mask, path in masks.items():
-                    config.ndvi.append(
-                        NDVISourceConfig.from_dict(instrument, mask, path)
-                    )
+                    config.ndvi.append(NDVISourceConfig.from_dict(instrument, mask, path))
 
         # Parse ETF sources
         etf_data = data.get("etf", {})
@@ -158,18 +154,18 @@ class ComputeConfig:
 
     compute_fused_ndvi: bool = True
     compute_dynamics: bool = True
-    dynamics_params: Dict[str, Any] = field(default_factory=dict)
+    dynamics_params: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ComputeConfig":
+    def from_dict(cls, data: dict[str, Any]) -> ComputeConfig:
         return cls(
             compute_fused_ndvi=data.get("compute_fused_ndvi", True),
-            compute_dynamics=data.get("compute_dynamics", True) if not isinstance(
-                data.get("compute_dynamics"), dict
-            ) else True,
-            dynamics_params=data.get("compute_dynamics", {}) if isinstance(
-                data.get("compute_dynamics"), dict
-            ) else {},
+            compute_dynamics=data.get("compute_dynamics", True)
+            if not isinstance(data.get("compute_dynamics"), dict)
+            else True,
+            dynamics_params=data.get("compute_dynamics", {})
+            if isinstance(data.get("compute_dynamics"), dict)
+            else {},
         )
 
 
@@ -184,7 +180,7 @@ class ValidationConfig:
     require_lulc: bool = True
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ValidationConfig":
+    def from_dict(cls, data: dict[str, Any]) -> ValidationConfig:
         return cls(
             min_area_m2=data.get("min_area_m2", 0),
             min_ndvi_obs=data.get("min_ndvi_obs", 10),
@@ -226,10 +222,10 @@ class WorkflowConfig:
     sources: SourcesConfig
     compute: ComputeConfig
     validation: ValidationConfig
-    config_path: Optional[Path] = None
+    config_path: Path | None = None
 
     @classmethod
-    def from_yaml(cls, config_path: Union[str, Path]) -> "WorkflowConfig":
+    def from_yaml(cls, config_path: str | Path) -> WorkflowConfig:
         """
         Load configuration from YAML file.
 
@@ -247,9 +243,7 @@ class WorkflowConfig:
         return cls.from_dict(data, config_path)
 
     @classmethod
-    def from_dict(
-        cls, data: Dict[str, Any], config_path: Optional[Path] = None
-    ) -> "WorkflowConfig":
+    def from_dict(cls, data: dict[str, Any], config_path: Path | None = None) -> WorkflowConfig:
         """
         Create configuration from dictionary.
 
@@ -268,7 +262,7 @@ class WorkflowConfig:
             config_path=config_path,
         )
 
-    def resolve_path(self, path: Union[str, Path]) -> Path:
+    def resolve_path(self, path: str | Path) -> Path:
         """
         Resolve a path relative to the config file location.
 
@@ -285,7 +279,7 @@ class WorkflowConfig:
             return self.config_path.parent / path
         return path.resolve()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "project": {
@@ -295,10 +289,7 @@ class WorkflowConfig:
                 "date_range": [self.project.start_date, self.project.end_date],
             },
             "sources": {
-                "ndvi": {
-                    src.instrument: {src.mask: str(src.path)}
-                    for src in self.sources.ndvi
-                },
+                "ndvi": {src.instrument: {src.mask: str(src.path)} for src in self.sources.ndvi},
                 "etf": {
                     src.instrument: {src.model: {src.mask: str(src.path)}}
                     for src in self.sources.etf
@@ -320,7 +311,7 @@ class WorkflowConfig:
             },
         }
 
-    def to_yaml(self, output_path: Union[str, Path]) -> None:
+    def to_yaml(self, output_path: str | Path) -> None:
         """Save configuration to YAML file."""
         with open(output_path, "w") as f:
             yaml.dump(self.to_dict(), f, default_flow_style=False)

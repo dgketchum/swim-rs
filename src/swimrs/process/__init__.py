@@ -9,14 +9,14 @@ Modernized soil water balance modeling with:
 """
 
 from swimrs.process import kernels
-from swimrs.process.state import (
-    WaterBalanceState,
-    FieldProperties,
-    CalibrationParameters,
-)
 from swimrs.process.input import SwimInput, build_swim_input
-from swimrs.process.loop import run_daily_loop, DailyOutput, step_day
+from swimrs.process.loop import DailyOutput, run_daily_loop, step_day
 from swimrs.process.loop_fast import run_daily_loop_fast
+from swimrs.process.state import (
+    CalibrationParameters,
+    FieldProperties,
+    WaterBalanceState,
+)
 
 __all__ = [
     "kernels",

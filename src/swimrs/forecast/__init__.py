@@ -8,6 +8,6 @@ Note:
     This module is under active development.
 """
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass
 # ========================= EOF ====================================================================

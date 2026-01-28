@@ -1,11 +1,11 @@
-import json
 import glob
+import json
 
 import pandas as pd
 from tqdm import tqdm
 
 
-def create_timeseries_json(directory, json_out, feature_id='FID'):
+def create_timeseries_json(directory, json_out, feature_id="FID"):
     """Aggregate SNODAS CSVs into per-feature daily SWE JSON.
 
     Expects CSV files where rows are features and columns are dates. Values are
@@ -25,14 +25,14 @@ def create_timeseries_json(directory, json_out, feature_id='FID'):
             if fid not in timeseries:
                 timeseries[fid] = []
             for date, value in row.items():
-                timeseries[fid].append({'date': date, 'value': value * 1000.})
+                timeseries[fid].append({"date": date, "value": value * 1000.0})
 
-    with open(json_out, 'w') as f:
+    with open(json_out, "w") as f:
         json.dump(timeseries, f)
-        print(f'wrote {len(timeseries)} points to {json_out}')
+        print(f"wrote {len(timeseries)} points to {json_out}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass
 
 # ========================= EOF ====================================================================

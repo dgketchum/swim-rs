@@ -145,10 +145,15 @@ def _run_loop_jit(
         decay_fast = np.exp(-0.12)
         decay_slow = np.exp(-0.05)
         # Fresh snow resets albedo
-        albedo = np.where(snow > fresh_snow_threshold, albedo_max,
-                  np.where(snow > 0.0,
-                           albedo_min + (albedo - albedo_min) * decay_fast,
-                           albedo_min + (albedo - albedo_min) * decay_slow))
+        albedo = np.where(
+            snow > fresh_snow_threshold,
+            albedo_max,
+            np.where(
+                snow > 0.0,
+                albedo_min + (albedo - albedo_min) * decay_fast,
+                albedo_min + (albedo - albedo_min) * decay_slow,
+            ),
+        )
         albedo = np.maximum(albedo_min, np.minimum(albedo_max, albedo))
 
         # Degree-day snowmelt
@@ -187,26 +192,23 @@ def _run_loop_jit(
 
         # Interpolate CN based on surface depletion
         frac = np.where(
-            awc1 > awc3,
-            np.maximum(0.0, np.minimum(1.0, (depl_ze - awc3) / (awc1 - awc3))),
-            0.0
+            awc1 > awc3, np.maximum(0.0, np.minimum(1.0, (depl_ze - awc3) / (awc1 - awc3))), 0.0
         )
         cn_adj = np.where(
             depl_ze < awc3,
             cn3,  # Wet condition
-            np.where(depl_ze > awc1, cn1, cn3 + frac * (cn1 - cn3))  # Dry or interpolated
+            np.where(depl_ze > awc1, cn1, cn3 + frac * (cn1 - cn3)),  # Dry or interpolated
         )
 
         # Calculate S value (S = 250 * (100/CN - 1) in mm)
-        s_new = np.where((cn_adj > 0.0) & (cn_adj < 100.0),
-                         250.0 * (100.0 / cn_adj - 1.0), 0.0)
+        s_new = np.where((cn_adj > 0.0) & (cn_adj < 100.0), 250.0 * (100.0 / cn_adj - 1.0), 0.0)
 
         # Standard SCS runoff
         ia_std = 0.2 * s_new
         runoff_std = np.where(
             (precip_eff > ia_std) & (s_new > 0.0),
             (precip_eff - ia_std) ** 2 / (precip_eff - ia_std + s_new),
-            0.0
+            0.0,
         )
 
         # Smoothed runoff for irrigated fields (average of runoffs from 4 historical S values)
@@ -217,7 +219,7 @@ def _run_loop_jit(
             sro_hist = np.where(
                 (precip_eff > ia_hist) & (s_hist > 0.0),
                 (precip_eff - ia_hist) ** 2 / (precip_eff + 0.8 * s_hist),
-                0.0
+                0.0,
             )
             runoff_smooth = runoff_smooth + sro_hist
         runoff_smooth = runoff_smooth / 4.0
@@ -286,7 +288,7 @@ def _run_loop_jit(
         kr_base = np.where(
             denom_kr > 1e-6,
             np.maximum(0.0, (tew - depl_ze) / denom_kr),
-            np.where(depl_ze < tew, 1.0, 0.0)
+            np.where(depl_ze < tew, 1.0, 0.0),
         )
         kr_base = np.minimum(1.0, kr_base)
 
@@ -295,7 +297,7 @@ def _run_loop_jit(
         ks_base = np.where(
             denom_ks > 1e-6,
             np.maximum(0.0, (taw - depl_root) / denom_ks),
-            np.where(depl_root < taw, 1.0, 0.0)
+            np.where(depl_root < taw, 1.0, 0.0),
         )
         ks_base = np.minimum(1.0, ks_base)
 
@@ -338,16 +340,10 @@ def _run_loop_jit(
         over_tew = depl_ze > tew
         potential_e = np.maximum(depl_ze - depl_ze_prev, 1e-4)
         e_factor = np.where(
-            over_tew,
-            np.maximum(0.0, np.minimum(1.0, 1.0 - (depl_ze - tew) / potential_e)),
-            1.0
+            over_tew, np.maximum(0.0, np.minimum(1.0, 1.0 - (depl_ze - tew) / potential_e)), 1.0
         )
         evap = evap * e_factor
-        depl_ze = np.where(
-            over_tew,
-            np.maximum(depl_ze_prev, 0.0) + evap,
-            depl_ze
-        )
+        depl_ze = np.where(over_tew, np.maximum(depl_ze_prev, 0.0) + evap, depl_ze)
 
         # ETf
         etf = np.where(etr > 0.0, eta / etr, 0.0)
@@ -427,7 +423,7 @@ def _run_loop_jit(
         gw_sim = np.where(
             (gw_status > 0.5) & (f_sub > FSUB_THRESHOLD) & (depl_after_et > raw),
             depl_after_et - raw,
-            0.0
+            0.0,
         )
 
         # ================================================================
@@ -485,7 +481,7 @@ def _run_loop_jit(
         water_from_l3 = np.where(
             growing & (layer3_new_depth > 1e-6),
             daw3 * delta_zr / (layer3_new_depth + 1e-6),
-            np.where(growing, daw3, 0.0)  # If layer3 fully absorbed, take all
+            np.where(growing, daw3, 0.0),  # If layer3 fully absorbed, take all
         )
         added_capacity = awc * np.maximum(0.0, delta_zr)
         added_depletion = added_capacity - water_from_l3
@@ -495,11 +491,7 @@ def _run_loop_jit(
         # Shrinking: water moves from root zone to layer 3
         rt_water_prev = np.where(shrinking, awc * zr_prev - depl_root, 0.0)
         rt_water_prev = np.maximum(0.0, rt_water_prev)
-        frac_released = np.where(
-            shrinking & (zr_prev > 1e-6),
-            np.abs(delta_zr) / zr_prev,
-            0.0
-        )
+        frac_released = np.where(shrinking & (zr_prev > 1e-6), np.abs(delta_zr) / zr_prev, 0.0)
         frac_released = np.minimum(1.0, frac_released)
         water_to_l3 = rt_water_prev * frac_released
         daw3 = np.where(shrinking, daw3 + water_to_l3, daw3)
@@ -507,9 +499,7 @@ def _run_loop_jit(
         new_taw = awc * zr_new
         released_capacity = awc * np.abs(delta_zr)
         depl_root = np.where(
-            shrinking,
-            np.maximum(0.0, depl_root - released_capacity + water_to_l3),
-            depl_root
+            shrinking, np.maximum(0.0, depl_root - released_capacity + water_to_l3), depl_root
         )
         depl_root = np.where(shrinking, np.minimum(depl_root, new_taw), depl_root)
 
@@ -546,19 +536,37 @@ def _run_loop_jit(
         out_gw_sim[day_idx, :] = gw_sim
 
     return (
-        out_eta, out_etf, out_kcb, out_ke, out_ks, out_kr,
-        out_runoff, out_rain, out_melt, out_swe, out_depl_root, out_dperc,
-        out_irr_sim, out_gw_sim,
+        out_eta,
+        out_etf,
+        out_kcb,
+        out_ke,
+        out_ks,
+        out_kr,
+        out_runoff,
+        out_rain,
+        out_melt,
+        out_swe,
+        out_depl_root,
+        out_dperc,
+        out_irr_sim,
+        out_gw_sim,
         # Final state
-        depl_root, depl_ze, swe, albedo, kr, ks, zr,
-        daw3, taw3,
+        depl_root,
+        depl_ze,
+        swe,
+        albedo,
+        kr,
+        ks,
+        zr,
+        daw3,
+        taw3,
     )
 
 
 def run_daily_loop_fast(
-    swim_input: "SwimInput",
-    parameters: "CalibrationParameters | None" = None,
-    properties: "FieldProperties | None" = None,
+    swim_input: SwimInput,
+    parameters: CalibrationParameters | None = None,
+    properties: FieldProperties | None = None,
 ) -> tuple[DailyOutput, WaterBalanceState]:
     """Run daily water balance simulation using JIT-compiled loop.
 
@@ -611,16 +619,21 @@ def run_daily_loop_fast(
     irr_status = props.irr_status.astype(np.float64)
     perennial = props.perennial.astype(np.float64)
     gw_status = props.gw_status.astype(np.float64)
-    ke_max = (props.ke_max.astype(np.float64)
-              if props.ke_max is not None else np.ones(n_fields))
-    kc_max = (props.kc_max.astype(np.float64)
-              if props.kc_max is not None else np.full(n_fields, 1.25))
-    f_sub = (props.f_sub.astype(np.float64)
-             if props.f_sub is not None else np.zeros(n_fields))
-    ndvi_bare = (props.ndvi_bare.astype(np.float64)
-                 if props.ndvi_bare is not None else np.full(n_fields, 0.15))
-    ndvi_full = (props.ndvi_full.astype(np.float64)
-                 if props.ndvi_full is not None else np.full(n_fields, 0.85))
+    ke_max = props.ke_max.astype(np.float64) if props.ke_max is not None else np.ones(n_fields)
+    kc_max = (
+        props.kc_max.astype(np.float64) if props.kc_max is not None else np.full(n_fields, 1.25)
+    )
+    f_sub = props.f_sub.astype(np.float64) if props.f_sub is not None else np.zeros(n_fields)
+    ndvi_bare = (
+        props.ndvi_bare.astype(np.float64)
+        if props.ndvi_bare is not None
+        else np.full(n_fields, 0.15)
+    )
+    ndvi_full = (
+        props.ndvi_full.astype(np.float64)
+        if props.ndvi_full is not None
+        else np.full(n_fields, 0.85)
+    )
 
     # Extract parameter arrays
     kc_min = params.kc_min.astype(np.float64)
@@ -634,55 +647,109 @@ def run_daily_loop_fast(
 
     # Extract initial state arrays
     depl_root_init = spinup.depl_root.astype(np.float64)
-    depl_ze_init = (spinup.depl_ze.astype(np.float64)
-                    if spinup.depl_ze is not None else np.zeros(n_fields))
+    depl_ze_init = (
+        spinup.depl_ze.astype(np.float64) if spinup.depl_ze is not None else np.zeros(n_fields)
+    )
     swe_init = spinup.swe.astype(np.float64)
-    albedo_init = (spinup.albedo.astype(np.float64)
-                   if spinup.albedo is not None else np.full(n_fields, 0.45))
+    albedo_init = (
+        spinup.albedo.astype(np.float64) if spinup.albedo is not None else np.full(n_fields, 0.45)
+    )
     kr_init = spinup.kr.astype(np.float64)
     ks_init = spinup.ks.astype(np.float64)
     zr_init = spinup.zr.astype(np.float64)
 
     # S history for smoothed CN runoff
     default_s = 84.7  # Default S from CN2=75
-    s_init = (spinup.s.astype(np.float64)
-              if spinup.s is not None else np.full(n_fields, default_s))
-    s1_init = (spinup.s1.astype(np.float64)
-               if spinup.s1 is not None else np.full(n_fields, default_s))
-    s2_init = (spinup.s2.astype(np.float64)
-               if spinup.s2 is not None else np.full(n_fields, default_s))
-    s3_init = (spinup.s3.astype(np.float64)
-               if spinup.s3 is not None else np.full(n_fields, default_s))
-    s4_init = (spinup.s4.astype(np.float64)
-               if spinup.s4 is not None else np.full(n_fields, default_s))
+    s_init = spinup.s.astype(np.float64) if spinup.s is not None else np.full(n_fields, default_s)
+    s1_init = (
+        spinup.s1.astype(np.float64) if spinup.s1 is not None else np.full(n_fields, default_s)
+    )
+    s2_init = (
+        spinup.s2.astype(np.float64) if spinup.s2 is not None else np.full(n_fields, default_s)
+    )
+    s3_init = (
+        spinup.s3.astype(np.float64) if spinup.s3 is not None else np.full(n_fields, default_s)
+    )
+    s4_init = (
+        spinup.s4.astype(np.float64) if spinup.s4 is not None else np.full(n_fields, default_s)
+    )
 
     # Layer 3 storage
-    daw3_init = (spinup.daw3.astype(np.float64)
-                 if spinup.daw3 is not None else np.zeros(n_fields))
-    taw3_init = (spinup.taw3.astype(np.float64)
-                 if spinup.taw3 is not None else np.zeros(n_fields))
+    daw3_init = spinup.daw3.astype(np.float64) if spinup.daw3 is not None else np.zeros(n_fields)
+    taw3_init = spinup.taw3.astype(np.float64) if spinup.taw3 is not None else np.zeros(n_fields)
 
     # Run the JIT-compiled loop
     (
-        out_eta, out_etf, out_kcb, out_ke, out_ks, out_kr,
-        out_runoff, out_rain, out_melt, out_swe, out_depl_root, out_dperc,
-        out_irr_sim, out_gw_sim,
-        final_depl_root, final_depl_ze, final_swe, final_albedo,
-        final_kr, final_ks, final_zr,
-        final_daw3, final_taw3,
+        out_eta,
+        out_etf,
+        out_kcb,
+        out_ke,
+        out_ks,
+        out_kr,
+        out_runoff,
+        out_rain,
+        out_melt,
+        out_swe,
+        out_depl_root,
+        out_dperc,
+        out_irr_sim,
+        out_gw_sim,
+        final_depl_root,
+        final_depl_ze,
+        final_swe,
+        final_albedo,
+        final_kr,
+        final_ks,
+        final_zr,
+        final_daw3,
+        final_taw3,
     ) = _run_loop_jit(
-        n_days, n_fields,
-        all_ndvi, all_ref_et, all_prcp, all_tmin, all_tmax, all_srad, all_irr_flag,
-        awc, rew, tew, cn2, zr_max, zr_min, mad,
-        irr_status, perennial, gw_status, ke_max, f_sub,
-        ndvi_bare, ndvi_full,
-        kc_max, kc_min, ndvi_k, ndvi_0,
-        swe_alpha, swe_beta,
-        kr_damp, ks_damp, max_irr_rate,
-        depl_root_init, depl_ze_init, swe_init, albedo_init,
-        kr_init, ks_init, zr_init,
-        s_init, s1_init, s2_init, s3_init, s4_init,
-        daw3_init, taw3_init,
+        n_days,
+        n_fields,
+        all_ndvi,
+        all_ref_et,
+        all_prcp,
+        all_tmin,
+        all_tmax,
+        all_srad,
+        all_irr_flag,
+        awc,
+        rew,
+        tew,
+        cn2,
+        zr_max,
+        zr_min,
+        mad,
+        irr_status,
+        perennial,
+        gw_status,
+        ke_max,
+        f_sub,
+        ndvi_bare,
+        ndvi_full,
+        kc_max,
+        kc_min,
+        ndvi_k,
+        ndvi_0,
+        swe_alpha,
+        swe_beta,
+        kr_damp,
+        ks_damp,
+        max_irr_rate,
+        depl_root_init,
+        depl_ze_init,
+        swe_init,
+        albedo_init,
+        kr_init,
+        ks_init,
+        zr_init,
+        s_init,
+        s1_init,
+        s2_init,
+        s3_init,
+        s4_init,
+        daw3_init,
+        taw3_init,
     )
 
     # Package outputs into DailyOutput dataclass

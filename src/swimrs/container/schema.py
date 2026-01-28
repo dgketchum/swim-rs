@@ -12,11 +12,11 @@ Also provides centralized constants migrated from swimrs.prep, including:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Dict, Any, Tuple
 
 
 class Instrument(str, Enum):
     """Remote sensing instruments."""
+
     LANDSAT = "landsat"
     SENTINEL = "sentinel"
     ECOSTRESS = "ecostress"
@@ -25,6 +25,7 @@ class Instrument(str, Enum):
 
 class MaskType(str, Enum):
     """Irrigation mask types."""
+
     IRR = "irr"
     INV_IRR = "inv_irr"
     NO_MASK = "no_mask"
@@ -32,6 +33,7 @@ class MaskType(str, Enum):
 
 class ETModel(str, Enum):
     """ET fraction models."""
+
     SSEBOP = "ssebop"
     PTJPL = "ptjpl"
     SIMS = "sims"
@@ -42,6 +44,7 @@ class ETModel(str, Enum):
 
 class MetSource(str, Enum):
     """Meteorology data sources."""
+
     GRIDMET = "gridmet"
     ERA5 = "era5"
     NLDAS = "nldas"
@@ -49,18 +52,21 @@ class MetSource(str, Enum):
 
 class SnowSource(str, Enum):
     """Snow data sources."""
+
     SNODAS = "snodas"
     ERA5 = "era5"
 
 
 class SoilSource(str, Enum):
     """Soil data sources."""
+
     SSURGO = "ssurgo"  # US Soil Survey
-    HWSD = "hwsd"      # Harmonized World Soil Database (international)
+    HWSD = "hwsd"  # Harmonized World Soil Database (international)
 
 
 class Parameter(str, Enum):
     """Data parameters/variables."""
+
     # Remote sensing
     NDVI = "ndvi"
     ETF = "etf"
@@ -68,15 +74,15 @@ class Parameter(str, Enum):
 
     # Meteorology - base variables
     ETO = "eto"
-    ETR = "etr"    # Reference ET tall (ASCE standardized)
+    ETR = "etr"  # Reference ET tall (ASCE standardized)
     PRCP = "prcp"
     TMIN = "tmin"
     TMAX = "tmax"
     TMEAN = "tmean"
     SRAD = "srad"
     VPD = "vpd"
-    EA = "ea"      # Vapor pressure (kPa)
-    U2 = "u2"      # Wind speed at 2m (m/s)
+    EA = "ea"  # Vapor pressure (kPa)
+    U2 = "u2"  # Wind speed at 2m (m/s)
     WIND = "wind"  # Alias for wind speed
     RHMIN = "rhmin"
     RHMAX = "rhmax"
@@ -92,6 +98,7 @@ class Parameter(str, Enum):
 
 class PropertyType(str, Enum):
     """Static property types."""
+
     # Soils
     AWC = "awc"
     CLAY = "clay"
@@ -117,6 +124,7 @@ class PropertyType(str, Enum):
 @dataclass
 class ParameterSpec:
     """Specification for a data parameter."""
+
     name: str
     dtype: str = "float32"
     valid_range: tuple = (None, None)
@@ -128,12 +136,13 @@ class ParameterSpec:
 @dataclass
 class DataGroupSpec:
     """Specification for a data group (e.g., remote_sensing/ndvi)."""
+
     path: str
-    parameters: List[str]
-    instruments: List[str] = field(default_factory=list)
-    masks: List[str] = field(default_factory=list)
-    models: List[str] = field(default_factory=list)
-    sources: List[str] = field(default_factory=list)
+    parameters: list[str]
+    instruments: list[str] = field(default_factory=list)
+    masks: list[str] = field(default_factory=list)
+    models: list[str] = field(default_factory=list)
+    sources: list[str] = field(default_factory=list)
     description: str = ""
 
 
@@ -149,10 +158,11 @@ class RootingDepthSpec:
     LULC codes follow MODIS Land Cover Type 1 (IGBP classification):
     https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MCD12Q1#bands
     """
-    mean_depth: float       # Mean effective rooting depth (m)
-    max_depth: float        # Maximum effective rooting depth (m)
-    zr_multiplier: int      # Multiplier for rootzone calculation
-    description: str        # Land cover class description
+
+    mean_depth: float  # Mean effective rooting depth (m)
+    max_depth: float  # Maximum effective rooting depth (m)
+    zr_multiplier: int  # Multiplier for rootzone calculation
+    description: str  # Land cover class description
 
 
 # ================================================================================
@@ -161,83 +171,100 @@ class RootingDepthSpec:
 
 # Rooting depth specifications by MODIS IGBP Land Cover Type 1 code
 # Keys are integer LULC codes (1-16, note 15 is missing - bare/sparse vegetation)
-ROOTING_DEPTH_BY_LULC: Dict[int, RootingDepthSpec] = {
+ROOTING_DEPTH_BY_LULC: dict[int, RootingDepthSpec] = {
     1: RootingDepthSpec(
-        mean_depth=0.43, max_depth=1.34, zr_multiplier=5,
-        description="Evergreen Needleleaf Forests: dominated by evergreen conifer trees (canopy >2m). Tree cover >60%."
+        mean_depth=0.43,
+        max_depth=1.34,
+        zr_multiplier=5,
+        description="Evergreen Needleleaf Forests: dominated by evergreen conifer trees (canopy >2m). Tree cover >60%.",
     ),
     2: RootingDepthSpec(
-        mean_depth=3.14, max_depth=7.99, zr_multiplier=2,
-        description="Evergreen Broadleaf Forests: dominated by evergreen broadleaf and palmate trees (canopy >2m). Tree cover >60%."
+        mean_depth=3.14,
+        max_depth=7.99,
+        zr_multiplier=2,
+        description="Evergreen Broadleaf Forests: dominated by evergreen broadleaf and palmate trees (canopy >2m). Tree cover >60%.",
     ),
     3: RootingDepthSpec(
-        mean_depth=0.38, max_depth=0.84, zr_multiplier=5,
-        description="Deciduous Needleleaf Forests: dominated by deciduous needleleaf (larch) trees (canopy >2m). Tree cover >60%."
+        mean_depth=0.38,
+        max_depth=0.84,
+        zr_multiplier=5,
+        description="Deciduous Needleleaf Forests: dominated by deciduous needleleaf (larch) trees (canopy >2m). Tree cover >60%.",
     ),
     4: RootingDepthSpec(
-        mean_depth=1.07, max_depth=2.09, zr_multiplier=5,
-        description="Deciduous Broadleaf Forests: dominated by deciduous broadleaf trees (canopy >2m). Tree cover >60%."
+        mean_depth=1.07,
+        max_depth=2.09,
+        zr_multiplier=5,
+        description="Deciduous Broadleaf Forests: dominated by deciduous broadleaf trees (canopy >2m). Tree cover >60%.",
     ),
     5: RootingDepthSpec(
-        mean_depth=0.54, max_depth=1.94, zr_multiplier=5,
-        description="Mixed Forests: dominated by neither deciduous nor evergreen (40-60% of each) tree type (canopy >2m). Tree cover >60%."
+        mean_depth=0.54,
+        max_depth=1.94,
+        zr_multiplier=5,
+        description="Mixed Forests: dominated by neither deciduous nor evergreen (40-60% of each) tree type (canopy >2m). Tree cover >60%.",
     ),
     6: RootingDepthSpec(
-        mean_depth=0.37, max_depth=1.12, zr_multiplier=3,
-        description="Closed Shrublands: dominated by woody perennials (1-2m height) >60% cover."
+        mean_depth=0.37,
+        max_depth=1.12,
+        zr_multiplier=3,
+        description="Closed Shrublands: dominated by woody perennials (1-2m height) >60% cover.",
     ),
     7: RootingDepthSpec(
-        mean_depth=0.37, max_depth=1.12, zr_multiplier=3,
-        description="Open Shrublands: dominated by woody perennials (1-2m height) 10-60% cover."
+        mean_depth=0.37,
+        max_depth=1.12,
+        zr_multiplier=3,
+        description="Open Shrublands: dominated by woody perennials (1-2m height) 10-60% cover.",
     ),
     8: RootingDepthSpec(
-        mean_depth=0.80, max_depth=2.28, zr_multiplier=3,
-        description="Woody Savannas: tree cover 30-60% (canopy >2m)."
+        mean_depth=0.80,
+        max_depth=2.28,
+        zr_multiplier=3,
+        description="Woody Savannas: tree cover 30-60% (canopy >2m).",
     ),
     9: RootingDepthSpec(
-        mean_depth=0.80, max_depth=2.28, zr_multiplier=3,
-        description="Savannas: tree cover 10-30% (canopy >2m)."
+        mean_depth=0.80,
+        max_depth=2.28,
+        zr_multiplier=3,
+        description="Savannas: tree cover 10-30% (canopy >2m).",
     ),
     10: RootingDepthSpec(
-        mean_depth=0.51, max_depth=1.18, zr_multiplier=3,
-        description="Grasslands: dominated by herbaceous annuals (<2m)."
+        mean_depth=0.51,
+        max_depth=1.18,
+        zr_multiplier=3,
+        description="Grasslands: dominated by herbaceous annuals (<2m).",
     ),
-    11: RootingDepthSpec(
-        mean_depth=0.37, max_depth=1.12, zr_multiplier=3,
-        description="Wetlands"
-    ),
+    11: RootingDepthSpec(mean_depth=0.37, max_depth=1.12, zr_multiplier=3, description="Wetlands"),
     12: RootingDepthSpec(
-        mean_depth=0.55, max_depth=1.12, zr_multiplier=3,
-        description="Cropland, same depth as shrublands"
+        mean_depth=0.55,
+        max_depth=1.12,
+        zr_multiplier=3,
+        description="Cropland, same depth as shrublands",
     ),
-    13: RootingDepthSpec(
-        mean_depth=0.55, max_depth=1.12, zr_multiplier=3,
-        description="Developed"
-    ),
+    13: RootingDepthSpec(mean_depth=0.55, max_depth=1.12, zr_multiplier=3, description="Developed"),
     14: RootingDepthSpec(
-        mean_depth=0.55, max_depth=1.12, zr_multiplier=1,
-        description="Cropland/Natural Mosaic, same depth as shrublands"
+        mean_depth=0.55,
+        max_depth=1.12,
+        zr_multiplier=1,
+        description="Cropland/Natural Mosaic, same depth as shrublands",
     ),
     16: RootingDepthSpec(
-        mean_depth=0.41, max_depth=1.43, zr_multiplier=5,
-        description="Desert vegetation."
+        mean_depth=0.41, max_depth=1.43, zr_multiplier=5, description="Desert vegetation."
     ),
 }
 
 # Required meteorology parameters for model input
-REQUIRED_MET_BASE: List[str] = ["tmin", "tmax", "srad", "swe", "prcp", "nld_ppt_d"]
-REQUIRED_MET_HOURLY: List[str] = [f"prcp_hr_{i:02d}" for i in range(24)]
-REQUIRED_MET_IRR: List[str] = ["eto_corr"]  # Required for irrigated fields
-REQUIRED_MET_UNIRR: List[str] = ["eto"]     # Required for non-irrigated fields
+REQUIRED_MET_BASE: list[str] = ["tmin", "tmax", "srad", "swe", "prcp", "nld_ppt_d"]
+REQUIRED_MET_HOURLY: list[str] = [f"prcp_hr_{i:02d}" for i in range(24)]
+REQUIRED_MET_IRR: list[str] = ["eto_corr"]  # Required for irrigated fields
+REQUIRED_MET_UNIRR: list[str] = ["eto"]  # Required for non-irrigated fields
 
 # Parameters that can have NaN values in model input
-ACCEPT_NAN_PARAMS: List[str] = REQUIRED_MET_IRR + REQUIRED_MET_UNIRR + ["swe"]
+ACCEPT_NAN_PARAMS: list[str] = REQUIRED_MET_IRR + REQUIRED_MET_UNIRR + ["swe"]
 
 # Column MultiIndex structure for parquet time series files
-COLUMN_MULTIINDEX: List[str] = ["site", "instrument", "parameter", "units", "algorithm", "mask"]
+COLUMN_MULTIINDEX: list[str] = ["site", "instrument", "parameter", "units", "algorithm", "mask"]
 
 
-def get_rooting_depth(lulc_code: int, use_max: bool = True) -> Tuple[float, int]:
+def get_rooting_depth(lulc_code: int, use_max: bool = True) -> tuple[float, int]:
     """
     Get rooting depth and zr_multiplier for a given LULC code.
 
@@ -395,12 +422,20 @@ class SwimSchema:
     METEOROLOGY_STRUCTURE = {
         "sources": [MetSource.GRIDMET, MetSource.ERA5, MetSource.NLDAS],
         "variables": [
-            Parameter.ETO, Parameter.ETR, Parameter.PRCP,
-            Parameter.TMIN, Parameter.TMAX, Parameter.TMEAN,
-            Parameter.SRAD, Parameter.VPD, Parameter.EA, Parameter.U2,
+            Parameter.ETO,
+            Parameter.ETR,
+            Parameter.PRCP,
+            Parameter.TMIN,
+            Parameter.TMAX,
+            Parameter.TMEAN,
+            Parameter.SRAD,
+            Parameter.VPD,
+            Parameter.EA,
+            Parameter.U2,
             Parameter.ELEV,
             # Bias-corrected versions (e.g., GridMET corrections)
-            Parameter.ETO_CORR, Parameter.ETR_CORR,
+            Parameter.ETO_CORR,
+            Parameter.ETR_CORR,
         ],
     }
 
@@ -423,9 +458,15 @@ class SwimSchema:
     }
 
     @classmethod
-    def get_zarr_path(cls, category: str, parameter: str,
-                      instrument: str = None, mask: str = None,
-                      model: str = None, source: str = None) -> str:
+    def get_zarr_path(
+        cls,
+        category: str,
+        parameter: str,
+        instrument: str = None,
+        mask: str = None,
+        model: str = None,
+        source: str = None,
+    ) -> str:
         """
         Generate the Zarr array path for a given data specification.
 
@@ -497,7 +538,7 @@ class SwimSchema:
         return False
 
     @classmethod
-    def list_all_paths(cls) -> List[str]:
+    def list_all_paths(cls) -> list[str]:
         """List all valid data paths in the schema."""
         paths = []
 
@@ -507,7 +548,9 @@ class SwimSchema:
                 for mask in spec["masks"]:
                     if spec["models"]:
                         for model in spec["models"]:
-                            paths.append(f"remote_sensing/{param}/{inst.value}/{model.value}/{mask.value}")
+                            paths.append(
+                                f"remote_sensing/{param}/{inst.value}/{model.value}/{mask.value}"
+                            )
                     else:
                         paths.append(f"remote_sensing/{param}/{inst.value}/{mask.value}")
 
@@ -534,10 +577,14 @@ class SwimSchema:
         return paths
 
     @classmethod
-    def required_for_calibration(cls, model: str = "ssebop", mask: str = "irr",
-                                  met_source: str = "gridmet",
-                                  snow_source: str = "snodas",
-                                  instrument: str = "landsat") -> List[str]:
+    def required_for_calibration(
+        cls,
+        model: str = "ssebop",
+        mask: str = "irr",
+        met_source: str = "gridmet",
+        snow_source: str = "snodas",
+        instrument: str = "landsat",
+    ) -> list[str]:
         """
         List data paths required to run calibration.
 
@@ -568,9 +615,13 @@ class SwimSchema:
         return required
 
     @classmethod
-    def required_for_forward_run(cls, model: str = "ssebop", mask: str = "irr",
-                                  met_source: str = "gridmet",
-                                  instrument: str = "landsat") -> List[str]:
+    def required_for_forward_run(
+        cls,
+        model: str = "ssebop",
+        mask: str = "irr",
+        met_source: str = "gridmet",
+        instrument: str = "landsat",
+    ) -> list[str]:
         """
         List data paths required to run forward model (uncalibrated).
 

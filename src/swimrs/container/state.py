@@ -12,9 +12,9 @@ compatibility with the existing zarr-based infrastructure.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from functools import cached_property
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -22,9 +22,10 @@ import zarr
 
 if TYPE_CHECKING:
     import xarray as xr
-    from swimrs.container.storage import StorageProvider
-    from swimrs.container.provenance import ProvenanceLog
+
     from swimrs.container.inventory import Inventory
+    from swimrs.container.provenance import ProvenanceLog
+    from swimrs.container.storage import StorageProvider
 
 
 class ContainerState:
@@ -65,11 +66,11 @@ class ContainerState:
 
     def __init__(
         self,
-        provider: "StorageProvider",
-        field_uids: List[str],
+        provider: StorageProvider,
+        field_uids: list[str],
         time_index: pd.DatetimeIndex,
-        provenance: "ProvenanceLog",
-        inventory: "Inventory",
+        provenance: ProvenanceLog,
+        inventory: Inventory,
         mode: str = "r",
     ):
         """
@@ -93,7 +94,7 @@ class ContainerState:
         self._modified = False
 
         # Clear cached dataset when state is modified
-        self._dataset_cache: Optional["xr.Dataset"] = None
+        self._dataset_cache: xr.Dataset | None = None
 
     @property
     def root(self) -> zarr.Group:
@@ -101,12 +102,12 @@ class ContainerState:
         return self._provider.root
 
     @property
-    def field_uids(self) -> List[str]:
+    def field_uids(self) -> list[str]:
         """List of field UIDs (copy for safety)."""
         return self._field_uids.copy()
 
     @property
-    def uid_to_index(self) -> Dict[str, int]:
+    def uid_to_index(self) -> dict[str, int]:
         """Mapping from UID to array index (copy for safety)."""
         return self._uid_to_index.copy()
 
@@ -116,12 +117,12 @@ class ContainerState:
         return self._time_index
 
     @property
-    def provenance(self) -> "ProvenanceLog":
+    def provenance(self) -> ProvenanceLog:
         """Provenance log for audit trail."""
         return self._provenance
 
     @property
-    def inventory(self) -> "Inventory":
+    def inventory(self) -> Inventory:
         """Inventory tracker."""
         return self._inventory
 
@@ -164,8 +165,8 @@ class ContainerState:
 
     def get_time_slice(
         self,
-        start_date: Optional[Union[str, pd.Timestamp]] = None,
-        end_date: Optional[Union[str, pd.Timestamp]] = None,
+        start_date: str | pd.Timestamp | None = None,
+        end_date: str | pd.Timestamp | None = None,
     ) -> slice:
         """
         Get a slice for the time dimension.
@@ -202,7 +203,7 @@ class ContainerState:
     # -------------------------------------------------------------------------
 
     @cached_property
-    def _available_paths(self) -> Dict[str, str]:
+    def _available_paths(self) -> dict[str, str]:
         """
         Discover available data paths in the zarr store.
 
@@ -231,11 +232,11 @@ class ContainerState:
     def get_xarray(
         self,
         path: str,
-        fields: Optional[Sequence[str]] = None,
-        start_date: Optional[Union[str, pd.Timestamp]] = None,
-        end_date: Optional[Union[str, pd.Timestamp]] = None,
-        name: Optional[str] = None,
-    ) -> "xr.DataArray":
+        fields: Sequence[str] | None = None,
+        start_date: str | pd.Timestamp | None = None,
+        end_date: str | pd.Timestamp | None = None,
+        name: str | None = None,
+    ) -> xr.DataArray:
         """
         Get data as a labeled xarray DataArray.
 
@@ -307,11 +308,11 @@ class ContainerState:
 
     def get_dataset(
         self,
-        paths: Optional[Dict[str, str]] = None,
-        fields: Optional[Sequence[str]] = None,
-        start_date: Optional[Union[str, pd.Timestamp]] = None,
-        end_date: Optional[Union[str, pd.Timestamp]] = None,
-    ) -> "xr.Dataset":
+        paths: dict[str, str] | None = None,
+        fields: Sequence[str] | None = None,
+        start_date: str | pd.Timestamp | None = None,
+        end_date: str | pd.Timestamp | None = None,
+    ) -> xr.Dataset:
         """
         Get multiple variables as an xarray Dataset.
 
@@ -360,9 +361,9 @@ class ContainerState:
 
     def get_properties_dataset(
         self,
-        properties: Optional[List[str]] = None,
-        fields: Optional[Sequence[str]] = None,
-    ) -> "xr.Dataset":
+        properties: list[str] | None = None,
+        fields: Sequence[str] | None = None,
+    ) -> xr.Dataset:
         """
         Get property data as an xarray Dataset.
 
@@ -394,9 +395,7 @@ class ContainerState:
         }
 
         if properties is not None:
-            property_paths = {
-                k: v for k, v in property_paths.items() if k in properties
-            }
+            property_paths = {k: v for k, v in property_paths.items() if k in properties}
 
         data_vars = {}
         for var_name, path in property_paths.items():
@@ -411,10 +410,10 @@ class ContainerState:
     def to_xarray_dataset(
         self,
         include_properties: bool = True,
-        fields: Optional[Sequence[str]] = None,
-        start_date: Optional[Union[str, pd.Timestamp]] = None,
-        end_date: Optional[Union[str, pd.Timestamp]] = None,
-    ) -> "xr.Dataset":
+        fields: Sequence[str] | None = None,
+        start_date: str | pd.Timestamp | None = None,
+        end_date: str | pd.Timestamp | None = None,
+    ) -> xr.Dataset:
         """
         Load entire container as a single xarray Dataset.
 
@@ -433,9 +432,7 @@ class ContainerState:
         import xarray as xr
 
         # Get time series data
-        ds = self.get_dataset(
-            fields=fields, start_date=start_date, end_date=end_date
-        )
+        ds = self.get_dataset(fields=fields, start_date=start_date, end_date=end_date)
 
         # Add properties if requested
         if include_properties:

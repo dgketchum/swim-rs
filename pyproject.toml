@@ -61,6 +61,17 @@ src = ["src","tests"]
 
 [tool.ruff.lint]
 select = ["E","F","I","UP","B"]
+ignore = [
+    "E501",  # line too long
+    "E402",  # module import not at top
+    "E741",  # ambiguous variable name
+    "B007",  # unused loop control variable
+    "B905",  # zip without explicit strict
+    "B904",  # raise without from
+    "B028",  # no explicit stacklevel
+    "F841",  # unused variable
+    "UP028", # yield in for loop
+]
 
 [tool.black]
 line-length = 100

@@ -1,11 +1,10 @@
 """Tests for swimrs.data_extraction.gridmet.gridmet pure logic functions."""
 
 import numpy as np
-import pytest
 
 from swimrs.data_extraction.gridmet.gridmet import (
-    air_pressure,
     actual_vapor_pressure,
+    air_pressure,
     wind_height_adjust,
 )
 
@@ -27,12 +26,12 @@ class TestAirPressure:
     def test_known_elevation_value_asce(self):
         """Test known value at 1000m using ASCE method."""
         # At 1000m, pressure should be approximately 89.9 kPa (ASCE formula)
-        result = air_pressure(1000, method='asce')
+        result = air_pressure(1000, method="asce")
         assert np.isclose(result[0], 89.9, rtol=0.02)
 
     def test_known_elevation_value_refet(self):
         """Test known value at 1000m using RefET method."""
-        result = air_pressure(1000, method='refet')
+        result = air_pressure(1000, method="refet")
         # RefET method uses slightly different exponent
         assert 85 < result[0] < 95
 

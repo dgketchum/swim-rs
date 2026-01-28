@@ -14,7 +14,7 @@ Install with: pip install swimrs[cloud] or pip install s3fs gcsfs
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import zarr
 
@@ -61,11 +61,11 @@ class S3StoreProvider(StorageProvider):
         bucket: str,
         key: str,
         mode: str = "r",
-        endpoint_url: Optional[str] = None,
-        region_name: Optional[str] = None,
-        aws_access_key_id: Optional[str] = None,
-        aws_secret_access_key: Optional[str] = None,
-        profile: Optional[str] = None,
+        endpoint_url: str | None = None,
+        region_name: str | None = None,
+        aws_access_key_id: str | None = None,
+        aws_secret_access_key: str | None = None,
+        profile: str | None = None,
         **s3_kwargs: Any,
     ):
         """
@@ -105,12 +105,11 @@ class S3StoreProvider(StorageProvider):
 
     def exists(self) -> bool:
         """Check if the S3 path exists."""
-        try:
-            import s3fs
-        except ImportError:
+        import importlib.util
+
+        if importlib.util.find_spec("s3fs") is None:
             raise ImportError(
-                "s3fs is required for S3 storage. "
-                "Install with: pip install s3fs aiobotocore"
+                "s3fs is required for S3 storage. Install with: pip install s3fs aiobotocore"
             )
 
         fs = self._get_filesystem()
@@ -137,11 +136,10 @@ class S3StoreProvider(StorageProvider):
             import s3fs
         except ImportError:
             raise ImportError(
-                "s3fs is required for S3 storage. "
-                "Install with: pip install s3fs aiobotocore"
+                "s3fs is required for S3 storage. Install with: pip install s3fs aiobotocore"
             )
 
-        fs_kwargs: Dict[str, Any] = {**self._s3_kwargs}
+        fs_kwargs: dict[str, Any] = {**self._s3_kwargs}
 
         if self._endpoint_url:
             fs_kwargs["client_kwargs"] = fs_kwargs.get("client_kwargs", {})
@@ -173,8 +171,7 @@ class S3StoreProvider(StorageProvider):
             import s3fs
         except ImportError:
             raise ImportError(
-                "s3fs is required for S3 storage. "
-                "Install with: pip install s3fs aiobotocore"
+                "s3fs is required for S3 storage. Install with: pip install s3fs aiobotocore"
             )
 
         # Validate existence for read modes
@@ -243,8 +240,8 @@ class GCSStoreProvider(StorageProvider):
         bucket: str,
         key: str,
         mode: str = "r",
-        project: Optional[str] = None,
-        token: Optional[str] = None,
+        project: str | None = None,
+        token: str | None = None,
         **gcs_kwargs: Any,
     ):
         """
@@ -300,12 +297,9 @@ class GCSStoreProvider(StorageProvider):
         try:
             import gcsfs
         except ImportError:
-            raise ImportError(
-                "gcsfs is required for GCS storage. "
-                "Install with: pip install gcsfs"
-            )
+            raise ImportError("gcsfs is required for GCS storage. Install with: pip install gcsfs")
 
-        fs_kwargs: Dict[str, Any] = {**self._gcs_kwargs}
+        fs_kwargs: dict[str, Any] = {**self._gcs_kwargs}
 
         if self._project:
             fs_kwargs["project"] = self._project
@@ -327,10 +321,7 @@ class GCSStoreProvider(StorageProvider):
         try:
             import gcsfs
         except ImportError:
-            raise ImportError(
-                "gcsfs is required for GCS storage. "
-                "Install with: pip install gcsfs"
-            )
+            raise ImportError("gcsfs is required for GCS storage. Install with: pip install gcsfs")
 
         # Validate existence for read modes
         if self._mode in ("r", "r+") and not self.exists():

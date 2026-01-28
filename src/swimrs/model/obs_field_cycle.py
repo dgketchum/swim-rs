@@ -1,56 +1,63 @@
 import numpy as np
 import pandas as pd
 
-from swimrs.model import compute_field_et
-from swimrs.model import obs_kcb_daily
-from swimrs.model.tracker import SampleTracker, TUNABLE_PARAMS
-from swimrs.model import TRACKER_PARAMS
+from swimrs.model import TRACKER_PARAMS, compute_field_et, obs_kcb_daily
 from swimrs.model.day_data import DayData
+from swimrs.model.tracker import TUNABLE_PARAMS, SampleTracker
 
-OUTPUT_FMT = ['aw',
-              'et_act',
-              'etref',
-              'kc_act',
-              'kc_bas',
-              'ks',
-              'ke',
-              'melt',
-              'rain',
-              'depl_root',
-              'depl_ze',
-              'dperc',
-              'runoff',
-              'delta_soil_water',
-              'wbal',
-              'ppt',
-              'snow_fall',
-              'taw',
-              'taw3',
-              'daw3',
-              'delta_daw3',
-              'swe',
-              'tavg',
-              'tmax',
-              'irrigation',
-              'gw_sim',
-              'fc',
-              't',
-              'e',
-              'few',
-              'zr',
-              'p_rz',
-              'p_eft',
-              'soil_water',
-              'niwr',
-              'irr_day',
-              ]
+OUTPUT_FMT = [
+    "aw",
+    "et_act",
+    "etref",
+    "kc_act",
+    "kc_bas",
+    "ks",
+    "ke",
+    "melt",
+    "rain",
+    "depl_root",
+    "depl_ze",
+    "dperc",
+    "runoff",
+    "delta_soil_water",
+    "wbal",
+    "ppt",
+    "snow_fall",
+    "taw",
+    "taw3",
+    "daw3",
+    "delta_daw3",
+    "swe",
+    "tavg",
+    "tmax",
+    "irrigation",
+    "gw_sim",
+    "fc",
+    "t",
+    "e",
+    "few",
+    "zr",
+    "p_rz",
+    "p_eft",
+    "soil_water",
+    "niwr",
+    "irr_day",
+]
 
 
 class WaterBalanceError(Exception):
     """Raised when daily water balance residuals exceed tolerance."""
 
 
-def field_day_loop(config, plots, debug_flag=False, params=None, state_in=None, capture_state=False, single_fid_idx=None):
+def field_day_loop(
+    config,
+    plots,
+    debug_flag=False,
+    params=None,
+    state_in=None,
+    capture_state=False,
+    single_fid_idx=None,
+):
     """Run the daily model loop over the configured date range and fields.
 
     Orchestrates tracker initialization (initial conditions, parameters, soils,
@@ -76,7 +83,7 @@ def field_day_loop(config, plots, debug_flag=False, params=None, state_in=None, 
         if not common_fields:
             raise ValueError("No fields found in both plots data and parameter set")
 
-    size = len(plots.input['order'])
+    size = len(plots.input["order"])
 
     tracker = SampleTracker(config, plots, size)
     tracker.apply_initial_conditions()
@@ -91,23 +98,30 @@ def field_day_loop(config, plots, debug_flag=False, params=None, state_in=None, 
     if debug_flag:
         tunable_state = {k: tracker.__getattribute__(k) for k in TUNABLE_PARAMS}
         if size == 1:
-            tunable_state = {k: f'{v[0, 0]:.2f}' for k, v in tunable_state.items()}
+            tunable_state = {k: f"{v[0, 0]:.2f}" for k, v in tunable_state.items()}
         else:
-            tunable_state = {k: [f'{vv:.2f}' for vv in v.flatten()] for k, v in tunable_state.items()}
+            tunable_state = {
+                k: [f"{vv:.2f}" for vv in v.flatten()] for k, v in tunable_state.items()
+            }
         # pprint(dict(sorted(tunable_state.items())))
 
-    targets = plots.input['order']
+    targets = plots.input["order"]
 
-    if len(pd.date_range(config.start_dt, config.end_dt, freq='D')) == len(plots.input['time_series']):
-        valid_data = plots.input['time_series'].copy()
+    if len(pd.date_range(config.start_dt, config.end_dt, freq="D")) == len(
+        plots.input["time_series"]
+    ):
+        valid_data = plots.input["time_series"].copy()
     else:
-        valid_data = {dt: val for dt, val in plots.input['time_series'].items() if
-                      (config.start_dt <= pd.to_datetime(dt) <= config.end_dt)}
+        valid_data = {
+            dt: val
+            for dt, val in plots.input["time_series"].items()
+            if (config.start_dt <= pd.to_datetime(dt) <= config.end_dt)
+        }
 
     if debug_flag:
         tracker.setup_dataframe(targets)
     else:
-        time_range = pd.date_range(config.start_dt, config.end_dt, freq='D')
+        time_range = pd.date_range(config.start_dt, config.end_dt, freq="D")
         empty = np.zeros((len(time_range), len(targets))) * np.nan
         etf, swe = empty.copy(), empty.copy()
 
@@ -133,15 +147,14 @@ def field_day_loop(config, plots, debug_flag=False, params=None, state_in=None, 
                     else:
                         vv = np.array(v).reshape(1, -1)
                         if vv.shape[1] != arr.shape[1]:
-                            raise ValueError('state_in length mismatch for %s' % k)
+                            raise ValueError(f"state_in length mismatch for {k}")
                         arr[:] = vv
                     tracker.__setattr__(k, arr)
 
     states_out = [] if capture_state else None
 
     for j, (step_dt, vals) in enumerate(valid_data.items()):
-
-        day_data.update_day(step_dt, size, vals['doy'])
+        day_data.update_day(step_dt, size, vals["doy"])
 
         if day_data.doy == 1 or day_data.irr_status is None:
             day_data.update_annual_irrigation(plots)
@@ -167,18 +180,20 @@ def field_day_loop(config, plots, debug_flag=False, params=None, state_in=None, 
 
         else:
             if np.any(np.isnan(tracker.kc_act)):
-                raise ValueError('NaN in Kc_act')
+                raise ValueError("NaN in Kc_act")
 
             if np.any(np.isnan(tracker.swe)):
-                raise ValueError('NaN in SWE')
+                raise ValueError("NaN in SWE")
 
             etf[j, :] = tracker.kc_act
             swe[j, :] = tracker.swe
 
     if debug_flag:
         # pass final dataframe to calling script
-        tracker.crop_df = {fid: pd.DataFrame().from_dict(tracker.crop_df[fid], orient='index')[OUTPUT_FMT]
-                           for fid in targets}
+        tracker.crop_df = {
+            fid: pd.DataFrame().from_dict(tracker.crop_df[fid], orient="index")[OUTPUT_FMT]
+            for fid in targets
+        }
 
         for fid in tracker.crop_df:
             tracker.crop_df[fid].index = pd.to_datetime(tracker.crop_df[fid].index)
@@ -192,5 +207,5 @@ def field_day_loop(config, plots, debug_flag=False, params=None, state_in=None, 
         return etf, swe
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass
