@@ -6,7 +6,9 @@
 **S**oil **W**ater balance **I**nverse **M**odeling using **R**emote **S**ensing
 
 SWIM-RS combines the desirable qualities of remote sensing and hydrological modeling into an easy-to-use, rigorous
-water use modeling system.
+water use modeling system. 
+
+SWIM-RS learns the behavior of the surface by using remote sensing-based estimates of capture-date evapotranspiration.
 
 SWIM-RS is a toolkit for field-scale soil water balance using remote sensing (Landsat/Sentinel NDVI/ETf) and gridded meteorology (GridMET/ERA5) data sources, 
 packaged into easy-to-manage containers with provenance and coverage checks. 
