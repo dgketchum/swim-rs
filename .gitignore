@@ -191,6 +191,9 @@ cython_debug/
 /examples/*/data/gis/*_gfid*
 /examples/*/data/gis/shapefile_provenance.txt
 
+# One-off diagnostic/exploration scripts
+/examples/*/scripts/
+
 /examples/logs/
 
 # Diagnostic scratch work
