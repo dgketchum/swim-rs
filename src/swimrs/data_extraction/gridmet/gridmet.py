@@ -5,10 +5,11 @@ from datetime import timedelta
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import pynldas2 as nld
 import pytz
 from rasterstats import zonal_stats
 from tqdm import tqdm
+
+from swimrs.utils.optional_deps import missing_optional_dependency
 
 from swimrs.data_extraction.gridmet.thredds import GridMet
 
@@ -309,6 +310,15 @@ def download_gridmet(
 
                 # Download NLDAS hourly precip if requested
                 if thredds_var == "pr" and use_nldas:
+                    try:
+                        import pynldas2 as nld
+                    except ImportError as exc:
+                        raise missing_optional_dependency(
+                            extra="nldas",
+                            purpose="NLDAS-2 hourly precipitation (runoff_process='ier')",
+                            import_name="pynldas2",
+                        ) from exc
+
                     s_nldas = pd.to_datetime(dl_start) - timedelta(days=1)
                     e_nldas = pd.to_datetime(dl_end) + timedelta(days=2)
                     nldas = nld.get_bycoords(

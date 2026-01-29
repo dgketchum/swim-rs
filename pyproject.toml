@@ -21,6 +21,7 @@ dependencies = [
   "numba",
   "scipy",
   "rasterio",
+  "rasterstats",
   "h5py",
   "pyemu",
   "pandas",
@@ -44,6 +45,9 @@ openet = [
   "openet-ssebop",
   "openet-disalexi",
   "openet-geesebal",
+]
+nldas = [
+  "pynldas2",
 ]
 dev = [
   "pytest",
