@@ -20,19 +20,19 @@ If you're starting from scratch:
 ```bash
 mkdir swim-rs && cd swim-rs
 uv init --python 3.13
-uv add swimrs
+uv add git+https://github.com/dgketchum/swim-rs.git
 ```
 
 If you already have a `pyproject.toml`, run:
 
 ```bash
-uv add swimrs
+uv add git+https://github.com/dgketchum/swim-rs.git
 ```
 
 Optional extras:
 
 ```bash
-uv add "swimrs[openet]"
+uv add "swimrs[openet] @ git+https://github.com/dgketchum/swim-rs.git"
 ```
 
 If geospatial dependencies fail to install (GDAL/PROJ issues), use the **Conda Installation** section below or see **Install Geospatial Dependencies** under **Non-Conda Installation** for system-library instructions.
@@ -160,12 +160,7 @@ conda install -c conda-forge geopandas rasterio pyproj fiona shapely -y
 
 ### 5. Install SWIM-RS
 
-**From PyPI (stable release):**
-```bash
-pip install swimrs
-```
-
-**From GitHub (latest):**
+**From GitHub:**
 ```bash
 pip install git+https://github.com/dgketchum/swim-rs.git
 ```
@@ -182,7 +177,7 @@ pip install -e .
 To use OpenET algorithm implementations directly (for custom ETf calculations):
 
 ```bash
-pip install swimrs[openet]
+pip install "swimrs[openet] @ git+https://github.com/dgketchum/swim-rs.git"
 ```
 
 Or if installing from source:
@@ -235,7 +230,7 @@ python -m venv %USERPROFILE%\.venvs\swim
 
 ```bash
 pip install --upgrade pip
-pip install swimrs
+pip install git+https://github.com/dgketchum/swim-rs.git
 ```
 
 Or from source:
@@ -346,7 +341,7 @@ python -c "import geopandas; print('geopandas OK')"
 #!/bin/bash
 mkdir swim-rs && cd swim-rs
 uv init --python 3.13
-uv add swimrs
+uv add git+https://github.com/dgketchum/swim-rs.git
 
 # Download PEST++ binaries to ./bin
 uv run python -c "import pyemu; pyemu.helpers.get_pestpp_binaries(dest_dir='./bin')"
@@ -361,7 +356,7 @@ uv run swim --help && uv run pestpp-ies --version
 mkdir swim-rs
 cd swim-rs
 uv init --python 3.13
-uv add swimrs
+uv add git+https://github.com/dgketchum/swim-rs.git
 
 # Download PEST++ binaries to ./bin
 uv run python -c "import pyemu; pyemu.helpers.get_pestpp_binaries(dest_dir='./bin')"
@@ -515,7 +510,7 @@ dependencies:
   - zarr
   - pip
   - pip:
-    - swimrs
+    - git+https://github.com/dgketchum/swim-rs.git
 ```
 
 Install with:

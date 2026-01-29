@@ -38,7 +38,7 @@ See the [Installation Guide](docs/installation.md) for detailed setup instructio
 ```bash
 mkdir swim-rs && cd swim-rs
 uv init --python 3.13
-uv add swimrs
+uv add git+https://github.com/dgketchum/swim-rs.git
 
 # Calibration requires PEST++ binaries
 uv run python -c "import pyemu; pyemu.helpers.get_pestpp_binaries(dest_dir='./bin')"
