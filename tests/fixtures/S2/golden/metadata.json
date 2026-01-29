@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-01-05T12:01:57.965871",
-  "shapefile": "/home/dgketchum/code/swim-rs/tests/fixtures/S2/data/gis/flux_footprint_s2.shp",
+  "generated_at": "2026-01-28T21:21:17.977170",
+  "shapefile": "tests/fixtures/S2/data/gis/flux_footprint_s2.shp",
   "uid_column": "site_id",
   "start_date": "2020-01-01",
   "end_date": "2022-12-31",

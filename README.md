@@ -132,7 +132,8 @@ Flux data from [Volk et al., 2023](https://www.sciencedirect.com/science/article
   across algorithms and against ground truth.
 
 - **Flexible Workflows: Irrigation Classification or LULC-Only Modes** — Supports both irrigation-mask workflows (e.g.,
-  via LANID/IrrMapper in CONUS) and non-mask modes suitable for international contexts using only land cover and NDVI
+  via LANID/IrrMapper in CONUS) and non-mask modes suitable for international contexts using only land cover and
+  NDVI/ETf
   time series.
 
 - **Physically-Bounded Kernels for Hydrologic Processes** — Implements all major components (snowmelt, infiltration,
