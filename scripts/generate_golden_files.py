@@ -158,11 +158,18 @@ def generate_golden_files(
                 container.ingest.properties(
                     lulc_csv=str(lulc_csv) if lulc_csv.exists() else None,
                     soils_csv=str(ssurgo_csv) if ssurgo_csv.exists() else None,
-                    irrigation_csv=str(irr_csv) if irr_csv.exists() else None,
+                    irr_csv=str(irr_csv) if irr_csv.exists() else None,
                     uid_column="site_id",
                     lulc_column="modis_lc",
                     extra_lulc_column="glc10_lc",
                 )
+
+        # Compute merged NDVI (required before dynamics)
+        logger.info("Computing merged NDVI...")
+        container.compute.merged_ndvi(
+            masks=tuple(masks_to_ingest),
+            instruments=(instrument,),
+        )
 
         # Compute dynamics with all ingested masks
         logger.info("Computing dynamics...")
@@ -199,6 +206,9 @@ def generate_golden_files(
             irr_data = {}
             for i, uid in enumerate(container.field_uids):
                 val = irr_arr[i]
+                # Handle zarr v3 ndarray returns
+                if hasattr(val, "item"):
+                    val = val.item()
                 if val:
                     irr_data[uid] = json.loads(val)
                 else:
@@ -213,6 +223,9 @@ def generate_golden_files(
             gwsub_data = {}
             for i, uid in enumerate(container.field_uids):
                 val = gwsub_arr[i]
+                # Handle zarr v3 ndarray returns
+                if hasattr(val, "item"):
+                    val = val.item()
                 if val:
                     gwsub_data[uid] = json.loads(val)
                 else:
@@ -220,73 +233,9 @@ def generate_golden_files(
             golden_outputs["gwsub_data"] = gwsub_data
             logger.info(f"Extracted gwsub_data for {len(gwsub_data)} fields")
 
-        # 5. Export prepped_input.json
-        prepped_path = Path(tmp_dir) / "prepped_input.json"
-        logger.info("Exporting prepped_input.json...")
-        container.export.prepped_input_json(
-            output_path=str(prepped_path),
-            etf_model=etf_model,
-            masks=tuple(masks_to_ingest),
-        )
-
-        # Read and parse the prepped input
-        with open(prepped_path) as f:
-            # It's a JSONL file, so read first line as sample
-            first_line = f.readline()
-            if first_line:
-                prepped_sample = json.loads(first_line)
-                # Store just the structure and a subset for testing
-                prepped_summary = {
-                    "field_count": len(container.field_uids),
-                    "fields": container.field_uids,
-                    "first_field_keys": list(prepped_sample.keys()) if prepped_sample else [],
-                }
-                golden_outputs["prepped_input_summary"] = prepped_summary
-
-        # Save full prepped input (copy the file)
-        import shutil
-
-        shutil.copy(prepped_path, output_dir / "prepped_input.json")
-
-        # 6. Generate spinup by running the model
-        logger.info("Generating spinup state by running model...")
-        try:
-            from swimrs.model.obs_field_cycle import field_day_loop
-            from swimrs.swim.config import ProjectConfig
-            from swimrs.swim.sampleplots import SamplePlots
-
-            # Create a minimal config for running the model
-            # We need to run with the prepped_input.json we just generated
-            config = ProjectConfig()
-
-            # Set minimal required attributes
-            config.prepped_input = str(prepped_path)
-            config.start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-            config.end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-            config.fields_shapefile = str(shapefile)
-            config.feature_id_col = uid_column
-            config.refet_type = "eto"
-            config.irrigation_threshold = 0.3
-            config.runoff_process = "cn"
-            config.mode_forecast = False
-            config.mode_calib = False
-
-            # Initialize plots and run model
-            plots = SamplePlots()
-            plots.initialize_plot_data(config)
-            output = field_day_loop(config, plots, debug_flag=False)
-
-            # Extract final state for each field
-            spinup_data = {}
-            for field_id, field_df in output.items():
-                spinup_data[field_id] = field_df.iloc[-1].to_dict()
-
-            golden_outputs["spinup"] = spinup_data
-            logger.info(f"Generated spinup for {len(spinup_data)} field(s)")
-
-        except Exception as e:
-            logger.warning(f"Failed to generate spinup: {e}")
-            logger.warning("Spinup file will not be generated")
+        # NOTE: prepped_input and spinup generation removed - those use legacy APIs
+        # The core golden files (ke_max, kc_max, irr_data, gwsub_data) are sufficient
+        # for regression testing the dynamics computation
 
         container.close()
 

@@ -537,7 +537,7 @@ class TestFullWorkflow:
                 expected_value = expected.get(S2_UID, expected.get("S2"))
                 actual_value = actual[name][0] if isinstance(actual[name], list) else actual[name]
 
-                if isinstance(actual_value, (int, float)):
+                if isinstance(actual_value, int | float):
                     compare_scalars_with_tolerance(
                         actual_value,
                         expected_value,
@@ -674,7 +674,7 @@ class TestPropertiesIngestion:
         )
 
         container.ingest.properties(
-            irrigation_csv=str(irr_csv),
+            irr_csv=str(irr_csv),
             uid_column=S2_UID_COLUMN,
         )
 
@@ -733,7 +733,7 @@ class TestPropertiesIngestion:
         event = container.ingest.properties(
             lulc_csv=str(lulc_csv),
             soils_csv=str(soils_csv),
-            irrigation_csv=str(irr_csv),
+            irr_csv=str(irr_csv),
             uid_column=S2_UID_COLUMN,
             lulc_column="modis_lc",
             extra_lulc_column="glc10_lc",
@@ -1220,6 +1220,12 @@ def _create_full_s2_container(shapefile: Path, input_dir: Path, tmp_path: Path):
     properties_json = input_dir / "properties" / "properties.json"
     if properties_json.exists():
         container.ingest.dynamics(dynamics_json=str(properties_json))
+
+    # Compute merged NDVI (required before dynamics computation)
+    container.compute.merged_ndvi(
+        masks=("irr",),
+        instruments=("landsat",),
+    )
 
     return container
 

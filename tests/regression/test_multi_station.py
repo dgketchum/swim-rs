@@ -583,11 +583,17 @@ def _create_full_multi_station_container(shapefile: Path, input_dir: Path, tmp_p
             container.ingest.properties(
                 lulc_csv=str(lulc_csv) if lulc_csv.exists() else None,
                 soils_csv=str(ssurgo_csv) if ssurgo_csv.exists() else None,
-                irrigation_csv=str(irr_csv) if irr_csv.exists() else None,
+                irr_csv=str(irr_csv) if irr_csv.exists() else None,
                 uid_column="site_id",
                 lulc_column="modis_lc",
                 extra_lulc_column="glc10_lc",
             )
+
+    # Compute merged NDVI (required before dynamics computation)
+    container.compute.merged_ndvi(
+        masks=("irr", "inv_irr"),
+        instruments=("landsat",),
+    )
 
     return container
 
