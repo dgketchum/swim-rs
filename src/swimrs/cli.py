@@ -91,9 +91,6 @@ build_swim_input = _try_import(
 run_daily_loop = _try_import(
     "swimrs.process.loop_fast", "src.swimrs.process.loop_fast", "run_daily_loop_fast"
 )
-compare_etf_estimates = _try_import(
-    "swimrs.analysis.metrics", "src.swimrs.analysis.metrics", "compare_etf_estimates"
-)
 SwimContainer = _try_import("swimrs.container", "src.swimrs.container", "SwimContainer")
 
 
@@ -738,7 +735,6 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         tmax = swim_input.get_time_series("tmax")
 
         # Build per-field DataFrames and write CSVs
-        metrics_by_site = {}
         for i, fid in enumerate(targets):
             # Build DataFrame with available columns
             df_data = {
@@ -770,35 +766,6 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
             except Exception as e:
                 print(f"Failed to write {out_csv}: {e}")
 
-            # Optional metrics vs OpenET
-            if args.flux_dir and args.openet_dir:
-                try:
-                    flux_file = os.path.join(args.flux_dir, f"{fid}_daily_data.csv")
-                    openet_daily = os.path.join(args.openet_dir, "daily_data", f"{fid}.csv")
-                    openet_monthly = os.path.join(args.openet_dir, "monthly_data", f"{fid}.csv")
-                    # Get irrigation data from container
-                    irr = (
-                        container.query.irrigation_schedule(fid)
-                        if hasattr(container.query, "irrigation_schedule")
-                        else {}
-                    )
-                    daily, overpass, monthly = compare_etf_estimates(
-                        combined_output_path=df,
-                        flux_data_path=flux_file,
-                        openet_daily_path=openet_daily,
-                        openet_monthly_path=openet_monthly,
-                        irr=irr,
-                        target_model=getattr(config, "etf_target_model", "ssebop"),
-                        gap_tolerance=5,
-                    )
-                    metrics_by_site[fid] = {
-                        "daily": daily or {},
-                        "overpass": overpass or {},
-                        "monthly": monthly or {},
-                    }
-                except Exception as e:
-                    print(f"Metrics failed for {fid}: {e}")
-
         swim_input.close()
 
     except Exception as e:
@@ -820,39 +787,6 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
                 os.remove(calibrated_params_path)
             except Exception:
                 pass
-
-    # Write metrics summary if requested
-    if metrics_by_site:
-        import json as _json
-
-        metrics_dir = args.metrics_out or out_root
-        try:
-            os.makedirs(metrics_dir, exist_ok=True)
-        except Exception:
-            pass
-        metrics_json = os.path.join(metrics_dir, "metrics_by_site.json")
-        try:
-            with open(metrics_json, "w") as fp:
-                _json.dump(metrics_by_site, fp, indent=2)
-            print(f"Wrote {metrics_json}")
-        except Exception as e:
-            print(f"Failed to write metrics JSON: {e}")
-
-        # Also emit a flat CSV of monthly RMSE/R2 if available
-        try:
-            rows = []
-            for site, d in metrics_by_site.items():
-                monthly = d.get("monthly") or {}
-                if monthly:
-                    row = {"site": site}
-                    row.update({k: v for k, v in monthly.items()})
-                    rows.append(row)
-            if rows:
-                dfm = pd.DataFrame(rows)
-                dfm.to_csv(os.path.join(metrics_dir, "metrics_monthly.csv"), index=False)
-                print(f"Wrote {os.path.join(metrics_dir, 'metrics_monthly.csv')}")
-        except Exception as e:
-            print(f"Failed to write metrics CSV: {e}")
 
     return 0
 
