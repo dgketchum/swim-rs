@@ -1,0 +1,287 @@
+{
+  "attributes": {
+    "project_name": "3_Crane",
+    "schema_version": "1.0",
+    "created_at": "2026-01-29T20:05:45.132807+00:00",
+    "start_date": "2020-01-01",
+    "end_date": "2021-12-31",
+    "n_fields": 1,
+    "n_days": 731,
+    "uid_column": "site_id",
+    "source_shapefile": "/home/dgketchum/code/swim-rs/examples/3_Crane/data/gis/flux_fields.shp",
+    "provenance": {
+      "container_created_at": "2026-01-29T20:05:45.132787+00:00",
+      "container_created_by": null,
+      "schema_version": "1.0",
+      "events": [
+        {
+          "id": "evt_b21f1a652c28",
+          "timestamp": "2026-01-29T20:05:45.283930+00:00",
+          "operation": "create",
+          "swim_version": "0.1.0",
+          "user": "dgketchum",
+          "target": null,
+          "source": null,
+          "source_format": null,
+          "params": {
+            "fields_shapefile": "/home/dgketchum/code/swim-rs/examples/3_Crane/data/gis/flux_fields.shp",
+            "uid_column": "site_id",
+            "start_date": "2020-01-01",
+            "end_date": "2021-12-31",
+            "project_name": "3_Crane"
+          },
+          "fields_affected": [
+            "S2"
+          ],
+          "date_range": null,
+          "records_count": 1,
+          "duration_seconds": null,
+          "success": true,
+          "error_message": null
+        },
+        {
+          "id": "evt_c97741f9e35d",
+          "timestamp": "2026-01-29T20:05:45.434408+00:00",
+          "operation": "ingest",
+          "swim_version": "0.1.0",
+          "user": "dgketchum",
+          "target": "properties",
+          "source": "/home/dgketchum/code/swim-rs/examples/3_Crane/data/properties/3_Crane_landcover.csv; /home/dgketchum/code/swim-rs/examples/3_Crane/data/properties/3_Crane_ssurgo.csv; /home/dgketchum/code/swim-rs/examples/3_Crane/data/properties/3_Crane_irr.csv",
+          "source_format": "csv",
+          "params": {
+            "uid_column": "site_id",
+            "properties": [
+              "land_cover",
+              "soils",
+              "irrigation"
+            ]
+          },
+          "fields_affected": [
+            "S2"
+          ],
+          "date_range": null,
+          "records_count": null,
+          "duration_seconds": null,
+          "success": true,
+          "error_message": null
+        },
+        {
+          "id": "evt_e0a65b68909b",
+          "timestamp": "2026-01-29T20:05:45.751415+00:00",
+          "operation": "ingest",
+          "swim_version": "0.1.0",
+          "user": "dgketchum",
+          "target": "meteorology/gridmet",
+          "source": "/home/dgketchum/code/swim-rs/examples/3_Crane/data/met",
+          "source_format": "parquet",
+          "params": {
+            "variables": [
+              "eto",
+              "etr",
+              "prcp",
+              "tmin",
+              "tmax",
+              "srad",
+              "ea",
+              "u2",
+              "eto_corr",
+              "etr_corr"
+            ],
+            "include_corrected": true,
+            "grid_cells": 1,
+            "direct_mode": false
+          },
+          "fields_affected": [
+            "S2"
+          ],
+          "date_range": null,
+          "records_count": 7310,
+          "duration_seconds": null,
+          "success": true,
+          "error_message": null
+        },
+        {
+          "id": "evt_bc404e4a4eb8",
+          "timestamp": "2026-01-29T20:05:46.889254+00:00",
+          "operation": "ingest",
+          "swim_version": "0.1.0",
+          "user": "dgketchum",
+          "target": "snow/snodas/swe",
+          "source": "/home/dgketchum/code/swim-rs/examples/3_Crane/data/snow/snodas/extracts",
+          "source_format": "earth_engine_csv",
+          "params": {
+            "uid_column": "site_id"
+          },
+          "fields_affected": [
+            "S2"
+          ],
+          "date_range": null,
+          "records_count": 731,
+          "duration_seconds": null,
+          "success": true,
+          "error_message": null
+        },
+        {
+          "id": "evt_5a592b384e4e",
+          "timestamp": "2026-01-29T20:05:47.842304+00:00",
+          "operation": "ingest",
+          "swim_version": "0.1.0",
+          "user": "dgketchum",
+          "target": "remote_sensing/etf/landsat/ssebop/irr",
+          "source": "/home/dgketchum/code/swim-rs/examples/3_Crane/data/remote_sensing/landsat/extracts/ssebop_etf/irr",
+          "source_format": "earth_engine_csv",
+          "params": {
+            "model": "ssebop",
+            "instrument": "landsat",
+            "mask": "irr"
+          },
+          "fields_affected": [
+            "S2"
+          ],
+          "date_range": null,
+          "records_count": 48,
+          "duration_seconds": null,
+          "success": true,
+          "error_message": null
+        },
+        {
+          "id": "evt_1ebbb112f024",
+          "timestamp": "2026-01-29T20:05:48.817155+00:00",
+          "operation": "ingest",
+          "swim_version": "0.1.0",
+          "user": "dgketchum",
+          "target": "remote_sensing/etf/landsat/ssebop/inv_irr",
+          "source": "/home/dgketchum/code/swim-rs/examples/3_Crane/data/remote_sensing/landsat/extracts/ssebop_etf/inv_irr",
+          "source_format": "earth_engine_csv",
+          "params": {
+            "model": "ssebop",
+            "instrument": "landsat",
+            "mask": "inv_irr"
+          },
+          "fields_affected": [
+            "S2"
+          ],
+          "date_range": null,
+          "records_count": 0,
+          "duration_seconds": null,
+          "success": true,
+          "error_message": null
+        },
+        {
+          "id": "evt_dc103f197ea9",
+          "timestamp": "2026-01-29T20:05:49.247602+00:00",
+          "operation": "ingest",
+          "swim_version": "0.1.0",
+          "user": "dgketchum",
+          "target": "remote_sensing/ndvi/landsat/irr",
+          "source": "/home/dgketchum/code/swim-rs/examples/3_Crane/data/remote_sensing/landsat/extracts/ndvi/irr",
+          "source_format": "earth_engine_csv",
+          "params": {
+            "instrument": "landsat",
+            "mask": "irr",
+            "min_ndvi": 0.05,
+            "apply_consecutive_filter": true
+          },
+          "fields_affected": [
+            "S2"
+          ],
+          "date_range": null,
+          "records_count": 49,
+          "duration_seconds": null,
+          "success": true,
+          "error_message": null
+        },
+        {
+          "id": "evt_59539464e057",
+          "timestamp": "2026-01-29T20:05:49.689704+00:00",
+          "operation": "ingest",
+          "swim_version": "0.1.0",
+          "user": "dgketchum",
+          "target": "remote_sensing/ndvi/landsat/inv_irr",
+          "source": "/home/dgketchum/code/swim-rs/examples/3_Crane/data/remote_sensing/landsat/extracts/ndvi/inv_irr",
+          "source_format": "earth_engine_csv",
+          "params": {
+            "instrument": "landsat",
+            "mask": "inv_irr",
+            "min_ndvi": 0.05,
+            "apply_consecutive_filter": true
+          },
+          "fields_affected": [
+            "S2"
+          ],
+          "date_range": null,
+          "records_count": 0,
+          "duration_seconds": null,
+          "success": true,
+          "error_message": null
+        },
+        {
+          "id": "evt_e99b40109d88",
+          "timestamp": "2026-01-29T20:05:49.742053+00:00",
+          "operation": "compute",
+          "swim_version": "0.1.0",
+          "user": "dgketchum",
+          "target": "derived/merged_ndvi",
+          "source": null,
+          "source_format": null,
+          "params": {
+            "masks": [
+              "irr",
+              "inv_irr"
+            ],
+            "instruments": [
+              "landsat"
+            ],
+            "preference_order": [
+              "landsat",
+              "sentinel"
+            ]
+          },
+          "fields_affected": [
+            "S2"
+          ],
+          "date_range": null,
+          "records_count": 49,
+          "duration_seconds": null,
+          "success": true,
+          "error_message": null
+        },
+        {
+          "id": "evt_a87eb251bf60",
+          "timestamp": "2026-01-29T20:05:49.972887+00:00",
+          "operation": "compute",
+          "swim_version": "0.1.0",
+          "user": "dgketchum",
+          "target": "derived/dynamics",
+          "source": null,
+          "source_format": null,
+          "params": {
+            "etf_model": "ssebop",
+            "irr_threshold": 0.1,
+            "masks": [
+              "irr",
+              "inv_irr"
+            ],
+            "instruments": [
+              "landsat"
+            ],
+            "use_mask": true,
+            "use_lulc": false,
+            "lookback": 10,
+            "met_source": "gridmet"
+          },
+          "fields_affected": [
+            "S2"
+          ],
+          "date_range": null,
+          "records_count": 1,
+          "duration_seconds": null,
+          "success": true,
+          "error_message": null
+        }
+      ]
+    }
+  },
+  "zarr_format": 3,
+  "node_type": "group"
+}
