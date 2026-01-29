@@ -38,6 +38,7 @@ dependencies = [
   "zarr>=2.18",
   "filelock",
   "tqdm",
+  "pyarrow",
 ]
 
 [project.optional-dependencies]

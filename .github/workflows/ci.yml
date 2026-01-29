@@ -7,37 +7,77 @@ on:
     branches: [ main, master ]
 
 jobs:
-  build-test:
+  lint:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
 
       - name: Set up Python 3.13
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-          cache: 'pip'
+        run: uv python install 3.13
+
+      - name: Install project
+        run: uv sync --all-extras
+
+      - name: Check lint (ruff)
+        run: uv run ruff check .
+
+      - name: Check format (ruff)
+        run: uv run ruff format --check .
+
+  test-fast:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
 
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y gdal-bin libgdal-dev
 
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
-
       - name: Install project
-        run: pip install -e ".[dev]"
+        run: uv sync --all-extras
 
-      - name: Check lint (ruff)
-        run: ruff check .
-
-      - name: Check format (ruff)
-        run: ruff format --check .
-
-      - name: Run tests (coverage)
+      - name: Run fast tests
         env:
           PROJ_LIB: /usr/share/proj
-        run: pytest -q --cov=swimrs --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml
+        run: uv run pytest tests/ -m "not slow" -q --tb=short
+
+  test-full:
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y gdal-bin libgdal-dev
+
+      - name: Install project
+        run: uv sync --all-extras
+
+      - name: Run full test suite
+        env:
+          PROJ_LIB: /usr/share/proj
+        run: uv run pytest tests/ -q --tb=short --durations=10
+
+      - name: Run coverage
+        env:
+          PROJ_LIB: /usr/share/proj
+        run: uv run pytest tests/ -m "not slow" -q --cov=swimrs --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

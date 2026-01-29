@@ -17,7 +17,7 @@ import pytest
 from numpy.testing import assert_allclose
 
 # Mark entire module as parity
-pytestmark = [pytest.mark.parity]
+pytestmark = [pytest.mark.parity, pytest.mark.slow]
 
 # Ensure project root is on path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
