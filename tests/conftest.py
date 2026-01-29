@@ -240,7 +240,7 @@ def compare_json_with_tolerance(
     # Type check
     if type(actual) is not type(expected):
         # Allow int/float comparison
-        if isinstance(actual, (int, float)) and isinstance(expected, (int, float)):
+        if isinstance(actual, int | float) and isinstance(expected, int | float):
             pass
         else:
             raise AssertionError(
@@ -281,7 +281,7 @@ def compare_json_with_tolerance(
         return True
 
     # Numeric comparison
-    if isinstance(expected, (int, float)):
+    if isinstance(expected, int | float):
         compare_scalars_with_tolerance(float(actual), float(expected), rtol, atol, path or "value")
         return True
 
@@ -450,7 +450,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "integration: marks integration tests")
     config.addinivalue_line("markers", "regression: marks regression tests against golden files")
     config.addinivalue_line(
-        "markers", "parity: marks parity tests comparing container vs legacy implementations"
+        "markers", "parity: marks parity tests comparing loop.py vs loop_fast.py implementations"
     )
     config.addinivalue_line(
         "markers", "conservation: mass balance and water conservation verification"
