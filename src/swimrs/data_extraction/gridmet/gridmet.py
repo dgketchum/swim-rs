@@ -9,6 +9,8 @@ import pytz
 from rasterstats import zonal_stats
 from tqdm import tqdm
 
+from swimrs.utils.optional_deps import missing_optional_dependency
+
 from swimrs.data_extraction.gridmet.thredds import GridMet
 from swimrs.utils.optional_deps import missing_optional_dependency
 
