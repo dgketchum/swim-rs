@@ -1,22 +1,7 @@
-"""
-SWIM-RS Prep Modules (DEPRECATED)
+"""SWIM-RS Prep Modules.
 
-This module is deprecated in favor of swimrs.container components.
-
-Migration guide:
-- SamplePlotDynamics → container.compute.dynamics()
-- prep_fields_json() → container.export.prepped_input_json()
-- sparse_time_series() → container.ingest.ndvi(), container.ingest.etf()
-- join_daily_timeseries() → container.ingest.gridmet()
-- write_field_properties() → container.ingest.properties()
-
-The new container-based workflow provides:
-- Unified data storage (zarr/NetCDF)
-- Provenance tracking
-- xarray-based vectorized operations
-- Cloud storage support
-
-See swimrs.container documentation for details.
+Data preparation utilities for building model inputs from remote sensing
+and meteorological time series.
 """
 
 import warnings
@@ -25,10 +10,7 @@ import geopandas as gpd
 import pandas as pd
 
 # Deprecation configuration
-_DEPRECATION_MSG = (
-    "swimrs.prep modules are deprecated and will be removed in a future version. "
-    "Use swimrs.container instead. See docstring for migration guide."
-)
+_DEPRECATION_MSG = "swimrs.prep modules are deprecated. Use swimrs.container instead."
 
 
 def _emit_deprecation_warning(stacklevel: int = 3) -> None:

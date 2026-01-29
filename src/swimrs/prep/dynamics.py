@@ -1,20 +1,7 @@
-"""
-Field dynamics analysis for SWIM-RS.
+"""Field dynamics analysis for SWIM-RS.
 
-DEPRECATED: This module is deprecated in favor of swimrs.container.compute.dynamics().
-
-Migration guide:
-    # Old way (deprecated)
-    from swimrs.prep.dynamics import SamplePlotDynamics
-    d = SamplePlotDynamics(...)
-    d.analyze_irrigation()
-    d.analyze_groundwater_subsidy()
-    d.save_json()
-
-    # New way (recommended)
-    from swimrs.container import SwimContainer
-    container = SwimContainer.open("project.swim")
-    container.compute.dynamics(etf_model="ssebop")
+Analyzes field-level irrigation detection, groundwater subsidy estimation,
+and crop coefficient parameter extraction from remote sensing time series.
 """
 
 import json
@@ -30,10 +17,7 @@ from swimrs.prep.ndvi_regression import sentinel_adjust_quantile_mapping
 
 
 class SamplePlotDynamics:
-    """
-    DEPRECATED: Use container.compute.dynamics() instead.
-
-    This class analyzes field dynamics including irrigation detection,
+    """Analyzes field dynamics including irrigation detection,
     groundwater subsidy, and K-parameter extraction.
     """
 

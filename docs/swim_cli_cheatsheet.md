@@ -51,7 +51,7 @@ swim prep path/to/project.toml \
   --international           # alias for LULC mode with no-mask NDVI/ETf
   --no-ndvi --no-etf --no-met --no-snow  # skip parts as needed
 ```
-Does: create/open the `.swim` container, ingest properties/NDVI/ETf/met/SNODAS, compute merged NDVI and dynamics, and export model-ready inputs (HDF5/JSON). This replaces the legacy prep-module parquet workflow.
+Does: create/open the `.swim` container, ingest properties/NDVI/ETf/met/SNODAS, compute merged NDVI and dynamics, and export model-ready inputs (HDF5/JSON).
 
 ## Calibrate (PEST++ IES)
 ```

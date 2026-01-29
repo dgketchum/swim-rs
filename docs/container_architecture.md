@@ -1,6 +1,6 @@
 # SwimContainer Architecture
 
-The `swimrs.container` package provides a Zarr-based data container that unifies all SWIM-RS project data in a single `.swim` file. It replaces scattered CSV/JSON/Parquet files with a self-describing archive featuring full provenance tracking and feeds the process engine by exporting HDF5 via `build_swim_input` (legacy `prepped_input.json` export remains for compatibility only).
+The `swimrs.container` package provides a Zarr-based data container that unifies all SWIM-RS project data in a single `.swim` file. The container is a self-describing archive with full provenance tracking. It feeds the process engine by exporting HDF5 via `build_swim_input`.
 
 ## Package Structure
 

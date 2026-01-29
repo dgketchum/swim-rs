@@ -1,9 +1,5 @@
 """Model package constants and parameter lists used by the tracker.
 
-.. deprecated::
-    The `swimrs.model` package is deprecated and will be removed in v0.3.0.
-    Use `swimrs.process` instead. See DEPRECATION_PLAN.md for migration guide.
-
 `TRACKER_PARAMS` enumerates the state/parameter fields that are array-shaped
 and managed by `SampleTracker` for vectorized, per-field simulation.
 """
@@ -11,8 +7,7 @@ and managed by `SampleTracker` for vectorized, per-field simulation.
 import warnings
 
 warnings.warn(
-    "swimrs.model is deprecated and will be removed in v0.3.0. "
-    "Use swimrs.process instead. See DEPRECATION_PLAN.md for migration guide.",
+    "swimrs.model is deprecated. Use swimrs.process instead.",
     DeprecationWarning,
     stacklevel=2,
 )

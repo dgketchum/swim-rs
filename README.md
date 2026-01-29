@@ -178,8 +178,7 @@ Flux data from [Volk et al., 2023](https://www.sciencedirect.com/science/article
 - `src/swimrs/cli.py` — `swim` CLI (extract, prep, calibrate, evaluate, inspect)
 - `src/swimrs/calibrate` — PEST++ builders/runners
 - `src/swimrs/data_extraction` — Earth Engine + meteorology utilities
-- `src/swimrs/swim` — config parsing and legacy helpers
-- Deprecated: `src/swimrs/prep`, `src/swimrs/model` (see `DEPRECATION_PLAN.md`)
+- `src/swimrs/swim` — config parsing and helpers
 
 ## Examples
 
