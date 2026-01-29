@@ -1,0 +1,130 @@
+# SWIM-RS Project Configuration Template
+# Copy this file to your project directory and customize.
+# See docs/how_to.md for detailed documentation.
+
+# ------------------------------------------------------------------------------
+# Project Identity
+# ------------------------------------------------------------------------------
+project = "my_project"  # Project name (used in output filenames)
+root = "."              # Root directory for path resolution
+
+# ------------------------------------------------------------------------------
+# Paths
+# All paths support {variable} substitution from earlier definitions.
+# ------------------------------------------------------------------------------
+[paths]
+project_workspace = "{root}"
+data = "{project_workspace}/data"
+
+# SwimContainer (Zarr-based data store)
+container = "{data}/{project}.swim"
+
+# Remote sensing data
+remote_sensing = "{data}/remote_sensing"
+landsat = "{remote_sensing}/landsat"
+sentinel = "{remote_sensing}/sentinel"  # Optional: for Sentinel-2 NDVI
+
+# Meteorology
+met = "{data}/met_timeseries/gridmet"
+
+# GIS files
+gis = "{data}/gis"
+fields_shapefile = "{gis}/fields.shp"  # REQUIRED: your input shapefile
+
+# GridMET mapping (created by swim extract)
+gridmet_centroids = "{gis}/gridmet_centroids.shp"
+gridmet_mapping = "{gis}/fields_gfid.shp"
+gridmet_factors = "{gis}/fields_gfid.json"
+
+# Bias correction rasters (optional)
+correction_tifs = "{data}/bias_correction_tif"
+
+# Properties (soils, land cover, irrigation)
+properties = "{data}/properties"
+irr = "{properties}/{project}_irr.csv"
+ssurgo = "{properties}/{project}_ssurgo.csv"
+lulc = "{properties}/{project}_landcover.csv"
+properties_json = "{properties}/{project}_properties.json"
+
+# Snow data
+snodas_in = "{data}/snow/snodas/extracts"
+
+# ------------------------------------------------------------------------------
+# Earth Engine (optional)
+# ------------------------------------------------------------------------------
+[earth_engine]
+# bucket = "my-gcs-bucket"  # Uncomment to export to GCS instead of Drive
+
+# ------------------------------------------------------------------------------
+# Field Identifiers
+# ------------------------------------------------------------------------------
+[ids]
+feature_id = "site_id"      # REQUIRED: unique ID column in your shapefile
+gridmet_join_id = "GFID"    # GridMET cell ID column (created by extract)
+gridmet_id = "GFID"
+state_col = "state"         # Optional: US state codes for irrigation mask selection
+
+# ------------------------------------------------------------------------------
+# Data Sources
+# ------------------------------------------------------------------------------
+[data_sources]
+met_source = "gridmet"      # "gridmet" (CONUS) or "era5" (global)
+snow_source = "snodas"      # "snodas" (CONUS) or "era5" (global)
+soil_source = "ssurgo"      # "ssurgo" (CONUS) or "hwsd" (global)
+mask_mode = "irrigation"    # "irrigation" or "none"
+
+# ------------------------------------------------------------------------------
+# Model Settings
+# ------------------------------------------------------------------------------
+[misc]
+irrigation_threshold = 0.3  # Fraction of field area irrigated to trigger irrigation mode
+elev_units = "m"            # Elevation units in shapefile
+refet_type = "eto"          # Reference ET: "eto" (grass) or "etr" (alfalfa)
+runoff_process = "cn"       # "cn" (Curve Number) or "ier" (infiltration-excess)
+
+# ------------------------------------------------------------------------------
+# Date Range
+# ------------------------------------------------------------------------------
+[date_range]
+start_date = "2000-01-01"
+end_date = "2023-12-31"
+
+# ------------------------------------------------------------------------------
+# Crop Coefficient Settings
+# ------------------------------------------------------------------------------
+[crop_coefficient]
+kc_proxy = "etf"            # Use ETf to derive crop coefficients
+cover_proxy = "ndvi"        # Use NDVI for cover fraction
+
+# ------------------------------------------------------------------------------
+# Calibration (required for swim calibrate)
+# ------------------------------------------------------------------------------
+[calibration]
+pest_run_dir = "{project_workspace}/data/pestrun"
+
+# ETf calibration target:
+#   - Single model: "ptjpl", "ssebop", "sims", "geesebal", "eemetric", "disalexi"
+#   - Ensemble mean: "ensemble" (averages all available models in container)
+etf_target_model = "ptjpl"
+
+# Optional: ensemble members for uncertainty-weighted calibration
+# When provided, observation weights are computed from inter-model spread:
+#   weight = obsval / (std + 0.1)
+# This gives higher weight where models agree and lower weight where they diverge.
+# etf_ensemble_members = ["ssebop", "sims", "geesebal"]
+
+workers = 6                 # Parallel workers for calibration
+realizations = 20           # PEST++ IES ensemble size
+calibration_dir = "{pest_run_dir}/pest/mult"
+obs_folder = "{pest_run_dir}/obs"
+initial_values_csv = "{pest_run_dir}/params.csv"
+spinup = "{pest_run_dir}/spinup.json"
+
+# Optional: custom forward model script
+# python_script = "{project_workspace}/custom_forward_run.py"
+
+# ------------------------------------------------------------------------------
+# Forecast (optional)
+# ------------------------------------------------------------------------------
+# [forecast]
+# forecast_parameters = "{pest_run_dir}/pest/archive/{project}.3.par.csv"

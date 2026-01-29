@@ -63,35 +63,46 @@ pip install git+https://github.com/dgketchum/swim-rs.git
 
 ## Testing
 
+**With uv (recommended):**
+
 ```bash
-pip install -e ".[dev]"
+uv sync --all-extras
+source .venv/bin/activate
 pytest
 
 # Coverage (line + branch)
 pytest --cov=swimrs --cov-branch --cov-report=term-missing
 ```
 
-By default, tests requiring Earth Engine auth are skipped; run them with `pytest --run-ee`.
-
-## Quick start (Fort Peck, Montana)
+**Alternative (pip):**
 
 ```bash
-pip install -e .
+pip install -e ".[dev]"
+pytest
+```
 
-# Optional: refresh EE/GridMET (EE sign-up/auth: https://earthengine.google.com/; task manager: https://code.earthengine.google.com/tasks),
-# rebuild project shapefile from examples/data. Already included; so --overwrite:
-# swim extract examples/2_Fort_Peck/2_Fort_Peck.toml --overwrite
+By default, tests requiring Earth Engine auth are skipped; run them with `pytest --run-ee`.
+
+## Quick Start (Fort Peck, Montana)
+
+> **Starting from scratch?** See [How-To Guide](docs/how_to.md) for data extraction and a full walkthrough.
+
+This example uses shipped data — no Earth Engine access required.
+
+```bash
+uv sync --all-extras
+source .venv/bin/activate
 
 # Build container from shipped data
 swim prep examples/2_Fort_Peck/2_Fort_Peck.toml --overwrite
 
-# To run calibration (requires PEST++, ~ min):
+# Run calibration (requires PEST++)
 swim calibrate examples/2_Fort_Peck/2_Fort_Peck.toml --workers 6 --realizations 20
 
 # Run model and write output CSV
 swim evaluate examples/2_Fort_Peck/2_Fort_Peck.toml
 
-# Visualize vs flux tower (saves plots to examples/2_Fort_Peck/)
+# Visualize vs flux tower
 python examples/2_Fort_Peck/viz.py --results examples/2_Fort_Peck --site US-FPe --save examples/2_Fort_Peck
 ```
 
@@ -154,6 +165,9 @@ Flux data from [Volk et al., 2023](https://www.sciencedirect.com/science/article
   project or worker and contains all data needed to run simulations or calibrations independently of the original
   container or filesystem.
 
+- **Native OpenET Model Support** — Request OpenET (open source) ensemble members (PT-JPL, SIMS, SSEBop, and geeSEBAL)
+  to run on OpenET software in the background directly from SWIM-RS.
+
 - **Fast, Modular Simulation Engine Using Numba JIT** — Implements core model kernels as Numba-accelerated functions,
   achieving 5–10× speedups over standard NumPy code and enabling daily simulations over decades for hundreds of fields
   in seconds.
@@ -214,82 +228,12 @@ Common flags: `--out-dir` (override project root), `--sites` (restrict IDs), `--
 - Calibration: PEST++ IES via pyemu; writes obs/preds and manages worker/master runs.
 - Forecasting/analysis/viz: NDVI analog forecasts; metrics vs flux and OpenET; Plotly visualizations.
 
-## Config Schema
-
-Each project uses a TOML with a small, consistent set of keys. These are the required and common optional entries.
-
-- Top level
-    - `project` (string): project identifier
-    - `root` (string): root directory for resolving paths
-
-- `[paths]` (required)
-    - `project_workspace` (string): usually `{root}/{project}`
-    - `data` (string): data directory under workspace
-    - `landsat`, `landsat_ee_data`, `landsat_tables` (strings)
-    - `sentinel`, `sentinel_ee_data`, `sentinel_tables` (strings)
-    - `met` (string): GridMET time series directory
-    - `gis` (string)
-    - `fields_shapefile` (string, REQUIRED): path to a shapefile of fields/polygons
-    - `gridmet_mapping` (string, optional): shapefile for precomputed GFID mapping
-    - `correction_tifs` (string): folder of monthly correction rasters (ETo/ETr)
-    - `gridmet_factors` (string): JSON written by mapping step
-    - `properties` (string): directory for properties CSV/JSON
-    - `irr`, `ssurgo`, `lulc`, `properties_json` (strings)
-    - `snodas_in`, `snodas_out` (strings): SNODAS CSV dir and JSON output
-    - `remote_sensing_tables` (string)
-    - `joined_timeseries` (string)
-    - `dynamics_data` (string)
-    - `prepped_input` (string)
-
-- `[earth_engine]` (optional)
-    - `fields` (string): EE FeatureCollection asset path (optional; shapefile is used by default)
-    - `bucket` (string): optional default Cloud Storage bucket for exports
-
-- `[ids]` (required)
-    - `feature_id` (string): field/site identifier column name
-    - `gridmet_join_id` (string): ID in `gridmet_mapping` shapefile
-    - `state_col` (string, optional): used by irrigation mask logic
-
-- `[misc]` (required)
-    - `irrigation_threshold` (float)
-    - `elev_units` (string)
-    - `refet_type` (string): `eto` or `etr`
-    - `runoff_process` (string): `cn` or `ier` (enables NLDAS hours)
-
-- `[date_range]` (required)
-    - `start_date`, `end_date` (YYYY-MM-DD)
-
-- `[crop_coefficient]` (required)
-    - `kc_proxy` (string)
-    - `cover_proxy` (string)
-
-- `[calibration]` (optional, required for calibrate)
-    - `pest_run_dir` (string)
-    - `etf_target_model` (string)
-    - `etf_ensemble_members` (array of strings, optional)
-    - `workers` (int), `realizations` (int)
-    - `calibration_dir`, `obs_folder`, `initial_values_csv`, `spinup`
-    - `python_script` (string, optional): path to a custom forward runner script. Defaults to the packaged script if
-      omitted. Can be overridden via `swim calibrate --python-script`.
-
-- `[forecast]` (optional)
-    - `forecast_parameters` (string)
-
-Notes
-
-- Shapefile is the canonical source; when exporting via Earth Engine, the CLI and exporters convert the shapefile to a
-  FeatureCollection under the hood. Providing an EE fields asset is optional and not required for default workflows.
-
 ## Configuration
 
-`swimrs.swim.config.ProjectConfig` loads a TOML and resolves path templates (with iterative substitution), sets:
+Each project is configured with a TOML file. See [docs/template.toml](docs/template.toml) for a starter template and
+the [How-To Guide](docs/how_to.md) for detailed documentation of all configuration options.
 
-- Paths: project workspace, data subfolders, EE assets, met/RS tables, results, etc.
-- IDs/fields: feature IDs, mapping columns.
-- Date range, refET type, elevation units, workers/realizations.
-- Calibration/forecast parameter sources (CSV/JSON).
-
-See the `examples/` subdirectories for example TOMLs and end-to-end runs.
+Example TOMLs are also available in the `examples/` subdirectories.
 
 ## Licensing
 
