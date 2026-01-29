@@ -170,45 +170,28 @@ cython_debug/
 #.idea/
 *cache/
 
-/examples/1_Boulder/data/gis/mt_sid_boulder_gfid.cpg
-/examples/1_Boulder/data/gis/mt_sid_boulder_gfid.dbf
-/examples/1_Boulder/data/gis/mt_sid_boulder_gfid.json
-/examples/1_Boulder/data/gis/mt_sid_boulder_gfid.prj
-/examples/1_Boulder/data/gis/mt_sid_boulder_gfid.shp
-/examples/1_Boulder/data/gis/mt_sid_boulder_gfid.shx
-/examples/1_Boulder/data/plot_timeseries/
-/examples/1_Boulder/data/landsat/
-/examples/1_Boulder/data/met_timeseries/
-/examples/1_Boulder/data/properties/
-/examples/1_Boulder/data/snodas/
-/examples/1_Boulder/data/tutorial_properties.json
-/examples/1_Boulder/data/prepped_input.json
-/examples/2_Fort_Peck/data/gis/flux_fields_gfid.json
-/examples/2_Fort_Peck/data/landsat/
-/examples/2_Fort_Peck/data/met_timeseries/
-/examples/2_Fort_Peck/data/properties/
-/examples/2_Fort_Peck/data/snodas/
-/examples/2_Fort_Peck/data/plot_timeseries/
-/examples/2_Fort_Peck/data/US-FPe_daily_data.csv
-/examples/2_Fort_Peck/data/pestrun/
-/examples/3_Crane/data/gis/flux_fields_gfid.json
-/examples/3_Crane/data/landsat/
-/examples/3_Crane/data/met_timeseries/
-/examples/3_Crane/data/properties/
-/examples/3_Crane/data/snodas/
-/examples/3_Crane/data/plot_timeseries/
-/examples/3_Crane/data/US-FPe_daily_data.csv
-/examples/3_Crane/data/pestrun/
-/examples/4_Flux_Network/data/snodas/
-/examples/4_Flux_Network/data/properties/
-/examples/4_Flux_Network/data/met_timeseries/
-/examples/4_Flux_Network/data/landsat/
-/examples/4_Flux_Network/data/plot_timeseries/
-/examples/4_Flux_Network/data/bias_correction_tif/
-/examples/4_Flux_Network/data/pestrun/
+# Example data directories: ignore everything except tracked inputs
+/examples/1_Boulder/data/*
+!/examples/1_Boulder/data/gis/
+!/examples/1_Boulder/data/bias_correction_tif/
+
+/examples/2_Fort_Peck/data/*
+!/examples/2_Fort_Peck/data/gis/
+!/examples/2_Fort_Peck/data/prepped_input.zip
+!/examples/2_Fort_Peck/data/US-FPe_daily_data.zip
+
+/examples/3_Crane/data/*
+!/examples/3_Crane/data/gis/
+!/examples/3_Crane/data/prepped_input.zip
+
+/examples/4_Flux_Network/data/*
+!/examples/4_Flux_Network/data/gis/
+
+# Generated shapefiles and provenance in gis dirs
+/examples/*/data/gis/*_gfid*
+/examples/*/data/gis/shapefile_provenance.txt
+
 /examples/logs/
 
-examples/6_Flux_International/data/landsat/
-examples/6_Flux_International/data/ecostress/
 # Diagnostic scratch work
 examples/diagnostics/
