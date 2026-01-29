@@ -8,9 +8,19 @@ version = "0.1.0"
 description = "Soil Water balance Inverse Modeling using Remote Sensing"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
-license = { text = "CC-BY-NC-4.0" }
-authors = [{ name = "SWIM-RS Developers" }]
+license = { text = "Apache 2.0" }
+authors = [{ name = "David Ketchum" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Hydrology",
+  "Programming Language :: Python :: 3.13",
+]
 dependencies = [
+  "numpy",
+  "numba",
+  "scipy",
+  "rasterio",
   "pyemu",
   "pandas",
   "geopandas",
@@ -46,6 +56,8 @@ swim = "swimrs.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/dgketchum/swim-rs"
+Repository = "https://github.com/dgketchum/swim-rs"
+Issues = "https://github.com/dgketchum/swim-rs/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
