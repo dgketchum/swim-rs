@@ -93,11 +93,8 @@ from swimrs.container.storage import (
     ZipStoreProvider,
     open_storage,
 )
-from swimrs.container.workflow import (
-    WorkflowConfig,
-    WorkflowEngine,
-    WorkflowProgress,
-)
+
+# Workflow imports are lazy - import from swimrs.container.workflow directly if needed
 
 __all__ = [
     # Main classes
@@ -130,10 +127,7 @@ __all__ = [
     "ContainerLogger",
     "get_logger",
     "configure_logging",
-    # Workflow
-    "WorkflowEngine",
-    "WorkflowConfig",
-    "WorkflowProgress",
+    # Workflow: import from swimrs.container.workflow if needed
     # Enums
     "Instrument",
     "MaskType",
