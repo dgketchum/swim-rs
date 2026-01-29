@@ -25,7 +25,8 @@ new features (e.g., alternative snow/runoff/soil-water formulations, richer irri
 scheduling, and new remote-sensing proxies for ET and `Kcb`).
 
 While this software has been completely rewritten, it was originally based on a fork
-of [et-demands](https://github.com/WSWUP/et-demands); shoutout to Dr. Richard Allen, Chris Pearson, Charles Morton, Blake Minor,
+of [et-demands](https://github.com/WSWUP/et-demands); shoutout to Dr. Richard Allen, Chris Pearson, Charles Morton,
+Blake Minor,
 Thomas Ott, Dr. Justin Huntington, and others who've contributed to that project over the years.
 For a detailed comparison of the two codebases, see [ET-Demands Comparison](et-demands-compare.md).
 
@@ -86,7 +87,14 @@ the actual sequence differs for physical correctness:
 
 ## Algorithm Steps
 
-### Step 1: Basal Crop Coefficient from NDVI
+**Note:** Many of the **FAO-56 Modifications** below are based on qualitative
+and quantitative analysis of five eddy covariance flux towers in the Western US:
+US-FPe (Fort Peck, MT), S2 (Crane, OR), US-Blo (Sierra Nevada, CA), MR (Muddy
+River, NV), and ALARC2_Smith6 (Yuma, AZ). The other hundreds of flux towers
+were held out of the testing process and used to assess model generalization
+and validation metrics.
+
+### Step 1: Basal Crop Coefficient from NDVI (FAO-56 Modification)
 
 We compute the basal crop coefficient (Kcb) from NDVI using a sigmoid
 relationship:
@@ -97,12 +105,33 @@ Kcb = Kc_max / (1 + exp(-ndvi_k × (NDVI - ndvi_0)))
 
 The exponent is clipped to [-20, 20] to prevent numerical overflow.
 
-- Higher NDVI indicates greater vegetation vigor and higher transpiration
-  potential
-- The inflection point `ndvi_0` controls where the transition from bare to
-  vegetated occurs
-- The steepness `ndvi_k` controls how sharp that transition is
-- At `NDVI = ndvi_0`, `Kcb = Kc_max / 2`
+**Parameter interpretation:**
+
+- `ndvi_0` (inflection point): The NDVI value at which Kcb = Kc_max / 2.
+  This controls when transpiration "turns on" as vegetation develops.
+- `ndvi_k` (steepness): How sharply Kcb transitions from low to high values
+  around the inflection point. Higher values create a more step-like response.
+- `kc_max` (ceiling): Maximum basal crop coefficient at full canopy.
+
+**Land-cover dependence of ndvi_0:**
+
+At calibration test sites, we found that optimal `ndvi_0` varies substantially
+by vegetation type:
+
+| Land Cover             | Calibrated ndvi_0 | Interpretation                                           |
+|------------------------|-------------------|----------------------------------------------------------|
+| Grassland (US-FPe)     | 0.14              | Sparse cover already transpires; sigmoid activates early |
+| Irrigated alfalfa (S2) | 0.58              | Transpiration delayed until substantial canopy closure   |
+
+This reflects phenology: grasslands transpire proportionally to any greenness,
+while dense crops require substantial canopy development before reaching
+maximum transpiration rates.
+
+![Sigmoid response curves for grassland and irrigated alfalfa](images/sigmoid_comparison.png)
+
+*Figure 1: Calibrated NDVI→Kcb sigmoid curves for two flux tower sites. The
+inflection point (dot) marks where Kcb = Kc_max/2. Grassland (US-FPe) activates
+at low NDVI, while irrigated alfalfa (S2) requires near-full canopy.*
 
 **Parameters**: `ndvi_k` (slope), `ndvi_0` (inflection point),
 `kc_max` (ceiling)
@@ -112,14 +141,16 @@ The exponent is clipped to [-20, 20] to prevent numerical overflow.
 We partition precipitation into rain or snow and compute snowmelt:
 
 **Partitioning**:
+
 - If T_avg < 1°C: precipitation falls as snow
 - If T_avg ≥ 1°C: precipitation falls as rain
 
 **Albedo evolution**:
+
 - Fresh snowfall (> 3 mm) resets albedo to 0.98
 - Albedo decays exponentially with two rates:
-  - With some snowfall (0-3 mm): decay rate = 0.12
-  - With no snowfall: decay rate = 0.05 (slower aging)
+    - With some snowfall (0-3 mm): decay rate = 0.12
+    - With no snowfall: decay rate = 0.05 (slower aging)
 - Decay formula: `albedo = albedo_min + (albedo_prev - albedo_min) × exp(-decay_rate)`
 - Minimum albedo for old snow: 0.45
 
@@ -142,6 +173,7 @@ Two methods are available, selected via `runoff_process`:
 **Curve Number (CN) Method** (`runoff_process = "cn"`):
 
 We adjust CN for antecedent moisture based on surface layer depletion:
+
 - Wet conditions (low depletion): CN → CN_III (higher runoff)
 - Dry conditions (high depletion): CN → CN_I (lower runoff)
 
@@ -236,6 +268,7 @@ Ks = 1                          when Dr ≤ RAW
 ```
 
 Where:
+
 - `TAW = AWC × zr` (total available water)
 - `RAW = MAD × TAW` (readily available water)
 - `MAD` is the management allowed depletion fraction
@@ -292,6 +325,7 @@ modeling, and the practical necessity to provide the user with a good estimate o
 E/T partitioning in our water use models.
 
 Where:
+
 - Transpiration component: `T = Ks × Kcb × fc × ETref`
 - Evaporation component: `E = Ke × ETref`
 
@@ -327,6 +361,7 @@ rise when the root zone is depleted. Each field is evaluated independently
 based on its own conditions.
 
 **Conditions for subsidy** (all must be met for a given field):
+
 1. `gw_status = True` (field has groundwater connection)
 2. `f_sub > 0.2` (sufficient subsidy fraction)
 3. `depl_root > RAW` (root zone is depleted beyond threshold)
@@ -377,14 +412,17 @@ versus natural precipitation. This enables **consumptive use accounting**
 for water rights management.
 
 **Tracked quantities:**
+
 - `irr_frac_root`: Irrigation fraction in root zone [0, 1]
 - `irr_frac_l3`: Irrigation fraction in layer 3 [0, 1]
 
 **Derived outputs:**
+
 - `et_irr = eta × irr_frac_root`: ET from irrigation water (consumptive use)
 - `dperc_irr = dperc × irr_frac_root`: Deep percolation of irrigation water (return flow)
 
 **Fraction mixing logic:**
+
 - When irrigation is applied (90% to root zone), it mixes with existing soil water
 - When water transfers between root zone and layer 3 (root growth/recession),
   the irrigation fraction transfers proportionally
@@ -397,11 +435,11 @@ This feature is implemented in `kernels/irrigation_tracking.py`.
 
 The model tracks water in three conceptual layers:
 
-| Layer      | Symbol  | Description                      | Depth          |
-|------------|---------|----------------------------------|----------------|
-| Surface    | Ze      | Evaporation source layer         | ~0.1-0.15 m    |
-| Root zone  | zr      | Transpiration source, dynamic    | 0.1 to zr_max  |
-| Below-root | Layer 3 | Storage reservoir below roots    | zr_max - zr    |
+| Layer      | Symbol  | Description                   | Depth         |
+|------------|---------|-------------------------------|---------------|
+| Surface    | Ze      | Evaporation source layer      | ~0.1-0.15 m   |
+| Root zone  | zr      | Transpiration source, dynamic | 0.1 to zr_max |
+| Below-root | Layer 3 | Storage reservoir below roots | zr_max - zr   |
 
 - **Surface layer**: Controls evaporation availability via `depl_ze`
 - **Root zone**: Primary transpiration source, depth varies with crop
@@ -411,42 +449,42 @@ The model tracks water in three conceptual layers:
 
 ## Key State Variables
 
-| Variable    | Description                              | Units |
-|-------------|------------------------------------------|-------|
-| `depl_root` | Root zone depletion (0 = field capacity) | mm    |
-| `depl_ze`   | Surface layer depletion                  | mm    |
-| `daw3`      | Available water in layer 3               | mm    |
-| `swe`       | Snow water equivalent                    | mm    |
-| `zr`        | Current root depth                       | m     |
-| `ks`        | Water stress coefficient (damped)        | -     |
-| `kr`        | Evaporation reduction coefficient        | -     |
-| `albedo`    | Snow albedo                              | -     |
-| `irr_frac_root` | Irrigation fraction in root zone     | -     |
-| `irr_frac_l3`   | Irrigation fraction in layer 3       | -     |
+| Variable        | Description                              | Units |
+|-----------------|------------------------------------------|-------|
+| `depl_root`     | Root zone depletion (0 = field capacity) | mm    |
+| `depl_ze`       | Surface layer depletion                  | mm    |
+| `daw3`          | Available water in layer 3               | mm    |
+| `swe`           | Snow water equivalent                    | mm    |
+| `zr`            | Current root depth                       | m     |
+| `ks`            | Water stress coefficient (damped)        | -     |
+| `kr`            | Evaporation reduction coefficient        | -     |
+| `albedo`        | Snow albedo                              | -     |
+| `irr_frac_root` | Irrigation fraction in root zone         | -     |
+| `irr_frac_l3`   | Irrigation fraction in layer 3           | -     |
 
 ## Tunable Coefficients
 
 ### Calibration Parameters (adjustable via PEST++)
 
-| Parameter      | Description                      | Typical Range |
-|----------------|----------------------------------|---------------|
-| `ndvi_k`       | Sigmoid steepness for NDVI→Kcb   | 4-10          |
-| `ndvi_0`       | Sigmoid inflection point NDVI    | 0.1-0.7       |
-| `swe_alpha`    | Radiation melt coefficient       | -0.5-1.0      |
-| `swe_beta`     | Degree-day melt factor           | 0.5-2.5       |
-| `kr_damp`      | Kr damping factor                | 0.1-0.5       |
-| `ks_damp`      | Ks damping factor                | 0.1-0.5       |
-| `max_irr_rate` | Maximum irrigation rate          | 15-40 mm/day  |
+| Parameter      | Description                    | Typical Range |
+|----------------|--------------------------------|---------------|
+| `ndvi_k`       | Sigmoid steepness for NDVI→Kcb | 4-10          |
+| `ndvi_0`       | Sigmoid inflection point NDVI  | 0.1-0.7       |
+| `swe_alpha`    | Radiation melt coefficient     | -0.5-1.0      |
+| `swe_beta`     | Degree-day melt factor         | 0.5-2.5       |
+| `kr_damp`      | Kr damping factor              | 0.1-0.5       |
+| `ks_damp`      | Ks damping factor              | 0.1-0.5       |
+| `max_irr_rate` | Maximum irrigation rate        | 15-40 mm/day  |
 
 ### Field Properties (derived from data)
 
-| Property            | Description                  | Source                      |
-|---------------------|------------------------------|-----------------------------|
-| `awc`               | Available water capacity     | Soil surveys (gSSURGO)      |
-| `p_depletion` (MAD) | Management allowed depletion | Calibration/literature      |
-| `ke_max`            | Maximum Ke                   | 90th %ile ETf, NDVI < 0.3   |
-| `f_sub`             | Groundwater subsidy fraction | ETa/PPT ratio analysis      |
-| `zr_max`            | Maximum root depth           | Land cover type             |
+| Property            | Description                  | Source                    |
+|---------------------|------------------------------|---------------------------|
+| `awc`               | Available water capacity     | Soil surveys (gSSURGO)    |
+| `p_depletion` (MAD) | Management allowed depletion | Calibration/literature    |
+| `ke_max`            | Maximum Ke                   | 90th %ile ETf, NDVI < 0.3 |
+| `f_sub`             | Groundwater subsidy fraction | ETa/PPT ratio analysis    |
+| `zr_max`            | Maximum root depth           | Land cover type           |
 
 ### MAD Parameter: Dual Role
 
@@ -459,6 +497,7 @@ two purposes:
    `depl_root > RAW`
 
 **Implications**:
+
 - Higher MAD → irrigation triggered later → less frequent irrigation
 - Higher MAD → stress begins later → less stress-induced ET reduction
 - For rainfed fields, MAD controls only stress sensitivity
@@ -470,44 +509,44 @@ and crop stress tolerance.
 
 ### Daily Arrays (shape: n_days × n_fields)
 
-| Output      | Description                      | Units   |
-|-------------|----------------------------------|---------|
-| `eta`       | Actual evapotranspiration        | mm/day  |
-| `etf`       | ET fraction (ETa/ETref)          | -       |
-| `kcb`       | Basal crop coefficient           | -       |
-| `ke`        | Evaporation coefficient          | -       |
-| `ks`        | Water stress coefficient         | -       |
-| `kr`        | Evaporation reduction coefficient| -       |
-| `runoff`    | Surface runoff                   | mm      |
-| `rain`      | Liquid precipitation             | mm      |
-| `melt`      | Snowmelt                         | mm      |
-| `swe`       | Snow water equivalent            | mm      |
-| `depl_root` | Root zone depletion              | mm      |
-| `dperc`     | Deep percolation                 | mm      |
-| `irr_sim`   | Simulated irrigation             | mm      |
-| `gw_sim`    | Groundwater subsidy              | mm      |
-| `et_irr`    | ET from irrigation water         | mm      |
-| `dperc_irr` | Deep percolation of irr. water   | mm      |
-| `irr_frac_root` | Irrigation fraction in root zone | -   |
-| `irr_frac_l3`   | Irrigation fraction in layer 3   | -   |
+| Output          | Description                       | Units  |
+|-----------------|-----------------------------------|--------|
+| `eta`           | Actual evapotranspiration         | mm/day |
+| `etf`           | ET fraction (ETa/ETref)           | -      |
+| `kcb`           | Basal crop coefficient            | -      |
+| `ke`            | Evaporation coefficient           | -      |
+| `ks`            | Water stress coefficient          | -      |
+| `kr`            | Evaporation reduction coefficient | -      |
+| `runoff`        | Surface runoff                    | mm     |
+| `rain`          | Liquid precipitation              | mm     |
+| `melt`          | Snowmelt                          | mm     |
+| `swe`           | Snow water equivalent             | mm     |
+| `depl_root`     | Root zone depletion               | mm     |
+| `dperc`         | Deep percolation                  | mm     |
+| `irr_sim`       | Simulated irrigation              | mm     |
+| `gw_sim`        | Groundwater subsidy               | mm     |
+| `et_irr`        | ET from irrigation water          | mm     |
+| `dperc_irr`     | Deep percolation of irr. water    | mm     |
+| `irr_frac_root` | Irrigation fraction in root zone  | -      |
+| `irr_frac_l3`   | Irrigation fraction in layer 3    | -      |
 
 ## Source Code Reference
 
-| File                        | Section Coverage                        |
-|-----------------------------|-----------------------------------------|
-| `loop.py`                   | Daily iteration, kernel orchestration   |
-| `kernels/crop_coefficient.py` | Step 1 (NDVI → Kcb sigmoid)           |
-| `kernels/snow.py`           | Step 2 (Snow partitioning, albedo, melt)|
-| `kernels/runoff.py`         | Step 3 (CN and infiltration-excess)     |
-| `kernels/cover.py`          | Step 4 (Fractional cover, few)          |
-| `kernels/evaporation.py`    | Step 6 (Kr, Ke coefficients)            |
-| `kernels/transpiration.py`  | Step 7 (Ks stress coefficient)          |
-| `kernels/water_balance.py`  | Step 8 (Actual ET, deep percolation)    |
-| `kernels/irrigation.py`     | Steps 9-10 (Irrigation, groundwater)    |
-| `kernels/irrigation_tracking.py` | Irrigation fraction tracking       |
-| `kernels/root_growth.py`    | Step 5, 11 (Root depth, redistribution) |
-| `state.py`                  | State variable containers               |
-| `input.py`                  | Input data structures (HDF5 container)  |
+| File                             | Section Coverage                         |
+|----------------------------------|------------------------------------------|
+| `loop.py`                        | Daily iteration, kernel orchestration    |
+| `kernels/crop_coefficient.py`    | Step 1 (NDVI → Kcb sigmoid)              |
+| `kernels/snow.py`                | Step 2 (Snow partitioning, albedo, melt) |
+| `kernels/runoff.py`              | Step 3 (CN and infiltration-excess)      |
+| `kernels/cover.py`               | Step 4 (Fractional cover, few)           |
+| `kernels/evaporation.py`         | Step 6 (Kr, Ke coefficients)             |
+| `kernels/transpiration.py`       | Step 7 (Ks stress coefficient)           |
+| `kernels/water_balance.py`       | Step 8 (Actual ET, deep percolation)     |
+| `kernels/irrigation.py`          | Steps 9-10 (Irrigation, groundwater)     |
+| `kernels/irrigation_tracking.py` | Irrigation fraction tracking             |
+| `kernels/root_growth.py`         | Step 5, 11 (Root depth, redistribution)  |
+| `state.py`                       | State variable containers                |
+| `input.py`                       | Input data structures (HDF5 container)   |
 
 ## References
 
