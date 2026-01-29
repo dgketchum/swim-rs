@@ -77,7 +77,7 @@ jobs:
       - name: Run coverage
         env:
           PROJ_LIB: /usr/share/proj
-        run: uv run pytest tests/ -m "not slow" -q --cov=swimrs --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml
+        run: uv run pytest tests/ -m "not parity" -q --cov=swimrs --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
