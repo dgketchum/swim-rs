@@ -33,10 +33,10 @@ sparse_sample_ndvi = _try_import(
     "src.swimrs.data_extraction.ee.ndvi_export",
     "sparse_sample_ndvi",
 )
-sparse_sample_etf = _try_import(
+export_etf = _try_import(
     "swimrs.data_extraction.ee.etf_export",
     "src.swimrs.data_extraction.ee.etf_export",
-    "sparse_sample_etf",
+    "export_etf",
 )
 sample_snodas_swe = _try_import(
     "swimrs.data_extraction.ee.snodas_export",
@@ -279,30 +279,30 @@ def cmd_extract(args: argparse.Namespace) -> int:
                         drive_categorize=args.drive_categorize,
                     )
 
-            # Optional ETF models
+            # Optional ETF models (using OpenET FOSS packages)
             if args.etf_models:
                 models = [m.strip() for m in args.etf_models.split(",") if m.strip()]
+                clustered = not args.sparse  # default to clustered unless --sparse
                 for m in masks:
                     for model in models:
                         etf_check = os.path.join(
                             config.landsat_dir or "", "extracts", f"{model}_etf", m
                         )
-                        sparse_sample_etf(
-                            config.fields_shapefile,
-                            bucket=bucket_arg,
-                            debug=False,
-                            mask_type=m,
-                            check_dir=etf_check,
+                        export_etf(
+                            shapefile=config.fields_shapefile,
+                            model=model,
                             feature_id=config.feature_id_col,
                             select=_parse_sites_arg(args.sites),
                             start_yr=max(2016, years[0]),
                             end_yr=years[-1],
+                            mask_type=m,
+                            check_dir=etf_check,
                             state_col=config.state_col,
-                            model=model,
                             dest=export_dest,
+                            bucket=bucket_arg,
                             drive_folder="swim",
                             file_prefix=file_prefix,
-                            drive_categorize=args.drive_categorize,
+                            clustered=clustered,
                         )
         except Exception as e:
             print(f"Remote sensing export error: {e}")
@@ -932,7 +932,12 @@ def build_parser() -> argparse.ArgumentParser:
     pe.add_argument(
         "--etf-models",
         default=None,
-        help="Comma-separated ETF models to export (options: ssebop, ptjpl, sims, eemetric, geesebal, disalexi, openet)",
+        help="Comma-separated ETF models to export (options: ptjpl, ssebop, sims, geesebal). Requires swimrs[openet].",
+    )
+    pe.add_argument(
+        "--sparse",
+        action="store_true",
+        help="Use sparse ETf export (one task per field-year). Default is clustered (one task per year).",
     )
     pe.add_argument(
         "--no-snodas", action="store_true", help="Skip SNODAS SWE extraction (default: run)"

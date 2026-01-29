@@ -24,7 +24,6 @@ dependencies = [
   "rasterstats",
   "h5py",
   "pytz",
-  "utm",
   "matplotlib",
   "seaborn",
   "pyemu",

@@ -160,15 +160,17 @@ def build_feature_collection(
     return ee.FeatureCollection(ee.Feature(polygon, {feature_id: fid}))
 
 
-def export_table_to_gcs(
+def export_table(
     data: ee.FeatureCollection,
     desc: str,
-    bucket: str,
-    fn_prefix: str,
     selectors: list[str],
+    dest: str = "drive",
+    bucket: str | None = None,
+    fn_prefix: str = "swim",
+    drive_folder: str = "swim",
 ) -> bool:
     """
-    Export a FeatureCollection to Google Cloud Storage as CSV.
+    Export a FeatureCollection to Google Drive or Cloud Storage as CSV.
 
     Parameters
     ----------
@@ -176,26 +178,44 @@ def export_table_to_gcs(
         The data to export.
     desc : str
         Export task description.
-    bucket : str
-        GCS bucket name (without gs:// prefix).
-    fn_prefix : str
-        File name prefix (path within bucket).
     selectors : list
         Column names to include in export.
+    dest : str
+        Export destination: 'drive' or 'bucket'.
+    bucket : str, optional
+        GCS bucket name (required if dest='bucket').
+    fn_prefix : str
+        File name prefix (path within bucket or Drive folder).
+    drive_folder : str
+        Google Drive folder name (used if dest='drive').
 
     Returns
     -------
     bool
         True if export started successfully, False otherwise.
     """
-    task = ee.batch.Export.table.toCloudStorage(
-        data,
-        description=desc,
-        bucket=bucket,
-        fileNamePrefix=fn_prefix,
-        fileFormat="CSV",
-        selectors=selectors,
-    )
+    if dest == "bucket":
+        if not bucket:
+            raise ValueError("bucket is required when dest='bucket'")
+        task = ee.batch.Export.table.toCloudStorage(
+            data,
+            description=desc,
+            bucket=bucket,
+            fileNamePrefix=fn_prefix,
+            fileFormat="CSV",
+            selectors=selectors,
+        )
+    elif dest == "drive":
+        task = ee.batch.Export.table.toDrive(
+            collection=data,
+            description=desc,
+            folder=drive_folder,
+            fileNamePrefix=fn_prefix,
+            fileFormat="CSV",
+            selectors=selectors,
+        )
+    else:
+        raise ValueError(f"dest must be 'drive' or 'bucket', got '{dest}'")
 
     try:
         task.start()
@@ -217,6 +237,28 @@ def export_table_to_gcs(
 
         else:
             raise
+
+
+def export_table_to_gcs(
+    data: ee.FeatureCollection,
+    desc: str,
+    bucket: str,
+    fn_prefix: str,
+    selectors: list[str],
+) -> bool:
+    """
+    Export a FeatureCollection to Google Cloud Storage as CSV.
+
+    Deprecated: Use export_table() with dest='bucket' instead.
+    """
+    return export_table(
+        data=data,
+        desc=desc,
+        selectors=selectors,
+        dest="bucket",
+        bucket=bucket,
+        fn_prefix=fn_prefix,
+    )
 
 
 def get_scene_ids(
@@ -273,3 +315,67 @@ def parse_scene_name(img_id: str) -> str:
     """
     splt = img_id.split("/")[-1].split("_")
     return "_".join(splt[-3:])
+
+
+def get_pathrows_from_scenes(scenes: list[str]) -> set[str]:
+    """
+    Extract unique Landsat path/row combinations from scene IDs.
+
+    Parameters
+    ----------
+    scenes : list
+        List of Landsat scene IDs.
+
+    Returns
+    -------
+    set
+        Unique path/row strings (e.g., {'044033', '044034'}).
+    """
+    pathrows = set()
+    for scene in scenes:
+        # Scene format: 'LANDSAT/LC08/C02/T1_L2/LC08_044033_20170716' or 'LC08_044033_20170716'
+        parts = scene.split("/")[-1].split("_")
+        if len(parts) >= 2:
+            pathrows.add(parts[1])  # e.g., '044033'
+    return pathrows
+
+
+def shapefile_to_feature_collection(
+    shapefile: str,
+    feature_id: str,
+    select: list[str] | None = None,
+    keep_props: list[str] | None = None,
+) -> ee.FeatureCollection:
+    """
+    Convert a local shapefile to an ee.FeatureCollection.
+
+    Parameters
+    ----------
+    shapefile : str
+        Path to the shapefile.
+    feature_id : str
+        Field name for feature identifier.
+    select : list, optional
+        List of feature IDs to include (filters the collection).
+    keep_props : list, optional
+        Additional properties to preserve (beyond feature_id).
+
+    Returns
+    -------
+    ee.FeatureCollection
+    """
+    df = load_shapefile(shapefile, feature_id)
+
+    if select is not None:
+        df = df[df.index.isin(select)]
+
+    props_to_keep = [feature_id] + (keep_props or [])
+    props_to_keep = [p for p in props_to_keep if p in df.columns]
+
+    features = []
+    for fid, row in df.iterrows():
+        geom = ee.Geometry(row.geometry.__geo_interface__)
+        props = {p: row[p] for p in props_to_keep if p in row}
+        features.append(ee.Feature(geom, props))
+
+    return ee.FeatureCollection(features)

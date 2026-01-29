@@ -9,7 +9,6 @@ import pytest
 from shapely.geometry import Point, Polygon
 
 from swimrs.data_extraction.ee.common import load_shapefile, parse_scene_name
-from swimrs.data_extraction.ee.etf_export import get_utm_epsg
 
 
 class TestParseSceneName:
@@ -51,66 +50,6 @@ class TestParseSceneName:
         img_id = "LC08_044033_20170716"
         result = parse_scene_name(img_id)
         assert result == "LC08_044033_20170716"
-
-
-class TestGetUtmEpsg:
-    """Tests for get_utm_epsg function."""
-
-    def test_northern_hemisphere_zone_12(self):
-        """Test UTM zone 12N (Montana)."""
-        lat, lon = 46.0, -110.0  # Montana
-        epsg, zone_str = get_utm_epsg(lat, lon)
-        assert epsg == 32612
-        assert zone_str == "12N"
-
-    def test_northern_hemisphere_zone_10(self):
-        """Test UTM zone 10N (California coast)."""
-        lat, lon = 37.0, -122.0  # San Francisco area
-        epsg, zone_str = get_utm_epsg(lat, lon)
-        assert epsg == 32610
-        assert zone_str == "10N"
-
-    def test_southern_hemisphere(self):
-        """Test southern hemisphere UTM zone."""
-        lat, lon = -33.9, 18.4  # Cape Town, South Africa
-        epsg, zone_str = get_utm_epsg(lat, lon)
-        assert epsg == 32734  # Zone 34S
-        assert zone_str == "34S"
-
-    def test_zone_boundary_west(self):
-        """Test near zone boundary in western US."""
-        lat, lon = 40.0, -105.0  # Boulder, CO area
-        epsg, zone_str = get_utm_epsg(lat, lon)
-        assert 32600 < epsg < 32700  # Northern hemisphere
-        assert zone_str.endswith("N")
-
-    def test_eastern_us(self):
-        """Test eastern US location."""
-        lat, lon = 40.7, -74.0  # New York City
-        epsg, zone_str = get_utm_epsg(lat, lon)
-        assert epsg == 32618  # Zone 18N
-        assert zone_str == "18N"
-
-    def test_returns_tuple(self):
-        """get_utm_epsg returns a tuple of (int, str)."""
-        result = get_utm_epsg(45.0, -110.0)
-        assert isinstance(result, tuple)
-        assert len(result) == 2
-        assert isinstance(result[0], int)
-        assert isinstance(result[1], str)
-
-    def test_equator_northern_letter(self):
-        """Test location at equator with northern zone letter."""
-        lat, lon = 0.5, -80.0  # Ecuador
-        epsg, zone_str = get_utm_epsg(lat, lon)
-        assert zone_str.endswith("N")
-
-    def test_equator_southern_letter(self):
-        """Test location just south of equator."""
-        lat, lon = -0.5, -80.0  # Southern Ecuador
-        epsg, zone_str = get_utm_epsg(lat, lon)
-        # Zone letter < 'N' means southern
-        assert zone_str.endswith("S")
 
 
 class TestLoadShapefile:
