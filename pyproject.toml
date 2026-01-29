@@ -23,6 +23,7 @@ dependencies = [
   "rasterio",
   "rasterstats",
   "h5py",
+  "pytz",
   "pyemu",
   "pandas",
   "geopandas",
