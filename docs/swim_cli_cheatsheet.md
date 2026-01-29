@@ -1,6 +1,6 @@
 # SWIM CLI Cheatsheet
 
-Fast reference for the `swim` CLI. Default order (container-first): extract → prep (.swim) → calibrate/evaluate. Run `swim --help` or `swim <command> --help` for full detail.
+Fast reference for the `swim` CLI. Default order: extract → prep (.swim) → calibrate/evaluate. Run `swim --help` or `swim <command> --help` for full detail.
 
 ## Example: Fort Peck (Example 2)
 ```

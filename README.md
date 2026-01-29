@@ -206,7 +206,7 @@ Flux data from [Volk et al., 2023](https://www.sciencedirect.com/science/article
 | **5_Flux_Ensemble**      | Cropland subset (~60 stations) with OpenET ensemble calibration. Compares SWIM against SSEBop, PT-JPL, and SIMS ensemble targets. Includes OpenET evaluation scripts and cropland filtering utilities.                                                                                                                      | [README](examples/5_Flux_Ensemble/README.md) |
 | **6_Flux_International** | International flux sites using ERA5-Land meteorology, HWSD soils, and Landsat+Sentinel NDVI fusion. Demonstrates non-CONUS workflows with `mask_mode = "none"` and global data sources.                                                                                                                                     | —                                            |
 
-## CLI overview (container-first)
+## CLI overview
 
 - `swim extract <config.toml>` — Earth Engine + GridMET/ERA5 exports (Drive or bucket)
 - `swim prep <config.toml>` — ingest into `.swim`, compute dynamics, export model inputs
