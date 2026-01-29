@@ -1,0 +1,49 @@
+{
+  "attributes": {
+    "project_name": "legacy_conversion",
+    "schema_version": "1.0",
+    "created_at": "2026-01-27T17:17:35.327509+00:00",
+    "start_date": "2010-01-01",
+    "end_date": "2011-12-31",
+    "n_fields": 3,
+    "n_days": 730,
+    "uid_column": "site_id",
+    "source_shapefile": "tests/fixtures/multi_station/data/gis/multi_station.shp",
+    "provenance": {
+      "container_created_at": "2026-01-27T17:17:35.327492+00:00",
+      "container_created_by": null,
+      "schema_version": "1.0",
+      "events": [
+        {
+          "id": "evt_7c0657a48966",
+          "timestamp": "2026-01-27T17:17:35.477693+00:00",
+          "operation": "create",
+          "swim_version": "0.1.0",
+          "user": "dgketchum",
+          "target": null,
+          "source": null,
+          "source_format": null,
+          "params": {
+            "fields_shapefile": "tests/fixtures/multi_station/data/gis/multi_station.shp",
+            "uid_column": "site_id",
+            "start_date": "2010-01-01",
+            "end_date": "2011-12-31",
+            "project_name": "legacy_conversion"
+          },
+          "fields_affected": [
+            "US-FPe",
+            "ALARC2_Smith6",
+            "MR"
+          ],
+          "date_range": null,
+          "records_count": 3,
+          "duration_seconds": null,
+          "success": true,
+          "error_message": null
+        }
+      ]
+    }
+  },
+  "zarr_format": 3,
+  "node_type": "group"
+}

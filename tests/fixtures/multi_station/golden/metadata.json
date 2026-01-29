@@ -1,0 +1,20 @@
+{
+  "description": "Multi-station fixture from 5_Flux_Ensemble calibration run",
+  "source": "/data/ssd2/swim/5_Flux_Ensemble/diy_ensemble_test",
+  "generated_at": "2026-01-15T21:08:23.113100",
+  "start_date": "2010-01-01",
+  "end_date": "2011-12-31",
+  "spinup_date": "2009-12-31",
+  "field_ids": [
+    "ALARC2_Smith6",
+    "US-FPe",
+    "MR"
+  ],
+  "field_count": 3,
+  "n_days": 730,
+  "notes": [
+    "Golden outputs from old model (swimrs.model.obs_field_cycle)",
+    "Includes irrigated (ALARC2_Smith6), non-irrigated grassland (US-FPe), and wetland/riparian (MR)",
+    "Spinup state from 2009-12-31 model output"
+  ]
+}

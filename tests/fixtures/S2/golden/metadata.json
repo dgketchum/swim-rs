@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-01-05T12:01:57.965871",
+  "shapefile": "/home/dgketchum/code/swim-rs/tests/fixtures/S2/data/gis/flux_footprint_s2.shp",
+  "uid_column": "site_id",
+  "start_date": "2020-01-01",
+  "end_date": "2022-12-31",
+  "etf_model": "ssebop",
+  "instrument": "landsat",
+  "mask": "irr",
+  "field_uids": [
+    "S2"
+  ]
+}
