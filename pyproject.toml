@@ -21,6 +21,7 @@ dependencies = [
   "numba",
   "scipy",
   "rasterio",
+  "h5py",
   "pyemu",
   "pandas",
   "geopandas",
