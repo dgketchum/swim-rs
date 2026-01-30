@@ -20,11 +20,15 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 __all__ = [
+    "TUNABLE_PARAMS",
     "WaterBalanceState",
     "FieldProperties",
     "CalibrationParameters",
     "load_pest_mult_properties",
 ]
+
+# PEST++ calibration parameter names (matches mult file naming convention)
+TUNABLE_PARAMS = ["aw", "ndvi_k", "ndvi_0", "mad", "swe_alpha", "swe_beta", "ks_alpha", "kr_alpha"]
 
 
 @dataclass

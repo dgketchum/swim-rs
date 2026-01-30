@@ -3,8 +3,7 @@ import sys
 
 import pytest
 
-# Mark entire module as unit (fast, no external deps)
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 
 def test_cli_help_module():

@@ -15,8 +15,8 @@ from pathlib import Path
 import pandas as pd
 from openet_evaluation import evaluate_openet_site
 
+from swimrs.calibrate.flux_utils import get_flux_sites
 from swimrs.container import SwimContainer
-from swimrs.prep import get_flux_sites
 from swimrs.process.input import build_swim_input
 from swimrs.process.loop import run_daily_loop
 from swimrs.swim.config import ProjectConfig

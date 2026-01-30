@@ -109,6 +109,7 @@ markers = [
     "conservation: Mass balance and water conservation verification tests",
     "slow: Tests taking > 5 seconds",
     "requires_ee: Tests requiring Earth Engine authentication (skip with default, run with --run-ee)",
+    "requires_network: Tests requiring network access (skip with default, run with --run-network)",
     "pest: Tests requiring PEST++ binaries",
 ]
 filterwarnings = [

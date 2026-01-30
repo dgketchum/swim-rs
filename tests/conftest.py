@@ -462,6 +462,10 @@ def pytest_configure(config):
         "markers",
         "requires_ee: marks tests requiring Earth Engine authentication (run with --run-ee)",
     )
+    config.addinivalue_line(
+        "markers",
+        "requires_network: marks tests requiring network access (run with --run-network)",
+    )
 
 
 def pytest_addoption(parser):
@@ -472,15 +476,49 @@ def pytest_addoption(parser):
         default=False,
         help="Run tests that require Earth Engine authentication",
     )
+    parser.addoption(
+        "--run-network",
+        action="store_true",
+        default=False,
+        help="Run tests that require network access",
+    )
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip tests based on markers and command line options."""
-    if config.getoption("--run-ee"):
-        # --run-ee specified: don't skip EE tests
-        return
+    """Auto-apply markers and skip tests requiring opt-in integrations."""
+    from pathlib import Path
 
-    skip_ee = pytest.mark.skip(reason="need --run-ee option to run")
+    def _auto_mark(item) -> None:
+        path = Path(str(getattr(item, "path", getattr(item, "fspath", ""))))
+        parts = set(path.parts)
+        if "tests" not in parts:
+            return
+
+        # Auto-apply markers by directory so `-m unit`, etc. works consistently.
+        if "unit" in parts:
+            item.add_marker(pytest.mark.unit)
+        if "integration" in parts:
+            item.add_marker(pytest.mark.integration)
+        if "regression" in parts:
+            item.add_marker(pytest.mark.regression)
+            item.add_marker(pytest.mark.slow)
+        if "parity" in parts:
+            item.add_marker(pytest.mark.parity)
+            item.add_marker(pytest.mark.slow)
+        if "conservation" in parts:
+            item.add_marker(pytest.mark.conservation)
+
     for item in items:
-        if "requires_ee" in item.keywords:
-            item.add_marker(skip_ee)
+        _auto_mark(item)
+
+    if not config.getoption("--run-ee"):
+        skip_ee = pytest.mark.skip(reason="need --run-ee option to run")
+        for item in items:
+            if "requires_ee" in item.keywords:
+                item.add_marker(skip_ee)
+
+    if not config.getoption("--run-network"):
+        skip_network = pytest.mark.skip(reason="need --run-network option to run")
+        for item in items:
+            if "requires_network" in item.keywords:
+                item.add_marker(skip_network)

@@ -16,6 +16,8 @@ pytestmark = pytest.mark.integration
 class TestGridMetIntegration:
     """Integration tests for GridMet THREDDS service."""
 
+    pytestmark = [pytest.mark.integration, pytest.mark.requires_network]
+
     def test_get_point_elevation(self):
         """Fetch elevation for a single point from THREDDS."""
         import numpy as np
@@ -28,7 +30,7 @@ class TestGridMetIntegration:
         gm = GridMet(variable="elev", lat=lat, lon=lon)
         elev = gm.get_point_elevation()
 
-        assert isinstance(elev, (float, np.floating))
+        assert isinstance(elev, float | np.floating)
         assert 600 < elev < 800  # Fort Peck is ~634m
 
     def test_get_point_timeseries_july(self):

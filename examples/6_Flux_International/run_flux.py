@@ -16,8 +16,8 @@ import numpy as np
 import pandas as pd
 from ssebop_evaluation import evaluate_ssebop_site
 
+from swimrs.calibrate.flux_utils import get_flux_sites
 from swimrs.container import SwimContainer
-from swimrs.prep import get_flux_sites
 from swimrs.process.input import build_swim_input
 from swimrs.process.loop import run_daily_loop
 from swimrs.swim.config import ProjectConfig

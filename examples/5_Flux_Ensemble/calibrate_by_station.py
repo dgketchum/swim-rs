@@ -3,10 +3,10 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from swimrs.calibrate.flux_utils import get_flux_sites
 from swimrs.calibrate.pest_builder import PestBuilder
 from swimrs.calibrate.run_pest import run_pst
-from swimrs.prep import get_ensemble_parameters, get_flux_sites
-from swimrs.prep.prep_plots import prep_fields_json, preproc
+from swimrs.container import SwimContainer
 from swimrs.swim.config import ProjectConfig
 
 
@@ -35,6 +35,9 @@ def run_pest_sequence(
 ):
     project = cfg.project_name
 
+    container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}.swim")
+    container = SwimContainer.open(container_path, mode="r")
+
     for i, fid in enumerate(select_stations, start=1):
         print(f"{fid}: {i} of {len(select_stations)} stations")
 
@@ -45,26 +48,6 @@ def run_pest_sequence(
         target_dir = os.path.join(results_dir, fid)
         os.makedirs(target_dir, exist_ok=True)
 
-        station_prepped_input = os.path.join(target_dir, f"prepped_input_{fid}.json")
-        if not os.path.isfile(station_prepped_input) or overwrite:
-            models = [cfg.etf_target_model] + (cfg.etf_ensemble_members or [])
-            rs_params = get_ensemble_parameters(include=models)
-            prep_fields_json(
-                cfg.properties_json,
-                cfg.plot_timeseries,
-                cfg.dynamics_data_json,
-                cfg.input_data,
-                target_plots=[fid],
-                rs_params=rs_params,
-                interp_params=("ndvi",),
-            )
-            preproc(cfg)
-
-        shutil.copyfile(cfg.input_data, station_prepped_input)
-        shutil.copyfile(
-            cfg.input_data, os.path.join(cfg.pest_run_dir, os.path.basename(cfg.input_data))
-        )
-
         p_dir = os.path.join(cfg.pest_run_dir, "pest")
         m_dir = os.path.join(cfg.pest_run_dir, "master")
         w_dir = os.path.join(cfg.pest_run_dir, "workers")
@@ -73,6 +56,7 @@ def run_pest_sequence(
 
         builder = PestBuilder(
             cfg,
+            container,
             use_existing=False,
             python_script=getattr(cfg, "python_script", None),
             conflicted_obs=None,
@@ -99,6 +83,7 @@ def run_pest_sequence(
                 shutil.copyfile(pdc_file, temp_pdc)
                 builder = PestBuilder(
                     cfg,
+                    container,
                     use_existing=False,
                     python_script=getattr(cfg, "python_script", None),
                     conflicted_obs=temp_pdc,

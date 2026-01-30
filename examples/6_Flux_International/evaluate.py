@@ -22,8 +22,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error, r2_score
 
+from swimrs.calibrate.flux_utils import get_flux_sites
 from swimrs.container import SwimContainer
-from swimrs.prep import get_flux_sites
 from swimrs.process.input import build_swim_input
 from swimrs.process.loop import run_daily_loop
 from swimrs.swim.config import ProjectConfig
