@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/dgketchum/swim-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/dgketchum/swim-rs/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/dgketchum/swim-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/dgketchum/swim-rs)
+[![Documentation](https://readthedocs.org/projects/swim-rs/badge/?version=latest)](https://swim-rs.readthedocs.io/en/latest/)
 
 **S**oil **W**ater balance **I**nverse **M**odeling using **R**emote **S**ensing
 
