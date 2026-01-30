@@ -77,3 +77,47 @@ def test_gridmet_point_elevation(monkeypatch):
 
     gm = GridMet(variable="elev", lat=48.3, lon=-105.1)
     assert gm.get_point_elevation() == pytest.approx(650.0)
+
+
+def test_gridmet_build_url_non_elevation_variable():
+    from swimrs.data_extraction.gridmet.thredds import GridMet
+
+    gm = GridMet(variable="pr", lat=48.3, lon=-105.1, start="2020-01-01", end="2020-01-02")
+    url = gm._build_url()
+    assert "agg_met_pr_1979_CurrentYear_CONUS.nc" in url
+    assert url.startswith("http://thredds.northwestknowledge.net:8080/")
+
+
+def test_gridmet_init_start_after_end_raises():
+    from swimrs.data_extraction.gridmet.thredds import GridMet
+
+    with pytest.raises(ValueError, match="start date is after end date"):
+        GridMet(variable="pr", lat=48.3, lon=-105.1, start="2020-07-10", end="2020-07-01")
+
+
+def test_gridmet_init_missing_bbox_and_lat_raises():
+    from swimrs.data_extraction.gridmet.thredds import GridMet
+
+    with pytest.raises(AttributeError, match="No bbox or coordinates given"):
+        GridMet(variable="pr", start="2020-01-01", end="2020-01-02")
+
+
+def test_gridmet_single_day_returns_one_row(monkeypatch):
+    from swimrs.data_extraction.gridmet import thredds
+    from swimrs.data_extraction.gridmet.thredds import GridMet
+
+    day = np.array(["2020-07-15"], dtype="datetime64[D]")
+    lat = np.array([48.0], dtype=float)
+    lon = np.array([-105.0], dtype=float)
+    data = np.array([[[4.5]]], dtype=float)
+
+    ds = xr.Dataset(
+        {"daily_mean_reference_evapotranspiration_alfalfa": (("day", "lat", "lon"), data)},
+        coords={"day": day, "lat": lat, "lon": lon},
+    )
+    monkeypatch.setattr(thredds, "open_dataset", lambda *a, **kw: ds)
+
+    gm = GridMet(variable="etr", lat=48.0, lon=-105.0, start="2020-07-15", end="2020-07-15")
+    df = gm.get_point_timeseries()
+    assert len(df) == 1
+    assert np.allclose(df["etr"].to_numpy(), np.array([4.5]))

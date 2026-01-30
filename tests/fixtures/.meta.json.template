@@ -1,0 +1,7 @@
+{
+  "generated_by": "script_name.py",
+  "swim_rs_version": "0.1.0",
+  "date": "YYYY-MM-DD",
+  "description": "Brief description of what this fixture represents",
+  "inputs": "How the golden data was generated"
+}

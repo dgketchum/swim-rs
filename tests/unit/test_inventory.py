@@ -1,6 +1,6 @@
 import numpy as np
 
-from swimrs.container.inventory import DataStatus, Inventory
+from swimrs.container.inventory import Coverage, DataStatus, Inventory
 
 
 class _FakeArray:
@@ -113,3 +113,81 @@ def test_inventory_validate_requirements_tracks_ready_fields_with_partial_and_mi
     assert [c.path for c in result.incomplete_data] == ["a"]
     assert result.ready_fields == ["uid1"]
     assert result.not_ready_fields == ["uid2"]
+
+
+def test_inventory_get_coverage_1d_all_nan_is_not_present():
+    root = _FakeRoot({"properties/soils/awc": _FakeArray([np.nan, np.nan])})
+    inv = Inventory(root, field_uids=["a", "b"])
+
+    cov = inv.get_coverage("properties/soils/awc")
+    assert cov.status == DataStatus.NOT_PRESENT
+    assert cov.fields_present == 0
+
+
+def test_inventory_get_coverage_1d_all_complete():
+    root = _FakeRoot({"properties/soils/awc": _FakeArray([150.0, 200.0])})
+    inv = Inventory(root, field_uids=["a", "b"])
+
+    cov = inv.get_coverage("properties/soils/awc")
+    assert cov.status == DataStatus.COMPLETE
+    assert cov.fields_present == 2
+    assert cov.percent_complete == 100.0
+    assert cov.fields_missing == []
+
+
+def test_inventory_get_coverage_2d_all_nan_is_not_present():
+    root = _FakeRoot(
+        {
+            "meteorology/gridmet/eto": _FakeArray(
+                [[np.nan, np.nan], [np.nan, np.nan], [np.nan, np.nan]]
+            ),
+        }
+    )
+    inv = Inventory(root, field_uids=["a", "b"])
+
+    cov = inv.get_coverage("meteorology/gridmet/eto")
+    assert cov.status == DataStatus.NOT_PRESENT
+    assert cov.fields_present == 0
+
+
+def test_inventory_get_coverage_3d_assumes_all_present():
+    data_3d = np.full((2, 3, 2), np.nan)
+    root = _FakeRoot({"some/3d/path": _FakeArray(data_3d)})
+    inv = Inventory(root, field_uids=["a", "b"])
+
+    cov = inv.get_coverage("some/3d/path")
+    assert cov.status == DataStatus.COMPLETE
+    assert cov.fields_present == 2
+
+
+def test_validate_requirements_all_missing():
+    root = _FakeRoot({})
+    inv = Inventory(root, field_uids=["uid1", "uid2"])
+
+    result = inv._validate_requirements(["a", "b", "c"], operation="test-op")
+    assert result.ready is False
+    assert set(result.missing_data) == {"a", "b", "c"}
+    # When all paths are missing, count == 0 == total - len(missing), so all fields "ready"
+    assert result.ready_fields == ["uid1", "uid2"]
+
+
+def test_validate_requirements_empty_required_paths():
+    root = _FakeRoot({})
+    inv = Inventory(root, field_uids=["uid1", "uid2"])
+
+    result = inv._validate_requirements([], operation="test-op")
+    # No missing data, all fields ready (count 0 == 0)
+    assert result.ready is True
+    assert result.missing_data == []
+    assert result.ready_fields == ["uid1", "uid2"]
+
+
+def test_coverage_percent_complete_zero_fields():
+    cov = Coverage(
+        path="test/path",
+        status=DataStatus.NOT_PRESENT,
+        fields_present=0,
+        fields_total=0,
+        fields_missing=[],
+    )
+    assert cov.percent_complete == 0.0
