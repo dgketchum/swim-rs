@@ -50,7 +50,8 @@ uv init --python 3.13
 uv add git+https://github.com/dgketchum/swim-rs.git
 
 # Calibration requires PEST++ binaries
-uv run python -c "import pyemu; pyemu.helpers.get_pestpp_binaries(dest_dir='./bin')"
+mkdir -p bin
+uv run python -c "from pyemu.utils import get_pestpp; get_pestpp('./bin')"
 export PATH="$PWD/bin:$PATH"
 ```
 
@@ -67,8 +68,7 @@ pip install git+https://github.com/dgketchum/swim-rs.git
 **With uv (recommended):**
 
 ```bash
-uv sync --all-extras
-source .venv/bin/activate
+uv sync --extra dev
 pytest
 
 # Coverage (line + branch)
@@ -91,8 +91,8 @@ By default, tests requiring Earth Engine auth are skipped; run them with `pytest
 This example uses shipped data — no Earth Engine access required.
 
 ```bash
-uv sync --all-extras
-source .venv/bin/activate
+# Clone the repo for example data
+git clone https://github.com/dgketchum/swim-rs.git && cd swim-rs
 
 # Build container from shipped data
 swim prep examples/2_Fort_Peck/2_Fort_Peck.toml --overwrite
