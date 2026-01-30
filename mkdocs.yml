@@ -77,6 +77,7 @@ extra_javascript:
 nav:
   - Home: index.md
   - Installation: installation.md
+  - How-To Guide: how_to.md
   - Data Extraction Guide: data_extraction.md
   - Algorithm Description: algorithm_description.md
   - ET-Demands Comparison: et-demands-compare.md
