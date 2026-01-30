@@ -9,6 +9,7 @@ Tests verify:
 """
 
 import numpy as np
+import pytest
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 from swimrs.process.state import (
@@ -243,3 +244,61 @@ class TestCalibrationParameters:
 
         # Params should be unchanged from base
         assert_array_equal(params.ndvi_k, base.ndvi_k)
+
+
+class TestContainerStateGetTimeSlice:
+    """Tests for ContainerState.get_time_slice()."""
+
+    @pytest.fixture
+    def state(self):
+        """Create a ContainerState with a known time index."""
+        from unittest.mock import MagicMock
+
+        import pandas as pd
+
+        from swimrs.container.state import ContainerState
+
+        provider = MagicMock()
+        time_index = pd.date_range("2020-01-01", "2020-12-31", freq="D")
+        provenance = MagicMock()
+        inventory = MagicMock()
+
+        return ContainerState(
+            provider=provider,
+            field_uids=["A", "B"],
+            time_index=time_index,
+            provenance=provenance,
+            inventory=inventory,
+            mode="r",
+        )
+
+    def test_both_none_full_slice(self, state):
+        """Both None returns full slice [0:len]."""
+        s = state.get_time_slice(None, None)
+        assert s.start == 0
+        assert s.stop == len(state.time_index)
+
+    def test_start_only(self, state):
+        """Start-only returns slice from start to end."""
+        s = state.get_time_slice("2020-06-01", None)
+        assert s.start > 0
+        assert s.stop == len(state.time_index)
+
+    def test_end_only(self, state):
+        """End-only returns slice from 0 to end (inclusive)."""
+        s = state.get_time_slice(None, "2020-06-30")
+        assert s.start == 0
+        assert s.stop > 0
+        assert s.stop <= len(state.time_index)
+
+    def test_both_provided(self, state):
+        """Both provided returns bounded slice."""
+        s = state.get_time_slice("2020-03-01", "2020-06-30")
+        assert s.start > 0
+        assert s.stop > s.start
+        assert s.stop <= len(state.time_index)
+
+    def test_single_day_slice(self, state):
+        """Single day returns slice of length 1."""
+        s = state.get_time_slice("2020-07-15", "2020-07-15")
+        assert s.stop - s.start == 1

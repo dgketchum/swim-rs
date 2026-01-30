@@ -427,3 +427,137 @@ end_date = "2020-12-31"
         config.read_config(str(toml_file))
 
         assert config.runoff_process == "cn"
+
+
+class TestResolvePathsEdgeCases:
+    """Tests for _resolve_paths edge cases."""
+
+    def test_circular_reference_stops_at_depth_5(self):
+        """Circular references don't infinite loop (depth guard)."""
+        raw_config = {
+            "paths": {"a": "{b}/x", "b": "{a}/y"},
+        }
+        base_vars = {"root": "/root", "project": "test"}
+        # Should not hang - the depth limit prevents infinite recursion
+        result = ProjectConfig._resolve_paths(raw_config, base_vars)
+        # Just verify it returns without error
+        assert "paths" in result
+
+    def test_multi_pass_convergence(self):
+        """Multi-pass resolves {data} -> {root} in correct order."""
+        raw_config = {
+            "paths": {
+                "data": "{root}/data",
+                "gis": "{data}/gis",
+                "fields": "{gis}/fields.shp",
+            }
+        }
+        base_vars = {"root": "/project", "project": "test"}
+        result = ProjectConfig._resolve_paths(raw_config, base_vars)
+        assert result["paths"]["data"] == "/project/data"
+        assert result["paths"]["gis"] == "/project/data/gis"
+        assert result["paths"]["fields"] == "/project/data/gis/fields.shp"
+
+    def test_unresolvable_key_left_as_is(self):
+        """Unresolvable template key left unchanged."""
+        raw_config = {
+            "paths": {"out": "{nonexistent_var}/output"},
+        }
+        base_vars = {"root": "/root", "project": "test"}
+        result = ProjectConfig._resolve_paths(raw_config, base_vars)
+        # Should contain the unresolved template
+        assert "{nonexistent_var}" in result["paths"]["out"]
+
+    def test_tilde_expansion_in_nested_dicts(self):
+        """Tildes in nested dicts are expanded."""
+        raw_config = {
+            "paths": {
+                "nested": {
+                    "deep": "~/deep/path",
+                }
+            }
+        }
+        base_vars = {"root": "/root", "project": "test"}
+        result = ProjectConfig._resolve_paths(raw_config, base_vars)
+        assert not result["paths"]["nested"]["deep"].startswith("~")
+        assert result["paths"]["nested"]["deep"].startswith(os.path.expanduser("~"))
+
+
+class TestReadForecastParameters:
+    """Tests for read_forecast_parameters()."""
+
+    def test_csv_path_produces_param_mean(self, tmp_path):
+        """CSV path produces forecast_parameters as column means."""
+        # Create forecast parameter CSV (rows=realizations, cols=params)
+        import pandas as pd
+
+        data = {
+            "group1:prefix_alpha_suffix": [1.0, 2.0, 3.0],
+            "group1:prefix_beta_suffix": [4.0, 5.0, 6.0],
+        }
+        df = pd.DataFrame(data, index=["r0", "r1", "r2"])
+        csv_path = tmp_path / "forecast_params.csv"
+        df.to_csv(csv_path)
+
+        config = ProjectConfig()
+        config.forecast_param_csv = str(csv_path)
+        config.forecast_parameters_csv = None
+        config.parameter_set_json = None
+        config.project_ws = None
+
+        config.read_forecast_parameters()
+
+        assert config.forecast_parameters is not None
+        assert len(config.forecast_parameters) == 2
+        # Mean of [1, 2, 3] = 2.0
+        assert config.forecast_parameters.iloc[0] == pytest.approx(2.0)
+
+    def test_csv_name_parsing(self, tmp_path):
+        """Name parsing splits 'group:prefix_paramname_suffix' correctly."""
+        import pandas as pd
+
+        data = {"mygroup:x_alpha_y": [10.0]}
+        df = pd.DataFrame(data, index=["r0"])
+        csv_path = tmp_path / "params.csv"
+        df.to_csv(csv_path)
+
+        config = ProjectConfig()
+        config.forecast_param_csv = str(csv_path)
+        config.forecast_parameters_csv = None
+        config.parameter_set_json = None
+        config.project_ws = None
+
+        config.read_forecast_parameters()
+
+        # "mygroup:x_alpha_y" -> split(":")[1] = "x_alpha_y"
+        # split("_")[1:-1] = ["alpha"], join = "alpha"
+        assert "alpha" in config.parameter_list
+
+    def test_json_path_extracts_parameter_groups(self, tmp_path):
+        """JSON path extracts parameter groups."""
+        import json
+
+        # JSON format: {"fields": {field_id: {param: value, ...}, ...}}
+        # The code builds k_list as "param_field" and then splits on first "_"
+        # to get (param_prefix, field_key), so param names must be single-word
+        param_json = {
+            "fields": {
+                "siteA": {"aw": 150.0, "mad": 0.5},
+                "siteB": {"aw": 180.0, "mad": 0.6},
+            }
+        }
+        json_path = tmp_path / "params.json"
+        json_path.write_text(json.dumps(param_json))
+
+        config = ProjectConfig()
+        config.forecast_param_csv = None
+        config.forecast_parameters_csv = None
+        config.parameter_set_json = str(json_path)
+        config.project_ws = None
+
+        config.read_forecast_parameters()
+
+        assert config.forecast_parameter_groups is not None
+        assert "aw" in config.forecast_parameter_groups
+        assert config.forecast_parameters is not None
+        assert len(config.parameter_list) == 4  # 2 params x 2 fields
