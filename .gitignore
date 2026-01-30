@@ -186,6 +186,19 @@ cython_debug/
 
 /examples/4_Flux_Network/data/*
 !/examples/4_Flux_Network/data/gis/
+/examples/4_Flux_Network/openet_flux/
+/examples/4_Flux_Network/setup_shapefile.py
+/examples/4_Flux_Network/evaluate.py
+
+/examples/5_Flux_Ensemble/data/*
+!/examples/5_Flux_Ensemble/data/gis/
+/examples/5_Flux_Ensemble/container_prep.py
+/examples/5_Flux_Ensemble/setup_shapefile.py
+
+/examples/6_Flux_International/data/*
+!/examples/6_Flux_International/data/gis/
+/examples/6_Flux_International/etf/
+/examples/6_Flux_International/params.csv
 
 # Generated shapefiles and provenance in gis dirs
 /examples/*/data/gis/*_gfid*
@@ -193,6 +206,11 @@ cython_debug/
 
 # One-off diagnostic/exploration scripts
 /examples/*/scripts/
+
+# Untracked plan/notes markdown in examples
+/examples/*.md
+/examples/*/*.md
+!/examples/*/README.md
 
 /examples/logs/
 
