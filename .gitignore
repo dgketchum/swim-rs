@@ -13,6 +13,7 @@ examples/flux/pest
 examples/flynn/pest
 examples/tongue/pest
 .ipynb_checkpoints/
+paper/
 
 # =================================================
 
@@ -177,12 +178,10 @@ cython_debug/
 
 /examples/2_Fort_Peck/data/*
 !/examples/2_Fort_Peck/data/gis/
-!/examples/2_Fort_Peck/data/prepped_input.zip
 !/examples/2_Fort_Peck/data/US-FPe_daily_data.zip
 
 /examples/3_Crane/data/*
 !/examples/3_Crane/data/gis/
-!/examples/3_Crane/data/prepped_input.zip
 
 /examples/4_Flux_Network/data/*
 !/examples/4_Flux_Network/data/gis/
