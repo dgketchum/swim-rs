@@ -395,7 +395,7 @@ def main():
     # =========================================================================
     plt.tight_layout(pad=0.3)
 
-    out_path = "/home/dgketchum/code/swim-rs/paper/figures/fig1_schematic_v3.png"
+    out_path = "/paper/figures/fig1_schematic_v3.png"
     fig.savefig(
         out_path, dpi=300, facecolor=fig.get_facecolor(), bbox_inches="tight", pad_inches=0.2
     )
