@@ -50,13 +50,21 @@ from figures.style import (
 # ── CRS ──────────────────────────────────────────────────────────────────────
 CRS_CONUS = "EPSG:5070"  # NAD83 Conus Albers
 
+# Sites excluded from the entire study (no posterior parameters / no flux data).
+EXCLUDED_SITES = {"MB_Pch"}
+
+
+def _load_e1_raw():
+    return gpd.read_file(E1_SHP, engine="fiona").query("site_id not in @EXCLUDED_SITES")
+
+
+def _load_e2_raw():
+    return gpd.read_file(E2_SHP, engine="fiona").query("site_id not in @EXCLUDED_SITES")
+
 
 def _site_counts():
-    """Return (n_e1, n_e2, n_e3) from the shapefiles."""
-    e1 = gpd.read_file(E1_SHP, engine="fiona")
-    e2 = gpd.read_file(E2_SHP, engine="fiona")
-    e3 = gpd.read_file(E3_SHP, engine="fiona")
-    return len(e1), len(e2), len(e3)
+    """Return (n_e1, n_e2, n_e3) from the shapefiles after exclusions."""
+    return len(_load_e1_raw()), len(_load_e2_raw()), len(gpd.read_file(E3_SHP, engine="fiona"))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -64,10 +72,10 @@ def _site_counts():
 # ═══════════════════════════════════════════════════════════════════════════════
 def load_e1_e2_sites():
     """Return E1 GeoDataFrame (projected to CONUS Albers) with 'is_e2' flag."""
-    e1 = gpd.read_file(E1_SHP, engine="fiona").to_crs(CRS_CONUS)
+    e1 = _load_e1_raw().to_crs(CRS_CONUS)
     # Use centroids for plotting (geometries are field polygons)
     e1["geometry"] = e1.geometry.centroid
-    e2_ids = set(gpd.read_file(E2_SHP, engine="fiona")["site_id"])
+    e2_ids = set(_load_e2_raw()["site_id"])
     e1["is_e2"] = e1["site_id"].isin(e2_ids)
     # Normalize land-cover names
     e1["lc_display"] = e1["lc_class"].map(LULC_DISPLAY).fillna("Other")
