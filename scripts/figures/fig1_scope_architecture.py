@@ -50,10 +50,10 @@ from figures.style import (
 # ── CRS ──────────────────────────────────────────────────────────────────────
 CRS_CONUS = "EPSG:5070"  # NAD83 Conus Albers
 
-# ── manuscript site counts (used for annotation, not filtering) ──────────────
-N_E1 = 151
-N_E2 = 58
-N_E3 = 71
+# ── manuscript validation counts (authoritative, from main.md) ───────────────
+N_E1_VALIDATED = 151
+N_E2_VALIDATED = 59
+N_E3_VALIDATED = 75
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -116,7 +116,7 @@ def load_world():
 # PANEL A — SITE GEOGRAPHY AND EXPERIMENT COHORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 def draw_panel_a(out_dir):
-    """CONUS map with E1/E2 + world inset with E3."""
+    """CONUS map with E1/E2 + world inset with E3 + LULC count strip."""
     set_publication_style()
     e1 = load_e1_e2_sites()
     e3 = load_e3_sites()
@@ -127,11 +127,15 @@ def draw_panel_a(out_dir):
     fig_h = mm_to_in(PANEL_A_H_MM)
     fig = plt.figure(figsize=(fig_w, fig_h))
 
-    # ── main CONUS axes ──────────────────────────────────────────────────────
-    ax = fig.add_axes([0.0, 0.24, 1.0, 0.76])  # leave room at bottom
+    # Layout: CONUS map (top 58%), LULC count strip (8%), world inset (28%), gap (6%)
+    ax = fig.add_axes([0.0, 0.38, 1.0, 0.62])
+    ax_strip = fig.add_axes([0.05, 0.30, 0.90, 0.065])
+    ax_inset = fig.add_axes([0.0, 0.0, 1.0, 0.28])
+
+    # ── main CONUS map ───────────────────────────────────────────────────────
     states.plot(ax=ax, facecolor="#F2F2F2", edgecolor="#CCCCCC", linewidth=0.3)
 
-    # E1 sites (non-E2)
+    # E1 sites (non-E2): filled circles colored by LULC
     e1_only = e1[~e1["is_e2"]]
     ax.scatter(
         e1_only.geometry.x,
@@ -143,7 +147,7 @@ def draw_panel_a(out_dir):
         zorder=3,
     )
 
-    # E2 sites (overlay with black ring)
+    # E2 sites: same fill + black ring overlay
     e2 = e1[e1["is_e2"]]
     ax.scatter(
         e2.geometry.x,
@@ -158,13 +162,13 @@ def draw_panel_a(out_dir):
         e2.geometry.x,
         e2.geometry.y,
         facecolors="none",
-        s=42,
-        linewidths=0.8,
+        s=46,
+        linewidths=0.9,
         edgecolors="black",
         zorder=5,
     )
 
-    # Clip to CONUS extent with margin
+    # Clip to CONUS extent
     xmin, ymin, xmax, ymax = states.total_bounds
     dx, dy = (xmax - xmin) * 0.03, (ymax - ymin) * 0.03
     ax.set_xlim(xmin - dx, xmax + dx)
@@ -173,25 +177,26 @@ def draw_panel_a(out_dir):
     ax.axis("off")
     panel_label(ax, "(a)")
 
-    # ── count summary ────────────────────────────────────────────────────────
+    # ── count summary (plotted vs validated) ─────────────────────────────────
     count_text = (
-        f"E1: {N_E1} CONUS sites, 6 LULC classes\n"
-        f"E2: {N_E2} cropland sites (ringed)\n"
-        f"E3: {N_E3} international sites (inset)"
+        f"E1: {len(e1)} input sites ({N_E1_VALIDATED} validated)\n"
+        f"E2: {e1['is_e2'].sum()} cropland subset"
+        f" ({N_E2_VALIDATED} validated, ringed)\n"
+        f"E3: {len(e3)} international ({N_E3_VALIDATED} validated, inset)"
     )
     ax.text(
         0.02,
         0.02,
         count_text,
         transform=ax.transAxes,
-        fontsize=6,
+        fontsize=5.5,
         va="bottom",
         ha="left",
-        bbox=dict(facecolor="white", edgecolor="#CCCCCC", linewidth=0.4, pad=2, alpha=0.9),
+        bbox=dict(facecolor="white", edgecolor="#CCCCCC", linewidth=0.4, pad=2, alpha=0.92),
         zorder=10,
     )
 
-    # ── LULC legend ──────────────────────────────────────────────────────────
+    # ── LULC legend (compact, upper-right) ───────────────────────────────────
     handles = []
     for lc in LULC_ORDER:
         handles.append(
@@ -207,7 +212,6 @@ def draw_panel_a(out_dir):
                 label=lc,
             )
         )
-    # E2 ring legend entry
     handles.append(
         Line2D(
             [0],
@@ -224,40 +228,112 @@ def draw_panel_a(out_dir):
     ax.legend(
         handles=handles,
         loc="upper right",
-        fontsize=5.5,
+        fontsize=5,
         frameon=True,
-        framealpha=0.9,
+        framealpha=0.92,
         edgecolor="#CCCCCC",
         handletextpad=0.3,
         borderpad=0.4,
-        labelspacing=0.3,
+        labelspacing=0.25,
+    )
+
+    # ── LULC count strip (horizontal stacked bar) ────────────────────────────
+    lulc_counts = []
+    for lc in LULC_ORDER:
+        lulc_counts.append((e1["lc_display"] == lc).sum())
+    cumulative = 0
+    for lc, count in zip(LULC_ORDER, lulc_counts):
+        ax_strip.barh(
+            0,
+            count,
+            left=cumulative,
+            color=LULC_COLORS[lc],
+            edgecolor="white",
+            linewidth=0.3,
+            height=0.6,
+        )
+        if count >= 10:
+            ax_strip.text(
+                cumulative + count / 2,
+                0,
+                str(count),
+                ha="center",
+                va="center",
+                fontsize=4.5,
+                fontweight="bold",
+                color="white",
+            )
+        cumulative += count
+    ax_strip.set_xlim(0, sum(lulc_counts))
+    ax_strip.set_ylim(-0.5, 0.5)
+    ax_strip.axis("off")
+    ax_strip.text(
+        -0.02,
+        0,
+        "E1 LULC",
+        transform=ax_strip.transAxes,
+        fontsize=5,
+        va="center",
+        ha="right",
+        fontweight="bold",
+        color="#444444",
     )
 
     # ── world inset for E3 ───────────────────────────────────────────────────
-    ax_inset = fig.add_axes([0.0, 0.0, 1.0, 0.24])
     world.plot(ax=ax_inset, facecolor="#EEEEEE", edgecolor="#CCCCCC", linewidth=0.2)
-    ax_inset.scatter(
-        e3.geometry.x,
-        e3.geometry.y,
-        c="#333333",
-        s=8,
-        marker="D",
-        linewidths=0.3,
-        edgecolors="white",
-        zorder=3,
-    )
+
+    # Color E3 by network
+    network_colors = {
+        "ameriflux": "#4477AA",
+        "fluxnet": "#EE6677",
+        "icos": "#228833",
+        "ozflux": "#CCBB44",
+    }
+    network_markers = {
+        "ameriflux": "D",
+        "fluxnet": "s",
+        "icos": "^",
+        "ozflux": "v",
+    }
+    for net in ["ameriflux", "fluxnet", "icos", "ozflux"]:
+        sub = e3[e3["network"] == net]
+        if len(sub) == 0:
+            continue
+        ax_inset.scatter(
+            sub.geometry.x,
+            sub.geometry.y,
+            c=network_colors[net],
+            s=10,
+            marker=network_markers[net],
+            linewidths=0.3,
+            edgecolors="white",
+            zorder=3,
+            label=f"{net.capitalize()} ({len(sub)})",
+        )
     ax_inset.set_xlim(-140, 165)
     ax_inset.set_ylim(-50, 70)
     ax_inset.set_aspect("equal")
     ax_inset.axis("off")
+    ax_inset.legend(
+        loc="lower left",
+        fontsize=4.5,
+        frameon=True,
+        framealpha=0.9,
+        edgecolor="#CCCCCC",
+        handletextpad=0.2,
+        borderpad=0.3,
+        labelspacing=0.2,
+        markerscale=0.8,
+    )
     ax_inset.text(
         0.02,
-        0.92,
-        "E3 international sites",
+        0.95,
+        f"E3: {len(e3)} sites, 13 countries, 5 continents",
         transform=ax_inset.transAxes,
-        fontsize=5.5,
+        fontsize=5,
         va="top",
         fontweight="bold",
+        color="#333333",
     )
 
     print("Panel A:")
@@ -363,7 +439,7 @@ def draw_panel_b(out_dir):
     fig_h = mm_to_in(PANEL_B_H_MM)
     fig = plt.figure(figsize=(fig_w, fig_h))
     ax = fig.add_axes([0.0, 0.0, 1.0, 1.0])
-    # Use coordinate space proportional to panel aspect ratio (100:82)
+    # Coordinate space proportional to 100:82 mm panel
     xmax, ymax = 12.2, 10.0
     ax.set_xlim(0, xmax)
     ax.set_ylim(0, ymax)
@@ -371,81 +447,45 @@ def draw_panel_b(out_dir):
     ax.axis("off")
     panel_label(ax, "(b)", x=0.0, y=1.01)
 
-    # ── box dimensions ──────────────────────────────────────────────────────
-    bw_in = 2.55  # input box width
-    bh_in = 0.60  # input box height
-
-    # ── REGION: Inputs ──────────────────────────────────────────────────────
+    # ── layout constants ────────────────────────────────────────────────────
+    bw_in = 2.55
+    bh_in = 0.60
     inp_cx = xmax / 2
+
+    # ── REGION: Inputs (top) ────────────────────────────────────────────────
     _add_region(ax, inp_cx, 9.15, 11.6, 1.4, "Inputs", REGION_COLORS["inputs"], ec="#6699CC")
 
     inp_y = 8.9
     inp_xs = [1.7, 4.5, 7.3, 10.1]
-    _add_box(
-        ax,
-        inp_xs[0],
-        inp_y,
-        bw_in,
-        bh_in,
+    inp_labels = [
         "Vegetation state\nLandsat + S2 NDVI",
-        fc="#EEF4FB",
-        ec="#4477AA",
-        fs=5.5,
-    )
-    _add_box(
-        ax,
-        inp_xs[1],
-        inp_y,
-        bw_in,
-        bh_in,
         "Satellite ETf\ncalibration targets",
-        fc="#EEF4FB",
-        ec="#4477AA",
-        fs=5.5,
-    )
-    _add_box(
-        ax,
-        inp_xs[2],
-        inp_y,
-        bw_in,
-        bh_in,
         "Meteorology & soils\nGridMET / ERA5, AWC",
-        fc="#EEF4FB",
-        ec="#4477AA",
-        fs=5.5,
-    )
-    _add_box(
-        ax,
-        inp_xs[3],
-        inp_y,
-        bw_in,
-        bh_in,
         "Management\nLULC, irrigation",
-        fc="#EEF4FB",
-        ec="#4477AA",
-        fs=5.5,
-    )
+    ]
+    for ix, lbl in zip(inp_xs, inp_labels):
+        _add_box(ax, ix, inp_y, bw_in, bh_in, lbl, fc="#EEF4FB", ec="#4477AA", fs=5.5)
 
-    # ── REGION: Model core ──────────────────────────────────────────────────
+    # ── REGION: Model core (middle) ─────────────────────────────────────────
     _add_region(
         ax,
         inp_cx,
-        6.55,
+        6.45,
         11.6,
-        2.7,
+        2.9,
         "SWIM-RS daily water balance",
         REGION_COLORS["model"],
         ec="#CCAA44",
     )
 
-    # NDVI -> Kcb
+    # NDVI -> Kcb (shortened equation)
     _add_box(
         ax,
-        2.5,
-        6.95,
-        3.0,
-        0.55,
-        "NDVI \u2192 sigmoid Kcb\nKcb = Kcmax / (1+exp[\u2212k(NDVI\u2212NDVI\u2080)])",
+        2.8,
+        6.85,
+        3.4,
+        0.65,
+        "NDVI \u2192 sigmoid Kcb\nKcb(NDVI; Kcmax, k, NDVI\u2080)",
         fc="#FFFDE7",
         ec="#AA8833",
         fs=5.5,
@@ -454,10 +494,10 @@ def draw_panel_b(out_dir):
     # FAO-56 water balance
     _add_box(
         ax,
-        6.5,
-        6.1,
-        3.4,
-        1.3,
+        6.7,
+        5.85,
+        3.6,
+        1.4,
         "FAO-56 dual Kc\nsurface layer | root zone | deep\n"
         "P + snowmelt \u2212 runoff \u2212 DP\n"
         "\u00b1 irrigation \u00b1 GW subsidy",
@@ -469,10 +509,10 @@ def draw_panel_b(out_dir):
     # Daily ET output
     _add_box(
         ax,
-        10.5,
-        6.95,
-        2.2,
-        0.55,
+        10.6,
+        6.85,
+        2.4,
+        0.65,
         "ETa = Kc_act \u00b7 ETo\nETf = ETa / ETo",
         fc="#FFFDE7",
         ec="#AA8833",
@@ -480,48 +520,40 @@ def draw_panel_b(out_dir):
     )
 
     # Internal model arrows
-    _add_arrow(ax, (4.0, 6.95), (4.8, 6.55), color="#888888")
-    _add_arrow(ax, (8.2, 6.5), (9.4, 6.95), color="#888888", cs="arc3,rad=-0.1")
+    _add_arrow(ax, (4.5, 6.65), (4.9, 6.3), color="#888888")
+    _add_arrow(ax, (8.5, 6.3), (9.4, 6.85), color="#888888", cs="arc3,rad=-0.1")
 
     # Input arrows into model
-    _add_arrow(ax, (inp_xs[0], inp_y - bh_in / 2), (2.5, 7.25), color="#4477AA", lw=1.2)
+    _add_arrow(ax, (inp_xs[0], inp_y - bh_in / 2), (2.8, 7.2), color="#4477AA", lw=1.2)
     _add_arrow(
-        ax,
-        (inp_xs[1], inp_y - bh_in / 2),
-        (5.2, 6.78),
-        color="#4477AA",
-        lw=1.2,
-        cs="arc3,rad=-0.05",
+        ax, (inp_xs[2], inp_y - bh_in / 2), (7.0, 6.58), color="#4477AA", lw=1.2, cs="arc3,rad=0.05"
     )
     _add_arrow(
-        ax, (inp_xs[2], inp_y - bh_in / 2), (7.0, 6.78), color="#4477AA", lw=1.2, cs="arc3,rad=0.05"
-    )
-    _add_arrow(
-        ax, (inp_xs[3], inp_y - bh_in / 2), (9.5, 6.95), color="#4477AA", lw=1.2, cs="arc3,rad=0.1"
+        ax, (inp_xs[3], inp_y - bh_in / 2), (10.0, 6.85), color="#4477AA", lw=1.2, cs="arc3,rad=0.1"
     )
 
-    # ── REGION: Calibration loop ────────────────────────────────────────────
-    _add_region(ax, 4.6, 2.65, 8.6, 3.0, "Calibration", REGION_COLORS["calibration"], ec="#CC6666")
+    # ── REGION: Calibration (bottom-left) ───────────────────────────────────
+    _add_region(ax, 4.3, 2.5, 7.8, 3.0, "Calibration", REGION_COLORS["calibration"], ec="#CC6666")
 
-    # Observed ETf
+    # Satellite ETf observations
     _add_box(
         ax,
-        2.0,
-        3.0,
-        2.6,
-        0.7,
-        "Observed ETf\nat satellite\noverpass dates",
+        1.8,
+        2.8,
+        2.4,
+        0.65,
+        "Observed ETf\nat overpass dates",
         fc="#FFF0F0",
         ec="#CC4444",
         fs=5.5,
     )
 
-    # Residuals
+    # Residuals / objective function
     _add_box(
         ax,
-        4.8,
-        1.85,
-        2.3,
+        4.6,
+        1.65,
+        2.0,
         0.55,
         "\u03a3 w\u1d62(ETf_sim \u2212 ETf_obs)\u00b2",
         fc="#FFF0F0",
@@ -532,64 +564,66 @@ def draw_panel_b(out_dir):
     # PEST++ IES
     _add_box(
         ax,
-        7.8,
-        3.0,
-        2.6,
-        0.7,
+        7.5,
+        2.8,
+        2.4,
+        0.65,
         "PEST++ IES\n200 realizations\n8 params/site",
         fc="#FFF0F0",
         ec="#CC4444",
-        fs=6,
+        fs=5.5,
     )
 
-    # Calibration internal arrows
-    _add_arrow(ax, (3.3, 2.65), (3.65, 2.1), color="#CC4444", cs="arc3,rad=0.1")
-    _add_arrow(ax, (5.95, 1.85), (6.9, 2.65), color="#CC4444", cs="arc3,rad=0.1")
+    # Calibration flow: obs ETf -> residuals -> PEST++
+    _add_arrow(ax, (3.0, 2.5), (3.6, 1.9), color="#CC4444", cs="arc3,rad=0.1")
+    _add_arrow(ax, (5.6, 1.65), (6.6, 2.45), color="#CC4444", cs="arc3,rad=0.1")
 
-    # Modeled ETf down from model -> residuals
-    _add_arrow(ax, (6.5, 5.45), (5.3, 2.15), color="#CC4444", lw=1.2, cs="arc3,rad=-0.12")
-    _add_label(ax, 5.1, 4.1, "simulated\nETf", fs=5, color="#CC4444")
+    # Simulated ETf: model -> residuals (straight down)
+    _add_arrow(ax, (5.5, 5.15), (5.0, 1.95), color="#CC4444", lw=1.2, cs="arc3,rad=-0.08")
+    _add_label(ax, 4.6, 3.8, "simulated\nETf", fs=5, color="#CC4444")
 
-    # Satellite ETf input -> observed ETf (route along left edge)
+    # Satellite ETf input -> observed ETf (route left of model region)
     _add_arrow(
-        ax, (inp_xs[1] - bw_in / 2, inp_y), (2.0, 3.38), color="#CC4444", lw=1.2, cs="arc3,rad=0.4"
+        ax, (inp_xs[1] - bw_in / 2, inp_y), (1.8, 3.15), color="#CC4444", lw=1.2, cs="arc3,rad=0.35"
     )
-    _add_label(ax, 1.0, 6.0, "clear-sky\noverpasses", fs=4.5, color="#CC4444", ha="left")
+    _add_label(ax, 0.8, 5.7, "clear-sky\noverpasses", fs=4.5, color="#CC4444", ha="left")
 
-    # PEST++ -> updated params -> model (feedback loop on right)
-    _add_arrow(ax, (7.8, 3.38), (6.5, 5.45), color="#CC4444", lw=1.5, cs="arc3,rad=-0.25")
-    _add_label(ax, 8.3, 4.5, "updated\nparams", fs=5, color="#CC4444")
+    # PEST++ -> updated params -> model (feedback: right side, curving up)
+    _add_arrow(ax, (8.1, 3.15), (8.5, 5.15), color="#CC4444", lw=1.5, cs="arc3,rad=-0.15")
+    _add_label(ax, 9.0, 4.2, "updated\nparams", fs=5, color="#CC4444")
 
-    # ── REGION: Validation (firewall) ───────────────────────────────────────
-    _add_region(ax, 10.8, 2.65, 2.2, 3.0, "Validation", REGION_COLORS["validation"], ec="#666666")
+    # ── REGION: Validation (bottom-right, separated) ────────────────────────
+    _add_region(ax, 10.8, 2.5, 2.2, 3.0, "Validation", REGION_COLORS["validation"], ec="#666666")
 
     _add_box(
         ax,
         10.8,
-        2.8,
+        2.6,
         1.8,
-        0.7,
+        0.65,
         "Flux tower ET\nvalidation only",
         fc="#F0F0F0",
         ec="#555555",
         fs=5.5,
     )
 
-    # Arrow from model to validation
-    _add_arrow(ax, (10.5, 6.67), (10.8, 3.18), color="#555555", lw=1.2, cs="arc3,rad=0.06")
-    _add_label(ax, 11.5, 5.1, "calibrated\ndaily ET", fs=5, color="#555555")
+    # Calibrated daily ET -> validation (straight down right side)
+    _add_arrow(ax, (10.8, 6.52), (10.8, 2.95), color="#555555", lw=1.2)
+    _add_label(ax, 11.5, 4.9, "calibrated\ndaily ET", fs=5, color="#555555")
 
-    # Dashed firewall line
-    ax.plot([9.6, 9.6], [1.15, 4.15], color="#888888", linewidth=0.8, linestyle="--", zorder=6)
-    _add_label(ax, 9.6, 1.0, "firewall", fs=4.5, color="#888888")
+    # Dashed firewall line (between calibration and validation)
+    ax.plot(
+        [9.55, 9.55], [1.0, 4.0], color="#888888", linewidth=1.0, linestyle=(0, (4, 3)), zorder=6
+    )
+    _add_label(ax, 9.55, 0.8, "firewall", fs=4.5, color="#888888")
 
-    # ── Outputs at bottom ───────────────────────────────────────────────────
+    # ── Outputs (bottom center) ─────────────────────────────────────────────
     _add_box(
         ax,
-        inp_cx,
-        0.55,
         5.0,
-        0.50,
+        0.5,
+        4.5,
+        0.48,
         "Outputs: daily ET, ETf, monthly totals, irrigation partitioning",
         fc="white",
         ec="#333333",
@@ -598,8 +632,8 @@ def draw_panel_b(out_dir):
     )
     _add_arrow(
         ax,
-        (6.5, 5.45),
-        (inp_cx, 0.82),
+        (6.0, 5.15),
+        (5.0, 0.76),
         color="#333333",
         lw=1.0,
         cs="arc3,rad=0.05",
@@ -615,30 +649,49 @@ def draw_panel_b(out_dir):
 # ═══════════════════════════════════════════════════════════════════════════════
 # PANEL C — EXPERIMENT DESIGN MATRIX
 # ═══════════════════════════════════════════════════════════════════════════════
+def _draw_sensor_badge(ax, x, y, sensors, size=0.09):
+    """Draw small colored circles indicating sensor platforms."""
+    sensor_colors = {"L": "#2166AC", "S2": "#66BD63", "EC": "#B2182B"}
+    sensor_labels = {"L": "Landsat", "S2": "Sentinel-2", "EC": "ECOSTRESS"}
+    gap = size * 2.2
+    x0 = x - gap * (len(sensors) - 1) / 2
+    for i, s in enumerate(sensors):
+        circle = plt.Circle(
+            (x0 + i * gap, y),
+            size,
+            facecolor=sensor_colors.get(s, "#999999"),
+            edgecolor="white",
+            linewidth=0.3,
+            zorder=6,
+        )
+        ax.add_patch(circle)
+
+
 def draw_panel_c(out_dir):
-    """Compact experiment design matrix as a styled table."""
+    """Compact experiment design matrix with visual encoding."""
     set_publication_style()
 
     fig_w = mm_to_in(PANEL_C_W_MM)
-    fig_h = mm_to_in(PANEL_C_H_MM)
+    fig_h = mm_to_in(PANEL_C_H_MM + 6)  # slightly taller for badge legend
     fig = plt.figure(figsize=(fig_w, fig_h))
-    ax = fig.add_axes([0.0, 0.0, 1.0, 1.0])
+    ax = fig.add_axes([0.0, 0.05, 1.0, 0.95])
     ax.set_xlim(0, 10)
-    ax.set_ylim(0, 3.2)
+    ax.set_ylim(0, 3.5)
     ax.set_aspect("auto")
     ax.axis("off")
     panel_label(ax, "(c)", x=-0.005, y=1.02)
 
     # ── Column definitions ───────────────────────────────────────────────────
-    col_x = [0.05, 0.65, 1.95, 3.1, 4.55, 6.15, 7.65]  # left edges
-    col_w = [0.55, 1.25, 1.1, 1.4, 1.55, 1.45, 2.35]  # widths
+    col_x = [0.05, 0.6, 1.7, 2.75, 4.3, 5.95, 7.05, 8.35]
+    col_w = [0.50, 1.05, 1.0, 1.5, 1.6, 1.05, 1.25, 1.65]
     headers = [
-        "Experiment",
-        "Domain & period",
-        "Met / soils",
-        "ETf calibration target",
-        "Validation\nbenchmark",
-        "Sites (validated)",
+        "Expt",
+        "Domain",
+        "Period",
+        "ETf calibration\ntarget",
+        "Sensors / models",
+        "Weighting",
+        "Sites\n(validated)",
         "Primary question",
     ]
 
@@ -646,55 +699,62 @@ def draw_panel_c(out_dir):
     rows = [
         {
             "exp": "E1",
-            "domain": "CONUS, 6 LULC classes\n1987\u20132025",
-            "met": "GridMET\nSSURGO",
-            "etf": "SSEBop NHM ETf",
-            "val": "Flux ET;\nSSEBop benchmark",
-            "sites": f"{N_E1} CONUS",
+            "domain": "CONUS\n6 LULC classes",
+            "period": "1987\u20132025",
+            "etf": "SSEBop NHM ETf\n(single algorithm)",
+            "sensors": ["L"],
+            "sensors_text": "Landsat only\n1 model",
+            "weighting": "uniform",
+            "sites": f"{N_E1_VALIDATED}",
             "question": "Generalizes across\nland covers?",
             "color": EXPERIMENT_COLORS["E1"],
         },
         {
             "exp": "E2",
-            "domain": "CONUS cropland\n1995\u20132025",
-            "met": "GridMET\nSSURGO",
+            "domain": "CONUS\ncropland",
+            "period": "1995\u20132025",
             "etf": "OpenET 6-model\nMAD ensemble ETf",
-            "val": "Flux ET;\nOpenET ensemble",
-            "sites": f"{N_E2} paired\ncropland",
-            "question": "Ensemble ETf improves\ncropland ET?",
+            "sensors": ["L", "S2"],
+            "sensors_text": "Landsat + S2\n6 models",
+            "weighting": "spread-\nweighted",
+            "sites": f"{N_E2_VALIDATED}",
+            "question": "Ensemble ETf\nimproves cropland?",
             "color": EXPERIMENT_COLORS["E2"],
         },
         {
             "exp": "E3-LS",
-            "domain": "International crop/grass\n2013\u20132025",
-            "met": "ERA5-Land\nHWSD",
+            "domain": "International\ncrop/grass",
+            "period": "2013\u20132025",
             "etf": "Landsat SSEBop\n+ PT-JPL ETf",
-            "val": "Flux ET;\ninterpolated Landsat",
-            "sites": f"{N_E3} intl.",
+            "sensors": ["L"],
+            "sensors_text": "Landsat only\n2 models",
+            "weighting": "uniform",
+            "sites": f"{N_E3_VALIDATED}",
             "question": "Generalizes with\nglobal inputs?",
             "color": EXPERIMENT_COLORS["E3-LS"],
         },
         {
-            "exp": "E3-Triple",
-            "domain": "Same E3 sites\nw/ ECOSTRESS",
-            "met": "ERA5-Land\nHWSD",
+            "exp": "E3-\nTriple",
+            "domain": "Same E3\n+ ECOSTRESS",
+            "period": "2013\u20132025",
             "etf": "Landsat + ECOSTRESS\nPT-JPL ETf",
-            "val": "Flux ET;\nE3-LS comparison",
-            "sites": f"{N_E3} intl.",
-            "question": "Higher sensor density\nimproves calibration?",
+            "sensors": ["L", "EC"],
+            "sensors_text": "Landsat +\nECOSTRESS, 3 mod.",
+            "weighting": "uniform",
+            "sites": f"{N_E3_VALIDATED}",
+            "question": "Higher density\nimproves calib.?",
             "color": EXPERIMENT_COLORS["E3-Triple"],
         },
     ]
 
     # ── Draw table ───────────────────────────────────────────────────────────
     row_h = 0.58
-    hdr_h = 0.36
-    top_y = 3.0
+    hdr_h = 0.40
+    top_y = 3.3
 
     # Header row
     for i, hdr in enumerate(headers):
-        x = col_x[i]
-        w = col_w[i]
+        x, w = col_x[i], col_w[i]
         rect = plt.Rectangle(
             (x, top_y - hdr_h),
             w,
@@ -711,7 +771,7 @@ def draw_panel_c(out_dir):
             hdr,
             ha="center",
             va="center",
-            fontsize=5.5,
+            fontsize=5,
             fontweight="bold",
             color="#333333",
             zorder=3,
@@ -721,6 +781,8 @@ def draw_panel_c(out_dir):
     # Data rows
     for r_idx, row in enumerate(rows):
         y_top = top_y - hdr_h - r_idx * row_h
+        y_mid = y_top - row_h / 2
+
         # Accent stripe on left edge
         accent = plt.Rectangle(
             (col_x[0], y_top - row_h),
@@ -735,16 +797,15 @@ def draw_panel_c(out_dir):
         fields = [
             row["exp"],
             row["domain"],
-            row["met"],
+            row["period"],
             row["etf"],
-            row["val"],
+            row["sensors_text"],
+            row["weighting"],
             row["sites"],
             row["question"],
         ]
         for i, txt in enumerate(fields):
-            x = col_x[i]
-            w = col_w[i]
-            # Row background
+            x, w = col_x[i], col_w[i]
             bg_color = "white" if r_idx % 2 == 0 else "#F8F8F8"
             rect = plt.Rectangle(
                 (x, y_top - row_h),
@@ -756,12 +817,12 @@ def draw_panel_c(out_dir):
                 zorder=1,
             )
             ax.add_patch(rect)
-            # Text
-            fs = 6 if i == 0 else 5
+
+            fs = 5.5 if i == 0 else 4.8
             fw = "bold" if i == 0 else "normal"
             ax.text(
                 x + w / 2,
-                y_top - row_h / 2,
+                y_mid,
                 txt,
                 ha="center",
                 va="center",
@@ -772,6 +833,48 @@ def draw_panel_c(out_dir):
                 linespacing=1.15,
             )
 
+        # Draw sensor badges in the sensors column
+        sx = col_x[4] + col_w[4] / 2
+        _draw_sensor_badge(ax, sx, y_top - row_h + 0.08, row["sensors"])
+
+    # ── Sensor badge legend (below table) ────────────────────────────────────
+    legend_y = top_y - hdr_h - len(rows) * row_h - 0.18
+    badge_info = [
+        ("L", "#2166AC", "Landsat"),
+        ("S2", "#66BD63", "Sentinel-2"),
+        ("EC", "#B2182B", "ECOSTRESS"),
+    ]
+    lx = 3.5
+    for tag, color, label in badge_info:
+        c = plt.Circle(
+            (lx, legend_y), 0.06, facecolor=color, edgecolor="white", linewidth=0.3, zorder=6
+        )
+        ax.add_patch(c)
+        ax.text(
+            lx + 0.12,
+            legend_y,
+            label,
+            fontsize=4.5,
+            va="center",
+            ha="left",
+            color="#444444",
+            zorder=7,
+        )
+        lx += 1.0
+
+    # Flux-tower validation note
+    ax.text(
+        8.0,
+        legend_y,
+        "Flux tower ET withheld from all calibration \u2014 validation only",
+        fontsize=4.5,
+        va="center",
+        ha="left",
+        color="#666666",
+        fontstyle="italic",
+        zorder=7,
+    )
+
     print("Panel C:")
     export_figure(fig, out_dir / "fig1c_experiment_matrix")
     plt.close(fig)
@@ -781,36 +884,42 @@ def draw_panel_c(out_dir):
 # ASSEMBLY REFERENCE
 # ═══════════════════════════════════════════════════════════════════════════════
 def draw_assembly_reference(out_dir):
-    """Combine panels into one reference layout (for review, not final art)."""
+    """Combine panel PNGs into a raster preview (not editable art)."""
     set_publication_style()
     from matplotlib.image import imread
 
-    # Read PNGs of individual panels
     img_a = imread(str(out_dir / "fig1a_site_scope.png"))
     img_b = imread(str(out_dir / "fig1b_swim_architecture.png"))
     img_c = imread(str(out_dir / "fig1c_experiment_matrix.png"))
 
     fig_w = mm_to_in(190)
-    fig_h = mm_to_in(125)
+    fig_h = mm_to_in(130)
     fig = plt.figure(figsize=(fig_w, fig_h))
 
-    # Top-left: Panel A
     ax_a = fig.add_axes([0.0, 0.30, 0.46, 0.70])
     ax_a.imshow(img_a)
     ax_a.axis("off")
 
-    # Top-right: Panel B
     ax_b = fig.add_axes([0.47, 0.30, 0.53, 0.70])
     ax_b.imshow(img_b)
     ax_b.axis("off")
 
-    # Bottom: Panel C
     ax_c = fig.add_axes([0.0, 0.0, 1.0, 0.28])
     ax_c.imshow(img_c)
     ax_c.axis("off")
 
-    print("Assembly reference:")
-    export_figure(fig, out_dir / "fig1_assembly_reference")
+    print("Assembly preview (raster, not editable):")
+    # Only export PNG — the SVG/PDF would just embed rasters
+    stem = out_dir / "fig1_assembly_preview"
+    stem.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(
+        str(stem.with_suffix(".png")),
+        dpi=300,
+        transparent=False,
+        bbox_inches="tight",
+        pad_inches=0.01,
+    )
+    print(f"  {stem.with_suffix('.png')}")
     plt.close(fig)
 
 
@@ -868,7 +977,7 @@ Source Sans 3 or Arial, 7-9 pt body, 10 pt panel labels.
 
 ## Elements that should NOT change without scientific review
 - Site locations on maps
-- Site counts (E1: 151, E2: 58, E3: 71)
+- Site counts (E1: 151 validated, E2: 59 validated, E3: 75 validated)
 - Experiment labels and definitions
 - Calibration target names (SSEBop NHM, OpenET MAD, etc.)
 - Validation-only status of flux towers (flux tower ET is NOT used for calibration)
