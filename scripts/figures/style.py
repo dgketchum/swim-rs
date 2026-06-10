@@ -26,11 +26,11 @@ CARTOGRAPHIC_DIR = REPO_ROOT / "data" / "cartographic"
 WORLD_SHP = CARTOGRAPHIC_DIR / "ne_110m_admin_0_countries.shp"
 STATES_SHP = Path("/data/hdd1/data/Hoylman/hoylman_calle_data/shp/states.shp")
 
+# Site shapefiles — use config fields_shapefile (calibration input) for E1/E2,
+# publication cohort for E3 (75 sites matching manuscript Table 1).
 E1_SHP = Path("/data/ssd1/swim/4_Flux_Network/data/gis/flux_fields.shp")
 E2_SHP = Path("/data/ssd1/swim/5_Flux_Ensemble/data/gis/flux_fields.shp")
-E3_SHP = (
-    REPO_ROOT / "examples" / "6_Flux_International" / "data" / "gis" / "flux_crop_ag_96_150m.shp"
-)
+E3_SHP = Path("/data/ssd1/swim/6_Flux_International/data/gis/flux_crop_pub_75_150m.shp")
 
 # ---------- Land-cover colors (Tol qualitative, from plan) ----------
 LULC_COLORS = {
