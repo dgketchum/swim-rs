@@ -50,10 +50,10 @@ from figures.style import (
 # ── CRS ──────────────────────────────────────────────────────────────────────
 CRS_CONUS = "EPSG:5070"  # NAD83 Conus Albers
 
-# ── manuscript validation counts (authoritative, from main.md) ───────────────
-N_E1_VALIDATED = 151
-N_E2_VALIDATED = 59
-N_E3_VALIDATED = 75
+# ── manuscript cohort counts (authoritative, from main.md Table 1) ───────────
+N_E1 = 161  # CONUS, 6 LULC classes
+N_E2 = 60  # CONUS cropland
+N_E3 = 75  # international cropland/managed grass, 13 countries
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -177,12 +177,11 @@ def draw_panel_a(out_dir):
     ax.axis("off")
     panel_label(ax, "(a)")
 
-    # ── count summary (plotted vs validated) ─────────────────────────────────
+    # ── count summary ────────────────────────────────────────────────────────
     count_text = (
-        f"E1: {len(e1)} input sites ({N_E1_VALIDATED} validated)\n"
-        f"E2: {e1['is_e2'].sum()} cropland subset"
-        f" ({N_E2_VALIDATED} validated, ringed)\n"
-        f"E3: {len(e3)} international ({N_E3_VALIDATED} validated, inset)"
+        f"E1: {N_E1} CONUS sites, 6 LULC classes\n"
+        f"E2: {N_E2} cropland sites (ringed)\n"
+        f"E3: {N_E3} international sites (inset)"
     )
     ax.text(
         0.02,
@@ -578,9 +577,9 @@ def draw_panel_b(out_dir):
     _add_arrow(ax, (3.0, 2.5), (3.6, 1.9), color="#CC4444", cs="arc3,rad=0.1")
     _add_arrow(ax, (5.6, 1.65), (6.6, 2.45), color="#CC4444", cs="arc3,rad=0.1")
 
-    # Simulated ETf: model -> residuals (straight down)
-    _add_arrow(ax, (5.5, 5.15), (5.0, 1.95), color="#CC4444", lw=1.2, cs="arc3,rad=-0.08")
-    _add_label(ax, 4.6, 3.8, "simulated\nETf", fs=5, color="#CC4444")
+    # Simulated ETf: ETa/ETf output box -> residuals
+    _add_arrow(ax, (10.6, 6.52), (5.6, 1.95), color="#CC4444", lw=1.2, cs="arc3,rad=-0.15")
+    _add_label(ax, 7.2, 3.7, "simulated ETf\nat overpass dates", fs=4.5, color="#CC4444")
 
     # Satellite ETf input -> observed ETf (route left of model region)
     _add_arrow(
@@ -630,13 +629,14 @@ def draw_panel_b(out_dir):
         fs=5.5,
         lw=0.8,
     )
+    # Route from FAO-56 box left side, down outside calibration region
     _add_arrow(
         ax,
-        (6.0, 5.15),
-        (5.0, 0.76),
+        (4.9, 5.55),
+        (3.5, 0.76),
         color="#333333",
         lw=1.0,
-        cs="arc3,rad=0.05",
+        cs="arc3,rad=0.15",
         shrinkA=6,
         shrinkB=4,
     )
@@ -689,13 +689,16 @@ def draw_panel_c(out_dir):
         "Domain",
         "Period",
         "ETf calibration\ntarget",
-        "Sensors / models",
+        "ETf platform /\nmodels",
         "Weighting",
-        "Sites\n(validated)",
+        "Sites",
         "Primary question",
     ]
 
     # ── Row data ─────────────────────────────────────────────────────────────
+    # ETf platform: which satellite(s) provide ETf calibration targets.
+    # NDVI vegetation input (Landsat + S2 in E1/E3, Landsat only in E2)
+    # is listed in Panel B inputs, not here.
     rows = [
         {
             "exp": "E1",
@@ -703,9 +706,9 @@ def draw_panel_c(out_dir):
             "period": "1987\u20132025",
             "etf": "SSEBop NHM ETf\n(single algorithm)",
             "sensors": ["L"],
-            "sensors_text": "Landsat only\n1 model",
+            "sensors_text": "Landsat\n1 model",
             "weighting": "uniform",
-            "sites": f"{N_E1_VALIDATED}",
+            "sites": f"{N_E1}",
             "question": "Generalizes across\nland covers?",
             "color": EXPERIMENT_COLORS["E1"],
         },
@@ -714,10 +717,10 @@ def draw_panel_c(out_dir):
             "domain": "CONUS\ncropland",
             "period": "1995\u20132025",
             "etf": "OpenET 6-model\nMAD ensemble ETf",
-            "sensors": ["L", "S2"],
-            "sensors_text": "Landsat + S2\n6 models",
+            "sensors": ["L"],
+            "sensors_text": "Landsat\n6 models",
             "weighting": "spread-\nweighted",
-            "sites": f"{N_E2_VALIDATED}",
+            "sites": f"{N_E2}",
             "question": "Ensemble ETf\nimproves cropland?",
             "color": EXPERIMENT_COLORS["E2"],
         },
@@ -727,9 +730,9 @@ def draw_panel_c(out_dir):
             "period": "2013\u20132025",
             "etf": "Landsat SSEBop\n+ PT-JPL ETf",
             "sensors": ["L"],
-            "sensors_text": "Landsat only\n2 models",
+            "sensors_text": "Landsat\n2 models",
             "weighting": "uniform",
-            "sites": f"{N_E3_VALIDATED}",
+            "sites": f"{N_E3}",
             "question": "Generalizes with\nglobal inputs?",
             "color": EXPERIMENT_COLORS["E3-LS"],
         },
@@ -739,9 +742,9 @@ def draw_panel_c(out_dir):
             "period": "2013\u20132025",
             "etf": "Landsat + ECOSTRESS\nPT-JPL ETf",
             "sensors": ["L", "EC"],
-            "sensors_text": "Landsat +\nECOSTRESS, 3 mod.",
+            "sensors_text": "Landsat +\nECOSTRESS, 3 inst.",
             "weighting": "uniform",
-            "sites": f"{N_E3_VALIDATED}",
+            "sites": f"{N_E3}",
             "question": "Higher density\nimproves calib.?",
             "color": EXPERIMENT_COLORS["E3-Triple"],
         },
@@ -837,14 +840,13 @@ def draw_panel_c(out_dir):
         sx = col_x[4] + col_w[4] / 2
         _draw_sensor_badge(ax, sx, y_top - row_h + 0.08, row["sensors"])
 
-    # ── Sensor badge legend (below table) ────────────────────────────────────
+    # ── Badge legend and notes (below table) ───────────────────────────────
     legend_y = top_y - hdr_h - len(rows) * row_h - 0.18
     badge_info = [
-        ("L", "#2166AC", "Landsat"),
-        ("S2", "#66BD63", "Sentinel-2"),
-        ("EC", "#B2182B", "ECOSTRESS"),
+        ("L", "#2166AC", "Landsat (ETf)"),
+        ("EC", "#B2182B", "ECOSTRESS (ETf)"),
     ]
-    lx = 3.5
+    lx = 0.2
     for tag, color, label in badge_info:
         c = plt.Circle(
             (lx, legend_y), 0.06, facecolor=color, edgecolor="white", linewidth=0.3, zorder=6
@@ -860,12 +862,24 @@ def draw_panel_c(out_dir):
             color="#444444",
             zorder=7,
         )
-        lx += 1.0
+        lx += 1.4
+
+    # NDVI note
+    ax.text(
+        3.2,
+        legend_y,
+        "NDVI: Landsat + Sentinel-2 (E1, E3); Landsat only (E2)",
+        fontsize=4.5,
+        va="center",
+        ha="left",
+        color="#666666",
+        zorder=7,
+    )
 
     # Flux-tower validation note
     ax.text(
-        8.0,
-        legend_y,
+        0.2,
+        legend_y - 0.22,
         "Flux tower ET withheld from all calibration \u2014 validation only",
         fontsize=4.5,
         va="center",
@@ -977,7 +991,7 @@ Source Sans 3 or Arial, 7-9 pt body, 10 pt panel labels.
 
 ## Elements that should NOT change without scientific review
 - Site locations on maps
-- Site counts (E1: 151 validated, E2: 59 validated, E3: 75 validated)
+- Site counts (E1: 161, E2: 60, E3: 75 per manuscript Table 1)
 - Experiment labels and definitions
 - Calibration target names (SSEBop NHM, OpenET MAD, etc.)
 - Validation-only status of flux towers (flux tower ET is NOT used for calibration)
