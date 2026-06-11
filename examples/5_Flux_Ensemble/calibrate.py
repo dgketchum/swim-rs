@@ -197,6 +197,18 @@ if __name__ == "__main__":
         help="Override container path",
     )
     parser.add_argument(
+        "--etf-target-model",
+        type=str,
+        default=None,
+        help="Override etf_target_model from TOML config (e.g. 'ensemble', 'ensemble_mad')",
+    )
+    parser.add_argument(
+        "--ensemble-source",
+        type=str,
+        default=None,
+        help="Override ensemble_source from TOML config (e.g. 'computed', 'openet')",
+    )
+    parser.add_argument(
         "--debug-fields",
         type=str,
         default=None,
@@ -215,6 +227,10 @@ if __name__ == "__main__":
         cfg.etf_weighting_spread_floor = args.spread_floor
     if args.min_members is not None:
         cfg.etf_weighting_min_members = args.min_members
+    if args.etf_target_model is not None:
+        cfg.etf_target_model = args.etf_target_model
+    if args.ensemble_source is not None:
+        cfg.ensemble_source = args.ensemble_source
 
     debug_fields = None
     if args.debug_fields:
@@ -223,8 +239,10 @@ if __name__ == "__main__":
     if args.results_tag:
         results = os.path.join(cfg.project_ws, "results", args.results_tag)
     else:
-        results = os.path.join(cfg.project_ws, "results", "run11_full_period")
+        results = os.path.join(cfg.project_ws, "results", "run13_mad_ensemble")
 
+    print(f"ETf target: {cfg.etf_target_model}")
+    print(f"Ensemble source: {cfg.ensemble_source}")
     print(f"Weighting mode: {cfg.etf_weighting_mode}")
     print(f"Results dir: {results}")
 

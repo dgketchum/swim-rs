@@ -58,10 +58,13 @@ end_date = "2025-12-31"
 kc_proxy = "etf"
 cover_proxy = "ndvi"
 
+[validation]
+flux_dir = "{data}/daily_flux_files_2pt1"
+
 [calibration]
 pest_run_dir = "{project_workspace}/pestrun"
-etf_target_model = "ensemble"
-ensemble_source = "computed"  # "computed" = DIY mean of members, "openet" = pre-computed OpenET ensemble
+etf_target_model = "ensemble_mad"
+ensemble_source = "computed"  # unused when etf_target_model = "ensemble_mad" (MAD ensemble pre-computed in container)
 etf_ensemble_members = ["ssebop", "sims", "geesebal", "eemetric", "ptjpl", "disalexi"]
 workers = 40
 realizations = 200

@@ -9,18 +9,34 @@ examples. It supersedes per-example validation policies in
 `5_Flux_Ensemble/notes/VALIDATION_POLICY.md`, which are retained as
 historical context only.
 
+## Naming Convention
+
+Publication-facing prose now distinguishes tutorials from experiments while
+keeping the existing repo paths unchanged.
+
+| Paper-facing label | Repo example | Directory | Role |
+|---|---|---|---|
+| `T1` | Example 1 | `examples/1_Boulder` | Tutorial |
+| `T2` | Example 2 | `examples/2_Fort_Peck` | Tutorial |
+| `T3` | Example 3 | `examples/3_Crane` | Tutorial |
+| `E1` | Example 4 | `examples/4_Flux_Network` | Publication experiment |
+| `E2` | Example 5 | `examples/5_Flux_Ensemble` | Publication experiment |
+| `E3` | Example 6 | `examples/6_Flux_International` | Publication experiment |
+
 ---
 
 ## Common Framework
 
-These rules apply to Examples 2, 3, 4, 5, and 6.
+These rules apply to Tutorials T2 and T3 and to Experiments E1, E2, and E3
+(repo Examples 2 to 6). Tutorial T1 is a container workflow tutorial and is
+outside the scope of this validation policy.
 
 ### Publication Data Horizon
 
-For publication-track Examples 4, 5, and 6, the default container data
-horizon is **through 2025-12-31** for NDVI and ETf.
+For publication-track Experiments E1, E2, and E3 (repo Examples 4, 5, and 6),
+the default container data horizon is **through 2025-12-31** for NDVI and ETf.
 
-- This is the default publication policy for Ex4, Ex5, and Ex6.
+- This is the default publication policy for E1, E2, and E3.
 - A shorter or otherwise different analysis window is allowed only when it is
   explicitly declared in the experiment TOML and the companion experiment
   plan.
@@ -41,6 +57,31 @@ targets are satellite-derived ETf (and optionally SWE from SNODAS). The
 suggested manuscript framing is: "We evaluate SWIM as a field-specific
 inverse model calibrated to satellite ETf constraints, with independent flux
 data used exclusively for validation."
+
+### Flux Data Version (E1 and E2)
+
+**All validation for Experiments E1 and E2 must use the Volk v2.1 paired
+flux dataset** (`daily_flux_files_2pt1`). This dataset was provided directly
+by Volk and supersedes the original per-site `ET_corr` CSVs. Key properties:
+
+- 151 sites (vs 161 in the original; 10 sites absent from v2.1).
+- `Closed` column provides the energy-balance-corrected ET reference.
+- Systematically lower closed ET at many sites relative to the original
+  `ET_corr`, due to updated energy balance closure corrections.
+- Same end date (~May 2022); fewer valid days per site (stricter QAQC).
+
+The v2.1 data is specified via the `[validation] flux_dir` field in each
+experiment's TOML configuration file. The canonical path is:
+
+```
+/data/ssd1/swim/5_Flux_Ensemble/data/daily_flux_files_2pt1
+```
+
+**Do not use the original `daily_flux_files` directory for publication
+metrics.** It is retained for diagnostic and historical comparison only.
+
+Experiment E3 is not affected — it uses the multi-network QAQC archive
+(AmeriFlux, FLUXNET, ICOS, OzFlux) at `/nas/climate/flux_stations/qaqc/`.
 
 ### Site Minimum Data Requirements
 
@@ -124,7 +165,7 @@ benchmarks.
 
 ---
 
-## Example 2: Fort Peck
+## Tutorial T2 (Repo Example 2): Fort Peck
 
 ### Scope
 
@@ -176,7 +217,7 @@ no standalone `evaluate.py` script for this example.
 
 ---
 
-## Example 3: Crane
+## Tutorial T3 (Repo Example 3): Crane
 
 ### Scope
 
@@ -207,12 +248,12 @@ Flux data source: `data/S2_daily_data.csv`.
 
 ### Nuances
 
-- **Single site**: same as Example 2 -- report site-level metrics only, no
+- **Single site**: same as Tutorial T2 -- report site-level metrics only, no
   win rates.
 - **Two comparison modes**: (a) Landsat capture dates only; (b) full time
   series with interpolated OpenET. Both modes must report n.
 - **Reduced ensemble**: uses 4 of 6 OpenET models (no eeMETRIC or
-  DisALEXI), unlike Example 5 which uses all 6. This is a tutorial
+  DisALEXI), unlike Experiment E2 which uses all 6. This is a tutorial
   limitation, not a methodological choice.
 - **Low realization count**: 20 realizations (vs 200 in Examples 4/5) for
   tutorial speed. Uncertainty estimates from this run are illustrative only.
@@ -220,7 +261,7 @@ Flux data source: `data/S2_daily_data.csv`.
   single irrigated site where the mask correctly identifies irrigation
   status.
 - **Calibration improvement**: primary narrative is uncalibrated vs
-  calibrated, same as Example 2.
+  calibrated, same as Tutorial T2.
 - **Minimum data threshold**: S2 has sufficient flux coverage to exceed the
   90-day / 3-month minimum, but the evaluation period (overlapping with
   Landsat captures 2003-2007) is shorter than Example 2.
@@ -232,7 +273,7 @@ no standalone `evaluate.py` script for this example.
 
 ---
 
-## Example 4: Flux Network
+## Experiment E1 (Repo Example 4): Flux Network
 
 ### Scope
 
@@ -265,9 +306,9 @@ are not part of the canonical pipeline.
 
 ### Publication Window Rule
 
-For publication-track Example 4 containers, NDVI and SSEBop NHM ETf should
+For publication-track Experiment E1 containers, NDVI and SSEBop NHM ETf should
 be carried through `2025-12-31`. If a specific experiment uses a shorter
-window, that shorter window must be declared in the Example 4 TOML and in
+window, that shorter window must be declared in the E1 TOML and in
 the governing experiment plan or `examples/ablation_plan.md`.
 
 ### Canonical Cohorts
@@ -285,8 +326,8 @@ the governing experiment plan or `examples/ablation_plan.md`.
 
 - **Headline benchmark:** SSEBop NHM no_mask ET (interpolated ETf x ETo
   from container-stored Landsat SSEBop ETf at full footprint).
-- **Flux tower ET:** energy-balance-corrected daily ET from 160
-  AmeriFlux/FLUXNET stations.
+- **Flux tower ET:** Volk v2.1 energy-balance-corrected daily ET (151 of
+  160 sites present in v2.1; see Flux Data Version policy above).
 
 ### Land Cover Stratification
 
@@ -309,25 +350,25 @@ Report per-class and all-site aggregates side by side.
 - **Heavy tails:** mean R2 is strongly negative for both models due to a
   handful of catastrophic sites. Median R2 is the informative aggregate.
 
-### Current Canonical Snapshot (May 17, 2026)
+### Current Canonical Snapshot (June 8, 2026 — Volk v2.1 flux)
 
-#### Daily ET vs Flux Tower (159 paired sites)
+#### Daily ET vs Flux Tower (151 paired sites)
 
 | Model | R2 mean | R2 median | RMSE mean | RMSE median | Bias mean | Bias median |
 |-------|---------|-----------|-----------|-------------|-----------|-------------|
-| SWIM | -0.299 | 0.467 | 1.151 | 1.009 | -0.026 | 0.017 |
-| SSEBop | -0.689 | 0.415 | 1.141 | 1.091 | -0.022 | -0.036 |
+| SWIM | 0.214 | 0.427 | 1.187 | 1.068 | 0.010 | 0.004 |
+| SSEBop | 0.097 | 0.385 | 1.169 | 1.139 | -0.014 | -0.051 |
 
-SWIM daily win rate: 95/159 = 60%
+SWIM daily win rate: 91/151 = 60%
 
-#### Monthly ET vs Flux Tower (143 paired sites)
+#### Monthly ET vs Flux Tower (116 paired sites)
 
 | Model | R2 mean | R2 median | RMSE mean (mm/mo) | RMSE median (mm/mo) | Bias mean (mm/mo) | Bias median (mm/mo) |
 |-------|---------|-----------|--------------------|--------------------|--------------------|--------------------|
-| SWIM | 0.266 | 0.562 | 27.451 | 20.861 | -1.347 | 0.339 |
-| SSEBop | -0.303 | 0.515 | 27.604 | 25.004 | -0.712 | -0.823 |
+| SWIM | 0.110 | 0.424 | 26.244 | 20.143 | 3.996 | 4.438 |
+| SSEBop | -0.640 | 0.400 | 27.001 | 25.237 | 7.011 | 4.360 |
 
-SWIM monthly win rate: 95/143 = 66%
+SWIM monthly win rate: 66/116 = 57%
 
 ### Diagnostic-Only Comparisons
 
@@ -361,7 +402,7 @@ uv run python /home/dgketchum/code/swim-rs/examples/4_Flux_Network/evaluate.py \
 
 ---
 
-## Example 5: Flux Ensemble
+## Experiment E2 (Repo Example 5): Flux Ensemble
 
 ### Scope
 
@@ -377,7 +418,7 @@ calibrated against the 6-model OpenET ensemble mean.
 | Calibration target | Ensemble mean of 6 OpenET Landsat models |
 | Ensemble members | SSEBop, PT-JPL, SIMS, geeSEBAL, eeMETRIC, DisALEXI |
 | ETf observation period | 2016-2025 |
-| Parameters | 8 per site (same as Example 4) |
+| Parameters | 8 per site (same as Experiment E1) |
 | PEST++ IES | 200 realizations, 3 iterations, 40 workers |
 | Runtime | ~109 min |
 | Meteorology | GridMET |
@@ -391,19 +432,19 @@ calibrated against the 6-model OpenET ensemble mean.
 
 ### ETf Masking: no_mask Only
 
-Same as Example 4. Both calibration and validation use full-footprint ETf
+Same as Experiment E1. Both calibration and validation use full-footprint ETf
 from `remote_sensing/etf/landsat/{model}/no_mask`.
 
 ### Publication Window Rule
 
-For publication-track Example 5 containers, NDVI and all ensemble-member ETf
+For publication-track Experiment E2 containers, NDVI and all ensemble-member ETf
 inputs should be carried through `2025-12-31`. If a specific experiment uses
-a shorter window, that shorter window must be declared in the Example 5 TOML
+a shorter window, that shorter window must be declared in the E2 TOML
 and in the governing experiment plan or `examples/ablation_plan.md`.
 
 ### Canonical Cohorts
 
-- **Calibration configuration:** 60 cropland flux sites (Run 11).
+- **Calibration configuration:** 60 cropland flux sites (Run 13, MAD ensemble + ETo-corrected).
 - **Excluded:** `MB_Pch`.
 - **Evaluation candidate cohort:** 59 sites after exclusion and site
   minimum data filter (90 days, 3 qualifying months).
@@ -417,37 +458,82 @@ and in the governing experiment plan or `examples/ablation_plan.md`.
 - **Headline benchmark:** Volk et al. 3x3 OpenET ensemble ET.
 - **Per-model benchmarks:** SSEBop, PT-JPL, SIMS, geeSEBAL, eeMETRIC,
   DisALEXI (each scored on its own paired day/month set with SWIM).
-- **Flux tower ET:** energy-balance-corrected daily ET from the 60
-  cropland stations.
+- **Flux tower ET:** Volk v2.1 energy-balance-corrected daily ET from
+  cropland stations (see Flux Data Version policy above).
 
 ### Ensemble-Derived Weighting
 
-Run 11 uses ensemble-derived observation weights:
+Run 13 uses ensemble-derived observation weights:
 `weight = obsval / (std + 0.1)` where `std` is per-timestep standard
 deviation across the 6 ensemble member ETf values. Observations where
 models agree strongly receive higher weight. A controlled experiment
 comparing this to standard fixed-denominator weighting is planned
 (see `examples/ablation_plan.md`).
 
-### Current Canonical Snapshot (March 31, 2026)
+### Current Canonical Snapshot (June 11, 2026 — Run 18, Volk v2.1 flux)
 
-#### Daily ET vs Flux Tower (58 paired sites)
+Run 18 changes from Run 13: MAD-filtered ensemble calibration target
+(Volk methodology, ±2 MAD, max 2 removals per cell), tightened
+irrigation DOY window detection (ndvi_min_start=0.25, decay-threshold
+forward extension, bridging removal), no_mask NDVI,
+gwsub_irr_fallback disabled.
 
-| Model | R2 mean | R2 median | RMSE mean | RMSE median | Bias mean | Bias median |
-|-------|---------|-----------|-----------|-------------|-----------|-------------|
-| SWIM | 0.392 | 0.652 | 1.277 | 1.141 | -0.151 | -0.010 |
-| Ensemble | 0.323 | 0.567 | 1.382 | 1.189 | -0.099 | -0.094 |
+#### Overpass-Day Daily ET vs Flux Tower (45 paired sites)
 
-SWIM daily win rate: 41/58 = 71%
+Evaluation restricted to Landsat overpass dates where Volk ensemble ET
+is directly observed (not interpolated).
+
+| Model | R2 mean | R2 median | RMSE mean (mm/d) | RMSE median | Bias mean (mm/d) | Bias median |
+|-------|---------|-----------|-------------------|-------------|-------------------|-------------|
+| SWIM | 0.665 | 0.726 | 1.135 | 1.090 | -0.005 | -0.068 |
+| Ensemble | 0.708 | 0.745 | 1.072 | 1.084 | -0.361 | -0.406 |
+
+SWIM overpass-day win rate: 16/45 = 36%
+
+#### Non-Overpass-Day Daily ET vs Flux Tower (58 sites, SWIM only)
+
+All days excluding Landsat overpass dates. No RS model comparison is
+possible because OpenET models have no direct observations on these days.
+
+| Model | R2 mean | R2 median | RMSE mean (mm/d) | RMSE median | Bias mean (mm/d) | Bias median |
+|-------|---------|-----------|-------------------|-------------|-------------------|-------------|
+| SWIM | 0.482 | 0.676 | 1.211 | 1.076 | -0.067 | -0.033 |
+
+#### All-Days Daily ET vs Flux Tower (58 paired sites)
+
+SWIM evaluated on every day with valid flux data. The Volk 3×3
+ensemble provides ET only on Landsat overpass dates (~16/year); for
+non-overpass days the ensemble ET is linearly interpolated (our
+interpolation, not Volk's).
+
+| Model | R2 mean | R2 median | RMSE mean (mm/d) | RMSE median | Bias mean (mm/d) | Bias median |
+|-------|---------|-----------|-------------------|-------------|-------------------|-------------|
+| SWIM | 0.466 | 0.688 | 1.192 | 1.065 | -0.071 | -0.051 |
+| Ensemble | 0.384 | 0.564 | 1.305 | 1.187 | -0.157 | -0.130 |
+
+SWIM all-days win rate: 44/58 = 76%
 
 #### Monthly ET vs Flux Tower (33 paired sites)
 
-| Model | R2 mean | R2 median | RMSE mean (mm/mo) | RMSE median (mm/mo) | Bias mean (mm/mo) | Bias median (mm/mo) |
+| Model | R2 mean | R2 median | RMSE mean (mm/mo) | RMSE median | Bias mean (mm/mo) | Bias median |
 |-------|---------|-----------|--------------------|--------------------|--------------------|--------------------|
-| SWIM | 0.814 | 0.845 | 21.451 | 21.474 | -0.774 | 0.326 |
-| Ensemble | 0.799 | 0.859 | 21.224 | 19.591 | -5.877 | -6.697 |
+| SWIM | 0.820 | 0.876 | 20.000 | 18.222 | +2.790 | +3.057 |
+| Ensemble | 0.793 | 0.861 | 20.845 | 19.039 | -3.764 | -6.697 |
 
-SWIM monthly win rate: 17/33 = 52%
+SWIM monthly win rate: 20/33 = 61%
+
+#### Summary
+
+SWIM loses to the Volk ensemble on overpass days (R2 median 0.726 vs
+0.745, 36% win rate) where the ensemble has direct satellite
+observations. On all other days — which dominate the annual water
+budget — SWIM's process-based gap-filling outperforms the linearly
+interpolated ensemble: 76% win rate on all-days daily (R2 median
+0.688 vs 0.564) and 61% on monthly (R2 median 0.876 vs 0.861).
+SWIM has the lowest absolute daily bias across all temporal slices.
+Note: the all-days ensemble comparison uses our linear interpolation
+of the sparse Volk 3×3 ET (~16 overpass dates per year); Volk does
+not publish daily gap-filled ET.
 
 ### Diagnostic-Only Comparisons
 
@@ -456,34 +542,42 @@ SWIM monthly win rate: 17/33 = 52%
 - Runs relying on automatic `par.csv` discovery in
   `/data/ssd1/swim/5_Flux_Ensemble/results/`.
 - Per-model comparisons without an explicitly matched SWIM denominator.
+- Run 13 and Run 17 results (superseded by Run 18).
 
 ### Canonical Commands
 
 ```bash
 uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/evaluate.py \
-  --par-csv /data/ssd1/swim/5_Flux_Ensemble/results/run11_full_period/5_Flux_Ensemble.3.par.csv \
-  --container /data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble.swim \
+  --par-csv /data/ssd1/swim/5_Flux_Ensemble/results/run18/5_Flux_Ensemble.3.par.csv \
+  --container /data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run18.swim \
   --openet-source volk
 
 uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/evaluate.py \
-  --par-csv /data/ssd1/swim/5_Flux_Ensemble/results/run11_full_period/5_Flux_Ensemble.3.par.csv \
-  --container /data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble.swim \
+  --par-csv /data/ssd1/swim/5_Flux_Ensemble/results/run18/5_Flux_Ensemble.3.par.csv \
+  --container /data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run18.swim \
   --monthly
+
+uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/volk_replication.py \
+  --par-csv /data/ssd1/swim/5_Flux_Ensemble/results/run18/5_Flux_Ensemble.3.par.csv \
+  --container /data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run18.swim \
+  --output-dir /data/ssd1/swim/5_Flux_Ensemble/results/run18
 ```
 
 ### Data Paths
 
 | Resource | Path |
 |----------|------|
-| Parameter file | `/data/ssd1/swim/5_Flux_Ensemble/results/run11_full_period/5_Flux_Ensemble.3.par.csv` |
-| Container | `/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble.swim` |
+| Parameter file | `/data/ssd1/swim/5_Flux_Ensemble/results/run18/5_Flux_Ensemble.3.par.csv` |
+| Container | `/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run18.swim` |
 | Evaluation script | `examples/5_Flux_Ensemble/evaluate.py` |
+| Volk replication script | `examples/5_Flux_Ensemble/volk_replication.py` |
+| Headline metrics | `/data/ssd1/swim/5_Flux_Ensemble/results/run18/headline_validation_metrics.csv` |
 | Validation policy (historical) | `examples/5_Flux_Ensemble/VALIDATION_POLICY.md` |
-| Run 11 reference | `examples/5_Flux_Ensemble/RUN11_REFERENCE.md` |
+| Run 13 reference (historical) | `examples/5_Flux_Ensemble/RUN13_REFERENCE.md` |
 
 ---
 
-## Example 6: Flux International
+## Experiment E3 (Repo Example 6): Flux International
 
 ### Scope
 
@@ -509,13 +603,13 @@ PT-JPL ensemble mean ETf. ERA5-Land meteorology, HWSD soils, no ECOSTRESS.
 
 ### ETf and NDVI Masking: no_mask Only
 
-Example 6 uses `mask_mode = "none"` and the international workflow ingests
+Experiment E3 uses `mask_mode = "none"` and the international workflow ingests
 NDVI and ETf under `no_mask` only. There is no canonical irrigation-mask
-switching workflow for Ex6 publication runs.
+switching workflow for E3 publication runs.
 
 ### Publication Window Rule
 
-For publication-track Example 6 containers, NDVI and ETf should be carried
+For publication-track Experiment E3 containers, NDVI and ETf should be carried
 through `2025-12-31`.
 
 - This applies to Landsat NDVI, Sentinel NDVI, Landsat ETf, and ECOSTRESS
@@ -598,4 +692,4 @@ uv run python /home/dgketchum/code/swim-rs/examples/6_Flux_International/evaluat
 | Evaluation script | `examples/6_Flux_International/evaluate.py` |
 | TOML | `examples/6_Flux_International/6_Flux_International_LSEnsemble_POR.toml` |
 | Results | `/data/ssd1/swim/6_Flux_International/results/6_Flux_International_LSEnsemble_POR/` |
-| Detailed notes | `examples/6_Flux_International/notes/LS_ENSEMBLE_POR_RESULTS.md` |
+| Detailed notes | `examples/6_Flux_International/notes/E3_RESULTS.md` |

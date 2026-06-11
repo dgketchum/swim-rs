@@ -149,14 +149,13 @@ def load_flux_et(fid, flux_dir):
 
 
 def resolve_flux_dir(cfg):
-    """Resolve the canonical flux directory, with a shipped-data fallback."""
-    primary = os.path.join(cfg.data_dir, "daily_flux_files")
+    """Resolve the flux directory from config, with a shipped-data fallback."""
+    if cfg.flux_dir and os.path.isdir(cfg.flux_dir):
+        return cfg.flux_dir
     fallback = os.path.join(cfg.data_dir, "flux")
-    if os.path.isdir(primary):
-        return primary
     if os.path.isdir(fallback):
         return fallback
-    return primary
+    return cfg.flux_dir or os.path.join(cfg.data_dir, "daily_flux_files")
 
 
 def load_openet_etf_nomask(container, fid):
@@ -676,9 +675,9 @@ def find_reference_par_csv(results_dir, project_name):
     """Resolve the canonical Example 5 parameter file when none is provided."""
     candidate_dirs = []
 
-    run11_dir = os.path.join(results_dir, "run11_full_period")
-    if os.path.isdir(run11_dir):
-        candidate_dirs.append(run11_dir)
+    run13_dir = os.path.join(results_dir, "run13_mad_ensemble")
+    if os.path.isdir(run13_dir):
+        candidate_dirs.append(run13_dir)
 
     candidate_dirs.append(results_dir)
 
@@ -746,7 +745,7 @@ if __name__ == "__main__":
     if args.container:
         container_path = args.container
     else:
-        container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}.swim")
+        container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}_corrected_mad.swim")
     container = SwimContainer.open(container_path, mode="r")
 
     if args.sites:
