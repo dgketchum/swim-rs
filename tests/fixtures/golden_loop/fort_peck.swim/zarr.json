@@ -2,7 +2,7 @@
   "attributes": {
     "project_name": "2_Fort_Peck",
     "schema_version": "1.0",
-    "created_at": "2026-02-09T00:38:58.238991+00:00",
+    "created_at": "2026-06-11T16:41:54.770138+00:00",
     "start_date": "2007-01-01",
     "end_date": "2008-12-31",
     "n_fields": 1,
@@ -10,13 +10,13 @@
     "uid_column": "site_id",
     "source_shapefile": "/home/dgketchum/code/swim-rs/examples/2_Fort_Peck/data/gis/flux_fields.shp",
     "provenance": {
-      "container_created_at": "2026-02-09T00:38:58.238908+00:00",
+      "container_created_at": "2026-06-11T16:41:54.770122+00:00",
       "container_created_by": null,
       "schema_version": "1.0",
       "events": [
         {
-          "id": "evt_2d11c9f661c4",
-          "timestamp": "2026-02-09T00:38:58.443233+00:00",
+          "id": "evt_1e6aade2b653",
+          "timestamp": "2026-06-11T16:41:54.916255+00:00",
           "operation": "create",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -40,8 +40,8 @@
           "error_message": null
         },
         {
-          "id": "evt_28af5d888a57",
-          "timestamp": "2026-02-09T00:38:58.628584+00:00",
+          "id": "evt_f4b8cc0c1dd1",
+          "timestamp": "2026-06-11T16:41:55.108662+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -66,8 +66,8 @@
           "error_message": null
         },
         {
-          "id": "evt_d3989b8b1786",
-          "timestamp": "2026-02-09T00:38:59.028602+00:00",
+          "id": "evt_9a89c3febb17",
+          "timestamp": "2026-06-11T16:41:55.468274+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -101,8 +101,8 @@
           "error_message": null
         },
         {
-          "id": "evt_2ad7de9028ec",
-          "timestamp": "2026-02-09T00:39:00.109216+00:00",
+          "id": "evt_e4c1b9688823",
+          "timestamp": "2026-06-11T16:41:56.441906+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -122,8 +122,8 @@
           "error_message": null
         },
         {
-          "id": "evt_3ecf38d32f2c",
-          "timestamp": "2026-02-09T00:39:01.327095+00:00",
+          "id": "evt_b93004271d33",
+          "timestamp": "2026-06-11T16:41:57.340450+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -133,7 +133,10 @@
           "params": {
             "model": "ptjpl",
             "instrument": "landsat",
-            "mask": "irr"
+            "mask": "irr",
+            "min_etf": 0.05,
+            "max_etf": 2.0,
+            "scale_factor": 1.0
           },
           "fields_affected": [
             "US-FPe"
@@ -145,8 +148,8 @@
           "error_message": null
         },
         {
-          "id": "evt_2891be5d0f9a",
-          "timestamp": "2026-02-09T00:39:02.378077+00:00",
+          "id": "evt_764834fbf12c",
+          "timestamp": "2026-06-11T16:41:58.160859+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -156,7 +159,10 @@
           "params": {
             "model": "ptjpl",
             "instrument": "landsat",
-            "mask": "inv_irr"
+            "mask": "inv_irr",
+            "min_etf": 0.05,
+            "max_etf": 2.0,
+            "scale_factor": 1.0
           },
           "fields_affected": [
             "US-FPe"
@@ -168,8 +174,8 @@
           "error_message": null
         },
         {
-          "id": "evt_ba275e641176",
-          "timestamp": "2026-02-09T00:39:03.621708+00:00",
+          "id": "evt_4b5111f028c6",
+          "timestamp": "2026-06-11T16:41:59.146623+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -192,8 +198,8 @@
           "error_message": null
         },
         {
-          "id": "evt_862162e74fb3",
-          "timestamp": "2026-02-09T00:39:04.853258+00:00",
+          "id": "evt_d1c9ffae24a9",
+          "timestamp": "2026-06-11T16:42:00.062683+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -216,8 +222,8 @@
           "error_message": null
         },
         {
-          "id": "evt_2dbf64570af2",
-          "timestamp": "2026-02-09T00:39:05.263630+00:00",
+          "id": "evt_37112adf3c99",
+          "timestamp": "2026-06-11T16:42:00.318755+00:00",
           "operation": "compute",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -247,8 +253,8 @@
           "error_message": null
         },
         {
-          "id": "evt_b226e2d2baae",
-          "timestamp": "2026-02-09T00:39:05.449868+00:00",
+          "id": "evt_8012b5ea860e",
+          "timestamp": "2026-06-11T16:42:00.498250+00:00",
           "operation": "compute",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -267,7 +273,9 @@
             ],
             "use_mask": true,
             "use_lulc": false,
+            "gwsub_irr_fallback": false,
             "lookback": 10,
+            "ndvi_min_start": 0.25,
             "met_source": "gridmet"
           },
           "fields_affected": [

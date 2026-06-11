@@ -184,6 +184,7 @@ def generate_case(case):
             instruments=("landsat",),
             use_mask=True,
             use_lulc=False,
+            gwsub_irr_fallback=False,
             fields=select_fields,
             overwrite=True,
         )

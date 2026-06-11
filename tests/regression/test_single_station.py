@@ -1213,9 +1213,25 @@ def _create_full_s2_container(shapefile: Path, input_dir: Path, tmp_path: Path):
     if met_dir.exists():
         container.ingest.gridmet(source_dir=str(met_dir))
 
-    properties_json = input_dir / "properties" / "properties.json"
-    if properties_json.exists():
-        container.ingest.dynamics(dynamics_json=str(properties_json))
+    # Ingest properties from CSVs (preferred) or legacy dynamics JSON
+    properties_dir = input_dir / "properties"
+    if properties_dir.exists():
+        lulc_csv = properties_dir / "lulc.csv"
+        ssurgo_csv = properties_dir / "ssurgo.csv"
+        irr_csv = properties_dir / "irr.csv"
+        if lulc_csv.exists() or ssurgo_csv.exists():
+            container.ingest.properties(
+                lulc_csv=str(lulc_csv) if lulc_csv.exists() else None,
+                soils_csv=str(ssurgo_csv) if ssurgo_csv.exists() else None,
+                irr_csv=str(irr_csv) if irr_csv.exists() else None,
+                uid_column="site_id",
+                lulc_column="modis_lc",
+                extra_lulc_column="glc10_lc",
+            )
+        else:
+            properties_json = properties_dir / "properties.json"
+            if properties_json.exists():
+                container.ingest.dynamics(dynamics_json=str(properties_json))
 
     # Compute merged NDVI (required before dynamics computation)
     container.compute.merged_ndvi(
