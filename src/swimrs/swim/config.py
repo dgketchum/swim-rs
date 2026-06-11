@@ -133,6 +133,9 @@ class ProjectConfig:
         # Ecostress
         self.ecostress_dir = None
 
+        # Validation
+        self.flux_dir = None
+
         # Derived / mode flags
         self.calibrate = None
         self.forecast = None
@@ -324,6 +327,12 @@ class ProjectConfig:
 
         # Ecostress (international)
         self.ecostress_dir = paths_conf.get("ecostress")
+
+        # Validation
+        validation_conf = self.resolved_config.get("validation", {})
+        self.flux_dir = validation_conf.get("flux_dir")
+        if self.flux_dir is None and self.data_dir:
+            self.flux_dir = os.path.join(self.data_dir, "daily_flux_files")
 
         # Model settings
         self.irrigation_threshold = misc_conf.get("irrigation_threshold")

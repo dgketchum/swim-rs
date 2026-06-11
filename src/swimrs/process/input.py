@@ -770,7 +770,7 @@ def _get_container_time_series(
         if "ndvi" in var:
             # Convert to pandas, interpolate, convert back
             df = ds[var].to_pandas()
-            df_interp = df.interpolate(limit=100, axis=0)
+            df_interp = df.interpolate(limit=min(100, len(df) - 1), axis=0)
             df_interp = df_interp.bfill(axis=0).ffill(axis=0)
             ds[var] = ds[var].copy(data=df_interp.values)
 

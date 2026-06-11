@@ -259,10 +259,12 @@ class Calculator(Component):
         use_lulc: bool = True,
         lookback: int = 10,
         ndvi_threshold: float = 0.3,
+        ndvi_min_start: float = 0.25,
         min_pos_days: int = 10,
         met_source: str = "gridmet",
         fields: list[str] | None = None,
         overwrite: bool = False,
+        gwsub_irr_fallback: bool = True,
     ) -> ProvenanceEvent:
         """
         Compute field dynamics: irrigation detection, groundwater subsidy, K-parameters.
@@ -292,11 +294,15 @@ class Calculator(Component):
             use_mask: If True, use irrigation mask properties (CONUS mode)
             use_lulc: If True, use water balance + LULC (International mode)
             lookback: Days of lookback for irrigation window extension
-            ndvi_threshold: NDVI threshold for window extension
+            ndvi_threshold: NDVI threshold for forward extension decay floor
+            ndvi_min_start: Minimum smoothed NDVI to initiate a window
             min_pos_days: Minimum consecutive positive slope days
             met_source: Meteorology source ("gridmet", "era5")
             fields: Optional list of field UIDs to process
             overwrite: If True, replace existing results
+            gwsub_irr_fallback: If True (default), override non-irrigated status
+                when gwsub detects ET > PPT at cropland sites. Set False to rely
+                solely on use_mask/use_lulc for irrigation classification.
 
         Returns:
             ProvenanceEvent recording the operation
@@ -354,17 +360,18 @@ class Calculator(Component):
             if use_mask:
                 irr_props = self._get_yearly_irrigation_properties()
 
-            # Compute irrigation windows (gwsub_data enables LULC-aware fallback)
+            # Compute irrigation windows
             irr_data = self._compute_irrigation_data(
                 ds,
                 irr_threshold,
                 lookback,
                 ndvi_threshold,
+                ndvi_min_start,
                 min_pos_days,
                 use_mask,
                 use_lulc,
                 irr_props,
-                gwsub_data,
+                gwsub_data if gwsub_irr_fallback else None,
             )
 
             # Write results
@@ -385,7 +392,9 @@ class Calculator(Component):
                     "instruments": list(instruments),
                     "use_mask": use_mask,
                     "use_lulc": use_lulc,
+                    "gwsub_irr_fallback": gwsub_irr_fallback,
                     "lookback": lookback,
+                    "ndvi_min_start": ndvi_min_start,
                     "met_source": met_source,
                 },
                 fields_affected=target_fields,
@@ -445,6 +454,7 @@ class Calculator(Component):
         use_mask: bool = True,
         lookback: int = 10,
         ndvi_threshold: float = 0.3,
+        ndvi_min_start: float = 0.25,
         min_pos_days: int = 10,
         overwrite: bool = False,
     ) -> ProvenanceEvent:
@@ -533,6 +543,7 @@ class Calculator(Component):
                 irr_threshold,
                 lookback,
                 ndvi_threshold,
+                ndvi_min_start,
                 min_pos_days,
                 use_mask=use_mask,
                 use_lulc=False,
@@ -993,6 +1004,7 @@ class Calculator(Component):
         irr_threshold: float,
         lookback: int,
         ndvi_threshold: float,
+        ndvi_min_start: float,
         min_pos_days: int,
         use_mask: bool,
         use_lulc: bool,
@@ -1117,7 +1129,12 @@ class Calculator(Component):
 
                 # Detect irrigation windows from NDVI patterns
                 irr_doys = self._detect_irrigation_windows(
-                    ndvi_series, lookback, ndvi_threshold, min_pos_days, yr
+                    ndvi_series,
+                    lookback,
+                    ndvi_threshold,
+                    min_pos_days,
+                    yr,
+                    ndvi_min_start=ndvi_min_start,
                 )
 
                 # Track for backfill if irrigated but no windows detected
@@ -1303,16 +1320,19 @@ class Calculator(Component):
         ndvi_threshold: float,
         min_pos_days: int,
         year: int,
+        ndvi_min_start: float = 0.25,
     ) -> list[int]:
         """
         Detect irrigation windows from NDVI time series.
 
-        Algorithm matches legacy SamplePlotDynamics._detect_irrigation_windows():
+        Algorithm:
         1. Apply 32-day rolling mean to smooth NDVI
         2. Compute slope (diff)
         3. Find consecutive positive slope periods >= min_pos_days
-        4. Extend windows by lookback and until NDVI drops below threshold
-        5. Extend to include next group if its min NDVI > threshold
+        4. Skip groups where smoothed NDVI never reaches ndvi_min_start
+           (filters dormant-season noise)
+        5. Extend windows by lookback and until NDVI drops below a
+           decay threshold (max of ndvi_threshold and 50% of peak NDVI)
         """
         ydf = pd.DataFrame({"ndvi": ndvi_series})
 
@@ -1342,7 +1362,6 @@ class Calculator(Component):
         long_positive_slope_groups = group_counts[group_counts >= min_pos_days].index
 
         irr_doys = []
-        groups_list = groups.tolist()
 
         for group in long_positive_slope_groups:
             group_indices = positive_slope[groups == group].index
@@ -1353,31 +1372,39 @@ class Calculator(Component):
             start_index = group_indices[0]
             end_index = group_indices[-1]
 
+            # Skip groups where NDVI never reaches ndvi_min_start —
+            # these are dormant-season noise (e.g. NDVI 0.19 → 0.22)
+            group_ndvi = ydf.loc[group_indices, "ndvi"]
+            if group_ndvi.max() < ndvi_min_start:
+                continue
+
+            # If the group starts below ndvi_min_start, clip to where
+            # NDVI first crosses above it
+            if ydf.loc[start_index, "ndvi"] < ndvi_min_start:
+                above = group_indices[group_ndvi.values >= ndvi_min_start]
+                if len(above) == 0:
+                    continue
+                start_index = above[0]
+
             # Extend start by lookback if at local minimum
             if start_index in local_min_indices:
                 start_day = start_index - pd.Timedelta(days=lookback)
             else:
                 start_day = start_index
 
-            # Extend end until NDVI drops below threshold (matching legacy logic exactly)
+            # Forward extension: stop when NDVI drops below a decay
+            # threshold tied to the peak within this window, so the
+            # window doesn't run deep into senescence
+            peak_ndvi = ydf.loc[start_index:end_index, "ndvi"].max()
+            decay_threshold = max(ndvi_threshold, peak_ndvi * 0.5)
+
             end_day = end_index + pd.Timedelta(days=2)
             try:
-                prev_day_ndvi = ydf.loc[end_day - pd.Timedelta(days=1), "ndvi"]
-                if prev_day_ndvi > ndvi_threshold:
-                    ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1), "ndvi"]
-                    while ndvi_doy > ndvi_threshold and end_day in ydf.index:
-                        end_day += pd.Timedelta(days=1)
-                        ndvi_doy = ydf.loc[end_day - pd.Timedelta(days=1), "ndvi"]
+                ndvi_val = ydf.loc[end_day - pd.Timedelta(days=1), "ndvi"]
+                while ndvi_val > decay_threshold and end_day in ydf.index:
+                    end_day += pd.Timedelta(days=1)
+                    ndvi_val = ydf.loc[end_day - pd.Timedelta(days=1), "ndvi"]
             except (KeyError, TypeError):
-                pass
-
-            # Extend to next group if its min NDVI > threshold (legacy lines 582-584)
-            try:
-                if group + 1 in groups_list:
-                    next_group_ndvi = ydf[ydf["groups"] == group + 1]["ndvi"].values
-                    if next_group_ndvi.min() > ndvi_threshold:
-                        end_day = ydf[ydf["groups"] == group + 1].index[-1]
-            except (KeyError, IndexError, ValueError):
                 pass
 
             end_day = end_day + pd.Timedelta(days=1)
