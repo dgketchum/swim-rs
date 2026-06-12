@@ -1161,7 +1161,6 @@ class Calculator(Component):
                         yr_idx = eta_fb_s.index.year
                         eta_fb_yearly = eta_fb_s.groupby(yr_idx).sum()
                         raw_fb_yearly = site_fb_s.groupby(site_fb_s.index.year).sum()
-                        site_data["etf_fallback_scale"] = fb_scale
                         fb_ok = True
 
             for yr in years:
@@ -1252,6 +1251,8 @@ class Calculator(Component):
                     }
                     if evidence:
                         site_data[int(yr)]["evidence"] = evidence
+                        if evidence == "fallback":
+                            site_data[int(yr)]["etf_fallback_scale"] = fb_scale
                     continue
 
                 # Get NDVI with extended-year context for boundary handling (using pre-extracted pandas)
@@ -1278,6 +1279,8 @@ class Calculator(Component):
                 }
                 if evidence:
                     site_data[int(yr)]["evidence"] = evidence
+                    if evidence == "fallback":
+                        site_data[int(yr)]["etf_fallback_scale"] = fb_scale
 
             site_data["fallow_years"] = fallow_years
             backfill_tracker[site_str] = years_needing_backfill

@@ -456,7 +456,12 @@ class TestComputeIrrigationDataLulc:
         assert site[2019]["evidence"] == "fallback"
         assert site[2020]["evidence"] == "fallback"
         assert "evidence" not in site[2021]
-        assert_allclose(site["etf_fallback_scale"], 1 / 1.5, rtol=1e-6)
+        assert_allclose(site[2019]["etf_fallback_scale"], 1 / 1.5, rtol=1e-6)
+        assert_allclose(site[2020]["etf_fallback_scale"], 1 / 1.5, rtol=1e-6)
+        # Scale lives in the fallback year dicts only — a site-level scalar key
+        # breaks consumers that treat every non-fallow_years key as a year dict.
+        assert "etf_fallback_scale" not in site
+        assert "etf_fallback_scale" not in site[2021]
 
     def test_fallback_harmonization_prevents_dryland_overflag(self):
         """Biased fallback in a dryland gap window must not flag irrigation.
@@ -472,7 +477,7 @@ class TestComputeIrrigationDataLulc:
         site = result["A"]
         assert {y: site[y]["irrigated"] for y in years} == {2019: 0, 2020: 0, 2021: 0}
         assert site[2020]["evidence"] == "fallback"
-        assert_allclose(site["etf_fallback_scale"], 1 / 1.8, rtol=1e-6)
+        assert_allclose(site[2020]["etf_fallback_scale"], 1 / 1.8, rtol=1e-6)
 
     def test_fallback_requires_overlap(self):
         """Fallback with no co-captured dates is unused; gap years stay unflagged."""
@@ -485,6 +490,7 @@ class TestComputeIrrigationDataLulc:
         assert site[2019]["evidence"] == "none"
         assert site[2020]["evidence"] == "none"
         assert "etf_fallback_scale" not in site
+        assert all("etf_fallback_scale" not in site[y] for y in years)
 
     def test_no_evidence_tags_without_fallback_feature(self):
         """With the fallback feature off, irr_data keeps its legacy shape.
@@ -501,4 +507,5 @@ class TestComputeIrrigationDataLulc:
         assert {y: site[y]["irrigated"] for y in years} == {2019: 0, 2020: 0, 2021: 1}
         for y in years:
             assert "evidence" not in site[y]
+            assert "etf_fallback_scale" not in site[y]
         assert "etf_fallback_scale" not in site
