@@ -265,6 +265,8 @@ class Calculator(Component):
         fields: list[str] | None = None,
         overwrite: bool = False,
         gwsub_irr_fallback: bool = True,
+        lulc_irr_method: str = "annual_2yr",
+        annual_subsidy_ratio: float = 1.0,
     ) -> ProvenanceEvent:
         """
         Compute field dynamics: irrigation detection, groundwater subsidy, K-parameters.
@@ -278,12 +280,27 @@ class Calculator(Component):
 
         use_mask=True (CONUS - Examples 4 & 5):
             - Reads per-year irrigation fraction from properties/irrigation/irr_yearly
+              (IrrMapper/LANID table ingested from the irrigation properties CSV)
             - Year is irrigated if f_irr > irr_threshold
-            - Requires masks=("irr", "inv_irr")
+            - Independent of ``masks``: works with masks=("no_mask",) as well as
+              masked groups — ``masks`` only selects which NDVI/ETf container
+              groups are read (see _load_dynamics_dataset)
 
         use_lulc=True (International - Example 6):
-            - Computes irrigation from water balance (ET/PPT ratio)
-            - Year is irrigated if subsidy_months >= 3 AND field is cropped (LULC)
+            - Computes irrigation from a water-balance subsidy test, gated on
+              the field being cropped (annual rooting habit, per LULC)
+            - ``lulc_irr_method`` selects the subsidy test:
+                "annual_2yr" (default): irrigated if rolling 2-year
+                    sum(ET)/sum(PPT) > annual_subsidy_ratio. The 2-year window
+                    spans a crop+fallow cycle, so dryland systems that bank
+                    soil moisture across a fallow year (e.g. wheat-fallow) are
+                    NOT flagged — their biennial balance closes (ET <= PPT)
+                    even though in a single crop year ET exceeds that season's
+                    rain.
+                "annual": same test on a single year.
+                "monthly": legacy test — irrigated if >= 3 months have
+                    ET/(PPT+1) > 1.3. Over-flags moisture-banking dryland
+                    fields; retained for back-compat.
             - Works with masks=("no_mask",)
 
         Args:
@@ -303,6 +320,10 @@ class Calculator(Component):
             gwsub_irr_fallback: If True (default), override non-irrigated status
                 when gwsub detects ET > PPT at cropland sites. Set False to rely
                 solely on use_mask/use_lulc for irrigation classification.
+            lulc_irr_method: Subsidy test for use_lulc mode — "annual_2yr"
+                (default), "annual", or "monthly" (legacy). See above.
+            annual_subsidy_ratio: ET/PPT ratio above which an annual/2yr window
+                is treated as subsidized (default 1.0 = ET exceeds precip).
 
         Returns:
             ProvenanceEvent recording the operation
@@ -372,6 +393,8 @@ class Calculator(Component):
                 use_lulc,
                 irr_props,
                 gwsub_data if gwsub_irr_fallback else None,
+                lulc_irr_method=lulc_irr_method,
+                annual_subsidy_ratio=annual_subsidy_ratio,
             )
 
             # Write results
@@ -393,6 +416,8 @@ class Calculator(Component):
                     "use_mask": use_mask,
                     "use_lulc": use_lulc,
                     "gwsub_irr_fallback": gwsub_irr_fallback,
+                    "lulc_irr_method": lulc_irr_method,
+                    "annual_subsidy_ratio": annual_subsidy_ratio,
                     "lookback": lookback,
                     "ndvi_min_start": ndvi_min_start,
                     "met_source": met_source,
@@ -1010,6 +1035,8 @@ class Calculator(Component):
         use_lulc: bool,
         irr_props: dict[str, dict[str, float]] | None = None,
         gwsub_data: dict[str, dict] | None = None,
+        lulc_irr_method: str = "annual_2yr",
+        annual_subsidy_ratio: float = 1.0,
     ) -> dict[str, dict]:
         """
         Compute irrigation windows for each field and year.
@@ -1023,8 +1050,13 @@ class Calculator(Component):
             and LULC is cropland, override to irrigated (mask data missed it).
 
         use_lulc=True (International):
-            Computes irrigation from water balance (ET/PPT ratio).
-            Year is irrigated if subsidy_months >= 3 AND field is cropped.
+            Computes irrigation from a water-balance subsidy test, gated on the
+            field being cropped (annual rooting habit). ``lulc_irr_method``
+            selects the test — "annual_2yr" (default) uses a rolling 2-year
+            sum(ET)/sum(PPT) > annual_subsidy_ratio so that dryland systems
+            banking soil moisture across a fallow year are not flagged;
+            "annual" uses a single year; "monthly" is the legacy >=3-months-of-
+            ET/(PPT+1)>1.3 test.
 
         Uses NDVI slope analysis to detect irrigation periods.
         """
@@ -1064,8 +1096,9 @@ class Calculator(Component):
             site_ppt_s = ppt.sel(site=site).to_pandas()
             site_ndvi_s = ndvi.sel(site=site).to_pandas()
 
-            # Pre-compute monthly eta and ppt for use_lulc mode (vectorized)
-            # Interpolate ETf to match legacy _build_et_frame behavior
+            # Pre-compute eta and ppt sums for use_lulc mode (vectorized).
+            # Interpolate ETf to daily (matches legacy _build_et_frame behavior)
+            # so the water balance reflects the full year, not capture dates.
             if use_lulc:
                 etf_interp = site_etf_s.interpolate()
                 etf_interp = etf_interp.bfill().ffill()
@@ -1073,6 +1106,12 @@ class Calculator(Component):
                 monthly_idx = site_eta_s.index.to_period("M")
                 eta_monthly_all = site_eta_s.groupby(monthly_idx).sum()
                 ppt_monthly_all = site_ppt_s.groupby(monthly_idx).sum()
+                year_idx = site_eta_s.index.year
+                eta_yearly_all = site_eta_s.groupby(year_idx).sum()
+                ppt_yearly_all = site_ppt_s.groupby(year_idx).sum()
+                # Raw (non-interpolated) ETf per year — used to require at least
+                # one real capture in the balance window before trusting it.
+                raw_etf_yearly = site_etf_s.groupby(site_etf_s.index.year).sum()
 
             for yr in years:
                 yr_str = str(yr)
@@ -1095,23 +1134,46 @@ class Calculator(Component):
                             f_irr = 1.0
 
                 elif use_lulc:
-                    # International mode: compute from water balance using pre-computed monthly data
-                    subsidy_months = 0
-                    for month in range(1, 13):
-                        period = pd.Period(year=yr, month=month, freq="M")
-                        if period in eta_monthly_all.index and period in ppt_monthly_all.index:
-                            e = eta_monthly_all[period]
-                            p = ppt_monthly_all[period]
-                            if not np.isnan(e) and not np.isnan(p) and p > 0:
-                                if e / (p + 1.0) > 1.3:
-                                    subsidy_months += 1
-
-                    if subsidy_months >= 3 and cropped:
-                        irrigated = True
-                        f_irr = 1.0
+                    # International mode: water-balance subsidy test, gated on
+                    # the field being cropped (annual rooting habit).
+                    if lulc_irr_method == "monthly":
+                        # Legacy: count months where in-season RS ET exceeds
+                        # 1.3x rain. Over-flags moisture-banking dryland systems
+                        # (e.g. wheat-fallow) whose biennial balance closes.
+                        subsidy = 0
+                        for month in range(1, 13):
+                            period = pd.Period(year=yr, month=month, freq="M")
+                            if period in eta_monthly_all.index and period in ppt_monthly_all.index:
+                                e = eta_monthly_all[period]
+                                p = ppt_monthly_all[period]
+                                if not np.isnan(e) and not np.isnan(p) and p > 0:
+                                    if e / (p + 1.0) > 1.3:
+                                        subsidy += 1
+                        irrigated = subsidy >= 3 and cropped
                     else:
-                        irrigated = False
-                        f_irr = 0.0
+                        # Annual water balance over a rolling window. A truly
+                        # irrigated field consumes more water than precip
+                        # delivers over the window; a rainfed field — including
+                        # dryland that banks moisture across a fallow year —
+                        # stays at or below the ratio because its multi-year
+                        # balance closes. The 2-year window spans a crop+fallow
+                        # cycle so banked-moisture crop years don't read as
+                        # subsidized.
+                        win = 2 if lulc_irr_method == "annual_2yr" else 1
+                        win_years = [
+                            y for y in range(yr - win + 1, yr + 1) if y in eta_yearly_all.index
+                        ]
+                        if not win_years:  # boundary year: look forward instead
+                            win_years = [
+                                y for y in range(yr, yr + win) if y in eta_yearly_all.index
+                            ]
+                        raw_in_win = sum(float(raw_etf_yearly.get(y, 0.0)) for y in win_years)
+                        eta_w = sum(float(eta_yearly_all.get(y, 0.0)) for y in win_years)
+                        ppt_w = sum(float(ppt_yearly_all.get(y, 0.0)) for y in win_years)
+                        ratio = eta_w / (ppt_w + 1.0) if ppt_w > 0 else 0.0
+                        irrigated = raw_in_win > 0 and ratio > annual_subsidy_ratio and cropped
+
+                    f_irr = 1.0 if irrigated else 0.0
                 else:
                     raise ValueError("Must use either use_mask or use_lulc for irrigation analysis")
 
