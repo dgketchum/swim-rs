@@ -417,3 +417,88 @@ class TestComputeIrrigationDataLulc:
         ds = self._make_ds(years, irrigated_all=True)
         flags = self._flags(self._run(ds, "annual_2yr", lulc=(30, "glc10")), years)
         assert all(v == 0 for v in flags.values())
+
+    @staticmethod
+    def _with_fallback(ds, gap_years, bias, fallback_in_gap_only=False):
+        """NaN-out primary ETf in gap_years and add a sparse, biased fallback.
+
+        The fallback carries the primary's true value times ``bias`` every 16th
+        day (Landsat-like revisit), so the harmonization scale recovered from
+        co-captured dates is exactly 1/bias.
+        """
+        dates = pd.DatetimeIndex(ds.time.values)
+        gap = np.isin(dates.year.values, gap_years)
+        truth = ds["etf"].values.copy()
+
+        sparse = np.full_like(truth, np.nan)
+        cap = np.arange(len(dates)) % 16 == 0
+        sparse[cap, :] = truth[cap, :] * bias
+        if fallback_in_gap_only:
+            sparse[~gap, :] = np.nan
+
+        primary = truth.copy()
+        primary[gap, :] = np.nan
+
+        out = ds.copy(deep=True)
+        coords = {"time": dates, "site": ds.coords["site"].values}
+        out["etf"] = xr.DataArray(primary, dims=["time", "site"], coords=coords)
+        out["etf_fallback"] = xr.DataArray(sparse, dims=["time", "site"], coords=coords)
+        return out
+
+    def test_fallback_asserts_irrigation_in_primary_gap(self):
+        """Gap years with real fallback captures are flagged via fallback evidence."""
+        years = [2019, 2020, 2021]
+        ds = self._make_ds(years, irrigated_all=True)
+        ds = self._with_fallback(ds, gap_years=[2019, 2020], bias=1.5)
+        result = self._run(ds, "annual_2yr")
+        site = result["A"]
+        assert {y: site[y]["irrigated"] for y in years} == {2019: 1, 2020: 1, 2021: 1}
+        assert site[2019]["evidence"] == "fallback"
+        assert site[2020]["evidence"] == "fallback"
+        assert "evidence" not in site[2021]
+        assert_allclose(site["etf_fallback_scale"], 1 / 1.5, rtol=1e-6)
+
+    def test_fallback_harmonization_prevents_dryland_overflag(self):
+        """Biased fallback in a dryland gap window must not flag irrigation.
+
+        The wheat-fallow 2-yr truth ratio here is ~0.63; an unharmonized 1.8x
+        fallback would push it to ~1.13 (>1.0) and re-flag the dryland crop
+        year. Harmonization from the covered-year overlap recovers the truth.
+        """
+        years = [2019, 2020, 2021]
+        ds = self._make_ds(years, crop_years=[2020])
+        ds = self._with_fallback(ds, gap_years=[2019, 2020], bias=1.8)
+        result = self._run(ds, "annual_2yr")
+        site = result["A"]
+        assert {y: site[y]["irrigated"] for y in years} == {2019: 0, 2020: 0, 2021: 0}
+        assert site[2020]["evidence"] == "fallback"
+        assert_allclose(site["etf_fallback_scale"], 1 / 1.8, rtol=1e-6)
+
+    def test_fallback_requires_overlap(self):
+        """Fallback with no co-captured dates is unused; gap years stay unflagged."""
+        years = [2019, 2020, 2021]
+        ds = self._make_ds(years, irrigated_all=True)
+        ds = self._with_fallback(ds, gap_years=[2019, 2020], bias=1.5, fallback_in_gap_only=True)
+        result = self._run(ds, "annual_2yr")
+        site = result["A"]
+        assert {y: site[y]["irrigated"] for y in years} == {2019: 0, 2020: 0, 2021: 1}
+        assert site[2019]["evidence"] == "none"
+        assert site[2020]["evidence"] == "none"
+        assert "etf_fallback_scale" not in site
+
+    def test_no_evidence_tags_without_fallback_feature(self):
+        """With the fallback feature off, irr_data keeps its legacy shape.
+
+        Even zero-capture years must not carry evidence tags — existing
+        regression fixtures depend on bit-identical legacy output.
+        """
+        years = [2019, 2020, 2021]
+        ds = self._make_ds(years, irrigated_all=True)
+        ds = self._with_fallback(ds, gap_years=[2019, 2020], bias=1.5)
+        ds = ds.drop_vars("etf_fallback")
+        result = self._run(ds, "annual_2yr")
+        site = result["A"]
+        assert {y: site[y]["irrigated"] for y in years} == {2019: 0, 2020: 0, 2021: 1}
+        for y in years:
+            assert "evidence" not in site[y]
+        assert "etf_fallback_scale" not in site

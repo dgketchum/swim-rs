@@ -267,6 +267,7 @@ class Calculator(Component):
         gwsub_irr_fallback: bool = True,
         lulc_irr_method: str = "annual_2yr",
         annual_subsidy_ratio: float = 1.0,
+        etf_gap_fallback_model: str | None = None,
     ) -> ProvenanceEvent:
         """
         Compute field dynamics: irrigation detection, groundwater subsidy, K-parameters.
@@ -324,6 +325,14 @@ class Calculator(Component):
                 (default), "annual", or "monthly" (legacy). See above.
             annual_subsidy_ratio: ET/PPT ratio above which an annual/2yr window
                 is treated as subsidized (default 1.0 = ET exceeds precip).
+            etf_gap_fallback_model: Optional secondary ETf model (e.g. "ptjpl")
+                used by the annual/annual_2yr subsidy test ONLY in windows where
+                the primary model has zero real captures. The fallback is
+                harmonized to the primary via the median primary/fallback ratio
+                over co-captured dates (>=10 pairs required, else unused at that
+                site) to neutralize inter-model bias. Years decided by fallback
+                evidence carry ``"evidence": "fallback"`` in irr_data; windows
+                with no captures in either stream carry ``"evidence": "none"``.
 
         Returns:
             ProvenanceEvent recording the operation
@@ -357,7 +366,12 @@ class Calculator(Component):
 
             # Load required data
             ds = self._load_dynamics_dataset(
-                target_fields, etf_model, masks, instruments, met_source
+                target_fields,
+                etf_model,
+                masks,
+                instruments,
+                met_source,
+                etf_gap_fallback_model=etf_gap_fallback_model,
             )
 
             if ds is None:
@@ -418,6 +432,7 @@ class Calculator(Component):
                     "gwsub_irr_fallback": gwsub_irr_fallback,
                     "lulc_irr_method": lulc_irr_method,
                     "annual_subsidy_ratio": annual_subsidy_ratio,
+                    "etf_gap_fallback_model": etf_gap_fallback_model,
                     "lookback": lookback,
                     "ndvi_min_start": ndvi_min_start,
                     "met_source": met_source,
@@ -672,6 +687,7 @@ class Calculator(Component):
         masks: tuple[str, ...],
         instruments: tuple[str, ...],
         met_source: str,
+        etf_gap_fallback_model: str | None = None,
     ) -> xr.Dataset | None:
         """
         Load all data needed for dynamics computation.
@@ -749,6 +765,22 @@ class Calculator(Component):
                 "prcp": prcp_data,
             }
         )
+
+        if etf_gap_fallback_model:
+            fb_data = None
+            for mask in masks:
+                fb_path = f"remote_sensing/etf/{instruments[0]}/{etf_gap_fallback_model}/{mask}"
+                if fb_path not in self._state.root:
+                    continue
+                mask_fb = self._state.get_xarray(fb_path, fields=fields)
+                if fb_data is None:
+                    fb_data = mask_fb
+                else:
+                    fb_data = fb_data.fillna(mask_fb)
+            if fb_data is None:
+                self._log.warning("no_etf_fallback_data", model=etf_gap_fallback_model)
+            else:
+                ds["etf_fallback"] = fb_data
 
         return ds
 
@@ -1113,8 +1145,28 @@ class Calculator(Component):
                 # one real capture in the balance window before trusting it.
                 raw_etf_yearly = site_etf_s.groupby(site_etf_s.index.year).sum()
 
+                # Optional harmonized fallback stream for windows where the
+                # primary has zero real captures. The per-site scale neutralizes
+                # inter-model bias (e.g. PT-JPL high over cropland) so gap
+                # windows are judged on the primary model's effective scale.
+                fb_ok = False
+                if "etf_fallback" in ds:
+                    site_fb_s = ds["etf_fallback"].sel(site=site).to_pandas()
+                    pairs = site_etf_s.notna() & site_fb_s.notna() & (site_fb_s > 0.05)
+                    if int(pairs.sum()) >= 10:
+                        fb_scale = float(np.median(site_etf_s[pairs] / site_fb_s[pairs]))
+                        merged_raw = site_etf_s.fillna(site_fb_s * fb_scale)
+                        merged_interp = merged_raw.interpolate().bfill().ffill()
+                        eta_fb_s = merged_interp * site_eto_s
+                        yr_idx = eta_fb_s.index.year
+                        eta_fb_yearly = eta_fb_s.groupby(yr_idx).sum()
+                        raw_fb_yearly = site_fb_s.groupby(site_fb_s.index.year).sum()
+                        site_data["etf_fallback_scale"] = fb_scale
+                        fb_ok = True
+
             for yr in years:
                 yr_str = str(yr)
+                evidence = None
 
                 # Determine irrigation status based on mode
                 if use_mask:
@@ -1168,10 +1220,24 @@ class Calculator(Component):
                                 y for y in range(yr, yr + win) if y in eta_yearly_all.index
                             ]
                         raw_in_win = sum(float(raw_etf_yearly.get(y, 0.0)) for y in win_years)
-                        eta_w = sum(float(eta_yearly_all.get(y, 0.0)) for y in win_years)
                         ppt_w = sum(float(ppt_yearly_all.get(y, 0.0)) for y in win_years)
-                        ratio = eta_w / (ppt_w + 1.0) if ppt_w > 0 else 0.0
-                        irrigated = raw_in_win > 0 and ratio > annual_subsidy_ratio and cropped
+                        if raw_in_win > 0:
+                            eta_w = sum(float(eta_yearly_all.get(y, 0.0)) for y in win_years)
+                            ratio = eta_w / (ppt_w + 1.0) if ppt_w > 0 else 0.0
+                            irrigated = ratio > annual_subsidy_ratio and cropped
+                        elif fb_ok and sum(float(raw_fb_yearly.get(y, 0.0)) for y in win_years) > 0:
+                            # Primary has no captures in the window; judge on the
+                            # harmonized fallback stream instead.
+                            eta_w = sum(float(eta_fb_yearly.get(y, 0.0)) for y in win_years)
+                            ratio = eta_w / (ppt_w + 1.0) if ppt_w > 0 else 0.0
+                            irrigated = ratio > annual_subsidy_ratio and cropped
+                            evidence = "fallback"
+                        else:
+                            irrigated = False
+                            # Provenance tags only when the fallback feature is
+                            # active — legacy output stays bit-identical.
+                            if "etf_fallback" in ds:
+                                evidence = "none"
 
                     f_irr = 1.0 if irrigated else 0.0
                 else:
@@ -1184,6 +1250,8 @@ class Calculator(Component):
                         "irrigated": 0,
                         "f_irr": float(f_irr),
                     }
+                    if evidence:
+                        site_data[int(yr)]["evidence"] = evidence
                     continue
 
                 # Get NDVI with extended-year context for boundary handling (using pre-extracted pandas)
@@ -1208,6 +1276,8 @@ class Calculator(Component):
                     "irrigated": int(irrigated),
                     "f_irr": float(f_irr),
                 }
+                if evidence:
+                    site_data[int(yr)]["evidence"] = evidence
 
             site_data["fallow_years"] = fallow_years
             backfill_tracker[site_str] = years_needing_backfill

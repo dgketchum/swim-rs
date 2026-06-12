@@ -5,7 +5,7 @@ Landsat SSEBop + Landsat PT-JPL ETf, full period of record where both
 products are available. PEST builder's ensemble mode averages them.
 
 Usage:
-    python container_prep_ls_ensemble_por.py [--overwrite]
+    python container_prep_ls_ensemble_por.py [--config PATH] [--overwrite]
 """
 
 import os
@@ -107,11 +107,12 @@ def compute_dynamics(container: SwimContainer, cfg: ProjectConfig):
         irr_threshold=cfg.irrigation_threshold or 0.3,
         met_source=cfg.met_source,
         overwrite=True,
+        etf_gap_fallback_model="ptjpl",
     )
 
 
-def main(overwrite: bool = False):
-    cfg = _load_config()
+def main(config_path: str | None = None, overwrite: bool = False):
+    cfg = _load_config(config_path)
     container = build_container(cfg, overwrite=overwrite)
 
     ingest_met(container, cfg)
@@ -140,6 +141,9 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config", default=None, help="Path to TOML config (default: LSEnsemble POR)"
+    )
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
-    main(overwrite=args.overwrite)
+    main(config_path=args.config, overwrite=args.overwrite)
