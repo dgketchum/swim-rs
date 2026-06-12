@@ -4,6 +4,13 @@ Copies the base container, re-ingests ETf (OpenET ETo denominator, MAX dedup,
 2016-2025), ingests OpenET reference ETo/ETr, computes simple mean ensemble,
 and recomputes dynamics.
 
+Reference ET policy (single source, see notes/handoff_single_refet.md):
+OpenET bias-corrected ETo/ETr is written to meteorology/gridmet/{var}_corr
+for 1999+ (OpenET refET starts 1999). The 1995-1998 spinup years are
+backfilled from raw GridMET {var} — slightly high ETo for ~4 years before
+any ETf observation (2016+) or flux comparison; only soil-water spin-up
+state is affected.
+
 Dynamics settings (Example 5 constraints):
   - Irrigation status from IrrMapper/LANID (use_mask=True)
   - No gwsub irrigation fallback (gwsub_irr_fallback=False)
@@ -103,7 +110,7 @@ def ingest_new_etf(container_path, etf_csv_dir):
 
 
 def ingest_openet_eto(container_path, refet_dir):
-    """Write OpenET reference ETo as eto_corr, backfilling pre-1999 from existing eto_corr."""
+    """Write OpenET reference ETo/ETr as {var}_corr, backfilling pre-1999 from raw GridMET."""
     c = open_container(container_path, mode="r+")
     fids = c.field_uids
     dates = pd.date_range(c.start_date, c.end_date, freq="D")
@@ -129,23 +136,24 @@ def ingest_openet_eto(container_path, refet_dir):
         else:
             c._root.create_array(openet_path, data=arr, overwrite=True)
 
+        raw_gridmet = np.array(c._root[f"meteorology/gridmet/{var}"], dtype=np.float32)
+        nan_mask = np.isnan(arr)
+        n_backfilled = int(nan_mask.sum())
+        arr = np.where(nan_mask, raw_gridmet, arr)
+        if n_backfilled > 0:
+            print(f"    Backfilled {n_backfilled:,} NaN cells in {var}_corr from raw gridmet {var}")
+
         corr_path = f"meteorology/gridmet/{var}_corr"
         if corr_path in c._root:
-            old = np.array(c._root[corr_path], dtype=np.float32)
-            old_mean = np.nanmean(old)
-            nan_mask = np.isnan(arr)
-            n_backfilled = int(nan_mask.sum())
-            arr = np.where(nan_mask, old, arr)
-            if n_backfilled > 0:
-                print(
-                    f"    Backfilled {n_backfilled:,} NaN cells in {var}_corr from existing {var}_corr"
-                )
-            new_mean = np.nanmean(arr)
-            print(f"    Overwriting {corr_path}: old mean={old_mean:.3f}, new mean={new_mean:.3f}")
+            old_mean = np.nanmean(np.array(c._root[corr_path], dtype=np.float32))
+            print(
+                f"    Overwriting {corr_path}: old mean={old_mean:.3f}, "
+                f"new mean={np.nanmean(arr):.3f}"
+            )
             c._root[corr_path][:] = arr
         else:
             c._root.create_array(corr_path, data=arr, overwrite=True)
-            print(f"    Created {corr_path}")
+            print(f"    Created {corr_path}: mean={np.nanmean(arr):.3f}")
 
     c.close()
     print("  OpenET reference ET ingestion complete.")

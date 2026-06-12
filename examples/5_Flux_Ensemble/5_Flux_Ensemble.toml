@@ -6,7 +6,7 @@ project_workspace = "{root}/{project}"
 data = "{project_workspace}/data"
 gis = "{data}/gis"
 # Filtered to Croplands classification (~60 stations)
-# Create with: python setup_shapefile.py (filters from master at examples/gis/flux_stations.shp)
+# Created by container_prep.py:build_shapefile() (filters from shipped footprints + metadata)
 fields_shapefile = "{gis}/flux_fields.shp"
 properties = "{data}/properties"
 lulc = "{properties}/{project}_landcover.csv"
@@ -21,8 +21,9 @@ landsat = "{remote_sensing}/landsat"
 met = "{data}/meteorology/gridmet"
 gridmet_centroids = "{gis}/gridmet_centroids.shp"
 gridmet_mapping = "{gis}/flux_fields_gfid.shp"
-correction_tifs = "{data}/bias_correction_tif"
-gridmet_factors = "{gis}/flux_fields_gfid.json"
+# Legacy local GridMET bias-correction removed (see notes/handoff_single_refet.md).
+# Reference ET is OpenET bias-corrected ETo/ETr (1999+), ingested by
+# build_container.py; 1995-1998 spinup uses raw GridMET.
 irr = "{properties}/{project}_irr.csv"
 ssurgo = "{properties}/{project}_ssurgo.csv"
 snodas_in = "{data}/snow/snodas/extracts"
