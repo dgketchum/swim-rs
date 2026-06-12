@@ -1,3 +1,5 @@
+import os
+
 import ee
 import pandas as pd
 
@@ -15,6 +17,29 @@ WEST_STATES = "users/dgketchum/boundaries/western_11_union"
 EAST_STATES = "users/dgketchum/boundaries/eastern_38_dissolved"
 
 
+def fc_to_dataframe(result: dict, selectors: list[str]) -> pd.DataFrame:
+    """Convert a FeatureCollection getInfo() result to a DataFrame.
+
+    Returns one row per feature with columns ordered per `selectors`;
+    selectors absent from feature properties become NaN columns (matching
+    the behavior of EE table exports with the same selectors).
+    """
+    df = pd.DataFrame([f["properties"] for f in result["features"]])
+    return df.reindex(columns=selectors)
+
+
+def _write_local(fc: ee.FeatureCollection, selectors: list[str], out_dir: str, desc: str) -> str:
+    """Fetch a reduced FeatureCollection via getInfo() and write {out_dir}/{desc}.csv."""
+    if not out_dir:
+        raise ValueError('dest="local" requires out_dir')
+    os.makedirs(out_dir, exist_ok=True)
+    df = fc_to_dataframe(fc.getInfo(), selectors)
+    out_path = os.path.join(out_dir, f"{desc}.csv")
+    df.to_csv(out_path, index=False)
+    print(f"{desc}: wrote {out_path}")
+    return out_path
+
+
 def get_cdl(
     fields: str | ee.FeatureCollection,
     desc: str,
@@ -24,6 +49,7 @@ def get_cdl(
     drive_folder: str = "swim",
     file_prefix: str = "swim",
     drive_categorize: bool = False,
+    out_dir: str | None = None,
 ) -> None:
     """Export per-feature CDL crop class mode by year to GCS.
 
@@ -55,6 +81,9 @@ def get_cdl(
     modes = crops.reduceRegions(collection=plots, reducer=ee.Reducer.mode(), scale=30)
 
     out_ = f"{desc}"
+    if dest == "local":
+        _write_local(modes, _selectors, out_dir, out_)
+        return
     if dest == "bucket":
         if not bucket:
             raise ValueError('CDL export dest="bucket" requires a bucket name/url')
@@ -95,6 +124,7 @@ def get_irrigation(
     drive_folder: str = "swim",
     file_prefix: str = "swim",
     drive_categorize: bool = False,
+    out_dir: str | None = None,
 ) -> None:
     """Export annual irrigation fraction per feature using IrrMapper (and LANID).
 
@@ -152,6 +182,9 @@ def get_irrigation(
     if debug:
         debug = means.filterMetadata("FID", "equals", "US-FPe").getInfo()
 
+    if dest == "local":
+        _write_local(means, _selectors, out_dir, desc)
+        return
     if dest == "bucket":
         if not bucket:
             raise ValueError('Irrigation export dest="bucket" requires a bucket name/url')
@@ -191,6 +224,7 @@ def get_ssurgo(
     drive_folder: str = "swim",
     file_prefix: str = "swim",
     drive_categorize: bool = False,
+    out_dir: str | None = None,
 ) -> None:
     """Export SSURGO-derived soil attributes averaged per feature.
 
@@ -231,6 +265,9 @@ def get_ssurgo(
     if debug:
         debug = means.filterMetadata("FID", "equals", 1789).getInfo()
 
+    if dest == "local":
+        _write_local(means, _selectors, out_dir, desc)
+        return
     if dest == "bucket":
         if not bucket:
             raise ValueError('SSURGO export dest="bucket" requires a bucket name/url')
@@ -344,6 +381,7 @@ def get_landcover(
     drive_folder: str = "swim",
     file_prefix: str = "swim",
     drive_categorize: bool = False,
+    out_dir: str | None = None,
 ) -> None:
     """Export dominant landcover from MODIS and FROM-GLC10 per feature.
 
@@ -372,6 +410,10 @@ def get_landcover(
 
     if debug:
         debug = modes.filterMetadata("FID", "equals", "US-CRT").getInfo()
+
+    if dest == "local":
+        _write_local(modes, _selectors, out_dir, desc)
+        return
 
     if local_file:
         modes = modes.getInfo()
