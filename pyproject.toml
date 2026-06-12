@@ -81,6 +81,8 @@ include = ["swimrs*"]
 line-length = 100
 target-version = "py313"
 src = ["src","tests"]
+# Archived/legacy example scripts are preserved verbatim, not linted.
+extend-exclude = ["examples/*/legacy"]
 
 [tool.ruff.lint]
 select = ["E","F","I","UP","B"]

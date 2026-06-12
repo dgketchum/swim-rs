@@ -132,7 +132,7 @@ benchmark.
 | `etf_asset_extract.py` | Extract ETf from OpenET EE asset collections |
 | `copy_openet_assets.py` | Copy OpenET EE assets to project bucket |
 | `setup_shapefile.py` | Filter master flux station shapefile to cropland sites |
-| `VALIDATION_POLICY.md` | Canonical Example 5 comparison policy |
+| `notes/VALIDATION_POLICY.md` | Canonical Example 5 comparison policy |
 
 ## Reproducing
 
