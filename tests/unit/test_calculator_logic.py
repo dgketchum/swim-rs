@@ -316,3 +316,104 @@ class TestDetectIrrigationWindows:
             assert doys == sorted(doys)
             assert len(doys) == len(set(doys))
             assert all(1 <= d <= 366 for d in doys)
+
+
+class TestComputeIrrigationDataLulc:
+    """Tests for the use_lulc irrigation classifier (_compute_irrigation_data).
+
+    Focus: the rolling 2-year annual-balance gate (lulc_irr_method="annual_2yr")
+    vs the legacy monthly gate ("monthly"), plus the cropland gate. The
+    motivating case is dryland wheat-fallow: a crop year whose in-season ET
+    exceeds in-season rain (so the monthly test trips) but whose biennial
+    water balance closes (so the 2-year test correctly does NOT flag it).
+    """
+
+    def _make_ds(self, years, crop_years=(), irrigated_all=False, sites=("A",)):
+        """Build a daily multi-year xr.Dataset.
+
+        Defaults are a "fallow" regime (low ET, high rain). ``crop_years`` get
+        a dry low-ET profile with a high-ET, no-rain summer (Jun-Aug) that
+        trips the monthly subsidy test. ``irrigated_all`` makes every year a
+        true subsidy (ET > P year round).
+        """
+        dates = pd.date_range(f"{years[0]}-01-01", f"{years[-1]}-12-31", freq="D")
+        months = dates.month.values
+        yrs = dates.year.values
+
+        etf = np.full(len(dates), 0.1)
+        eto = np.full(len(dates), 2.0)
+        prcp = np.full(len(dates), 2.0)  # fallow: low ET, high rain (banking)
+
+        for y in years:
+            ym = yrs == y
+            if irrigated_all:
+                etf[ym], eto[ym], prcp[ym] = 0.8, 6.0, 0.3  # ET >> P all year
+            elif y in crop_years:
+                etf[ym], eto[ym], prcp[ym] = 0.1, 2.0, 1.0  # dry, low ET
+                sm = ym & np.isin(months, [6, 7, 8])
+                # hot dry summer crop: tiny rain (>0 so the monthly test counts
+                # the month) but ETa >> rain so the monthly ratio still trips
+                etf[sm], eto[sm], prcp[sm] = 0.9, 6.0, 0.1
+
+        # benign seasonal NDVI so window detection runs without error
+        ndvi = 0.2 + 0.5 * np.exp(-((months - 7.0) ** 2) / 8.0)
+
+        n_sites = len(sites)
+
+        def da(vals):
+            arr = np.tile(np.asarray(vals)[:, None], (1, n_sites))
+            return xr.DataArray(
+                arr, dims=["time", "site"], coords={"time": dates, "site": list(sites)}
+            )
+
+        return xr.Dataset({"ndvi": da(ndvi), "etf": da(etf), "eto": da(eto), "prcp": da(prcp)})
+
+    def _run(self, ds, method, lulc=(10, "glc10")):
+        calc = _make_calculator()
+        # classifier reads LULC from the zarr root; mock it to a fixed class
+        calc._get_lulc_by_site = MagicMock(return_value={"A": lulc} if lulc else {})
+        return calc._compute_irrigation_data(
+            ds,
+            irr_threshold=0.3,
+            lookback=10,
+            ndvi_threshold=0.3,
+            ndvi_min_start=0.25,
+            min_pos_days=10,
+            use_mask=False,
+            use_lulc=True,
+            lulc_irr_method=method,
+        )
+
+    @staticmethod
+    def _flags(result, years):
+        site = result["A"]
+        return {y: site[y]["irrigated"] for y in years}
+
+    def test_monthly_flags_dryland_crop_year(self):
+        """Legacy monthly test flags a wheat-fallow crop year as irrigated."""
+        years = [2019, 2020, 2021]
+        ds = self._make_ds(years, crop_years=[2020])
+        flags = self._flags(self._run(ds, "monthly"), years)
+        assert flags == {2019: 0, 2020: 1, 2021: 0}
+
+    def test_annual_2yr_does_not_flag_dryland_crop_year(self):
+        """2-year balance closes (ET<=P) so the crop year is NOT flagged."""
+        years = [2019, 2020, 2021]
+        ds = self._make_ds(years, crop_years=[2020])
+        flags = self._flags(self._run(ds, "annual_2yr"), years)
+        assert flags == {2019: 0, 2020: 0, 2021: 0}
+
+    def test_annual_2yr_flags_true_irrigation(self):
+        """When ET > P every year, the 2-year test still flags irrigation."""
+        years = [2019, 2020, 2021]
+        ds = self._make_ds(years, irrigated_all=True)
+        flags = self._flags(self._run(ds, "annual_2yr"), years)
+        assert all(v == 1 for v in flags.values())
+        assert all(self._run(ds, "annual_2yr")["A"][y]["f_irr"] == 1.0 for y in years)
+
+    def test_cropland_gate_blocks_noncropland(self):
+        """A true-subsidy site that is not cropland is never irrigated."""
+        years = [2019, 2020, 2021]
+        ds = self._make_ds(years, irrigated_all=True)
+        flags = self._flags(self._run(ds, "annual_2yr", lulc=(30, "glc10")), years)
+        assert all(v == 0 for v in flags.values())
