@@ -481,8 +481,10 @@ class SwimContainer:
             if col == "geometry" or col == uid_column:
                 continue
             try:
-                data = gdf[col].values
-                if data.dtype == object:
+                # np.asarray: arrow-backed pandas columns (e.g. ArrowStringArray)
+                # are not numpy arrays and break zarr's create_array
+                data = np.asarray(gdf[col])
+                if data.dtype == object or data.dtype.kind in ("U", "T"):
                     str_arr = props_grp.create_array(
                         col,
                         shape=data.shape,

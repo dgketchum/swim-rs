@@ -135,6 +135,12 @@ def assign_gridmet_ids(
 
         n_unique = fields[gridmet_id_col].nunique()
         print(f"Mapped {len(fields)} fields to {n_unique} unique GridMET cells")
+        if n_unique == 0:
+            raise ValueError(
+                f"No fields mapped to any GridMET cell; {gridmet_points} "
+                "likely does not cover the field extent. Refusing to write "
+                "an empty mapping shapefile."
+            )
     else:
         fields[gridmet_id_col] = range(len(fields))
         fields["STATION_ID"] = fields[gridmet_id_col]
