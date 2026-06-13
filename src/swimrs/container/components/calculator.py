@@ -266,7 +266,7 @@ class Calculator(Component):
         overwrite: bool = False,
         gwsub_irr_fallback: bool = True,
         lulc_irr_method: str = "annual_2yr",
-        annual_subsidy_ratio: float = 1.0,
+        annual_subsidy_ratio: float = 1.3,
         etf_gap_fallback_model: str | None = None,
     ) -> ProvenanceEvent:
         """
@@ -290,15 +290,24 @@ class Calculator(Component):
         use_lulc=True (International - Example 6):
             - Computes irrigation from a water-balance subsidy test, gated on
               the field being cropped (annual rooting habit, per LULC)
+            - The water balance runs on the nanmean ETf ensemble (mean of all
+              available ETf members per date — the primary model plus any
+              ``etf_gap_fallback_model``), matching the calibration target and
+              averaging out single-model bias.
             - ``lulc_irr_method`` selects the subsidy test:
-                "annual_2yr" (default): irrigated if rolling 2-year
-                    sum(ET)/sum(PPT) > annual_subsidy_ratio. The 2-year window
-                    spans a crop+fallow cycle, so dryland systems that bank
-                    soil moisture across a fallow year (e.g. wheat-fallow) are
-                    NOT flagged — their biennial balance closes (ET <= PPT)
-                    even though in a single crop year ET exceeds that season's
-                    rain.
-                "annual": same test on a single year.
+                "annual_2yr" (default): a two-stage rule. STAGE 1 (site-level)
+                    classifies a field as irrigation-equipped only if MORE THAN
+                    ONE-THIRD of its rolling 2-year sum(ET)/sum(PPT) windows
+                    exceed annual_subsidy_ratio. The 2-year window spans a
+                    crop+fallow cycle, so dryland systems that bank soil moisture
+                    across a fallow year (e.g. wheat-fallow) do not read as
+                    subsidized; the one-third floor makes the decision robust to
+                    a lone drought or boundary year while admitting genuine
+                    intermittent-irrigation fields. STAGE 2 then flags, within an
+                    equipped field, each year whose single-year ET/PPT exceeds
+                    annual_subsidy_ratio (others are fallow). Non-equipped
+                    (dryland) fields are never flagged.
+                "annual": same two-stage rule with single-year windows in Stage 1.
                 "monthly": legacy test — irrigated if >= 3 months have
                     ET/(PPT+1) > 1.3. Over-flags moisture-banking dryland
                     fields; retained for back-compat.
@@ -323,16 +332,14 @@ class Calculator(Component):
                 solely on use_mask/use_lulc for irrigation classification.
             lulc_irr_method: Subsidy test for use_lulc mode — "annual_2yr"
                 (default), "annual", or "monthly" (legacy). See above.
-            annual_subsidy_ratio: ET/PPT ratio above which an annual/2yr window
-                is treated as subsidized (default 1.0 = ET exceeds precip).
-            etf_gap_fallback_model: Optional secondary ETf model (e.g. "ptjpl")
-                used by the annual/annual_2yr subsidy test ONLY in windows where
-                the primary model has zero real captures. The fallback is
-                harmonized to the primary via the median primary/fallback ratio
-                over co-captured dates (>=10 pairs required, else unused at that
-                site) to neutralize inter-model bias. Years decided by fallback
-                evidence carry ``"evidence": "fallback"`` in irr_data; windows
-                with no captures in either stream carry ``"evidence": "none"``.
+            annual_subsidy_ratio: ET/PPT ratio above which a balance window is
+                treated as subsidized — used by both the Stage 1 site
+                one-third test and the Stage 2 per-year test (default 1.3).
+            etf_gap_fallback_model: Optional second ETf model (e.g. "ptjpl")
+                averaged with the primary into the nanmean ensemble that drives
+                the annual/annual_2yr water balance. Fills the primary's capture
+                gaps and reduces single-model bias; not a per-year override, so
+                no per-year provenance tags are written.
 
         Returns:
             ProvenanceEvent recording the operation
@@ -1068,7 +1075,7 @@ class Calculator(Component):
         irr_props: dict[str, dict[str, float]] | None = None,
         gwsub_data: dict[str, dict] | None = None,
         lulc_irr_method: str = "annual_2yr",
-        annual_subsidy_ratio: float = 1.0,
+        annual_subsidy_ratio: float = 1.3,
     ) -> dict[str, dict]:
         """
         Compute irrigation windows for each field and year.
@@ -1082,13 +1089,17 @@ class Calculator(Component):
             and LULC is cropland, override to irrigated (mask data missed it).
 
         use_lulc=True (International):
-            Computes irrigation from a water-balance subsidy test, gated on the
-            field being cropped (annual rooting habit). ``lulc_irr_method``
-            selects the test — "annual_2yr" (default) uses a rolling 2-year
-            sum(ET)/sum(PPT) > annual_subsidy_ratio so that dryland systems
-            banking soil moisture across a fallow year are not flagged;
-            "annual" uses a single year; "monthly" is the legacy >=3-months-of-
-            ET/(PPT+1)>1.3 test.
+            Computes irrigation from a water-balance subsidy test on the nanmean
+            ETf ensemble, gated on the field being cropped (annual rooting
+            habit). ``lulc_irr_method`` selects the test — "annual_2yr" (default)
+            is a two-stage rule: Stage 1 marks a field irrigation-equipped only
+            if MORE THAN ONE-THIRD of its rolling 2-year sum(ET)/sum(PPT)
+            windows exceed annual_subsidy_ratio (robust to a lone drought/
+            boundary year and to dryland moisture banking); Stage 2 then flags,
+            within an equipped field, each year whose single-year ET/PPT exceeds
+            the ratio.
+            "annual" is the same rule with single-year Stage 1 windows;
+            "monthly" is the legacy >=3-months-of-ET/(PPT+1)>1.3 test.
 
         Uses NDVI slope analysis to detect irrigation periods.
         """
@@ -1132,8 +1143,20 @@ class Calculator(Component):
             # Interpolate ETf to daily (matches legacy _build_et_frame behavior)
             # so the water balance reflects the full year, not capture dates.
             if use_lulc:
-                etf_interp = site_etf_s.interpolate()
-                etf_interp = etf_interp.bfill().ffill()
+                # Irrigation water balance runs on the nanmean ETf ensemble:
+                # the mean of all available ETf members per date (the primary
+                # model plus any configured second member). This matches the
+                # ensemble used as the calibration target and averages out
+                # single-model bias (e.g. PT-JPL running high over cropland).
+                # With no second member this is just the primary model.
+                if "etf_fallback" in ds:
+                    site_fb_s = ds["etf_fallback"].sel(site=site).to_pandas()
+                    ens_etf = pd.concat([site_etf_s, site_fb_s], axis=1).mean(axis=1, skipna=True)
+                    cap_daily = site_etf_s.notna() | site_fb_s.notna()
+                else:
+                    ens_etf = site_etf_s
+                    cap_daily = site_etf_s.notna()
+                etf_interp = ens_etf.interpolate().bfill().ffill()
                 site_eta_s = etf_interp * site_eto_s
                 monthly_idx = site_eta_s.index.to_period("M")
                 eta_monthly_all = site_eta_s.groupby(monthly_idx).sum()
@@ -1141,31 +1164,38 @@ class Calculator(Component):
                 year_idx = site_eta_s.index.year
                 eta_yearly_all = site_eta_s.groupby(year_idx).sum()
                 ppt_yearly_all = site_ppt_s.groupby(year_idx).sum()
-                # Raw (non-interpolated) ETf per year — used to require at least
-                # one real capture in the balance window before trusting it.
-                raw_etf_yearly = site_etf_s.groupby(site_etf_s.index.year).sum()
+                cap_yearly = cap_daily.groupby(cap_daily.index.year).sum()
 
-                # Optional harmonized fallback stream for windows where the
-                # primary has zero real captures. The per-site scale neutralizes
-                # inter-model bias (e.g. PT-JPL high over cropland) so gap
-                # windows are judged on the primary model's effective scale.
-                fb_ok = False
-                if "etf_fallback" in ds:
-                    site_fb_s = ds["etf_fallback"].sel(site=site).to_pandas()
-                    pairs = site_etf_s.notna() & site_fb_s.notna() & (site_fb_s > 0.05)
-                    if int(pairs.sum()) >= 10:
-                        fb_scale = float(np.median(site_etf_s[pairs] / site_fb_s[pairs]))
-                        merged_raw = site_etf_s.fillna(site_fb_s * fb_scale)
-                        merged_interp = merged_raw.interpolate().bfill().ffill()
-                        eta_fb_s = merged_interp * site_eto_s
-                        yr_idx = eta_fb_s.index.year
-                        eta_fb_yearly = eta_fb_s.groupby(yr_idx).sum()
-                        raw_fb_yearly = site_fb_s.groupby(site_fb_s.index.year).sum()
-                        fb_ok = True
+                # Stage 1 (annual/annual_2yr): site-level "equipped for
+                # irrigation" decision from the fraction of subsidized rolling
+                # win-year balance windows. A field is irrigation-equipped only
+                # if MORE THAN ONE-THIRD of its windows are subsidized (ET/PPT >
+                # annual_subsidy_ratio). The one-third floor keeps the site
+                # classification robust to a single drought or boundary year (a
+                # lone anomalous year touches ~2 windows, well under the floor,
+                # so it cannot flip a dryland field), while still admitting
+                # genuine intermittent-irrigation sites (e.g. US-MH2 at ~6/13).
+                equipped = False
+                if cropped and lulc_irr_method in ("annual", "annual_2yr"):
+                    win = 2 if lulc_irr_method == "annual_2yr" else 1
+                    n_sub = n_win = 0
+                    for y in years:
+                        wy = [yy for yy in range(y - win + 1, y + 1) if yy in eta_yearly_all.index]
+                        if not wy:  # boundary year: look forward instead
+                            wy = [yy for yy in range(y, y + win) if yy in eta_yearly_all.index]
+                        if sum(int(cap_yearly.get(yy, 0)) for yy in wy) == 0:
+                            continue
+                        ppt_w = sum(float(ppt_yearly_all.get(yy, 0.0)) for yy in wy)
+                        if ppt_w <= 0:
+                            continue
+                        eta_w = sum(float(eta_yearly_all.get(yy, 0.0)) for yy in wy)
+                        n_win += 1
+                        if eta_w / (ppt_w + 1.0) > annual_subsidy_ratio:
+                            n_sub += 1
+                    equipped = n_win > 0 and (n_sub * 3 > n_win)
 
             for yr in years:
                 yr_str = str(yr)
-                evidence = None
 
                 # Determine irrigation status based on mode
                 if use_mask:
@@ -1202,41 +1232,19 @@ class Calculator(Component):
                                         subsidy += 1
                         irrigated = subsidy >= 3 and cropped
                     else:
-                        # Annual water balance over a rolling window. A truly
-                        # irrigated field consumes more water than precip
-                        # delivers over the window; a rainfed field — including
-                        # dryland that banks moisture across a fallow year —
-                        # stays at or below the ratio because its multi-year
-                        # balance closes. The 2-year window spans a crop+fallow
-                        # cycle so banked-moisture crop years don't read as
-                        # subsidized.
-                        win = 2 if lulc_irr_method == "annual_2yr" else 1
-                        win_years = [
-                            y for y in range(yr - win + 1, yr + 1) if y in eta_yearly_all.index
-                        ]
-                        if not win_years:  # boundary year: look forward instead
-                            win_years = [
-                                y for y in range(yr, yr + win) if y in eta_yearly_all.index
-                            ]
-                        raw_in_win = sum(float(raw_etf_yearly.get(y, 0.0)) for y in win_years)
-                        ppt_w = sum(float(ppt_yearly_all.get(y, 0.0)) for y in win_years)
-                        if raw_in_win > 0:
-                            eta_w = sum(float(eta_yearly_all.get(y, 0.0)) for y in win_years)
-                            ratio = eta_w / (ppt_w + 1.0) if ppt_w > 0 else 0.0
-                            irrigated = ratio > annual_subsidy_ratio and cropped
-                        elif fb_ok and sum(float(raw_fb_yearly.get(y, 0.0)) for y in win_years) > 0:
-                            # Primary has no captures in the window; judge on the
-                            # harmonized fallback stream instead.
-                            eta_w = sum(float(eta_fb_yearly.get(y, 0.0)) for y in win_years)
-                            ratio = eta_w / (ppt_w + 1.0) if ppt_w > 0 else 0.0
-                            irrigated = ratio > annual_subsidy_ratio and cropped
-                            evidence = "fallback"
+                        # Stage 2: within an irrigation-equipped field (the
+                        # Stage 1 mode test, precomputed above), flag each year
+                        # whose single-year balance is subsidized; wet years at
+                        # or below the ratio are fallow. Dryland fields are never
+                        # equipped, so a lone drought or boundary year cannot
+                        # create spurious irrigation.
+                        if equipped:
+                            ppt_y = float(ppt_yearly_all.get(yr, 0.0))
+                            eta_y = float(eta_yearly_all.get(yr, 0.0))
+                            ratio = eta_y / (ppt_y + 1.0) if ppt_y > 0 else 0.0
+                            irrigated = ratio > annual_subsidy_ratio
                         else:
                             irrigated = False
-                            # Provenance tags only when the fallback feature is
-                            # active — legacy output stays bit-identical.
-                            if "etf_fallback" in ds:
-                                evidence = "none"
 
                     f_irr = 1.0 if irrigated else 0.0
                 else:
@@ -1249,10 +1257,6 @@ class Calculator(Component):
                         "irrigated": 0,
                         "f_irr": float(f_irr),
                     }
-                    if evidence:
-                        site_data[int(yr)]["evidence"] = evidence
-                        if evidence == "fallback":
-                            site_data[int(yr)]["etf_fallback_scale"] = fb_scale
                     continue
 
                 # Get NDVI with extended-year context for boundary handling (using pre-extracted pandas)
@@ -1277,10 +1281,6 @@ class Calculator(Component):
                     "irrigated": int(irrigated),
                     "f_irr": float(f_irr),
                 }
-                if evidence:
-                    site_data[int(yr)]["evidence"] = evidence
-                    if evidence == "fallback":
-                        site_data[int(yr)]["etf_fallback_scale"] = fb_scale
 
             site_data["fallow_years"] = fallow_years
             backfill_tracker[site_str] = years_needing_backfill

@@ -107,6 +107,8 @@ def compute_dynamics(container: SwimContainer, cfg: ProjectConfig):
         irr_threshold=cfg.irrigation_threshold or 0.3,
         met_source=cfg.met_source,
         overwrite=True,
+        lulc_irr_method="annual_2yr",
+        annual_subsidy_ratio=1.3,
         etf_gap_fallback_model="ptjpl",
     )
 

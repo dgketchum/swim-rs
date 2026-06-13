@@ -328,13 +328,15 @@ class TestComputeIrrigationDataLulc:
     water balance closes (so the 2-year test correctly does NOT flag it).
     """
 
-    def _make_ds(self, years, crop_years=(), irrigated_all=False, sites=("A",)):
+    def _make_ds(self, years, crop_years=(), irrigated_all=False, subsidy_years=(), sites=("A",)):
         """Build a daily multi-year xr.Dataset.
 
         Defaults are a "fallow" regime (low ET, high rain). ``crop_years`` get
         a dry low-ET profile with a high-ET, no-rain summer (Jun-Aug) that
         trips the monthly subsidy test. ``irrigated_all`` makes every year a
-        true subsidy (ET > P year round).
+        true subsidy (ET > P year round); ``subsidy_years`` makes only the
+        listed years a true subsidy (the rest stay fallow) — used to probe the
+        Stage 1 mode gate's robustness to an isolated high-ratio year.
         """
         dates = pd.date_range(f"{years[0]}-01-01", f"{years[-1]}-12-31", freq="D")
         months = dates.month.values
@@ -346,7 +348,7 @@ class TestComputeIrrigationDataLulc:
 
         for y in years:
             ym = yrs == y
-            if irrigated_all:
+            if irrigated_all or y in subsidy_years:
                 etf[ym], eto[ym], prcp[ym] = 0.8, 6.0, 0.3  # ET >> P all year
             elif y in crop_years:
                 etf[ym], eto[ym], prcp[ym] = 0.1, 2.0, 1.0  # dry, low ET
@@ -418,13 +420,44 @@ class TestComputeIrrigationDataLulc:
         flags = self._flags(self._run(ds, "annual_2yr", lulc=(30, "glc10")), years)
         assert all(v == 0 for v in flags.values())
 
+    def test_third_floor_ignores_isolated_subsidy_year(self):
+        """Stage 1 one-third floor: one high-ratio year does not equip a dryland.
+
+        A single subsidy year among otherwise fallow years trips only its own
+        and the next 2-yr window (2 of 7 = 0.29, below the one-third floor), so
+        the site is not classified irrigation-equipped and the spike year is
+        NOT flagged. This is the US-RC3 drought/boundary case in miniature — a
+        lone anomalous window must not flip a dryland field to irrigated.
+        """
+        years = list(range(2016, 2023))  # 7 years
+        ds = self._make_ds(years, subsidy_years=[2019])
+        flags = self._flags(self._run(ds, "annual_2yr"), years)
+        assert all(v == 0 for v in flags.values())
+
+    def test_third_floor_equips_intermittent_site(self):
+        """Stage 1 one-third floor: >1/3 (not a majority) of windows equips.
+
+        Two adjacent subsidy years among 7 trip 3 of 7 windows (0.43) — above
+        the one-third floor but below a majority. The site is therefore
+        irrigation-equipped, and Stage 2 flags exactly the two genuine
+        subsidy years. This is the US-MH2 case (~6/13 windows): a strict
+        majority would wrongly drop it to dryland; the one-third floor keeps
+        it. Guards against reverting Stage 1 to >1/2.
+        """
+        years = list(range(2016, 2023))  # 7 years
+        ds = self._make_ds(years, subsidy_years=[2019, 2020])
+        flags = self._flags(self._run(ds, "annual_2yr"), years)
+        assert flags[2019] == 1 and flags[2020] == 1
+        assert all(flags[y] == 0 for y in years if y not in (2019, 2020))
+
     @staticmethod
-    def _with_fallback(ds, gap_years, bias, fallback_in_gap_only=False):
-        """NaN-out primary ETf in gap_years and add a sparse, biased fallback.
+    def _with_fallback(ds, gap_years, bias):
+        """NaN-out primary ETf in gap_years and add a sparse second ETf member.
 
         The fallback carries the primary's true value times ``bias`` every 16th
-        day (Landsat-like revisit), so the harmonization scale recovered from
-        co-captured dates is exactly 1/bias.
+        day (Landsat-like revisit) across all years. The classifier averages it
+        with the primary into the nanmean ensemble; in gap years (primary all
+        NaN) the ensemble falls back to the second member alone.
         """
         dates = pd.DatetimeIndex(ds.time.values)
         gap = np.isin(dates.year.values, gap_years)
@@ -433,8 +466,6 @@ class TestComputeIrrigationDataLulc:
         sparse = np.full_like(truth, np.nan)
         cap = np.arange(len(dates)) % 16 == 0
         sparse[cap, :] = truth[cap, :] * bias
-        if fallback_in_gap_only:
-            sparse[~gap, :] = np.nan
 
         primary = truth.copy()
         primary[gap, :] = np.nan
@@ -445,30 +476,29 @@ class TestComputeIrrigationDataLulc:
         out["etf_fallback"] = xr.DataArray(sparse, dims=["time", "site"], coords=coords)
         return out
 
-    def test_fallback_asserts_irrigation_in_primary_gap(self):
-        """Gap years with real fallback captures are flagged via fallback evidence."""
+    def test_fallback_member_fills_primary_gap(self):
+        """The second ETf member fills primary capture gaps via the ensemble.
+
+        With the primary blank in 2019-2020, the nanmean ensemble uses the
+        second member there, so a true-subsidy site is still flagged across all
+        years — and no per-year provenance tags are written (the member is part
+        of the ensemble, not a per-year override).
+        """
         years = [2019, 2020, 2021]
         ds = self._make_ds(years, irrigated_all=True)
         ds = self._with_fallback(ds, gap_years=[2019, 2020], bias=1.5)
         result = self._run(ds, "annual_2yr")
         site = result["A"]
         assert {y: site[y]["irrigated"] for y in years} == {2019: 1, 2020: 1, 2021: 1}
-        assert site[2019]["evidence"] == "fallback"
-        assert site[2020]["evidence"] == "fallback"
-        assert "evidence" not in site[2021]
-        assert_allclose(site[2019]["etf_fallback_scale"], 1 / 1.5, rtol=1e-6)
-        assert_allclose(site[2020]["etf_fallback_scale"], 1 / 1.5, rtol=1e-6)
-        # Scale lives in the fallback year dicts only — a site-level scalar key
-        # breaks consumers that treat every non-fallow_years key as a year dict.
-        assert "etf_fallback_scale" not in site
-        assert "etf_fallback_scale" not in site[2021]
+        for y in years:
+            assert set(site[y]) == {"irr_doys", "irrigated", "f_irr"}
 
-    def test_fallback_harmonization_prevents_dryland_overflag(self):
-        """Biased fallback in a dryland gap window must not flag irrigation.
+    def test_biased_fallback_does_not_overflag_dryland(self):
+        """A biased second member must not re-flag a dryland wheat-fallow site.
 
-        The wheat-fallow 2-yr truth ratio here is ~0.63; an unharmonized 1.8x
-        fallback would push it to ~1.13 (>1.0) and re-flag the dryland crop
-        year. Harmonization from the covered-year overlap recovers the truth.
+        The 1.3 subsidy threshold and the Stage 1 mode gate absorb a moderate
+        high bias in the gap-filling member without any per-site harmonization:
+        the dryland's 2-yr windows stay below 1.3, so the site is never equipped.
         """
         years = [2019, 2020, 2021]
         ds = self._make_ds(years, crop_years=[2020])
@@ -476,36 +506,20 @@ class TestComputeIrrigationDataLulc:
         result = self._run(ds, "annual_2yr")
         site = result["A"]
         assert {y: site[y]["irrigated"] for y in years} == {2019: 0, 2020: 0, 2021: 0}
-        assert site[2020]["evidence"] == "fallback"
-        assert_allclose(site[2020]["etf_fallback_scale"], 1 / 1.8, rtol=1e-6)
 
-    def test_fallback_requires_overlap(self):
-        """Fallback with no co-captured dates is unused; gap years stay unflagged."""
-        years = [2019, 2020, 2021]
-        ds = self._make_ds(years, irrigated_all=True)
-        ds = self._with_fallback(ds, gap_years=[2019, 2020], bias=1.5, fallback_in_gap_only=True)
-        result = self._run(ds, "annual_2yr")
-        site = result["A"]
-        assert {y: site[y]["irrigated"] for y in years} == {2019: 0, 2020: 0, 2021: 1}
-        assert site[2019]["evidence"] == "none"
-        assert site[2020]["evidence"] == "none"
-        assert "etf_fallback_scale" not in site
-        assert all("etf_fallback_scale" not in site[y] for y in years)
+    def test_irr_data_carries_only_legacy_keys(self):
+        """irr_data year dicts hold only irr_doys/irrigated/f_irr — no tags.
 
-    def test_no_evidence_tags_without_fallback_feature(self):
-        """With the fallback feature off, irr_data keeps its legacy shape.
-
-        Even zero-capture years must not carry evidence tags — existing
-        regression fixtures depend on bit-identical legacy output.
+        Harmonization provenance (``evidence``, ``etf_fallback_scale``) is gone;
+        consumers that iterate every non-``fallow_years`` key as a year dict must
+        see a clean, uniform shape whether or not a second member is present.
         """
         years = [2019, 2020, 2021]
         ds = self._make_ds(years, irrigated_all=True)
         ds = self._with_fallback(ds, gap_years=[2019, 2020], bias=1.5)
-        ds = ds.drop_vars("etf_fallback")
-        result = self._run(ds, "annual_2yr")
-        site = result["A"]
-        assert {y: site[y]["irrigated"] for y in years} == {2019: 0, 2020: 0, 2021: 1}
-        for y in years:
-            assert "evidence" not in site[y]
-            assert "etf_fallback_scale" not in site[y]
-        assert "etf_fallback_scale" not in site
+        for variant in (ds, ds.drop_vars("etf_fallback")):
+            site = self._run(variant, "annual_2yr")["A"]
+            for y in years:
+                assert set(site[y]) == {"irr_doys", "irrigated", "f_irr"}
+            assert "etf_fallback_scale" not in site
+            assert "evidence" not in site
