@@ -2,11 +2,21 @@
 
 Provenance chain:
     flux_crop_ag_96_150m.shp  (96 cropland flux sites, enriched with flux/LULC metadata)
-    └── flux_crop_pub_75_150m.shp  (75-site POR publication cohort)
+    └── flux_crop_pub_71_150m.shp  (71-site POR publication cohort)
 
-The 75-site cohort excludes 21 sites that lack post-2013 flux tower data,
-which is the minimum required for the OLI-era LS Ensemble and Triple ETf
-POR calibration experiments (2013-01-01 to 2025-12-31).
+The 71-site cohort is the 96-site cropland pool minus two documented,
+criterion-based exclusions:
+  1. 21 sites lacking post-2013 flux tower data (the minimum required for the
+     OLI-era LS Ensemble and Triple ETf POR experiments, 2013-2025).
+  2. 4 sites whose authoritative flux-network IGBP / documented land use is
+     natural, unmanaged vegetation rather than agriculture. The GLC10 cropland
+     mask (=10) mislabels these as cropland, but they are not irrigated
+     croplands and do not belong in a cropland-irrigation study. The flux
+     IGBP is the ground-truth discriminator: the satellite mask and the IGBP
+     *vegetation class* alone cannot separate farms from wild land (AU-RDF is
+     IGBP=WSA yet is the "Red Dirt Melon Farm"; AU-Nim is IGBP=GRA yet is
+     natural sub-alpine grassland), so the exclusion is keyed on the
+     documented land use, not the satellite product that erred.
 
 Both publication TOMLs reference this shapefile:
     - 6_Flux_International_LSEnsemble_POR.toml
@@ -47,22 +57,36 @@ EXCLUDED_NO_POST2013_FLUX = {
     "US-Wi6",
 }
 
+# 4 sites the GLC10 cropland mask (=10) labels cropland but whose authoritative
+# flux-network IGBP / documented land use is natural, unmanaged vegetation —
+# not agriculture. Excluded from the cropland-irrigation cohort. (ES-LJu was
+# additionally mis-flagged as irrigated 10/13 years by the classifier; the
+# other three were already de-flagged but are excluded under the same rule for
+# cohort consistency.)
+EXCLUDED_NATURAL_LANDCOVER = {
+    "ES-LJu",  # IGBP=OSH  Mediterranean karst open shrubland (Llano de los Juanes)
+    "AU-Nim",  # IGBP=GRA  natural sub-alpine grassland (Nimmo)
+    "US-Los",  # IGBP=WET  natural fen (Lost Creek)
+    "CZ-wet",  # IGBP=WET  natural wetland (Trebon)
+}
 
-def build_pub75(gis_dir: Path) -> Path:
-    """Filter crop96 to the 75-site POR publication cohort."""
+
+def build_pub71(gis_dir: Path) -> Path:
+    """Filter crop96 to the 71-site POR publication cohort."""
     crop96_path = gis_dir / "flux_crop_ag_96_150m.shp"
-    out_path = gis_dir / "flux_crop_pub_75_150m.shp"
+    out_path = gis_dir / "flux_crop_pub_71_150m.shp"
 
     gdf = gpd.read_file(crop96_path, engine="fiona")
     assert "sid" in gdf.columns, f"Expected 'sid' column, got {list(gdf.columns)}"
 
-    pub = gdf[~gdf["sid"].isin(EXCLUDED_NO_POST2013_FLUX)].copy()
+    excluded = EXCLUDED_NO_POST2013_FLUX | EXCLUDED_NATURAL_LANDCOVER
+    pub = gdf[~gdf["sid"].isin(excluded)].copy()
 
     dropped = set(gdf["sid"]) - set(pub["sid"])
-    assert dropped == EXCLUDED_NO_POST2013_FLUX, (
-        f"Exclusion mismatch: expected {len(EXCLUDED_NO_POST2013_FLUX)} dropped, got {len(dropped)}"
+    assert dropped == excluded, (
+        f"Exclusion mismatch: expected {len(excluded)} dropped, got {len(dropped)}"
     )
-    assert len(pub) == 75, f"Expected 75 sites, got {len(pub)}"
+    assert len(pub) == 71, f"Expected 71 sites, got {len(pub)}"
 
     pub.to_file(out_path, engine="fiona")
     print(f"Wrote {len(pub)} sites to {out_path}")
@@ -79,4 +103,4 @@ if __name__ == "__main__":
         help="GIS directory containing flux_crop_ag_96_150m.shp (default: in-repo data/gis/)",
     )
     args = parser.parse_args()
-    build_pub75(Path(args.gis_dir))
+    build_pub71(Path(args.gis_dir))
