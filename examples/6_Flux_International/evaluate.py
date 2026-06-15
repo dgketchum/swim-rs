@@ -692,6 +692,12 @@ if __name__ == "__main__":
         default=None,
         help="Override container path",
     )
+    parser.add_argument(
+        "--all-container-fields",
+        action="store_true",
+        help="Evaluate every field in the container instead of the configured "
+        "shapefile cohort (default is the publication cohort shapefile)",
+    )
     args = parser.parse_args()
 
     conf_path = Path(args.config) if args.config else None
@@ -722,8 +728,25 @@ if __name__ == "__main__":
 
     if args.sites:
         fids = [s.strip() for s in args.sites.split(",")]
-    else:
+    elif args.all_container_fields:
         fids = container.field_uids
+    else:
+        # Default cohort = the configured fields shapefile (the publication
+        # cohort), not every site in the container. The container may retain
+        # sites excluded from the study cohort (e.g. natural-landcover sites
+        # dropped from the 71-site cohort); restrict evaluation to the
+        # shapefile and intersect with what the container actually holds.
+        import geopandas as gpd
+
+        gdf = gpd.read_file(cfg.fields_shapefile, engine="fiona")
+        id_col = cfg.feature_id_col if cfg.feature_id_col in gdf.columns else "sid"
+        cohort = [str(s) for s in gdf[id_col].tolist()]
+        container_fids = set(container.field_uids)
+        fids = [f for f in cohort if f in container_fids]
+        missing = [f for f in cohort if f not in container_fids]
+        if missing:
+            print(f"WARNING: {len(missing)} cohort site(s) absent from container: {missing}")
+        print(f"Cohort: {len(fids)} sites from {os.path.basename(cfg.fields_shapefile)}")
 
     try:
         if args.etf:
