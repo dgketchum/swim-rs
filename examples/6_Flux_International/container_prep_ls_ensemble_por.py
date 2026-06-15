@@ -80,7 +80,7 @@ def ingest_etf(container: SwimContainer, cfg: ProjectConfig):
             )
 
 
-def ingest_properties(container: SwimContainer, cfg: ProjectConfig):
+def ingest_properties(container: SwimContainer, cfg: ProjectConfig, overwrite: bool = False):
     print("\n=== Ingesting Properties ===")
     container.ingest.properties(
         soils_csv=cfg.hwsd_csv,
@@ -89,6 +89,7 @@ def ingest_properties(container: SwimContainer, cfg: ProjectConfig):
         uid_column=cfg.feature_id_col,
         lulc_column="modis_lc",
         extra_lulc_column="glc10_lc",
+        overwrite=overwrite,
     )
 
 
@@ -111,6 +112,24 @@ def compute_dynamics(container: SwimContainer, cfg: ProjectConfig):
         annual_subsidy_ratio=1.3,
         etf_gap_fallback_model="ptjpl",
     )
+
+
+def recompute_dynamics(config_path: str | None = None):
+    """Re-ingest properties + recompute dynamics on the existing container.
+
+    Used to apply a LULC / cropland-gate fix without re-ingesting the
+    (unchanged) meteorology, NDVI, and ETf layers. Opens the container in r+,
+    overwrites the property arrays from the (possibly corrected) lulc/hwsd
+    CSVs, and recomputes derived/dynamics/irr_data with the same classifier
+    settings as a full build.
+    """
+    cfg = _load_config(config_path)
+    container = build_container(cfg, overwrite=False)
+    ingest_properties(container, cfg, overwrite=True)
+    compute_dynamics(container, cfg)
+    path = container.path
+    container.close()
+    print(f"\n=== Recomputed properties + dynamics: {path} ===")
 
 
 def main(config_path: str | None = None, overwrite: bool = False):
@@ -147,5 +166,14 @@ if __name__ == "__main__":
         "--config", default=None, help="Path to TOML config (default: LSEnsemble POR)"
     )
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument(
+        "--recompute-dynamics",
+        action="store_true",
+        help="Re-ingest properties + recompute dynamics only (LULC/gate fix; "
+        "skips met/NDVI/ETf re-ingest)",
+    )
     args = parser.parse_args()
-    main(config_path=args.config, overwrite=args.overwrite)
+    if args.recompute_dynamics:
+        recompute_dynamics(config_path=args.config)
+    else:
+        main(config_path=args.config, overwrite=args.overwrite)
