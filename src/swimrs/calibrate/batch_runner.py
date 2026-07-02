@@ -405,9 +405,17 @@ def run_batch(batch_dir, num_workers=10, pst_name=None):
 # ---------------------------------------------------------------------------
 
 
-def ingest_batch(ctx: BatchContext, batch_id, summary_stat="median"):
-    """Ingest calibrated parameters from one batch into the container."""
-    from swimrs.calibrate.batch_support import find_par_csv, read_manifest
+def ingest_batch(ctx: BatchContext, batch_id, summary_stat="median", force=False):
+    """Ingest calibrated parameters from one batch into the container.
+
+    Refuses to ingest a batch whose PEST++ run did not succeed (per
+    PestResults.is_successful) unless force=True.
+    """
+    from swimrs.calibrate.batch_support import (
+        archive_pest_outputs,
+        find_par_csv,
+        read_manifest,
+    )
     from swimrs.calibrate.pest_cleanup import PestResults
     from swimrs.container.container import SwimContainer
 
@@ -420,6 +428,25 @@ def ingest_batch(ctx: BatchContext, batch_id, summary_stat="median"):
         return
 
     batch_dir = output_root / f"batch_{batch_id:03d}"
+    master_dir = batch_dir / "master"
+    pst_files = list((batch_dir / "pest").glob("*.pst"))
+    if not pst_files:
+        pst_files = list(master_dir.glob("*.pst"))
+
+    # Gate on PEST++ success before touching the container.
+    results = None
+    if pst_files:
+        project_name = pst_files[0].stem
+        results = PestResults(str(batch_dir / "pest"), project_name, master_dir=str(master_dir))
+        success, issues = results.is_successful()
+        if not success and not force:
+            raise RuntimeError(
+                f"Batch {batch_id:03d}: PEST++ run did not succeed, refusing to ingest "
+                f"(pass force=True / --force-ingest to override). Issues: {issues}"
+            )
+        if not success:
+            print(f"Batch {batch_id:03d}: WARNING — ingesting despite issues: {issues}")
+
     par_csv = find_par_csv(batch_dir)
     if par_csv is None:
         print(f"No .par.csv found in {batch_dir}/master/")
@@ -432,13 +459,7 @@ def ingest_batch(ctx: BatchContext, batch_id, summary_stat="median"):
         )
         print(f"Batch {batch_id:03d}: ingested {len(batch_fids)} fields from {par_csv.name}")
 
-        master_dir = batch_dir / "master"
-        pst_files = list((batch_dir / "pest").glob("*.pst"))
-        if not pst_files:
-            pst_files = list(master_dir.glob("*.pst"))
-        if pst_files:
-            project_name = pst_files[0].stem
-            results = PestResults(str(batch_dir / "pest"), project_name, master_dir=str(master_dir))
+        if results is not None:
             summary = results.get_summary()
 
             cal_group = container._root["calibration"]
@@ -458,15 +479,26 @@ def ingest_batch(ctx: BatchContext, batch_id, summary_stat="median"):
             phi_red = summary.get("phi_reduction_pct", 0)
             print(f"  Phi reduction: {phi_red:.1f}%")
 
-            report = results.cleanup()
+            # Archive the full PEST++ trajectory (RUN_POLICY Cat 3/4) before
+            # cleanup deletes intermediate iteration ensembles.
+            archive_dir = output_root / "pest_archive" / f"batch_{batch_id:03d}"
+            archived = archive_pest_outputs(batch_dir, archive_dir)
+            print(f"  Archived {len(archived)} PEST++ artifact(s) -> {archive_dir}")
+
+            report = results.cleanup(archive_dir=str(archive_dir))
             print(f"  Cleanup: {report['space_recovered_mb']:.1f} MB recovered")
     finally:
         container.close()
 
 
-def ingest_all(ctx: BatchContext, summary_stat="median"):
-    """Ingest all completed batches, skipping those already ingested."""
+def ingest_all(ctx: BatchContext, summary_stat="median", force=False):
+    """Ingest all completed batches, skipping those already ingested.
+
+    Batches whose PEST++ run did not succeed (per PestResults.is_successful)
+    are skipped with a warning unless force=True.
+    """
     from swimrs.calibrate.batch_support import find_par_csv, read_manifest
+    from swimrs.calibrate.pest_cleanup import PestResults
     from swimrs.container.container import SwimContainer
 
     output_root = Path(ctx.output_root)
@@ -481,6 +513,7 @@ def ingest_all(ctx: BatchContext, summary_stat="median"):
             already_done = set(json.loads(batches_str).keys())
 
         total_ingested = 0
+        n_skipped_failed = 0
         fid_col = ctx.feature_id_col if ctx.feature_id_col in manifest.columns else "FID"
         for bid in batch_ids:
             if str(bid) in already_done:
@@ -488,6 +521,24 @@ def ingest_all(ctx: BatchContext, summary_stat="median"):
                 continue
 
             batch_dir = output_root / f"batch_{bid:03d}"
+
+            pst_files = list((batch_dir / "pest").glob("*.pst"))
+            if not pst_files:
+                pst_files = list((batch_dir / "master").glob("*.pst"))
+            if pst_files:
+                results = PestResults(
+                    str(batch_dir / "pest"),
+                    pst_files[0].stem,
+                    master_dir=str(batch_dir / "master"),
+                )
+                success, issues = results.is_successful()
+                if not success:
+                    if not force:
+                        print(f"Batch {bid:03d}: run not successful, skipping — {issues}")
+                        n_skipped_failed += 1
+                        continue
+                    print(f"Batch {bid:03d}: WARNING — ingesting despite issues: {issues}")
+
             par_csv = find_par_csv(batch_dir)
             if par_csv is None:
                 print(f"Batch {bid:03d}: no .par.csv, skipping")
@@ -501,6 +552,10 @@ def ingest_all(ctx: BatchContext, summary_stat="median"):
             print(f"Batch {bid:03d}: ingested {len(batch_fids)} fields")
 
         print(f"\nTotal: {total_ingested} fields ingested across {len(batch_ids)} batches")
+        if n_skipped_failed:
+            print(
+                f"Skipped {n_skipped_failed} unsuccessful batch(es); use --force-ingest to override"
+            )
     finally:
         container.close()
 
@@ -689,6 +744,13 @@ def calibrate_all(
             c.close()
     except Exception:
         pass
+
+    # --- Stale-calibration guard (C-2) ---
+    from swimrs.calibrate.batch_support import resolve_ingested_batches
+
+    container_ingested = resolve_ingested_batches(
+        container_ingested, batch_log, override, ctx.container_path, output_root
+    )
 
     to_process = []
     for batch_id, batch_fids in batches:
@@ -920,8 +982,20 @@ def calibrate_all(
             },
         )
 
-        print(f"Batch {batch_id:03d}: ingested, cleaning up build directory")
-        shutil.rmtree(batch_dir)
+        # Delete the build dir only after the PEST++ archive is verified
+        # (RUN_POLICY Category 4: the iteration trajectory must survive).
+        from swimrs.calibrate.batch_support import verify_pest_archive
+
+        archive_dir = output_root / "pest_archive" / f"batch_{batch_id:03d}"
+        archive_ok, missing = verify_pest_archive(archive_dir)
+        if archive_ok:
+            print(f"Batch {batch_id:03d}: archive verified, cleaning up build directory")
+            shutil.rmtree(batch_dir)
+        else:
+            print(
+                f"Batch {batch_id:03d}: WARNING — archive at {archive_dir} missing "
+                f"{missing}; keeping build directory {batch_dir}"
+            )
 
     # Join any lingering prebuild process
     if prebuild_proc is not None:
@@ -1074,6 +1148,11 @@ def build_batch_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to JSON with LULC-specific prior parameter values for Tikhonov regularization",
     )
+    parser.add_argument(
+        "--force-ingest",
+        action="store_true",
+        help="Ingest batches even when the PEST++ run did not succeed",
+    )
     return parser
 
 
@@ -1147,10 +1226,10 @@ def main(argv=None):
     elif action == "ingest-batch":
         if args.batch_id is None:
             parser.error("--batch-id required for ingest-batch")
-        ingest_batch(ctx, args.batch_id)
+        ingest_batch(ctx, args.batch_id, force=args.force_ingest)
 
     elif action == "ingest-all":
-        ingest_all(ctx)
+        ingest_all(ctx, force=args.force_ingest)
         persist_calibration_resolved_state(
             ctx.container_path,
             ctx.toml_path,

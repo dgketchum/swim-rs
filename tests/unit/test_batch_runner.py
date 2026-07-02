@@ -406,6 +406,175 @@ class TestBatchIsBuilt:
 
 
 # ---------------------------------------------------------------------------
+# Best-phi iteration selection (C-3)
+# ---------------------------------------------------------------------------
+
+
+def _write_phi_meas(master, project, rows):
+    """Write a minimal {project}.phi.meas.csv with (iteration, mean) rows."""
+    lines = ["iteration,total_runs,mean,standard_deviation,min,max"]
+    for it, mean in rows:
+        lines.append(f"{it},50,{mean},1.0,{mean - 1},{mean + 1}")
+    (master / f"{project}.phi.meas.csv").write_text("\n".join(lines))
+
+
+class TestFindParCsvBestPhi:
+    def test_prefers_min_phi_iteration(self, tmp_path):
+        """The last iteration is not always the best: pick min mean phi."""
+        master = tmp_path / "master"
+        master.mkdir()
+        for i in range(4):
+            (master / f"project.{i}.par.csv").write_text("data")
+        # phi dips at iteration 2 then degrades at 3
+        _write_phi_meas(master, "project", [(0, 5000.0), (1, 1500.0), (2, 900.0), (3, 1100.0)])
+        result = find_par_csv(tmp_path)
+        assert result.name == "project.2.par.csv"
+
+    def test_falls_back_to_latest_without_phi(self, tmp_path):
+        master = tmp_path / "master"
+        master.mkdir()
+        (master / "project.0.par.csv").write_text("data")
+        (master / "project.3.par.csv").write_text("data")
+        result = find_par_csv(tmp_path)
+        assert result.name == "project.3.par.csv"
+
+    def test_falls_back_when_phi_malformed(self, tmp_path):
+        master = tmp_path / "master"
+        master.mkdir()
+        (master / "project.0.par.csv").write_text("data")
+        (master / "project.2.par.csv").write_text("data")
+        (master / "project.phi.meas.csv").write_text("not,a,phi\nfile,at,all")
+        result = find_par_csv(tmp_path)
+        assert result.name == "project.2.par.csv"
+
+    def test_falls_back_when_best_iter_par_missing(self, tmp_path):
+        """Min-phi iteration without a matching .par.csv falls back to latest."""
+        master = tmp_path / "master"
+        master.mkdir()
+        (master / "project.0.par.csv").write_text("data")
+        (master / "project.3.par.csv").write_text("data")
+        _write_phi_meas(master, "project", [(0, 5000.0), (1, 800.0), (3, 1100.0)])
+        result = find_par_csv(tmp_path)
+        assert result.name == "project.3.par.csv"
+
+
+class TestBestPhiIteration:
+    def test_min_mean_selected(self, tmp_path):
+        from swimrs.calibrate.batch_support import _best_phi_iteration
+
+        master = tmp_path
+        _write_phi_meas(master, "p", [(0, 100.0), (1, 40.0), (2, 60.0)])
+        assert _best_phi_iteration(master) == 1
+
+    def test_none_without_file(self, tmp_path):
+        from swimrs.calibrate.batch_support import _best_phi_iteration
+
+        assert _best_phi_iteration(tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# PEST++ output archiving (C-1)
+# ---------------------------------------------------------------------------
+
+
+class TestArchivePestOutputs:
+    def _make_batch(self, tmp_path):
+        batch = tmp_path / "batch_000"
+        pest = batch / "pest"
+        master = batch / "master"
+        pest.mkdir(parents=True)
+        master.mkdir(parents=True)
+        (pest / "project.pst").write_text("pst")
+        (pest / "loc.mat").write_text("loc")
+        (master / "project.rec").write_text("rec")
+        (master / "project.phi.meas.csv").write_text("phi")
+        for i in range(4):
+            (master / f"project.{i}.par.csv").write_text(f"par{i}")
+            (master / f"project.{i}.obs.csv").write_text(f"obs{i}")
+        # noise that must NOT be archived
+        (master / "project.jcb").write_text("big binary")
+        return batch
+
+    def test_archives_full_trajectory(self, tmp_path):
+        from swimrs.calibrate.batch_support import archive_pest_outputs
+
+        batch = self._make_batch(tmp_path)
+        archive = tmp_path / "pest_archive" / "batch_000"
+        copied = archive_pest_outputs(batch, archive)
+
+        # All iterations of par and obs survive (RUN_POLICY Category 4)
+        for i in range(4):
+            assert (archive / f"project.{i}.par.csv").exists()
+            assert (archive / f"project.{i}.obs.csv").exists()
+        assert (archive / "project.pst").exists()
+        assert (archive / "project.rec").exists()
+        assert (archive / "project.phi.meas.csv").exists()
+        assert (archive / "loc.mat").exists()
+        assert not (archive / "project.jcb").exists()
+        assert len(copied) == 12
+
+    def test_verify_ok_after_archive(self, tmp_path):
+        from swimrs.calibrate.batch_support import archive_pest_outputs, verify_pest_archive
+
+        batch = self._make_batch(tmp_path)
+        archive = tmp_path / "archive"
+        archive_pest_outputs(batch, archive)
+        ok, missing = verify_pest_archive(archive)
+        assert ok
+        assert missing == []
+
+    def test_verify_fails_on_missing_dir(self, tmp_path):
+        from swimrs.calibrate.batch_support import verify_pest_archive
+
+        ok, missing = verify_pest_archive(tmp_path / "nope")
+        assert not ok
+        assert missing == ["archive directory"]
+
+    def test_verify_reports_missing_kinds(self, tmp_path):
+        from swimrs.calibrate.batch_support import verify_pest_archive
+
+        archive = tmp_path / "archive"
+        archive.mkdir()
+        (archive / "project.pst").write_text("pst")
+        ok, missing = verify_pest_archive(archive)
+        assert not ok
+        assert "rec" in missing
+        assert "par.csv" in missing
+
+
+# ---------------------------------------------------------------------------
+# Stale-calibration guard (C-2)
+# ---------------------------------------------------------------------------
+
+
+class TestResolveIngestedBatches:
+    def test_raises_on_stale_signature(self):
+        from swimrs.calibrate.batch_support import resolve_ingested_batches
+
+        with pytest.raises(RuntimeError, match="created by a different run"):
+            resolve_ingested_batches({"0", "1"}, {}, False, "/c.swim", "/out")
+
+    def test_override_clears_stale_set(self, capsys):
+        from swimrs.calibrate.batch_support import resolve_ingested_batches
+
+        result = resolve_ingested_batches({"0", "1"}, {}, True, "/c.swim", "/out")
+        assert result == set()
+        assert "WARNING" in capsys.readouterr().out
+
+    def test_trusted_when_batch_log_present(self):
+        from swimrs.calibrate.batch_support import resolve_ingested_batches
+
+        log = {"0": {"status": "ingested"}}
+        result = resolve_ingested_batches({"0"}, log, False, "/c.swim", "/out")
+        assert result == {"0"}
+
+    def test_clean_container_passes(self):
+        from swimrs.calibrate.batch_support import resolve_ingested_batches
+
+        assert resolve_ingested_batches(set(), {}, False, "/c.swim", "/out") == set()
+
+
+# ---------------------------------------------------------------------------
 # Run manifest
 # ---------------------------------------------------------------------------
 

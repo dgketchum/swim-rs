@@ -7,6 +7,7 @@ manifest handling, run manifest creation, and resolved restart state persistence
 import hashlib
 import json
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -605,16 +606,45 @@ def _par_csv_iteration(path):
         return -1
 
 
-def find_par_csv(batch_dir):
-    """Find the latest .par.csv in a batch's master/ directory.
+def _best_phi_iteration(master_dir):
+    """Return the iteration with minimum mean measured phi, or None.
 
-    Sorts by numeric iteration number (not lexicographic) so that
-    iteration 10 is correctly preferred over iteration 9.
+    Reads {project}.phi.meas.csv from the master dir. Returns None when the
+    file is missing or unreadable so callers can fall back to the
+    latest-iteration heuristic.
+    """
+    phi_files = list(Path(master_dir).glob("*.phi.meas.csv"))
+    if not phi_files:
+        return None
+    try:
+        df = pd.read_csv(phi_files[0])
+    except Exception:
+        return None
+    if df.empty or "iteration" not in df.columns or "mean" not in df.columns:
+        return None
+    valid = df.dropna(subset=["mean"])
+    if valid.empty:
+        return None
+    return int(valid.loc[valid["mean"].idxmin(), "iteration"])
+
+
+def find_par_csv(batch_dir):
+    """Find the best .par.csv in a batch's master/ directory.
+
+    Selects the iteration with minimum mean measured phi from
+    {project}.phi.meas.csv (the last iteration is not always the best).
+    Falls back to the highest-numbered iteration when no phi history is
+    available.
     """
     master = Path(batch_dir) / "master"
     par_files = list(master.glob("*.par.csv"))
     if not par_files:
         return None
+    best_iter = _best_phi_iteration(master)
+    if best_iter is not None:
+        for f in par_files:
+            if _par_csv_iteration(f) == best_iter:
+                return f
     return max(par_files, key=_par_csv_iteration)
 
 
@@ -622,6 +652,98 @@ def batch_is_built(batch_dir):
     """Check if batch_dir/pest/*.pst exists."""
     pest_dir = Path(batch_dir) / "pest"
     return pest_dir.exists() and any(pest_dir.glob("*.pst"))
+
+
+# ---------------------------------------------------------------------------
+# PEST++ output archiving (RUN_POLICY Categories 3/4)
+# ---------------------------------------------------------------------------
+
+# Artifacts that must survive batch-directory deletion: the control file,
+# record file, phi histories, ALL iteration parameter/observation ensembles
+# (Category 4 requires the full trajectory, .0 prior through .noptmax final),
+# prior-data conflict reports, and the localizer.
+PEST_ARCHIVE_PATTERNS = [
+    "*.pst",
+    "*.rec",
+    "*.phi.meas.csv",
+    "*.phi.actual.csv",
+    "*.phi.composite.csv",
+    "*.par.csv",
+    "*.obs.csv",
+    "*.pdc.csv",
+    "loc.mat",
+    "localizer_summary.json",
+    "params.csv",
+]
+
+
+def archive_pest_outputs(batch_dir, archive_dir):
+    """Copy RUN_POLICY Category 3/4 PEST++ artifacts out of a batch build dir.
+
+    Searches the batch's pest/ and master/ subdirectories for
+    PEST_ARCHIVE_PATTERNS and copies matches into archive_dir. Must run
+    BEFORE PestResults.cleanup() (which deletes intermediate iteration
+    ensembles) and before any batch-directory deletion.
+
+    Returns the sorted list of archived filenames.
+    """
+    batch_dir = Path(batch_dir)
+    archive_dir = Path(archive_dir)
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    copied = set()
+    for sub in ("pest", "master"):
+        src_dir = batch_dir / sub
+        if not src_dir.exists():
+            continue
+        for pattern in PEST_ARCHIVE_PATTERNS:
+            for src in src_dir.glob(pattern):
+                dst = archive_dir / src.name
+                if src.name not in copied:
+                    shutil.copy2(src, dst)
+                    copied.add(src.name)
+    return sorted(copied)
+
+
+def resolve_ingested_batches(container_ingested, batch_log, override, container_path, output_root):
+    """Guard against stale-calibration contamination on resume (C-2).
+
+    A container with ingested batches but no local batch log means its
+    calibration/ group was created by a different run (e.g. a copied
+    calibrated container). Trusting it would make --resume skip every batch.
+
+    Returns the effective ingested-batch set (empty when overriding a stale
+    group). Raises RuntimeError on the stale signature unless override=True.
+    """
+    if container_ingested and not batch_log:
+        msg = (
+            f"Container {container_path} already has {len(container_ingested)} "
+            f"ingested batch(es) but {output_root}/batch_log.json has no record of "
+            "them — its calibration/ group was created by a different run. Delete "
+            "the container's calibration group (or use a clean container copy) "
+            "before calibrating, or pass --override to ignore the stale group."
+        )
+        if not override:
+            raise RuntimeError(msg)
+        print(f"WARNING: {msg}")
+        print("WARNING: --override set; ignoring container batch state for resume.")
+        return set()
+    return container_ingested
+
+
+def verify_pest_archive(archive_dir):
+    """Verify an archive holds the minimum artifacts to permit batch-dir deletion.
+
+    Requires at least one .pst, one .rec, and one .par.csv. Returns
+    (ok, missing) where missing lists the absent artifact kinds.
+    """
+    archive_dir = Path(archive_dir)
+    missing = []
+    if not archive_dir.exists():
+        return False, ["archive directory"]
+    for kind, pattern in [("pst", "*.pst"), ("rec", "*.rec"), ("par.csv", "*.par.csv")]:
+        if not any(archive_dir.glob(pattern)):
+            missing.append(kind)
+    return not missing, missing
 
 
 # ========================= EOF ====================================================================
