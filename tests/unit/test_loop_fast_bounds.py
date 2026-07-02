@@ -354,3 +354,89 @@ class TestCoverScalingToggle:
         eta_on = _unpack(_run_loop_jit(**inputs_on))["eta"]
         eta_off = _unpack(_run_loop_jit(**inputs_off))["eta"]
         np.testing.assert_allclose(eta_on, eta_off, atol=0.5)
+
+
+class TestTEWEvapCap:
+    """B1: eta must track the TEW-capped evaporation, not the uncapped value."""
+
+    def test_eta_reduced_when_evap_capped(self):
+        """When depl_ze is near TEW, evap is capped and eta must shrink by the same amount."""
+        inputs = _make_inputs(
+            n_days=3,
+            n_fields=1,
+            tew=np.array([10.0]),
+            rew=np.array([4.0]),
+            depl_ze_init=np.array([9.5]),
+            all_prcp=np.zeros((3, 1)),
+            all_etr=np.full((3, 1), 8.0),
+            all_ndvi=np.full((3, 1), 0.3),
+            kr_init=np.ones(1),
+            ke_max=np.full(1, 1.2),
+        )
+        out = _unpack(_run_loop_jit(**inputs))
+        for d in range(3):
+            assert out["eta"][d, 0] >= 0.0
+            ke_etr = out["ke"][d, 0] * inputs["all_etr"][d, 0]
+            assert out["eta"][d, 0] <= ke_etr + out["kcb"][d, 0] * inputs["all_etr"][d, 0] + 1e-10
+
+    def test_etf_consistent_with_capped_eta(self):
+        """ETf = eta/etr must use the TEW-corrected eta."""
+        inputs = _make_inputs(
+            n_days=5,
+            n_fields=1,
+            tew=np.array([8.0]),
+            rew=np.array([3.0]),
+            depl_ze_init=np.array([7.0]),
+            all_prcp=np.zeros((5, 1)),
+            all_etr=np.full((5, 1), 10.0),
+            all_ndvi=np.full((5, 1), 0.2),
+            kr_init=np.ones(1),
+            ke_max=np.full(1, 1.2),
+        )
+        out = _unpack(_run_loop_jit(**inputs))
+        expected_etf = np.where(inputs["all_etr"] > 0, out["eta"] / inputs["all_etr"], 0.0)
+        np.testing.assert_allclose(out["etf"], expected_etf, atol=1e-10)
+
+    def test_water_balance_closes_during_tew_cap(self):
+        """Mass conservation: root-zone water balance must close.
+
+        Uses a dry scenario (no precip, depl_ze near TEW) that forces the TEW
+        cap to fire repeatedly.  Before B1, the uncapped evaporation leaked into
+        eta but was not removed from the soil, violating conservation.
+
+        Pin zr_min = zr_max so root depth (and TAW) stay constant, avoiding
+        storage artifacts from root-zone growth.  With no precip/irr/gw the
+        only flux is ET, so: Σeta = final_depl - init_depl.
+        """
+        n_days, n_fields = 10, 1
+        inputs = _make_inputs(
+            n_days=n_days,
+            n_fields=n_fields,
+            tew=np.array([12.0]),
+            rew=np.array([4.0]),
+            depl_ze_init=np.array([10.0]),
+            depl_root_init=np.array([5.0]),
+            all_prcp=np.zeros((n_days, n_fields)),
+            all_etr=np.full((n_days, n_fields), 7.0),
+            all_ndvi=np.full((n_days, n_fields), 0.4),
+            kr_init=np.ones(n_fields),
+            ke_max=np.full(n_fields, 1.2),
+            irr_status=np.zeros(n_fields),
+            gw_status=np.zeros(n_fields),
+            zr_min=np.full(n_fields, 0.5),
+            zr_max=np.full(n_fields, 0.5),
+            zr_init=np.full(n_fields, 0.5),
+        )
+        out = _unpack(_run_loop_jit(**inputs))
+
+        total_eta = out["eta"].sum(axis=0)
+        total_runoff = out["runoff"].sum(axis=0)
+        total_dperc = out["dperc"].sum(axis=0)
+        delta_depl = out["final_depl_root"] - inputs["depl_root_init"]
+
+        # ET increases depletion: Σeta = Δdepl + Σdperc (with no inputs)
+        # General form: Σprecip + Σirr + Σgw = Σeta + Σrunoff + Σdperc - Δdepl
+        residual = -total_eta - total_runoff - total_dperc + delta_depl
+        np.testing.assert_allclose(
+            residual, 0.0, atol=1e-6, err_msg="Water balance does not close (B1 phantom evap)"
+        )

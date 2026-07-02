@@ -342,13 +342,16 @@ def _run_loop_jit(
         depl_ze = depl_ze + evap
         depl_ze = np.maximum(depl_ze, 0.0)
 
-        # Cap at TEW and adjust evap
+        # Cap at TEW and adjust evap + eta
         over_tew = depl_ze > tew
         potential_e = np.maximum(depl_ze - depl_ze_prev, 1e-4)
         e_factor = np.where(
             over_tew, np.maximum(0.0, np.minimum(1.0, 1.0 - (depl_ze - tew) / potential_e)), 1.0
         )
+        evap_before_cap = evap.copy()
         evap = evap * e_factor
+        eta = eta - (evap_before_cap - evap)
+        eta = np.maximum(eta, 0.0)
         depl_ze = np.where(over_tew, np.maximum(depl_ze_prev, 0.0) + evap, depl_ze)
 
         # ETf

@@ -494,14 +494,16 @@ def step_day(
     state.depl_ze = depl_ze_prev + evap
     state.depl_ze = np.maximum(state.depl_ze, 0.0)
 
-    # Cap evaporation at TEW and adjust if exceeded
+    # Cap evaporation at TEW and adjust eta accordingly
     if np.any(state.depl_ze > props.tew):
         potential_e = state.depl_ze - depl_ze_prev
         potential_e = np.maximum(potential_e, 1e-4)
         e_factor = 1.0 - (state.depl_ze - props.tew) / potential_e
         e_factor = np.clip(e_factor, 0.0, 1.0)
+        evap_before_cap = evap.copy()
         evap = evap * e_factor
-        # Recalculate ET with adjusted evaporation
+        eta = eta - (evap_before_cap - evap)
+        eta = np.maximum(eta, 0.0)
         state.depl_ze = np.where(
             state.depl_ze > props.tew, np.maximum(depl_ze_prev, 0.0) + evap, state.depl_ze
         )
