@@ -112,6 +112,7 @@ class SwimInput:
         self.start_date = datetime.fromisoformat(config["start_date"])
         self.end_date = datetime.fromisoformat(config["end_date"])
         self.refet_type = config.get("refet_type", "eto")
+        self.cover_scaling = config.get("transpiration_cover_scaling", True)
 
         # Load field info
         self.fids = [
@@ -447,6 +448,7 @@ def build_swim_input(
     mask_mode: str = "irrigation",
     ndvi_mode: str = "observed",
     max_irr_rate: float = 100.0,
+    transpiration_cover_scaling: bool = True,
 ) -> SwimInput:
     """Build HDF5 input file from SwimContainer.
 
@@ -567,6 +569,7 @@ def build_swim_input(
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
             "refet_type": refet_type,
+            "transpiration_cover_scaling": transpiration_cover_scaling,
         }
         h5.attrs["config"] = json.dumps(config)
 

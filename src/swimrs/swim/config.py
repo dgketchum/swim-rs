@@ -79,6 +79,7 @@ class ProjectConfig:
         self.max_irr_rate = None
         self.elev_units = None
         self.refet_type = None
+        self.transpiration_cover_scaling = None
         self.start_dt = None
         self.end_dt = None
         self.kc_proxy = None
@@ -340,6 +341,7 @@ class ProjectConfig:
         self.max_irr_rate = misc_conf.get("max_irr_rate", 100.0)
         self.elev_units = misc_conf.get("elev_units", "m")
         self.refet_type = misc_conf.get("refet_type")
+        self.transpiration_cover_scaling = bool(misc_conf.get("transpiration_cover_scaling", True))
         # IER has been retired; only Curve Number runoff is supported.
         runoff_process = (misc_conf.get("runoff_process", "cn") or "cn").strip().lower()
         if runoff_process != "cn":

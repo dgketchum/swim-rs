@@ -115,6 +115,7 @@ def run_calibrated_model(cfg, container, fids, calibrated_params):
             fields=fids,
             empirical_kc_max=True,
             mask_mode=getattr(cfg, "mask_mode", "irrigation"),
+            transpiration_cover_scaling=getattr(cfg, "transpiration_cover_scaling", True),
         )
 
         output, _ = run_daily_loop_fast(swim_input)

@@ -218,6 +218,7 @@ def run_daily_loop(
     swim_input: SwimInput,
     parameters: CalibrationParameters | None = None,
     properties: FieldProperties | None = None,
+    cover_scaling: bool | None = None,
 ) -> tuple[DailyOutput, WaterBalanceState]:
     """Run the daily water balance simulation loop.
 
@@ -238,6 +239,9 @@ def run_daily_loop(
     final_state : WaterBalanceState
         Final state after simulation
     """
+    if cover_scaling is None:
+        cover_scaling = getattr(swim_input, "cover_scaling", True)
+
     params = parameters if parameters is not None else swim_input.parameters
     props = properties if properties is not None else swim_input.properties
 
@@ -296,6 +300,7 @@ def run_daily_loop(
             srad=srad,
             irr_flag=irr_flag,
             f_sub=current_f_sub,
+            cover_scaling=cover_scaling,
         )
 
         # Store outputs
@@ -333,6 +338,7 @@ def step_day(
     srad: NDArray[np.float64],
     irr_flag: NDArray[np.bool_],
     f_sub: NDArray[np.float64] | None = None,
+    cover_scaling: bool = True,
 ) -> dict[str, NDArray[np.float64]]:
     """Execute a single daily time step.
 
@@ -468,7 +474,7 @@ def step_day(
     ke = ke_coefficient(kr_new, props.kc_max, kcb, few, props.ke_max)
 
     # 11. Calculate actual ET and evaporation
-    kc_act, eta = actual_et(ks_new, kcb, fc, ke, props.kc_max, etr)
+    kc_act, eta = actual_et(ks_new, kcb, fc, ke, props.kc_max, etr, cover_scaling)
     evap = ke * etr  # Soil evaporation component
 
     # 11a. Constrain ET to available water (prevents phantom ET)

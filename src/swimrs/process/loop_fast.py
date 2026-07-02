@@ -77,6 +77,7 @@ def _run_loop_jit(
     s4_init: np.ndarray,
     daw3_init: np.ndarray,
     taw3_init: np.ndarray,
+    cover_scaling: bool,
 ):
     """JIT-compiled daily loop using vectorized array operations.
 
@@ -321,7 +322,10 @@ def _run_loop_jit(
         # Kc_act = fc * Ks * Kcb + Ke, capped at Kc_max
         # fc scales transpiration by fractional cover
         # ================================================================
-        kc_act = fc * ks * kcb + ke
+        if cover_scaling:
+            kc_act = fc * ks * kcb + ke
+        else:
+            kc_act = ks * kcb + ke
         kc_act = np.minimum(kc_max, kc_act)
         eta = kc_act * etr
         evap = ke * etr
@@ -581,6 +585,7 @@ def run_daily_loop_fast(
     swim_input: SwimInput,
     parameters: CalibrationParameters | None = None,
     properties: FieldProperties | None = None,
+    cover_scaling: bool | None = None,
 ) -> tuple[DailyOutput, WaterBalanceState]:
     """Run daily water balance simulation using JIT-compiled loop.
 
@@ -607,6 +612,9 @@ def run_daily_loop_fast(
     final_state : WaterBalanceState
         Final state after simulation
     """
+    if cover_scaling is None:
+        cover_scaling = getattr(swim_input, "cover_scaling", True)
+
     n_days = swim_input.n_days
     n_fields = swim_input.n_fields
     props = properties if properties is not None else swim_input.properties
@@ -752,6 +760,7 @@ def run_daily_loop_fast(
         s4_init,
         daw3_init,
         taw3_init,
+        cover_scaling,
     )
 
     # Package outputs into DailyOutput dataclass

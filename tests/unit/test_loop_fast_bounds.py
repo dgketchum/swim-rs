@@ -68,6 +68,7 @@ def _make_inputs(*, n_days=N_DAYS, n_fields=N_FIELDS, **overrides):
         s4_init=np.full(n_fields, 84.7),
         daw3_init=np.zeros(n_fields),
         taw3_init=np.zeros(n_fields),
+        cover_scaling=True,
     )
     inputs.update(overrides)
     return inputs
@@ -302,3 +303,54 @@ class TestEdgeCases:
         )
         result = _unpack(_run_loop_jit(**inputs))
         assert np.all(result["irr_sim"] == 0.0)
+
+
+class TestCoverScalingToggle:
+    """Verify the transpiration_cover_scaling toggle."""
+
+    def test_default_true_matches_original(self):
+        """cover_scaling=True must reproduce the original kc_act = fc*ks*kcb + ke."""
+        inputs = _make_inputs(cover_scaling=True)
+        result_on = _unpack(_run_loop_jit(**inputs))
+
+        inputs_default = _make_inputs()
+        result_default = _unpack(_run_loop_jit(**inputs_default))
+
+        np.testing.assert_array_equal(result_on["eta"], result_default["eta"])
+
+    def test_fc_off_raises_et_at_partial_cover(self):
+        """With partial canopy (fc<1), fc-off should produce higher ET than fc-on."""
+        inputs_on = _make_inputs(
+            all_ndvi=np.full((N_DAYS, N_FIELDS), 0.3),
+            cover_scaling=True,
+        )
+        inputs_off = _make_inputs(
+            all_ndvi=np.full((N_DAYS, N_FIELDS), 0.3),
+            cover_scaling=False,
+        )
+        eta_on = _unpack(_run_loop_jit(**inputs_on))["eta"]
+        eta_off = _unpack(_run_loop_jit(**inputs_off))["eta"]
+        assert np.all(eta_off >= eta_on - 1e-10)
+        assert np.any(eta_off > eta_on + 1e-6)
+
+    def test_fc_off_preserves_ke_and_few(self):
+        """cover_scaling=False must not change Ke (few = 1-fc stays)."""
+        inputs_on = _make_inputs(cover_scaling=True)
+        inputs_off = _make_inputs(cover_scaling=False)
+        ke_on = _unpack(_run_loop_jit(**inputs_on))["ke"]
+        ke_off = _unpack(_run_loop_jit(**inputs_off))["ke"]
+        np.testing.assert_array_equal(ke_on, ke_off)
+
+    def test_full_cover_no_difference(self):
+        """At fc≈1 (high NDVI), fc-on and fc-off should be nearly identical."""
+        inputs_on = _make_inputs(
+            all_ndvi=np.full((N_DAYS, N_FIELDS), 0.9),
+            cover_scaling=True,
+        )
+        inputs_off = _make_inputs(
+            all_ndvi=np.full((N_DAYS, N_FIELDS), 0.9),
+            cover_scaling=False,
+        )
+        eta_on = _unpack(_run_loop_jit(**inputs_on))["eta"]
+        eta_off = _unpack(_run_loop_jit(**inputs_off))["eta"]
+        np.testing.assert_allclose(eta_on, eta_off, atol=0.5)

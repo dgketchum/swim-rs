@@ -1145,6 +1145,9 @@ if __name__ == "__main__":
                 empirical_kc_max=True,
                 mask_mode=getattr(self.config, "mask_mode", "irrigation"),
                 fields=self.plot_order,
+                transpiration_cover_scaling=getattr(
+                    self.config, "transpiration_cover_scaling", True
+                ),
             )
 
             # Run simulation to generate spinup state (uses fast JIT loop)
@@ -1242,6 +1245,7 @@ if __name__ == "__main__":
             mask_mode=getattr(self.config, "mask_mode", "irrigation"),
             max_irr_rate=getattr(self.config, "max_irr_rate", 100.0) or 100.0,
             fields=self.plot_order,
+            transpiration_cover_scaling=getattr(self.config, "transpiration_cover_scaling", True),
         )
 
         if self.verbose:

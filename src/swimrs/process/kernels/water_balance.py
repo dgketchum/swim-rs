@@ -225,6 +225,7 @@ def actual_et(
     ke: NDArray[np.float64],
     kc_max: NDArray[np.float64],
     refet: NDArray[np.float64],
+    cover_scaling: bool = True,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Calculate actual evapotranspiration using dual crop coefficient.
@@ -264,8 +265,10 @@ def actual_et(
     etc_act = np.empty(n, dtype=np.float64)
 
     for i in prange(n):
-        # Kc_act = fc * Ks * Kcb + Ke (FAO-56 dual crop coefficient)
-        kc_raw = fc[i] * ks[i] * kcb[i] + ke[i]
+        if cover_scaling:
+            kc_raw = fc[i] * ks[i] * kcb[i] + ke[i]
+        else:
+            kc_raw = ks[i] * kcb[i] + ke[i]
 
         # Cap at maximum
         if kc_raw > kc_max[i]:
