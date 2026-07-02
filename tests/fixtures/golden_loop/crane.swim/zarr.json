@@ -2,7 +2,7 @@
   "attributes": {
     "project_name": "3_Crane",
     "schema_version": "1.0",
-    "created_at": "2026-06-11T16:42:01.068788+00:00",
+    "created_at": "2026-07-02T03:47:46.336720+00:00",
     "start_date": "2020-01-01",
     "end_date": "2021-12-31",
     "n_fields": 1,
@@ -10,13 +10,13 @@
     "uid_column": "site_id",
     "source_shapefile": "/home/dgketchum/code/swim-rs/examples/3_Crane/data/gis/flux_fields.shp",
     "provenance": {
-      "container_created_at": "2026-06-11T16:42:01.068772+00:00",
+      "container_created_at": "2026-07-02T03:47:46.336704+00:00",
       "container_created_by": null,
       "schema_version": "1.0",
       "events": [
         {
-          "id": "evt_d9e288ec8624",
-          "timestamp": "2026-06-11T16:42:01.215539+00:00",
+          "id": "evt_34ffecabe90a",
+          "timestamp": "2026-07-02T03:47:46.514406+00:00",
           "operation": "create",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -40,8 +40,8 @@
           "error_message": null
         },
         {
-          "id": "evt_ca8614ca7f92",
-          "timestamp": "2026-06-11T16:42:01.396784+00:00",
+          "id": "evt_16e2a1dead77",
+          "timestamp": "2026-07-02T03:47:46.711157+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -66,8 +66,8 @@
           "error_message": null
         },
         {
-          "id": "evt_ecf9322022ac",
-          "timestamp": "2026-06-11T16:42:01.721701+00:00",
+          "id": "evt_b7cdbfb2805b",
+          "timestamp": "2026-07-02T03:47:47.040003+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -101,8 +101,8 @@
           "error_message": null
         },
         {
-          "id": "evt_b7ecc9ca752f",
-          "timestamp": "2026-06-11T16:42:02.567362+00:00",
+          "id": "evt_a9ea670aa569",
+          "timestamp": "2026-07-02T03:47:47.985002+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -122,8 +122,8 @@
           "error_message": null
         },
         {
-          "id": "evt_132020a1bca6",
-          "timestamp": "2026-06-11T16:42:03.487408+00:00",
+          "id": "evt_a73c24dcac4a",
+          "timestamp": "2026-07-02T03:47:48.915314+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -148,8 +148,8 @@
           "error_message": null
         },
         {
-          "id": "evt_4fb1b769469f",
-          "timestamp": "2026-06-11T16:42:04.417289+00:00",
+          "id": "evt_92907d5e67d9",
+          "timestamp": "2026-07-02T03:47:49.875378+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -174,8 +174,8 @@
           "error_message": null
         },
         {
-          "id": "evt_02fe4e9fe01f",
-          "timestamp": "2026-06-11T16:42:04.823547+00:00",
+          "id": "evt_13a917b648d4",
+          "timestamp": "2026-07-02T03:47:50.377440+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -198,8 +198,8 @@
           "error_message": null
         },
         {
-          "id": "evt_9b99ec6701e2",
-          "timestamp": "2026-06-11T16:42:05.248305+00:00",
+          "id": "evt_8ddd5ba4bd6b",
+          "timestamp": "2026-07-02T03:47:50.812917+00:00",
           "operation": "ingest",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -222,8 +222,8 @@
           "error_message": null
         },
         {
-          "id": "evt_4d70cc130786",
-          "timestamp": "2026-06-11T16:42:05.304827+00:00",
+          "id": "evt_6fda41e6b4ac",
+          "timestamp": "2026-07-02T03:47:50.870388+00:00",
           "operation": "compute",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -253,8 +253,8 @@
           "error_message": null
         },
         {
-          "id": "evt_8f1f6b4c22a0",
-          "timestamp": "2026-06-11T16:42:05.553912+00:00",
+          "id": "evt_13bf73e408c9",
+          "timestamp": "2026-07-02T03:47:51.124990+00:00",
           "operation": "compute",
           "swim_version": "0.1.0",
           "user": "dgketchum",
@@ -274,6 +274,9 @@
             "use_mask": true,
             "use_lulc": false,
             "gwsub_irr_fallback": false,
+            "lulc_irr_method": "annual_2yr",
+            "annual_subsidy_ratio": 1.3,
+            "etf_gap_fallback_model": null,
             "lookback": 10,
             "ndvi_min_start": 0.25,
             "met_source": "gridmet"
