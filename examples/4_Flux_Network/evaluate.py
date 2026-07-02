@@ -20,6 +20,11 @@ import pandas as pd
 from scipy import stats
 from sklearn.metrics import mean_squared_error, r2_score
 
+from swimrs.calibrate.flux_utils import (
+    paired_monthly_sums,
+    passes_site_minimum,
+    write_excluded_sites,
+)
 from swimrs.container import SwimContainer
 from swimrs.process.input import build_swim_input
 from swimrs.process.loop_fast import run_daily_loop_fast
@@ -187,10 +192,16 @@ def evaluate(cfg, container, par_csv, fids, flux_dir):
     model_results = run_calibrated_model(cfg, container, fids, calibrated_params)
 
     rows = []
+    excluded = []
     for fid in fids:
         flux_et = load_flux_et(fid, flux_dir)
         if flux_et.empty:
             print(f"  {fid}: no flux data, skipping")
+            excluded.append({"site": fid, "reason": "no_flux_data"})
+            continue
+        if not passes_site_minimum(flux_et):
+            print(f"  {fid}: below VALIDATION_POLICY site minimum (90 valid days / 3 months)")
+            excluded.append({"site": fid, "reason": "below_site_minimum_90d_3mo"})
             continue
 
         model_df = model_results[fid]
@@ -240,6 +251,8 @@ def evaluate(cfg, container, par_csv, fids, flux_dir):
         r2b = row.get("r2_ssebop", np.nan)
         print(f"  {fid}: n_paired={n_paired:>5d}  R2_swim={r2s:.3f}  R2_ssebop={r2b:.3f}")
 
+    write_excluded_sites(excluded, os.path.join(cfg.project_ws, "results"))
+
     if not rows:
         print("No fields with sufficient data for evaluation.")
         return pd.DataFrame()
@@ -276,9 +289,10 @@ def evaluate(cfg, container, par_csv, fids, flux_dir):
 def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
     """Monthly aggregation of ET evaluation with strictly paired months.
 
-    Intersects daily indices first, then aggregates to monthly sums. Only
-    months with at least 20 valid daily flux observations are kept. Both SWIM
-    and SSEBop are scored on the exact same set of months per site.
+    Intersects daily indices first, restricts every series to flux-valid days,
+    then aggregates to monthly sums so all sides integrate the identical day
+    set. Only months with at least 20 valid daily flux observations are kept.
+    Both SWIM and SSEBop are scored on the exact same set of months per site.
     """
     fids = apply_exclusions(fids)
     print(f"Monthly evaluation: {len(fids)} fields from {par_csv}")
@@ -292,9 +306,15 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
     model_results = run_calibrated_model(cfg, container, fids, calibrated_params)
 
     rows = []
+    excluded = []
     for fid in fids:
         flux_et = load_flux_et(fid, flux_dir)
         if flux_et.empty:
+            excluded.append({"site": fid, "reason": "no_flux_data"})
+            continue
+        if not passes_site_minimum(flux_et):
+            print(f"  {fid}: below VALIDATION_POLICY site minimum (90 valid days / 3 months)")
+            excluded.append({"site": fid, "reason": "below_site_minimum_90d_3mo"})
             continue
 
         model_df = model_results[fid]
@@ -309,23 +329,21 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
         swim_daily = swim_et.loc[daily_common]
         flux_daily = flux_et.loc[daily_common]
 
-        # Aggregate to monthly totals
-        swim_monthly = swim_daily.resample("MS").sum()
-        flux_monthly = flux_daily.resample("MS").sum()
-
-        # Only keep months with >= 20 valid daily flux obs
-        flux_count = flux_daily.resample("MS").count()
-        valid_months = flux_count[flux_count >= 20].index
-        swim_monthly = swim_monthly.loc[swim_monthly.index.isin(valid_months)]
-        flux_monthly = flux_monthly.loc[flux_monthly.index.isin(valid_months)]
-
-        # SSEBop monthly ET on the same daily common index
+        # SSEBop NHM daily ET (interpolated ETf × ETo) on the same daily index
         etf_series = load_ssebop_etf(container, fid)
         if etf_series is not None:
             etf_interp = etf_series.reindex(daily_common).interpolate(method="linear")
             ssebop_daily = etf_interp * etref.reindex(daily_common)
-            ssebop_monthly = ssebop_daily.resample("MS").sum()
         else:
+            ssebop_daily = None
+
+        # Monthly totals over flux-valid days only, so every series integrates
+        # the identical day set; SSEBop months not finite on every valid day
+        # become NaN instead of partial or fabricated-zero sums
+        swim_monthly, flux_monthly, ssebop_monthly = paired_monthly_sums(
+            swim_daily, flux_daily, ssebop_daily
+        )
+        if ssebop_monthly is None:
             ssebop_monthly = pd.Series(np.nan, index=swim_monthly.index)
 
         # Strictly paired months: flux, swim, and ssebop all finite
@@ -357,6 +375,8 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
             f"R2_swim={row['r2_swim']:.3f}  R2_ssebop={row['r2_ssebop']:.3f}  "
             f"RMSE_swim={row['rmse_swim']:.2f}  RMSE_ssebop={row['rmse_ssebop']:.2f}"
         )
+
+    write_excluded_sites(excluded, os.path.join(cfg.project_ws, "results"))
 
     if not rows:
         print("No fields with sufficient monthly data.")
@@ -494,7 +514,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     cfg = load_config()
-    flux_dir = os.path.join(cfg.data_dir, "daily_flux_files")
+    flux_dir = cfg.flux_dir
     results_dir = os.path.join(cfg.project_ws, "results")
 
     if args.par_csv:

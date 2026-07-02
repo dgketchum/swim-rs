@@ -25,6 +25,11 @@ import pandas as pd
 from scipy import stats
 from sklearn.metrics import mean_squared_error, r2_score
 
+from swimrs.calibrate.flux_utils import (
+    paired_monthly_sums,
+    passes_site_minimum,
+    write_excluded_sites,
+)
 from swimrs.container import SwimContainer
 from swimrs.process.input import build_swim_input
 from swimrs.process.loop_fast import run_daily_loop_fast
@@ -272,32 +277,67 @@ def run_calibrated_model(cfg, container, fids, calibrated_params):
     return results
 
 
-def find_flux_file(site_id):
-    """Find QAQC flux data file, searching across networks."""
+def find_flux_file(site_id, network=None):
+    """Find QAQC flux data file, preferring the declared network.
+
+    Without a declared network, fall back to the fixed multi-network search
+    order (first existing file wins).
+    """
     fname = f"{site_id}_daily_data.csv"
-    for network in QAQC_NETWORKS:
-        path = os.path.join(QAQC_ROOT, network, fname)
+    networks = [network] if network else QAQC_NETWORKS
+    for net in networks:
+        path = os.path.join(QAQC_ROOT, net, fname)
         if os.path.exists(path):
             return path
     return None
 
 
-def load_flux_et(fid):
-    """Load energy-balance-corrected ET from flux tower data."""
-    path = find_flux_file(fid)
+def load_flux_et(fid, source=None):
+    """Load flux tower ET, honoring a declared (network, et_col) source.
+
+    ``source`` is the (network, et_col) pair the cohort shapefile records for
+    the site (see ``load_flux_sources``). Without it, the first file found in
+    the network search order is used with the default column priority — which
+    can silently pick a file with no ET column at all (e.g. the US-Ne sites'
+    soil-moisture-only ameriflux files shadowing their fluxnet ET records).
+    """
+    network = et_col = None
+    if source is not None:
+        network, et_col = source
+    path = find_flux_file(fid, network)
     if path is None:
         return pd.Series(dtype=float)
     df = pd.read_csv(path, index_col="date", parse_dates=True)
-    if "ET_corr" in df.columns:
-        series = df["ET_corr"]
-    elif "ET" in df.columns:
-        series = df["ET"]
-    elif "LE_corr" in df.columns:
-        series = df["LE_corr"] * 86400 / 2.45e6
-    else:
-        return pd.Series(dtype=float)
-    series.index = series.index.normalize()
-    return series
+    # honor the shapefile-declared column first, then fall back
+    for col in ([et_col] if et_col else []) + ["ET_corr", "ET", "LE_corr"]:
+        if col in df.columns:
+            series = df[col] if col != "LE_corr" else df[col] * 86400 / 2.45e6
+            series.index = series.index.normalize()
+            series.attrs["flux_file"] = path
+            series.attrs["et_col"] = col
+            return series
+    return pd.Series(dtype=float)
+
+
+def load_flux_sources(shapefile, id_col="sid"):
+    """Per-site (network, et_col) declared in the cohort shapefile.
+
+    Returns ``{site_id: (network, et_col)}``; empty when the shapefile lacks a
+    ``network`` column, so callers fall back to the network search order.
+    """
+    import geopandas as gpd
+
+    gdf = gpd.read_file(shapefile, engine="fiona")
+    if id_col not in gdf.columns:
+        id_col = "sid"
+    if "network" not in gdf.columns:
+        return {}
+    sources = {}
+    for _, r in gdf.iterrows():
+        network = r["network"] if isinstance(r["network"], str) else None
+        et_col = r["et_col"] if "et_col" in gdf.columns and isinstance(r["et_col"], str) else None
+        sources[str(r[id_col])] = (network, et_col)
+    return sources
 
 
 def calc_metrics(obs, mod):
@@ -332,15 +372,17 @@ def find_par_csv(results_dir, project_name):
     return None
 
 
-def evaluate(cfg, container, par_csv, fids, results_dir=None):
+def evaluate(cfg, container, par_csv, fids, results_dir=None, flux_sources=None):
     """Run calibrated model and evaluate against flux and RS-derived daily ETa.
 
     The RS benchmark is the native target ETf, linearly interpolated to daily,
     then multiplied by daily ETo. SWIM and RS ETa are both scored against flux
-    on identical paired days.
+    on identical paired days. ``flux_sources`` maps site id to the shapefile-
+    declared (network, et_col) truth source (see ``load_flux_sources``).
 
     Returns DataFrame with per-site paired metrics.
     """
+    flux_sources = flux_sources or {}
     calibrated_params, param_source = _resolve_calibrated_params(container, fids, par_csv)
     print(f"Evaluating {len(fids)} sites from {param_source}")
 
@@ -370,10 +412,16 @@ def evaluate(cfg, container, par_csv, fids, results_dir=None):
             out_df.to_csv(os.path.join(results_dir, f"{fid}.csv"))
 
     rows = []
+    excluded = []
     for fid in fids:
-        flux_et = load_flux_et(fid)
+        flux_et = load_flux_et(fid, flux_sources.get(fid))
         if flux_et.empty:
             print(f"  {fid}: no flux data, skipping")
+            excluded.append({"site": fid, "reason": "no_flux_data"})
+            continue
+        if not passes_site_minimum(flux_et):
+            print(f"  {fid}: below VALIDATION_POLICY site minimum (90 valid days / 3 months)")
+            excluded.append({"site": fid, "reason": "below_site_minimum_90d_3mo"})
             continue
 
         model_df = model_results[fid]
@@ -401,7 +449,14 @@ def evaluate(cfg, container, par_csv, fids, results_dir=None):
         m_swim = calc_metrics(obs[paired_mask], swim_vals[paired_mask])
         m_rs = calc_metrics(obs[paired_mask], rs_vals[paired_mask])
 
-        row = {"fid": fid, "n": n_paired}
+        # record the truth source actually used (RUN_POLICY category-6 audit)
+        flux_file = flux_et.attrs.get("flux_file", "")
+        row = {
+            "fid": fid,
+            "n": n_paired,
+            "flux_network": os.path.basename(os.path.dirname(flux_file)) if flux_file else None,
+            "flux_et_col": flux_et.attrs.get("et_col"),
+        }
         for k in ["r2", "r", "rmse", "bias", "kge"]:
             row[k] = m_swim[k]
             row[f"{k}_swim"] = m_swim[k]
@@ -413,6 +468,9 @@ def evaluate(cfg, container, par_csv, fids, results_dir=None):
             f"R2_rs={m_rs['r2']:.3f}  KGE_swim={m_swim['kge']:.3f}  "
             f"KGE_rs={m_rs['kge']:.3f}"
         )
+
+    if results_dir is not None:
+        write_excluded_sites(excluded, results_dir)
 
     if not rows:
         print("No sites with sufficient data for evaluation.")
@@ -543,15 +601,17 @@ def evaluate_etf(cfg, container, par_csv, fids, results_dir=None):
     return metrics_df
 
 
-def evaluate_monthly(cfg, container, par_csv, fids):
+def evaluate_monthly(cfg, container, par_csv, fids, results_dir=None, flux_sources=None):
     """Monthly ET totals: SWIM and RS-derived ETa vs flux tower.
 
     The RS benchmark is built from native target ETf, linearly interpolated to
-    daily, then multiplied by ETo before monthly aggregation. Both SWIM and RS
-    ETa are scored on identical paired months.
+    daily, then multiplied by ETo. All series are restricted to flux-valid
+    days before monthly aggregation so sums integrate the identical day set.
+    Both SWIM and RS ETa are scored on identical paired months.
 
     Returns DataFrame with per-site paired monthly metrics.
     """
+    flux_sources = flux_sources or {}
     calibrated_params, param_source = _resolve_calibrated_params(container, fids, par_csv)
     print(f"Monthly evaluation: {len(fids)} sites from {param_source}")
 
@@ -571,9 +631,15 @@ def evaluate_monthly(cfg, container, par_csv, fids):
     }
 
     rows = []
+    excluded = []
     for fid in fids:
-        flux_et = load_flux_et(fid)
+        flux_et = load_flux_et(fid, flux_sources.get(fid))
         if flux_et.empty:
+            excluded.append({"site": fid, "reason": "no_flux_data"})
+            continue
+        if not passes_site_minimum(flux_et):
+            print(f"  {fid}: below VALIDATION_POLICY site minimum (90 valid days / 3 months)")
+            excluded.append({"site": fid, "reason": "below_site_minimum_90d_3mo"})
             continue
 
         model_df = model_results[fid]
@@ -592,16 +658,12 @@ def evaluate_monthly(cfg, container, par_csv, fids):
         flux_daily = flux_et.loc[daily_common]
         rs_daily = rs_eta.reindex(daily_common)
 
-        swim_monthly = swim_daily.resample("MS").sum()
-        flux_monthly = flux_daily.resample("MS").sum()
-        rs_monthly = rs_daily.resample("MS").sum()
-
-        # Only keep months with >= 20 valid daily flux obs
-        flux_count = flux_daily.resample("MS").count()
-        valid_months = flux_count[flux_count >= 20].index
-        swim_monthly = swim_monthly.loc[swim_monthly.index.isin(valid_months)]
-        flux_monthly = flux_monthly.loc[flux_monthly.index.isin(valid_months)]
-        rs_monthly = rs_monthly.loc[rs_monthly.index.isin(valid_months)]
+        # Monthly totals over flux-valid days only, so every series integrates
+        # the identical day set; RS months not finite on every valid day
+        # become NaN instead of partial sums
+        swim_monthly, flux_monthly, rs_monthly = paired_monthly_sums(
+            swim_daily, flux_daily, rs_daily
+        )
 
         all_idx = flux_monthly.index
         rs_on_idx = rs_monthly.reindex(all_idx)
@@ -629,6 +691,9 @@ def evaluate_monthly(cfg, container, par_csv, fids):
             f"  {fid}: n_paired={n_paired:>3d} mo  R2_swim={m_swim['r2']:.3f}  "
             f"R2_rs={m_rs['r2']:.3f}  KGE_swim={m_swim['kge']:.3f}  KGE_rs={m_rs['kge']:.3f}"
         )
+
+    if results_dir is not None:
+        write_excluded_sites(excluded, results_dir)
 
     if not rows:
         print("No sites with sufficient data.")
@@ -726,6 +791,17 @@ if __name__ == "__main__":
         container_path = _default_container_path(cfg)
     container = SwimContainer.open(container_path, mode="r")
 
+    # Per-site (network, et_col) truth sources declared in the cohort
+    # shapefile; used for all site lists so a --sites request also honors them
+    flux_sources = {}
+    if os.path.exists(cfg.fields_shapefile):
+        flux_sources = load_flux_sources(cfg.fields_shapefile, cfg.feature_id_col)
+    else:
+        print(
+            f"WARNING: cohort shapefile not found ({cfg.fields_shapefile}); "
+            "flux files resolve by network search order"
+        )
+
     if args.sites:
         fids = [s.strip() for s in args.sites.split(",")]
     elif args.all_container_fields:
@@ -753,10 +829,14 @@ if __name__ == "__main__":
             metrics = evaluate_etf(cfg, container, par_csv, fids, results_dir=results_dir)
             out_csv = os.path.join(results_dir, "evaluation_etf_metrics.csv")
         elif args.monthly:
-            metrics = evaluate_monthly(cfg, container, par_csv, fids)
+            metrics = evaluate_monthly(
+                cfg, container, par_csv, fids, results_dir=results_dir, flux_sources=flux_sources
+            )
             out_csv = os.path.join(results_dir, "evaluation_monthly_metrics.csv")
         else:
-            metrics = evaluate(cfg, container, par_csv, fids, results_dir=results_dir)
+            metrics = evaluate(
+                cfg, container, par_csv, fids, results_dir=results_dir, flux_sources=flux_sources
+            )
             out_csv = os.path.join(results_dir, "evaluation_metrics.csv")
         os.makedirs(results_dir, exist_ok=True)
         metrics.to_csv(out_csv)

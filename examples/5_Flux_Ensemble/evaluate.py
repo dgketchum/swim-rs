@@ -22,6 +22,11 @@ import pandas as pd
 from scipy import stats
 from sklearn.metrics import mean_squared_error, r2_score
 
+from swimrs.calibrate.flux_utils import (
+    full_month_paired_sums,
+    passes_site_minimum,
+    write_excluded_sites,
+)
 from swimrs.container import SwimContainer
 from swimrs.process.input import build_swim_input
 from swimrs.process.loop_fast import run_daily_loop_fast
@@ -272,10 +277,16 @@ def evaluate(cfg, container, par_csv, fids, flux_dir, openet_source="diy"):
     model_results = run_calibrated_model(cfg, container, fids, calibrated_params)
 
     rows = []
+    excluded = []
     for fid in fids:
         flux_et = load_flux_et(fid, flux_dir)
         if flux_et.empty:
             print(f"  {fid}: no flux data, skipping")
+            excluded.append({"site": fid, "reason": "no_flux_data"})
+            continue
+        if not passes_site_minimum(flux_et):
+            print(f"  {fid}: below VALIDATION_POLICY site minimum (90 valid days / 3 months)")
+            excluded.append({"site": fid, "reason": "below_site_minimum_90d_3mo"})
             continue
 
         model_df = model_results[fid]
@@ -380,6 +391,8 @@ def evaluate(cfg, container, par_csv, fids, flux_dir, openet_source="diy"):
         r2s = row.get("r2_swim", np.nan)
         r2e = row.get("r2_ensemble", np.nan)
         print(f"  {fid}: n_paired={n_paired:>5d}  R2_swim={r2s:.3f}  R2_ens={r2e:.3f}")
+
+    write_excluded_sites(excluded, os.path.join(cfg.project_ws, "results"))
 
     if not rows:
         print("No fields with sufficient data for evaluation.")
@@ -537,8 +550,11 @@ def load_volk_monthly_et(fid, monthly_dir):
 def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
     """Monthly ET comparison with strictly paired months.
 
-    SWIM and each OpenET model are scored on the exact same months per site.
-    The ensemble defines the paired month index — all models share it.
+    The Volk references are full calendar-month totals, so SWIM is summed over
+    full months too, and only months with >= 28 valid daily flux observations
+    are kept so the flux total misses at most a few days. SWIM and each OpenET
+    model are scored on the exact same months per site. The ensemble defines
+    the paired month index — all models share it.
     """
     fids = apply_exclusions(fids)
     monthly_dir = os.path.join(cfg.data_dir, "openet_flux", "monthly_data")
@@ -550,9 +566,15 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
 
     all_models = OPEN_SOURCE_MODELS + ["ensemble"]
     rows = []
+    excluded = []
     for fid in fids:
         flux_et = load_flux_et(fid, flux_dir)
         if flux_et.empty:
+            excluded.append({"site": fid, "reason": "no_flux_data"})
+            continue
+        if not passes_site_minimum(flux_et):
+            print(f"  {fid}: below VALIDATION_POLICY site minimum (90 valid days / 3 months)")
+            excluded.append({"site": fid, "reason": "below_site_minimum_90d_3mo"})
             continue
 
         model_df = model_results[fid]
@@ -564,18 +586,11 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
             print(f"  {fid}: only {len(daily_common)} daily overlap, skipping")
             continue
 
-        swim_daily = swim_et.loc[daily_common]
         flux_daily = flux_et.loc[daily_common]
 
-        # Aggregate to monthly totals
-        swim_monthly = swim_daily.resample("MS").sum()
-        flux_monthly = flux_daily.resample("MS").sum()
-
-        # Only keep months with >= 20 valid daily flux obs
-        flux_count = flux_daily.resample("MS").count()
-        valid_months = flux_count[flux_count >= 20].index
-        swim_monthly = swim_monthly.loc[swim_monthly.index.isin(valid_months)]
-        flux_monthly = flux_monthly.loc[flux_monthly.index.isin(valid_months)]
+        # Full-calendar-month totals gated on nearly-complete flux months,
+        # matching the full-month Volk reference totals
+        swim_monthly, flux_monthly = full_month_paired_sums(swim_et, flux_daily)
 
         # Load Volk monthly ensemble to define the paired month index
         volk_monthly = load_volk_monthly_et(fid, monthly_dir)
@@ -627,6 +642,8 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
         r2s = row.get("r2_swim", np.nan)
         r2e = row.get("r2_ensemble", np.nan)
         print(f"  {fid}: n_paired={n_paired:>3d} mo  R2_swim={r2s:.3f}  R2_ens={r2e:.3f}")
+
+    write_excluded_sites(excluded, os.path.join(cfg.project_ws, "results"))
 
     if not rows:
         print("No fields with sufficient data.")

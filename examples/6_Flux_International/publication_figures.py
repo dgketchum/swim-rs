@@ -15,7 +15,7 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from evaluate import find_flux_file
+from evaluate import find_flux_file, load_flux_sources
 from sklearn.metrics import mean_squared_error, r2_score
 
 # Journal-ready defaults
@@ -99,8 +99,9 @@ def fig_site_map(shapefile: str, summary_df: pd.DataFrame, output_path: str):
     print(f"  Saved: {output_path}")
 
 
-def fig_scatter(results_dirs: dict[str, str], output_path: str):
+def fig_scatter(results_dirs: dict[str, str], output_path: str, flux_sources: dict | None = None):
     """Figure 2: Scatter plots of SWIM ET vs flux tower ET for each experiment."""
+    flux_sources = flux_sources or {}
     experiments = list(results_dirs.keys())
     n_exp = len(experiments)
 
@@ -116,7 +117,8 @@ def fig_scatter(results_dirs: dict[str, str], output_path: str):
         for site in summary["site"]:
             if site not in outputs:
                 continue
-            flux_file = find_flux_file(site)
+            network, et_col = flux_sources.get(site, (None, None))
+            flux_file = find_flux_file(site, network)
             if flux_file is None:
                 continue
 
@@ -128,7 +130,7 @@ def fig_scatter(results_dirs: dict[str, str], output_path: str):
                 continue
 
             model_et = model_df.loc[common, "et_act"]
-            for col in ["ET_corr", "ET", "LE_corr"]:
+            for col in ([et_col] if et_col else []) + ["ET_corr", "ET", "LE_corr"]:
                 if col in flux_df.columns:
                     flux_et = flux_df.loc[common, col]
                     break
@@ -276,8 +278,11 @@ def fig_head_to_head(results_a: str, results_c: str, output_path: str):
     print(f"  Saved: {output_path}")
 
 
-def fig_time_series(results_dir: str, sites: list[str], output_path: str):
+def fig_time_series(
+    results_dir: str, sites: list[str], output_path: str, flux_sources: dict | None = None
+):
     """Figure 5: Time series panels for representative sites."""
+    flux_sources = flux_sources or {}
     n_sites = len(sites)
     fig, axes = plt.subplots(n_sites, 1, figsize=(12, 3 * n_sites), sharex=False)
     if n_sites == 1:
@@ -295,10 +300,12 @@ def fig_time_series(results_dir: str, sites: list[str], output_path: str):
         ax.plot(model_df.index, model_df["et_act"], color="steelblue", lw=0.8, label="SWIM ET")
 
         # Plot flux ET if available
-        flux_file = find_flux_file(site)
+        network, et_col = flux_sources.get(site, (None, None))
+        flux_file = find_flux_file(site, network)
         if flux_file:
             flux_df = pd.read_csv(flux_file, index_col="date", parse_dates=True)
-            for col, clabel in [("ET_corr", "Flux ET (corr)"), ("ET", "Flux ET")]:
+            col_order = ([et_col] if et_col else []) + ["ET_corr", "ET"]
+            for col, clabel in [(c, f"Flux ET ({c})") for c in col_order]:
                 if col in flux_df.columns:
                     common = model_df.index.intersection(flux_df.index)
                     ax.scatter(
@@ -406,6 +413,12 @@ def generate_all_figures(
         except FileNotFoundError:
             continue
 
+    # Per-site (network, et_col) truth sources from the cohort shapefile so
+    # figures resolve the same flux files/columns as evaluate.py
+    flux_sources = {}
+    if os.path.exists(shapefile):
+        flux_sources = load_flux_sources(shapefile)
+
     print("Generating figures...")
 
     # Figure 1: Site map
@@ -414,7 +427,7 @@ def generate_all_figures(
 
     # Figure 2: Scatter plots
     print("  Fig 2: Scatter plots")
-    fig_scatter(results_dirs, os.path.join(output_dir, f"fig2_scatter.{fig_format}"))
+    fig_scatter(results_dirs, os.path.join(output_dir, f"fig2_scatter.{fig_format}"), flux_sources)
 
     # Figure 3: Metric distributions
     print("  Fig 3: Metric distributions")
@@ -438,6 +451,7 @@ def generate_all_figures(
             first_res_dir,
             representative_sites,
             os.path.join(output_dir, f"fig5_timeseries.{fig_format}"),
+            flux_sources,
         )
 
     # Figure 6: Summary table
