@@ -1453,13 +1453,13 @@ def _load_calibrated_params(
         "swe_beta": "swe_beta",
         "aw": "aw",
         "mad": "mad",
-        "f_sub": "f_sub",
     }
 
-    # Initialize result with empty arrays
+    # NaN = "not calibrated" so callers' masked assignment preserves
+    # container/default values, matching _load_calibrated_from_container.
     result: dict[str, NDArray[np.float64]] = {}
     for internal_name in set(name_map.values()):
-        result[internal_name] = np.zeros(n_fields, dtype=np.float64)
+        result[internal_name] = np.full(n_fields, np.nan, dtype=np.float64)
 
     # Create case-insensitive lookup for params_data
     # (PEST++ lowercases parameter names, so field IDs may be lowercase)

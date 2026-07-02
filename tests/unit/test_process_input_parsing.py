@@ -36,12 +36,18 @@ def test_load_calibrated_params_is_case_insensitive_on_field_ids(tmp_path):
 
     out = _load_calibrated_params(path, fids=fids)
 
-    assert np.allclose(out["ks_damp"], np.array([0.7, 0.0]))
-    assert np.allclose(out["ndvi_k"], np.array([5.5, 0.0]))
-    assert np.allclose(out["f_sub"], np.array([0.2, 0.0]))
+    assert out["ks_damp"][0] == 0.7
+    assert np.isnan(out["ks_damp"][1])
+    assert out["ndvi_k"][0] == 5.5
+    assert np.isnan(out["ndvi_k"][1])
 
-    assert np.allclose(out["ndvi_0"], np.array([0.0, 0.42]))
-    assert np.allclose(out["mad"], np.array([0.0, 0.33]))
+    assert np.isnan(out["ndvi_0"][0])
+    assert out["ndvi_0"][1] == 0.42
+    assert np.isnan(out["mad"][0])
+    assert out["mad"][1] == 0.33
+
+    # f_sub is never a PEST parameter; it must fall through to the container
+    assert "f_sub" not in out
 
 
 def test_load_spinup_json_extra_field_ids_ignored(tmp_path):
@@ -93,5 +99,7 @@ def test_load_calibrated_params_zero_vs_absent(tmp_path):
     path.write_text(json.dumps(params))
 
     out = _load_calibrated_params(path, fids=fids)
-    # Both result in 0.0
-    assert np.allclose(out["ks_damp"], np.array([0.0, 0.0]))
+    # Explicit 0.0 is kept; absent means "not calibrated" and stays NaN so the
+    # masked assignment in the callers preserves container/default values
+    assert out["ks_damp"][0] == 0.0
+    assert np.isnan(out["ks_damp"][1])
