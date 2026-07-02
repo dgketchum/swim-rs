@@ -197,6 +197,9 @@ cython_debug/
 /examples/6_Flux_International/data/*
 !/examples/6_Flux_International/data/gis/
 /examples/6_Flux_International/params.csv
+# ERA5 ETo correction pipeline: prototyped, never applied to published runs;
+# removed from the repo 2026-07-02 (see git history). Local working data only.
+/examples/6_Flux_International/met/
 
 # Generated shapefiles and provenance in gis dirs
 /examples/*/data/gis/*_gfid*
