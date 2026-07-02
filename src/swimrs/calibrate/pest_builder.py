@@ -14,7 +14,7 @@ pd.options.future.infer_string = False
 # Suppress pyemu's flopy warning - flopy is optional and not needed for SWIM-RS
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", message="Failed to import legacy module")
-    from pyemu import Matrix, ObservationEnsemble, Pst
+    from pyemu import Matrix, Pst
     from pyemu.utils import PstFrom
     from pyemu.utils.os_utils import run_ossystem, run_sp
 
@@ -61,7 +61,6 @@ class PestBuilder:
         container,
         use_existing: bool = False,
         python_script: str | None = None,
-        prior_constraint: dict | None = None,
         conflicted_obs: str | None = None,
         verbose: bool = True,
         select_fields: list[str] | None = None,
@@ -74,7 +73,6 @@ class PestBuilder:
                        Required - all data is sourced from the container.
             use_existing: If True, use existing PEST++ setup
             python_script: Path to custom forward run script
-            prior_constraint: Prior constraint settings
             conflicted_obs: Path to conflicted observations file
             verbose: If False, suppress pyemu/PstFrom output. Default True.
             select_fields: Optional list of field UIDs to calibrate. If None, all fields
@@ -120,10 +118,9 @@ class PestBuilder:
         self.etf_std = None
         self.etf_capture_indexes = []
         self._weight_audit_rows = []
+        self._regularization_active = False
 
         self.params_file = os.path.join(self.pest_run_dir, "params.csv")
-
-        self.prior_contstraint = prior_constraint
 
         self.conflicted_obs = conflicted_obs
 
@@ -879,50 +876,36 @@ if __name__ == "__main__":
         pnames = pst.parameter_data["parnme"].values
 
         # Localizer matrix covers non-zero-weight observations only.
-        # PI equations are NOT included — PEST++ IES handles prior information
-        # separately from the localizer. Including PI rows causes PEST++ to
-        # reject the localizer with "rows not found in observation names".
         df = Matrix.from_names(pst.nnz_obs_names, pnames).to_dataframe()
 
         localizer = df.copy()
 
-        # Parse site IDs from ETf/SWE observation names (skip PI rows)
-        # TODO: replace with explicit observation name parsers
-        sites = list(
-            set(["_".join(i.split("_")[2:-3]) for i in df.index if not i.startswith("pi_")])
-        )
+        # Observation names follow "oname:obs_{etf,swe}_{fid}_otype:arr_i:{k}_j:0"
+        # and parameter names "pname:p_{pargp}_{fid}_:0_...". Matching below uses
+        # token-terminated substrings ("obs_etf_{fid}_otype:", "_{param}_{fid}_:")
+        # so a site ID that is a prefix of another (e.g. "us-ne1"/"us-ne11")
+        # cannot cross-link rows or columns.
+        def obs_site(name):
+            for tag in ("obs_etf_", "obs_swe_"):
+                if tag in name:
+                    return name.split(tag, 1)[1].split("_otype:", 1)[0]
+            return None
 
-        track = {k: [] for k in sites}
+        sites = sorted({s for s in (obs_site(i) for i in df.index) if s is not None})
 
         # Date range from config — observations are indexed relative to config start/end,
         # not the full container range. Using container dates here causes all-zero localizer
         # when the config date range is a subset of the container (e.g. 2018-2025 vs 1987-2025).
-        dt = list(pd.date_range(self.config.start_dt, self.config.end_dt, freq="D"))
-        years = list(range(self.config.start_dt.year, self.config.end_dt.year + 1))
+        dt = pd.date_range(self.config.start_dt, self.config.end_dt, freq="D")
+        t_idx = {f"i:{k}" for k in range(len(dt))}
 
         for s in sites:
             for ob_type, params in par_relation.items():
+                idx = [i for i in df.index if f"obs_{ob_type}_{s}_otype:" in i]
                 if ob_type == "etf":
-                    for yr in years:
-                        t_idx = [f"_i:{int(i)}_" for i, r in enumerate(dt) if r.year == yr]
-
-                        idx = [i for i in df.index if f"{ob_type}_{s}" in i]
-                        idx = [i for i in idx if "_{}_".format(i.split("_")[-2]) in t_idx]
-                        cols = list(
-                            np.array(
-                                [[c for c in df.columns if f"{p}_{s}" in c] for p in et_params]
-                            ).flatten()
-                        )
-                        localizer.loc[idx, cols] = 1.0
-
-                else:
-                    idx = [i for i in df.index if f"{ob_type}_{s}" in i]
-                    cols = list(
-                        np.array(
-                            [[c for c in df.columns if f"{p}_{s}" in c] for p in params]
-                        ).flatten()
-                    )
-                    localizer.loc[idx, cols] = 1.0
+                    idx = [i for i in idx if i.split("_")[-2] in t_idx]
+                cols = [c for c in df.columns if any(f"_{p}_{s}_:" in c for p in params)]
+                localizer.loc[idx, cols] = 1.0
 
         vals = localizer.values.copy()
         vals[np.isnan(vals)] = 0.0
@@ -935,18 +918,14 @@ if __name__ == "__main__":
             "shape": localizer.shape,
             "non_zero_count": int(np.count_nonzero(localizer.values)),
             "sites": sites,
-            "tracked_irrigation_years": track,
             "parameter_groups": list(pdict.keys()),
             "column_sums": col_sums,
-            "pi_note": "PI equations not in localizer — PEST++ IES handles them via ies_reg_factor",
         }
         summary_file = os.path.join(os.path.dirname(self.pst_file), "localizer_summary.json")
         with open(summary_file, "w") as f:
             json.dump(summary, f, indent=4)
 
         Matrix.from_dataframe(localizer).to_ascii(mat_file)
-
-        pst.write(self.pst_file, version=2)
 
     def write_control_settings(
         self, noptmax: int = -2, reals: int = 250, ies_num_threads: int | None = None
@@ -965,11 +944,14 @@ if __name__ == "__main__":
         pst.pestpp_options["ies_num_reals"] = reals
         pst.pestpp_options["ies_drop_conflicts"] = "true"
 
-        # Enable IES regularization if PI equations are present.
-        # ies_reg_factor controls prior-to-measurement balance in the
-        # ensemble update — higher values pull parameters toward the
-        # initial ensemble (which was seeded from LULC priors).
-        if pst.nprior > 0:
+        # Prior regularization. pestpp-ies ignores prior-information
+        # equations ("prior information equations not supported in ensemble
+        # methods"), so the prior pull is applied through ies_reg_factor: a
+        # penalty on parameter deviation from the initial ensemble (centered
+        # on the parval1 values set by apply_prior_params), weighted by the
+        # bounds-derived prior covariance and added to measurement phi as
+        # reg_factor * regul_phi.
+        if self._regularization_active:
             reg_factor = getattr(self.config, "prior_regularization_fraction", 0.2)
             pst.pestpp_options["ies_reg_factor"] = reg_factor
 
@@ -982,8 +964,6 @@ if __name__ == "__main__":
             pst.pestpp_options["ies_num_threads"] = ies_num_threads
 
         pst.control_data.noptmax = noptmax
-        oe = ObservationEnsemble.from_gaussian_draw(pst=pst, num_reals=reals)
-        oe.to_csv(self.pst_file.replace(".pst", ".oe.csv"))
         pst.write(self.pst_file, version=2)
         if self.verbose:
             print(f"writing {self.pst_file} with noptmax={noptmax}, {reals} realizations")
@@ -1495,17 +1475,26 @@ if __name__ == "__main__":
         obs["standard_deviation"] = 0.00
         etf_idx = [i for i in obs.index if "etf" in i]
 
+        fixed_sd = getattr(self.config, "etf_weighting_fixed_sd", 0.33)
         if self.etf_std is not None:
+            # The noise sd carries the per-date error estimate the weights
+            # assume: spread-mode weights are obsval/(std + spread_floor), so
+            # the implied error is (std + spread_floor). The obsval factor is
+            # deliberate magnitude shaping of phi (down-weighting dormant-season
+            # captures), not an error statement, so it stays out of the noise
+            # model. Dates without a member spread fall back to fixed_sd.
+            spread_floor = getattr(self.config, "etf_weighting_spread_floor", 0.1)
             etf_std_vals = []
-
-            [etf_std_vals.extend(self.etf_std[k]["std"].values) for k in self.pest_args["targets"]]
-
-            obs.loc[etf_idx, "standard_deviation"] = np.array(etf_std_vals)
-
+            for k in self.pest_args["targets"]:
+                etf_std_vals.extend((self.etf_std[k]["std"] + spread_floor).values)
+            sd = np.array(etf_std_vals)
+            sd[~np.isfinite(sd)] = fixed_sd
+            obs.loc[etf_idx, "standard_deviation"] = sd
         else:
-            fixed_sd = getattr(self.config, "etf_weighting_fixed_sd", 0.33)
             obs.loc[etf_idx, "standard_deviation"] = fixed_sd
 
+        # SWE weights are phi-balancers (1/(26*(swe+10))), not an error model;
+        # the noise sd is the measurement-error estimate for SNODAS/ERA5 SWE.
         swe_idx = [i for i, r in obs.iterrows() if "swe" in i and r["obsval"] > 0.0]
         obs.loc[swe_idx, "standard_deviation"] = 5.0
 
@@ -1593,15 +1582,23 @@ if __name__ == "__main__":
         return ["aw", "ndvi_k", "ndvi_0", "mad", "ks_alpha", "kr_alpha"]
 
     def add_regularization(self) -> None:
-        """Add phi-balanced Tikhonov prior information equations.
+        """Activate prior regularization toward the current parameter values.
 
-        PI weights are scaled so the total prior phi contribution per site
-        equals ``prior_regularization_fraction`` of that site's ETf information
-        mass (sum of ETf weight²). This ensures the prior pull is proportional
-        to the observation signal strength and prevents parameters with large
-        raw scales (like ``aw``) from being effectively unregularized.
+        pestpp-ies does not support prior-information equations (it warns
+        "prior information equations not supported in ensemble methods" and
+        ignores them), so no PI is written. Instead this sets a flag that
+        makes ``write_control_settings`` enable ``ies_reg_factor``, the
+        deviation-from-prior penalty pestpp-ies actually applies. Call
+        ``apply_prior_params`` first so the prior ensemble centers on the
+        stage-1 values being regularized toward.
 
-        Emits ``regularization_audit.csv`` beside the .pst for inspection.
+        The phi-balanced budgets — ``prior_regularization_fraction`` of each
+        site's ETf information mass, split across its regularized parameters —
+        are still computed and emitted to ``regularization_audit.csv`` as a
+        diagnostic of the intended per-parameter prior strength (the
+        ``pi_weight`` column is the implied 1/error-scale). Note the
+        ies_reg_factor penalty itself is weighted by the bounds-derived prior
+        covariance, not by these budgets.
         """
         f_prior = getattr(self.config, "prior_regularization_fraction", 0.2)
         reg_groups = set(self._regularization_param_groups())
@@ -1624,9 +1621,8 @@ if __name__ == "__main__":
                 fid = fid[:-1]
                 site_param_count[fid] = site_param_count.get(fid, 0) + 1
 
-        # Step 3: add PI equations with phi-balanced weights
+        # Step 3: compute phi-balanced weights for the audit
         audit_rows = []
-        n_pi = 0
 
         for pargp, values in init_pars.items():
             if pargp not in reg_groups:
@@ -1640,7 +1636,6 @@ if __name__ == "__main__":
 
                 partrans = row["partrans"]
                 prior_val = float(row["parval1"])
-                rhs = np.log10(prior_val) if partrans == "log" else prior_val
 
                 # Compute phi-balanced weight
                 I_s = site_mass.get(fid, 0.0)
@@ -1654,16 +1649,6 @@ if __name__ == "__main__":
                     weight = np.sqrt(B_sp) / delta_trans
                 else:
                     weight = 0.0
-
-                if weight > 0:
-                    pst.add_pi_equation(
-                        par_names=[par_name],
-                        pilbl=f"pi_{pargp}_{fid}",
-                        rhs=rhs,
-                        weight=weight,
-                        obs_group=f"pi_{pargp}",
-                    )
-                    n_pi += 1
 
                 audit_rows.append(
                     {
@@ -1681,10 +1666,7 @@ if __name__ == "__main__":
                     }
                 )
 
-        pst.reg_data.phimlim = sum(len(c) for c in self.etf_capture_indexes)
-        pst.reg_data.phimaccept = 1.1 * pst.reg_data.phimlim
-
-        pst.write(self.pst_file, version=2)
+        self._regularization_active = True
 
         # Emit audit CSV
         if audit_rows:
@@ -1702,7 +1684,7 @@ if __name__ == "__main__":
         weights_by_group = {}
         for r in audit_rows:
             weights_by_group.setdefault(r["pargp"], []).append(r["pi_weight"])
-        print(f"  Regularization: {n_pi} PI equations, f_prior={f_prior}")
+        print(f"  Regularization: ies_reg_factor enabled, f_prior={f_prior}")
         print(f"    ETf info mass: median={median_mass:.0f}, sites={len(site_mass)}")
         print(f"    Prior budget: median={median_budget:.0f}")
         for g in sorted(weights_by_group):
