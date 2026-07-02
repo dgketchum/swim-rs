@@ -1,0 +1,93 @@
+{
+  "source_experiment": "Example 5 / Experiment 2 (CONUS cropland)",
+  "source_run": "Run 21 (publication; reproduces Run 20 bit-for-bit)",
+  "calibration_target": "simple six-model OpenET ensemble mean (per-overpass nanmean)",
+  "observation_weighting": "spread-based observation weights (per-overpass member std)",
+  "aggregation": "median across Ex5 cropland sites of each site's posterior median (median realization value; 'base' realization excluded)",
+  "source_par_csv": "/data/ssd1/swim/5_Flux_Ensemble/results/run21/5_Flux_Ensemble.3.par.csv",
+  "n_ex5_sites": 60,
+  "date_generated_utc": "2026-06-16T15:11:56Z",
+  "git_sha": "3d93cd4e90982082d3782ff23e8219ac3b736d20",
+  "param_names": [
+    "aw",
+    "ndvi_k",
+    "ndvi_0",
+    "mad",
+    "ks_alpha",
+    "kr_alpha",
+    "swe_alpha",
+    "swe_beta"
+  ],
+  "param_values": {
+    "aw": 294.27200000000005,
+    "ndvi_k": 4.118237499999999,
+    "ndvi_0": 0.51654025,
+    "mad": 0.1462525,
+    "ks_alpha": 0.52837325,
+    "kr_alpha": 0.13767725,
+    "swe_alpha": 0.32818075,
+    "swe_beta": 1.492885
+  },
+  "legacy_vector": {
+    "aw": 202,
+    "ndvi_k": 8.88,
+    "ndvi_0": 0.545,
+    "mad": 0.115,
+    "ks_alpha": 0.28,
+    "kr_alpha": 0.334,
+    "swe_alpha": 0.337,
+    "swe_beta": 1.496
+  },
+  "matches_legacy_vector": false,
+  "legacy_comparison": {
+    "aw": {
+      "current": 294.27200000000005,
+      "legacy": 202.0,
+      "abs_delta": 92.27200000000005,
+      "matches": false
+    },
+    "ndvi_k": {
+      "current": 4.118237499999999,
+      "legacy": 8.88,
+      "abs_delta": -4.7617625000000015,
+      "matches": false
+    },
+    "ndvi_0": {
+      "current": 0.51654025,
+      "legacy": 0.545,
+      "abs_delta": -0.028459750000000006,
+      "matches": false
+    },
+    "mad": {
+      "current": 0.1462525,
+      "legacy": 0.115,
+      "abs_delta": 0.0312525,
+      "matches": false
+    },
+    "ks_alpha": {
+      "current": 0.52837325,
+      "legacy": 0.28,
+      "abs_delta": 0.24837325,
+      "matches": false
+    },
+    "kr_alpha": {
+      "current": 0.13767725,
+      "legacy": 0.334,
+      "abs_delta": -0.19632275000000002,
+      "matches": false
+    },
+    "swe_alpha": {
+      "current": 0.32818075,
+      "legacy": 0.337,
+      "abs_delta": -0.00881925,
+      "matches": false
+    },
+    "swe_beta": {
+      "current": 1.492885,
+      "legacy": 1.496,
+      "abs_delta": -0.003114999999999979,
+      "matches": false
+    }
+  },
+  "notes": "Transfer vector frozen before any Example 6 flux evaluation. Not derived or tuned from Ex6 flux ET. The legacy vector was the old 9-site Ex5 cropland median; the current vector is the 60-site publication (Run 21) cropland median and supersedes it."
+}
