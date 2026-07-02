@@ -60,7 +60,6 @@ def run_pest_sequence(
         cfg,
         container,
         use_existing=False,
-        python_script=getattr(cfg, "python_script", None),
         conflicted_obs=None,
     )
 
@@ -114,7 +113,6 @@ def run_pest_sequence(
                 cfg,
                 container,
                 use_existing=False,
-                python_script=getattr(cfg, "python_script", None),
                 conflicted_obs=temp_pdc,
             )
             if exclude_fields:

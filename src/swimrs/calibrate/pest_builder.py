@@ -60,7 +60,6 @@ class PestBuilder:
         config,
         container,
         use_existing: bool = False,
-        python_script: str | None = None,
         conflicted_obs: str | None = None,
         verbose: bool = True,
         select_fields: list[str] | None = None,
@@ -72,7 +71,6 @@ class PestBuilder:
             container: SwimContainer instance or path to .swim directory.
                        Required - all data is sourced from the container.
             use_existing: If True, use existing PEST++ setup
-            python_script: Path to custom forward run script
             conflicted_obs: Path to conflicted observations file
             verbose: If False, suppress pyemu/PstFrom output. Default True.
             select_fields: Optional list of field UIDs to calibrate. If None, all fields
@@ -138,14 +136,6 @@ class PestBuilder:
         self.pest_args = self.get_pest_builder_args()
 
         self.verbose = verbose
-
-        if python_script is None:
-            python_script = os.path.join(os.path.dirname(__file__), "custom_forward_run.py")
-            if verbose:
-                print(f"Using default Python script at: {python_script}")
-
-        self.python_script = python_script
-        self.pest_args.update({"python_script": self.python_script})
 
         if use_existing:
             self.overwrite_build = False

@@ -112,7 +112,6 @@ def run_group_calibration(
         cfg,
         container,
         use_existing=False,
-        python_script=getattr(cfg, "python_script", None),
         select_fields=sites if select_sites else None,
     )
     builder.build_pest(target_etf=cfg.etf_target_model, members=cfg.etf_ensemble_members)
@@ -139,7 +138,6 @@ def run_group_calibration(
                 cfg,
                 container,
                 use_existing=False,
-                python_script=getattr(cfg, "python_script", None),
                 conflicted_obs=temp_pdc,
                 select_fields=sites if select_sites else None,
             )

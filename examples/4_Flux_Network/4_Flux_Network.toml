@@ -59,6 +59,9 @@ end_date = "2025-12-31"
 kc_proxy = "etf"
 cover_proxy = "ndvi"
 
+[validation]
+flux_dir = "/data/ssd1/swim/5_Flux_Ensemble/data/daily_flux_files_2pt1"
+
 [calibration]
 pest_run_dir = "{project_workspace}/pestrun"
 etf_target_model = "ssebop"
@@ -68,4 +71,3 @@ calibration_dir = "{pest_run_dir}/pest/mult"
 obs_folder = "{pest_run_dir}/obs"
 initial_values_csv = "{pest_run_dir}/params.csv"
 spinup = "{pest_run_dir}/spinup.json"
-python_script = "{project_workspace}/custom_forward_run.py"

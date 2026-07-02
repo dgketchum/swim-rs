@@ -484,15 +484,10 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
 
     # Build and run PEST++
     try:
-        # Allow CLI override of python script
-        if args.python_script:
-            config.python_script = args.python_script
-
         builder = PestBuilder(
             config,
             container,
             use_existing=False,
-            python_script=getattr(config, "python_script", None),
         )
         builder.spinup(
             overwrite=True
@@ -1260,11 +1255,6 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Override number of realizations; uses config value if set, otherwise 250",
-    )
-    pc.add_argument(
-        "--python-script",
-        default=None,
-        help="Override custom forward runner script (default: package script)",
     )
     pc.set_defaults(func=cmd_calibrate)
 

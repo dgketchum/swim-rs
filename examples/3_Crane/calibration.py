@@ -71,16 +71,14 @@ def export_observations(container, project_ws, etf_model="ssebop"):
     print(f"Observation files written to {obs_dir}")
 
 
-def build_pest_setup(config, container, python_script=None):
+def build_pest_setup(config, container):
     """Build PEST++ control files and setup."""
     print("\n=== Building PEST++ Control Files ===")
 
-    # python_script=None uses the default from swimrs.calibrate package
     builder = PestBuilder(
         config,
         container=container,
         use_existing=False,
-        python_script=python_script,
     )
 
     # Build the .pst control file
@@ -219,7 +217,6 @@ def main():
         action="store_true",
         help="Keep worker directories after calibration (useful for debugging)",
     )
-    parser.add_argument("--python-script", default=None, help="Path to custom forward run script")
     parser.add_argument(
         "--archive", default=None, help="Directory to archive results (default: pest/archive)"
     )
@@ -248,16 +245,14 @@ def main():
             export_observations(container, SCRIPT_DIR, etf_model=cfg.etf_target_model)
 
             # Build PEST++ setup
-            builder = build_pest_setup(cfg, container, python_script=args.python_script)
+            builder = build_pest_setup(cfg, container)
 
             # Configure and test
             configure_and_test(builder, noptmax=args.noptmax, reals=args.reals)
         else:
             # Load existing builder (minimal init for running)
             print("\nSkipping build, using existing PEST++ setup...")
-            builder = PestBuilder(
-                cfg, container=container, use_existing=True, python_script=args.python_script
-            )
+            builder = PestBuilder(cfg, container=container, use_existing=True)
 
         if args.dry_run:
             print("\n=== Dry Run Complete ===")
