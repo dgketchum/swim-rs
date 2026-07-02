@@ -36,8 +36,55 @@ from swimrs.container import SwimContainer
 from swimrs.process.input import build_swim_input
 from swimrs.process.loop_fast import run_daily_loop_fast
 
-# Landsat ETf models to benchmark individually plus the calibration-target ensemble.
-RS_MODELS = ["ssebop", "ptjpl", "ensemble"]
+# Instrument sort priority for the per-model benchmark table.
+_INSTRUMENT_ORDER = {"landsat": 0, "sentinel": 1, "ecostress": 2}
+
+
+def _mask_key(cfg):
+    return "no_mask" if getattr(cfg, "mask_mode", "none") == "none" else "irr"
+
+
+def _rs_model_specs(container, cfg):
+    """RS series to benchmark: every individual constituent ETf series present
+    in the container (each under its native instrument) plus the config-selected
+    calibration target.
+
+    Individual models are labelled ``"{instrument}/{model}"`` so that, e.g.,
+    Landsat PT-JPL and ECOSTRESS PT-JPL stay distinct (they are both ``ptjpl``).
+    The ``merged`` instrument is skipped here — its synthetic series (e.g.
+    ``triple``) is the calibration target, added as the final ``target`` spec and
+    loaded via the same path evaluate.py uses, so the target row reconciles with
+    evaluation_metrics.csv. The target label is ``etf_target_model`` (``ensemble``
+    for Experiment A, ``triple`` for Experiment B).
+    """
+    mask = _mask_key(cfg)
+    specs = []
+    try:
+        etf_grp = container._root["remote_sensing/etf"]
+    except KeyError:
+        etf_grp = None
+    if etf_grp is not None:
+        items = []
+        for instrument in etf_grp:
+            if instrument == "merged":
+                continue
+            inst_grp = etf_grp[instrument]
+            for model in inst_grp:
+                if mask in inst_grp[model]:
+                    items.append((instrument, model))
+        items.sort(key=lambda im: (_INSTRUMENT_ORDER.get(im[0], 99), im[1]))
+        for instrument, model in items:
+            specs.append(
+                {
+                    "label": f"{instrument}/{model}",
+                    "kind": "individual",
+                    "instrument": instrument,
+                    "model": model,
+                }
+            )
+    target_label = getattr(cfg, "etf_target_model", "ensemble") or "ensemble"
+    specs.append({"label": target_label, "kind": "target", "instrument": None, "model": None})
+    return specs
 
 
 def _cohort_fids(cfg, container):
@@ -51,15 +98,12 @@ def _cohort_fids(cfg, container):
     return [f for f in cohort if f in container_fids]
 
 
-def _model_rs_eta(container, cfg, model, fid, etref):
-    """Build daily RS ETa for one specific Landsat ETf model (no_mask)."""
-    mask = "no_mask" if getattr(cfg, "mask_mode", "none") == "none" else "irr"
-    instrument = getattr(cfg, "etf_target_instrument", "landsat")
-
-    if model == "ensemble":
+def _model_rs_eta(container, cfg, spec, fid, etref):
+    """Build daily RS ETa for one RS spec (an individual model or the target)."""
+    if spec["kind"] == "target":
         etf_series = ev._load_target_etf_series(container, cfg, fid)
     else:
-        path = f"remote_sensing/etf/{instrument}/{model}/{mask}"
+        path = f"remote_sensing/etf/{spec['instrument']}/{spec['model']}/{_mask_key(cfg)}"
         etf_series = ev._query_etf_series(container, path, fid)
 
     if etf_series is None:
@@ -194,8 +238,11 @@ def uncal_baseline(per_site, uncal_results):
     return df, summary
 
 
-def collect(cfg, container, results_dir, fids):
+def collect(cfg, container, results_dir, fids, specs, flux_sources=None):
     """Pair SWIM, per-model RS ETa, and flux for every cohort site (all days)."""
+    from swimrs.calibrate.flux_utils import passes_site_minimum
+
+    flux_sources = flux_sources or {}
     per_site = {}
     for fid in fids:
         site_csv = os.path.join(results_dir, f"{fid}.csv")
@@ -205,8 +252,8 @@ def collect(cfg, container, results_dir, fids):
         swim = sdf["et_act"]
         etref = sdf["etref"]
 
-        flux = ev.load_flux_et(fid)
-        if flux.empty:
+        flux = ev.load_flux_et(fid, flux_sources.get(fid))
+        if flux.empty or not passes_site_minimum(flux):
             continue
 
         common = swim.index.intersection(flux.index)
@@ -217,10 +264,10 @@ def collect(cfg, container, results_dir, fids):
         swim_c = swim.loc[common]
 
         rs_by_model = {}
-        for model in RS_MODELS:
-            rs = _model_rs_eta(container, cfg, model, fid, etref)
+        for spec in specs:
+            rs = _model_rs_eta(container, cfg, spec, fid, etref)
             if rs is not None:
-                rs_by_model[model] = rs.reindex(common)
+                rs_by_model[spec["label"]] = rs.reindex(common)
 
         per_site[fid] = {
             "obs": obs,
@@ -230,10 +277,10 @@ def collect(cfg, container, results_dir, fids):
     return per_site
 
 
-def per_model_benchmarks(per_site):
+def per_model_benchmarks(per_site, specs):
     """Per-site SWIM vs each RS model, paired on SWIM+RS+flux (all days)."""
     rows = []
-    for model in RS_MODELS:
+    for model in [s["label"] for s in specs]:
         swim_r2, rs_r2, swim_kge, rs_kge = [], [], [], []
         r2_wins, kge_wins, n_sites = 0, 0, 0
         for fid, d in per_site.items():
@@ -314,11 +361,11 @@ def conus_decomp(per_site):
     return df, summary
 
 
-def murphy(per_site):
+def murphy(per_site, specs):
     """Per-site Murphy decomposition for SWIM and each interpolated RS model."""
-    products = {"swim": None, "ssebop": "ssebop", "ptjpl": "ptjpl", "ensemble": "ensemble"}
+    products = [("swim", None)] + [(s["label"], s["label"]) for s in specs]
     rows = []
-    for label, model in products.items():
+    for label, model in products:
         rs_list, phase, bias, var = [], [], [], []
         for fid, d in per_site.items():
             obs = d["obs"].values
@@ -382,15 +429,20 @@ def main():
 
     try:
         fids = _cohort_fids(cfg, container)
+        specs = _rs_model_specs(container, cfg)
+        flux_sources = {}
+        if Path(cfg.fields_shapefile).exists():
+            flux_sources = ev.load_flux_sources(cfg.fields_shapefile, cfg.feature_id_col)
         print(f"Cohort: {len(fids)} sites from {os.path.basename(cfg.fields_shapefile)}")
+        print(f"RS models benchmarked: {', '.join(s['label'] for s in specs)}")
         print(f"Results dir: {results_dir}\n")
 
-        per_site = collect(cfg, container, results_dir, fids)
+        per_site = collect(cfg, container, results_dir, fids, specs, flux_sources)
         print(f"Paired sites (>=10 common days, with flux): {len(per_site)}\n")
 
-        bench = per_model_benchmarks(per_site)
+        bench = per_model_benchmarks(per_site, specs)
         decomp_sites, decomp = conus_decomp(per_site)
-        mur = murphy(per_site)
+        mur = murphy(per_site, specs)
         best, worst, allm = top_bottom(results_dir)
 
         uncal_df, uncal_sum = None, None
