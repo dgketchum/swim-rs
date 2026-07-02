@@ -18,6 +18,7 @@ with warnings.catch_warnings():
     from pyemu.utils import PstFrom
     from pyemu.utils.os_utils import run_ossystem, run_sp
 
+from swimrs.container.schema import SWE_PATHS, find_swe_path
 from swimrs.process.input import build_swim_input
 
 
@@ -284,16 +285,9 @@ class PestBuilder:
         if self._container is None:
             raise ValueError("No container available. Pass container to PestBuilder.__init__")
 
-        path = None
-        for candidate in ["snow/snodas/swe", "meteorology/era5/swe"]:
-            if candidate in self._container.state.root:
-                path = candidate
-                break
-
+        path = find_swe_path(self._container.state.root)
         if path is None:
-            raise ValueError(
-                "SWE data not found in container (checked snow/snodas/swe, meteorology/era5/swe)"
-            )
+            raise ValueError(f"SWE data not found in container (checked {', '.join(SWE_PATHS)})")
 
         df = self._container.query.dataframe(path, fields=[fid])
         # Slice to config date range to match the exported .np obs files
@@ -1148,6 +1142,9 @@ if __name__ == "__main__":
                 transpiration_cover_scaling=getattr(
                     self.config, "transpiration_cover_scaling", True
                 ),
+                # Fresh calibration: a stale calibration/ group (e.g. from a
+                # copied container) must not contaminate the PEST base run.
+                use_container_calibration=False,
             )
 
             # Run simulation to generate spinup state (uses fast JIT loop)
@@ -1246,6 +1243,9 @@ if __name__ == "__main__":
             max_irr_rate=getattr(self.config, "max_irr_rate", 100.0) or 100.0,
             fields=self.plot_order,
             transpiration_cover_scaling=getattr(self.config, "transpiration_cover_scaling", True),
+            # Fresh calibration: a stale calibration/ group (e.g. from a
+            # copied container) must not contaminate the PEST base run.
+            use_container_calibration=False,
         )
 
         if self.verbose:

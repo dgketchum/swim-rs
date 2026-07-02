@@ -449,6 +449,7 @@ def build_swim_input(
     ndvi_mode: str = "observed",
     max_irr_rate: float = 100.0,
     transpiration_cover_scaling: bool = True,
+    use_container_calibration: bool = True,
 ) -> SwimInput:
     """Build HDF5 input file from SwimContainer.
 
@@ -494,6 +495,12 @@ def build_swim_input(
     max_irr_rate : float
         Maximum daily irrigation application rate (mm/day). Defaults to 100.0
         for backward compatibility when not specified in project config.
+    use_container_calibration : bool
+        If True (default), auto-load calibrated parameters from the
+        container's ``calibration/`` group when no explicit
+        ``calibrated_params_path`` is given. Set False when building inputs
+        for a fresh calibration so a stale ``calibration/`` group (e.g. from
+        a copied container) cannot contaminate the PEST base run.
 
     Returns
     -------
@@ -584,7 +591,7 @@ def build_swim_input(
         calibrated_params = None
         if calibrated_params_path is not None:
             calibrated_params = _load_calibrated_params(calibrated_params_path, fids)
-        elif _container_has_calibration(container):
+        elif use_container_calibration and _container_has_calibration(container):
             calibrated_params = _load_calibrated_from_container(container, fids)
 
         # Write properties from container data
@@ -712,11 +719,13 @@ def _get_container_time_series(
         paths[refet_type] = ref_path
 
     # Snow/SWE
-    for source in ["snodas", "era5"]:
-        swe_path = f"snow/{source}/swe"
-        if swe_path in root:
-            paths["swe_obs"] = swe_path
-            break
+    # Local import: swimrs.container.runs imports this module at package init,
+    # so a module-level import of container.schema would be circular.
+    from swimrs.container.schema import find_swe_path
+
+    swe_path = find_swe_path(root)
+    if swe_path is not None:
+        paths["swe_obs"] = swe_path
 
     # NDVI - load only the masks required by mask_mode
     if mask_mode == "none":

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from swimrs.container.schema import get_rooting_code, get_rooting_depth
+from swimrs.container.schema import find_swe_path, get_rooting_code, get_rooting_depth
 
 from .base import Component
 
@@ -445,13 +445,11 @@ class Exporter(Component):
 
             # Load SWE data
             swe_data = None
-            for source in ["snodas", "era5"]:
-                swe_path = f"snow/{source}/swe"
-                if swe_path in self._state.root:
-                    swe_data = self._state.get_xarray(
-                        swe_path, fields=target_fields, start_date=start_date, end_date=end_date
-                    )
-                    break
+            swe_path = find_swe_path(self._state.root)
+            if swe_path is not None:
+                swe_data = self._state.get_xarray(
+                    swe_path, fields=target_fields, start_date=start_date, end_date=end_date
+                )
 
             exported_count = 0
 

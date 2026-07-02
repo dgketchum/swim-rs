@@ -8,16 +8,22 @@ container-derived f_sub with 0.0 at every field.
 """
 
 import json
+import shutil
+from pathlib import Path
 
 import h5py
 import numpy as np
+import pytest
 import zarr
 
 from swimrs.process.input import (
     _load_calibrated_from_container,
     _load_calibrated_params,
     _write_properties_from_container,
+    build_swim_input,
 )
+
+GOLDEN_CONTAINER = Path(__file__).parents[1] / "fixtures" / "golden_loop" / "fort_peck.swim"
 
 PEST_PARAMS = {
     "ks_alpha": 0.6,
@@ -112,3 +118,45 @@ def test_properties_writer_preserves_container_f_sub(tmp_path):
     assert f_sub[1] == 0.0
     # calibrated params present in the JSON still override the container
     assert np.allclose(awc, PEST_PARAMS["aw"])
+
+
+@pytest.mark.skipif(not GOLDEN_CONTAINER.exists(), reason="golden-loop fixture not available")
+def test_use_container_calibration_gate(tmp_path):
+    """A stale calibration/ group must not contaminate a fresh PEST base run
+    (review finding C-2): use_container_calibration=False ignores it."""
+    from swimrs.container import SwimContainer
+
+    work = tmp_path / "fort_peck.swim"
+    shutil.copytree(GOLDEN_CONTAINER, work)
+
+    container = SwimContainer.open(str(work), mode="r")
+    n_fields = len(container.field_uids)
+    container.close()
+
+    # Inject a calibration group with a distinctive ndvi_k, as a copied
+    # calibrated container would carry
+    root = zarr.open_group(str(work), mode="r+")
+    grp = root.require_group("calibration/parameters")
+    arr = grp.create_array("ndvi_k", shape=(n_fields,), dtype="float64", fill_value=np.nan)
+    arr[:] = 6.5
+
+    kwargs = dict(start_date="2007-01-01", end_date="2008-12-31", etf_model="ptjpl")
+
+    container = SwimContainer.open(str(work), mode="r")
+    try:
+        swim_input = build_swim_input(container, tmp_path / "with_cal.h5", **kwargs)
+        try:
+            assert np.allclose(swim_input.parameters.ndvi_k, 6.5)
+        finally:
+            swim_input.close()
+
+        swim_input = build_swim_input(
+            container, tmp_path / "no_cal.h5", use_container_calibration=False, **kwargs
+        )
+        try:
+            # calibration group ignored: ndvi_k stays at its 10.0 default
+            assert np.allclose(swim_input.parameters.ndvi_k, 10.0)
+        finally:
+            swim_input.close()
+    finally:
+        container.close()

@@ -245,6 +245,19 @@ REQUIRED_MET_UNIRR: list[str] = ["eto"]  # Required for non-irrigated fields
 # Parameters that can have NaN values in model input
 ACCEPT_NAN_PARAMS: list[str] = REQUIRED_MET_IRR + REQUIRED_MET_UNIRR + ["swe"]
 
+# Canonical container paths where SWE may be stored, in priority order.
+# Single source of truth for the obs exporter, PestBuilder, and model input
+# builder — these three previously kept divergent lists, which silently
+# zero-weighted all SWE observations when a container stored SWE at a path
+# one of them didn't check (e.g. meteorology/era5/swe in Example 6).
+SWE_PATHS: list[str] = ["snow/snodas/swe", "snow/era5/swe", "meteorology/era5/swe"]
+
+
+def find_swe_path(root) -> str | None:
+    """Return the first SWE_PATHS entry present in a container root, else None."""
+    return next((p for p in SWE_PATHS if p in root), None)
+
+
 # Column MultiIndex structure for parquet time series files
 COLUMN_MULTIINDEX: list[str] = ["site", "instrument", "parameter", "units", "algorithm", "mask"]
 
