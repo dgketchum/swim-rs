@@ -64,8 +64,11 @@ flux_dir = "{data}/daily_flux_files_2pt1"
 
 [calibration]
 pest_run_dir = "{project_workspace}/pestrun"
-etf_target_model = "ensemble_mad"
-ensemble_source = "computed"  # unused when etf_target_model = "ensemble_mad" (MAD ensemble pre-computed in container)
+# "ensemble" + "computed" = simple nanmean of members — the Run 21 publication target.
+# The MAD sensitivity test (Run 21b) overrides to etf_target_model = "ensemble_mad"
+# (dedicated path built by build_run21b_mad.py).
+etf_target_model = "ensemble"
+ensemble_source = "computed"  # "computed" = DIY mean of members, "openet" = pre-computed OpenET ensemble
 etf_ensemble_members = ["ssebop", "sims", "geesebal", "eemetric", "ptjpl", "disalexi"]
 workers = 40
 realizations = 200

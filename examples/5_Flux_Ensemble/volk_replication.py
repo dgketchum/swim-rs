@@ -32,10 +32,8 @@ from scipy import stats
 
 from swimrs.container import SwimContainer
 
-PAR_CSV_DEFAULT = (
-    "/data/ssd1/swim/5_Flux_Ensemble/results/run13_mad_ensemble/5_Flux_Ensemble.3.par.csv"
-)
-CONTAINER_DEFAULT = "/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_corrected_mad.swim"
+PAR_CSV_DEFAULT = "/data/ssd1/swim/5_Flux_Ensemble/results/run21/5_Flux_Ensemble.3.par.csv"
+CONTAINER_DEFAULT = "/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run21.swim"
 
 MIN_DAILY_OBS = 6
 MIN_MONTHLY_OBS = 3

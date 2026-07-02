@@ -320,7 +320,8 @@ if __name__ == "__main__":
     if args.results_tag:
         results = os.path.join(cfg.project_ws, "results", args.results_tag)
     else:
-        results = os.path.join(cfg.project_ws, "results", "run13_mad_ensemble")
+        # Never default into an archived run directory; untagged runs go to scratch.
+        results = os.path.join(cfg.project_ws, "results", "scratch")
 
     print(f"ETf target: {cfg.etf_target_model}")
     print(f"Ensemble source: {cfg.ensemble_source}")

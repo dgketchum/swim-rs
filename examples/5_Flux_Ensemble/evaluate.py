@@ -693,9 +693,9 @@ def find_reference_par_csv(results_dir, project_name):
     """Resolve the canonical Example 5 parameter file when none is provided."""
     candidate_dirs = []
 
-    run13_dir = os.path.join(results_dir, "run13_mad_ensemble")
-    if os.path.isdir(run13_dir):
-        candidate_dirs.append(run13_dir)
+    run21_dir = os.path.join(results_dir, "run21")
+    if os.path.isdir(run21_dir):
+        candidate_dirs.append(run21_dir)
 
     candidate_dirs.append(results_dir)
 
@@ -763,7 +763,7 @@ if __name__ == "__main__":
     if args.container:
         container_path = args.container
     else:
-        container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}_corrected_mad.swim")
+        container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}_run21.swim")
     container = SwimContainer.open(container_path, mode="r")
 
     if args.sites:

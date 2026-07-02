@@ -283,6 +283,11 @@ def evaluate(cfg, container, par_csv, fids, flux_dir):
                 line += f"  {'n/a':>10}  {'n/a':>10}"
         print(line)
 
+    wins = int((common_df["r2_swim"] > common_df["r2_ssebop"]).sum())
+    n = len(common_df)
+    if n:
+        print(f"\nSWIM daily win rate (R2): {wins}/{n} = {100 * wins / n:.0f}%")
+
     return metrics_df
 
 
@@ -403,6 +408,13 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
             else:
                 line += f"  {'n/a':>10}  {'n/a':>10}"
         print(line)
+
+    has_both = metrics_df["r2_swim"].notna() & metrics_df["r2_ssebop"].notna()
+    paired = metrics_df.loc[has_both]
+    wins = int((paired["r2_swim"] > paired["r2_ssebop"]).sum())
+    n = len(paired)
+    if n:
+        print(f"\nSWIM monthly win rate (R2): {wins}/{n} = {100 * wins / n:.0f}%")
 
     return metrics_df
 
