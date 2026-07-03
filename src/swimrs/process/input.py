@@ -854,6 +854,11 @@ def _assert_finite_ndvi(
     )
 
 
+# Mirrors the gate in kernels/irrigation.groundwater_subsidy and loop_fast:
+# f_sub at or below this threshold never produces subsidy
+FSUB_THRESHOLD = 0.2
+
+
 def _write_properties_from_container(
     h5: h5py.File,
     container_data: dict[str, Any],
@@ -931,9 +936,7 @@ def _write_properties_from_container(
         ]
     )
 
-    # Groundwater status
     gwsub_data = dynamics.get("gwsub", {})
-    gw_status = np.array([fid in gwsub_data and bool(gwsub_data[fid]) for fid in fids])
 
     # ke_max from dynamics
     ke_max_data = dynamics.get("ke_max", {})
@@ -947,15 +950,18 @@ def _write_properties_from_container(
     else:
         kc_max = np.full(n_fields, 1.35)
 
-    # f_sub
+    # f_sub: source-exclusive supply accounting — a year with an irrigation
+    # window is supplied by the irrigation mechanism alone, so the static
+    # fallback f_sub averages over non-irrigated years only
     f_sub_values = []
     for fid in fids:
         fid_gw = gwsub_data.get(fid, {})
         if isinstance(fid_gw, dict) and fid_gw:
+            irr_years = _irrigated_years(irr_data.get(fid, {}))
             yearly_fsub = [
                 yr_data.get("f_sub", 0.0)
-                for yr_data in fid_gw.values()
-                if isinstance(yr_data, dict)
+                for yr_str, yr_data in fid_gw.items()
+                if isinstance(yr_data, dict) and _safe_int(yr_str) not in irr_years
             ]
             f_sub_values.append(np.mean(yearly_fsub) if yearly_fsub else 0.0)
         else:
@@ -964,6 +970,13 @@ def _write_properties_from_container(
     if calibrated_params is not None and "f_sub" in calibrated_params:
         mask = ~np.isnan(calibrated_params["f_sub"])
         f_sub[mask] = calibrated_params["f_sub"][mask]
+
+    # Groundwater status: site gate on the non-irrigated-year mean f_sub — a
+    # field is groundwater-influenced only if its persistent subsidy fraction
+    # clears the same threshold the daily loop applies to f_sub, so a single
+    # anomalous ET/PPT year cannot switch refill-to-RAW subsidy on at a site
+    # with no sustained groundwater signal
+    gw_status = f_sub > FSUB_THRESHOLD
 
     # Write datasets
     props_group.create_dataset("awc", data=awc)
@@ -1249,16 +1262,44 @@ def _write_irrigation_from_container(
     irr_group.create_dataset("irr_flag", data=irr_flag, compression="gzip")
 
 
+def _safe_int(value) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _irrigated_years(fid_irr: dict) -> set[int]:
+    """Years with a non-empty irrigation window (irr_doys) for a field."""
+    years = set()
+    if not isinstance(fid_irr, dict):
+        return years
+    for year_str, year_data in fid_irr.items():
+        if year_str == "fallow_years" or not isinstance(year_data, dict):
+            continue
+        if year_data.get("irr_doys"):
+            year = _safe_int(year_str)
+            if year is not None:
+                years.add(year)
+    return years
+
+
 def _write_gwsub_from_container(
     h5: h5py.File,
     container_data: dict[str, Any],
     fids: list[str],
     n_fields: int,
 ):
-    """Write year-specific groundwater subsidy data from container."""
+    """Write year-specific groundwater subsidy data from container.
+
+    Source-exclusive supply accounting: f_sub is zeroed for any (field, year)
+    with an irrigation window, so groundwater subsidy never double-books water
+    the irrigation mechanism already supplies.
+    """
     gwsub_data = container_data["dynamics"].get("gwsub", {})
     if not gwsub_data:
         return
+    irr_data = container_data["dynamics"].get("irr", {})
 
     # Collect all years
     all_years = set()
@@ -1271,6 +1312,12 @@ def _write_gwsub_from_container(
                 except ValueError:
                     continue
 
+    irr_years_by_fid = {fid: _irrigated_years(irr_data.get(fid, {})) for fid in fids}
+    # Irrigated years get explicit zero entries so the static-f_sub fallback
+    # for missing years cannot re-apply subsidy in an irrigated year
+    for years in irr_years_by_fid.values():
+        all_years.update(years)
+
     if not all_years:
         return
 
@@ -1281,6 +1328,8 @@ def _write_gwsub_from_container(
         f_sub_year = np.zeros(n_fields, dtype=np.float64)
 
         for i, fid in enumerate(fids):
+            if year in irr_years_by_fid[fid]:
+                continue
             fid_gw = gwsub_data.get(fid, {})
             if isinstance(fid_gw, dict) and year_str in fid_gw:
                 year_data = fid_gw[year_str]
