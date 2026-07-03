@@ -491,6 +491,11 @@ class TestArchivePestOutputs:
         for i in range(4):
             (master / f"project.{i}.par.csv").write_text(f"par{i}")
             (master / f"project.{i}.obs.csv").write_text(f"obs{i}")
+        # version-2 pst external tables (needed to reload the .pst with pyemu)
+        (pest / "project.obs_data.csv").write_text("obsdata")
+        (pest / "project.par_data.csv").write_text("pardata")
+        (master / "project.obs+noise.csv").write_text("noise")
+        (master / "project.base.rei").write_text("rei")
         # noise that must NOT be archived
         (master / "project.jcb").write_text("big binary")
         return batch
@@ -510,8 +515,13 @@ class TestArchivePestOutputs:
         assert (archive / "project.rec").exists()
         assert (archive / "project.phi.meas.csv").exists()
         assert (archive / "loc.mat").exists()
+        # external tables + noise ensemble + prior-mean residuals survive
+        assert (archive / "project.obs_data.csv").exists()
+        assert (archive / "project.par_data.csv").exists()
+        assert (archive / "project.obs+noise.csv").exists()
+        assert (archive / "project.base.rei").exists()
         assert not (archive / "project.jcb").exists()
-        assert len(copied) == 12
+        assert len(copied) == 16
 
     def test_verify_ok_after_archive(self, tmp_path):
         from swimrs.calibrate.batch_support import archive_pest_outputs, verify_pest_archive

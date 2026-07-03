@@ -674,6 +674,15 @@ PEST_ARCHIVE_PATTERNS = [
     "loc.mat",
     "localizer_summary.json",
     "params.csv",
+    # version-2 pst external tables — without these the archived .pst cannot
+    # be reloaded by pyemu (obs weights/noise unverifiable after cleanup)
+    "*.obs_data.csv",
+    "*.par_data.csv",
+    "*.pargp_data.csv",
+    "*.insfile_data.csv",
+    "*.tplfile_data.csv",
+    "*.obs+noise.csv",
+    "*.base.rei",
 ]
 
 
