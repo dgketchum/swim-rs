@@ -424,9 +424,17 @@ class TestFinalizeObsNoise:
         sd = obs.loc[obs_names, "standard_deviation"].values.astype(float)
         # spread dates: std + floor; the NaN-spread date falls back to fixed_sd
         assert np.allclose(sd[:4], [0.15, 0.30, 0.33, 0.25])
-        # SWE: fixed 5.0 mm error for positive obs, untouched otherwise
-        assert sd[4] == 5.0
+        # SWE: fractional error with floor (max(0.3*50, 10) = 15) for positive
+        # obs, untouched otherwise
+        assert sd[4] == 15.0
         assert sd[5] == 0.0
+        # SWE weight derives from the same sd: weight * sd is the balancing
+        # constant c, so the weight/noise contradiction (52-580x in the old
+        # 1/(26*(swe+10)) + 5mm scheme) is gone by construction
+        w = obs.loc[obs_names, "weight"].values.astype(float)
+        etf_phi = float(((w[:4] * sd[:4]) ** 2).sum())
+        c_expected = np.sqrt(0.15 / 0.85 * etf_phi / 1)
+        assert np.isclose(w[4] * sd[4], c_expected)
 
     def test_fixed_mode_uses_fixed_sd(self, tmp_path):
         pst_file = tmp_path / "proj.pst"
@@ -445,3 +453,58 @@ class TestFinalizeObsNoise:
 
         obs = Pst(str(pst_file)).observation_data
         assert np.allclose(obs.loc[obs_names, "standard_deviation"].astype(float), 0.33)
+
+
+class TestSweWeightBalance:
+    """SWE weights must derive from the SWE error model (coherent with noise)
+    and the group's expected phi must hit the configured share of ETf's."""
+
+    def _finalized_obs(self, tmp_path, phi_share=0.15):
+        pst_file = tmp_path / "proj.pst"
+        fid = "us-ne1"
+        etf_names = [_obs_name("etf", fid, k) for k in range(4)]
+        swe_names = [_obs_name("swe", fid, k) for k in range(4, 8)]
+        pst = Pst.from_par_obs_names([_par_name("aw", fid)], etf_names + swe_names)
+        obs = pst.observation_data
+        obs.loc[etf_names, "weight"] = [2.0, 3.0, 1.5, 0.0]  # one zero-weight date
+        obs.loc[swe_names, "obsval"] = [5.0, 50.0, 200.0, 0.0]
+        # mimic _write_swe_obs: placeholder 1.0 on valid (swe>0), 0 otherwise
+        obs.loc[swe_names, "weight"] = [1.0, 1.0, 1.0, 0.0]
+        pst.write(str(pst_file), version=2)
+
+        b = _bare_builder(
+            pst_file,
+            pest_args={"targets": [fid]},
+            config=_Cfg(
+                etf_weighting_spread_floor=0.05,
+                swe_weighting_phi_share=phi_share,
+            ),
+            etf_std={fid: pd.DataFrame({"std": [0.05, 0.2, 0.1, 0.15]})},
+        )
+        b._finalize_obs()
+        return Pst(str(pst_file)).observation_data, etf_names, swe_names
+
+    def test_sd_is_fractional_with_floor(self, tmp_path):
+        obs, _, swe_names = self._finalized_obs(tmp_path)
+        sd = obs.loc[swe_names, "standard_deviation"].astype(float).values
+        # max(0.3*swe, 10): 5 -> 10 (floor), 50 -> 15, 200 -> 60; zero obs untouched
+        assert np.allclose(sd, [10.0, 15.0, 60.0, 0.0])
+
+    def test_weight_noise_coherent(self, tmp_path):
+        obs, _, swe_names = self._finalized_obs(tmp_path)
+        w = obs.loc[swe_names, "weight"].astype(float).values
+        sd = obs.loc[swe_names, "standard_deviation"].astype(float).values
+        # weight = c/sd for all valid obs -> w*sd identical
+        assert np.allclose(w[:3] * sd[:3], w[0] * sd[0])
+        # invalid (swe=0) obs keeps zero weight
+        assert w[3] == 0.0
+
+    def test_group_phi_share(self, tmp_path):
+        obs, etf_names, swe_names = self._finalized_obs(tmp_path, phi_share=0.15)
+        ew = obs.loc[etf_names, "weight"].astype(float).values
+        esd = obs.loc[etf_names, "standard_deviation"].astype(float).values
+        sw = obs.loc[swe_names, "weight"].astype(float).values
+        ssd = obs.loc[swe_names, "standard_deviation"].astype(float).values
+        etf_phi = ((ew * esd) ** 2).sum()
+        swe_phi = ((sw * ssd) ** 2).sum()
+        assert np.isclose(swe_phi / (swe_phi + etf_phi), 0.15)

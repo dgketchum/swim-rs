@@ -95,6 +95,9 @@ class ProjectConfig:
         self.etf_weighting_fixed_sd = 0.33
         self.etf_weighting_spread_floor = 0.1
         self.etf_weighting_min_members = 2
+        self.swe_weighting_sd_frac = 0.3
+        self.swe_weighting_sd_floor = 10.0
+        self.swe_weighting_phi_share = 0.15
         self.prior_regularization_fraction = 0.2
         self.prior_regularization_params = [
             "aw",
@@ -382,6 +385,9 @@ class ProjectConfig:
         self.etf_weighting_fixed_sd = calib_toml_conf.get("etf_weighting_fixed_sd", 0.33)
         self.etf_weighting_spread_floor = calib_toml_conf.get("etf_weighting_spread_floor", 0.1)
         self.etf_weighting_min_members = calib_toml_conf.get("etf_weighting_min_members", 2)
+        self.swe_weighting_sd_frac = calib_toml_conf.get("swe_weighting_sd_frac", 0.3)
+        self.swe_weighting_sd_floor = calib_toml_conf.get("swe_weighting_sd_floor", 10.0)
+        self.swe_weighting_phi_share = calib_toml_conf.get("swe_weighting_phi_share", 0.15)
         self.workers = calib_toml_conf.get("workers")
         self.realizations = calib_toml_conf.get("realizations")
         self.obs_folder = calib_toml_conf.get("obs_folder")

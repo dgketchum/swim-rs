@@ -67,3 +67,11 @@ prior_regularization_fraction = 0.8
 etf_target_model = "ensemble"
 etf_target_instrument = "landsat"
 etf_ensemble_members = ["ssebop", "ptjpl"]
+
+# ETf noise floor on the member-spread sd (0.1 put ~50% of measured phi in noise)
+etf_weighting_spread_floor = 0.05
+# SWE error model (sd = max(frac*swe, floor) mm) and target share of
+# expected group phi; weights are derived from the sd so weight and noise agree
+swe_weighting_sd_frac = 0.3
+swe_weighting_sd_floor = 10.0
+swe_weighting_phi_share = 0.15

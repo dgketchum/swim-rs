@@ -1257,15 +1257,14 @@ if __name__ == "__main__":
             d = self.pest.obs_dfs[j + count].copy()
             d["weight"] = 0.0
 
-            # Weight SWE by inverse magnitude, scaled so SWE contributes
-            # ~10-20% of total phi alongside magnitude-weighted ETf.
+            # Placeholder marks valid obs; final weights are derived from the
+            # SWE error model and balanced against the ETf group in
+            # _finalize_obs, once the full observation table exists.
             try:
-                swe_obs = d.loc[valid, "obsval"].values.astype(float)
-                d.loc[valid, "weight"] = 1.0 / (26.0 * (swe_obs + 10.0))
+                d.loc[valid, "weight"] = 1.0
             except KeyError:
                 valid = [v.lower() for v in valid.values]
-                swe_obs = d.loc[valid, "obsval"].values.astype(float)
-                d.loc[valid, "weight"] = 1.0 / (26.0 * (swe_obs + 10.0))
+                d.loc[valid, "weight"] = 1.0
 
             d.loc[np.isnan(d["obsval"]), "weight"] = 0.0
             d.loc[np.isnan(d["obsval"]), "obsval"] = -99.0
@@ -1483,10 +1482,30 @@ if __name__ == "__main__":
         else:
             obs.loc[etf_idx, "standard_deviation"] = fixed_sd
 
-        # SWE weights are phi-balancers (1/(26*(swe+10))), not an error model;
-        # the noise sd is the measurement-error estimate for SNODAS/ERA5 SWE.
+        # SWE noise is a physical error model for gridded SWE products
+        # (fractional error with a floor), and the weight is derived from the
+        # same sd so phi weighting and the IES noise/update covariance agree.
+        # A tighter sd here (e.g. the old fixed 5.0 mm) makes SWE near-exact
+        # data in the update and triggers mass prior-data-conflict culling.
+        sd_frac = getattr(self.config, "swe_weighting_sd_frac", 0.3)
+        sd_floor = getattr(self.config, "swe_weighting_sd_floor", 10.0)
+        phi_share = getattr(self.config, "swe_weighting_phi_share", 0.15)
+
         swe_idx = [i for i, r in obs.iterrows() if "swe" in i and r["obsval"] > 0.0]
-        obs.loc[swe_idx, "standard_deviation"] = 5.0
+        if swe_idx:
+            swe_sd = np.maximum(sd_frac * obs.loc[swe_idx, "obsval"].astype(float), sd_floor)
+            obs.loc[swe_idx, "standard_deviation"] = swe_sd
+
+            # Balance the SWE group against ETf at the assumed error level:
+            # expected group phi when residuals match the error model is
+            # sum((weight*sd)^2), so weight = c/sd gives phi_swe = n*c^2 and
+            # the target share s requires n*c^2 = s/(1-s) * phi_etf.
+            etf_w = obs.loc[etf_idx, "weight"].astype(float)
+            etf_sd = obs.loc[etf_idx, "standard_deviation"].astype(float)
+            etf_phi = float(((etf_w * etf_sd) ** 2).sum())
+            if etf_phi > 0:
+                c = np.sqrt(phi_share / (1.0 - phi_share) * etf_phi / len(swe_idx))
+                obs.loc[swe_idx, "weight"] = c / swe_sd
 
         # add time information
         obs["time"] = [float(i.split(":")[3].split("_")[0]) for i in obs.index]
