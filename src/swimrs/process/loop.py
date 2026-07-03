@@ -486,7 +486,12 @@ def step_day(
     # Add safety margin for expected irrigation/gw on irrigated/gw fields
     # (actual irr/gw calculated later, but we don't want to over-constrain)
     # For non-irrigated/non-gw fields, this constraint ensures ET <= available water
+    eta_uncapped = eta
     eta = np.minimum(eta, np.maximum(0.0, available_for_et))
+    # The cap reduces E and T proportionally: scale evap to the share actually
+    # contained in the capped eta, so the Ze update and the TEW adjustment
+    # below never account for evaporation that didn't happen
+    evap = evap * (eta / np.maximum(eta_uncapped, 1e-12))
 
     # 12. Update Ze with evaporation
     # Matches legacy model compute_field_et.py lines 97-107

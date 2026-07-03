@@ -30,6 +30,7 @@ def _make_inputs(*, n_days=N_DAYS, n_fields=N_FIELDS, **overrides):
         all_tmax=np.full((n_days, n_fields), 28.0),
         all_srad=np.full((n_days, n_fields), 250.0),
         all_irr_flag=np.zeros((n_days, n_fields)),
+        all_f_sub=np.zeros((n_days, n_fields)),
         # Properties (n_fields,)
         awc=np.full(n_fields, 150.0),
         rew=np.full(n_fields, 8.0),
@@ -42,7 +43,6 @@ def _make_inputs(*, n_days=N_DAYS, n_fields=N_FIELDS, **overrides):
         perennial=np.zeros(n_fields),
         gw_status=np.zeros(n_fields),
         ke_max=np.full(n_fields, 1.2),
-        f_sub=np.zeros(n_fields),
         # Parameters (n_fields,)
         kc_max=np.full(n_fields, 1.25),
         kc_min=np.full(n_fields, 0.15),
@@ -218,7 +218,7 @@ class TestPhysicalBounds:
             perennial=np.array([0.0]),
             gw_status=np.array([1.0]),
             ke_max=np.array([0.6048164367675781]),
-            f_sub=np.array([0.0]),
+            all_f_sub=np.array([[0.0]]),
             kc_max=np.array([1.35]),
             kc_min=np.array([0.15]),
             ndvi_k=np.array([12.3823]),
@@ -439,4 +439,81 @@ class TestTEWEvapCap:
         residual = -total_eta - total_runoff - total_dperc + delta_depl
         np.testing.assert_allclose(
             residual, 0.0, atol=1e-6, err_msg="Water balance does not close (B1 phantom evap)"
+        )
+
+    def test_transpiration_survives_combined_caps(self):
+        """When the available-water cap and the TEW cap bind on the same day,
+        only the evaporation actually inside the capped eta may be removed.
+
+        Setup: root zone nearly exhausted (available = 2 mm, so eta is capped
+        far below potential) and the surface layer starts at TEW (e_factor = 0,
+        all evaporation removed).  Pre-fix, the full *uncapped* evaporation
+        (ke*etr > 2 mm) was subtracted from the capped eta, wiping out the
+        transpiration share and reporting eta = 0.
+        """
+        tew = 25.0
+        inputs = _make_inputs(
+            n_days=1,
+            n_fields=1,
+            tew=np.array([tew]),
+            rew=np.array([8.0]),
+            depl_ze_init=np.array([tew]),  # surface at TEW: today's evap fully capped
+            depl_root_init=np.array([73.0]),  # taw = awc*zr = 75 -> available = 2 mm
+            all_prcp=np.zeros((1, 1)),
+            all_etr=np.full((1, 1), 10.0),
+            all_ndvi=np.full((1, 1), 0.5),  # kcb > 0: transpiration demand exists
+            kr_init=np.ones(1),
+            ke_max=np.full(1, 1.2),
+            zr_min=np.full(1, 0.5),
+            zr_max=np.full(1, 0.5),
+            zr_init=np.full(1, 0.5),
+        )
+        out = _unpack(_run_loop_jit(**inputs))
+        eta = out["eta"][0, 0]
+        # Scenario check: uncapped evap exceeds available water, so the old
+        # code drove eta to exactly 0 here
+        assert out["ke"][0, 0] * 10.0 > 2.0
+        # Transpiration must survive the TEW adjustment
+        assert eta > 0.0
+        # ...but eta can never exceed the available water
+        assert eta <= 2.0 + 1e-9
+        # The surface layer must not be depleted by evaporation that never
+        # left the soil
+        assert out["final_depl_ze"][0] <= tew + 1e-9
+
+    def test_water_balance_closes_combined_caps(self):
+        """Water balance must still close when the available-water cap and the
+        TEW cap both bind (the evap rescaling must not break closure)."""
+        n_days, n_fields = 10, 1
+        inputs = _make_inputs(
+            n_days=n_days,
+            n_fields=n_fields,
+            tew=np.array([12.0]),
+            rew=np.array([4.0]),
+            depl_ze_init=np.array([11.0]),
+            depl_root_init=np.array([73.0]),  # taw = awc*zr = 75: cap binds day 1
+            all_prcp=np.zeros((n_days, n_fields)),
+            all_etr=np.full((n_days, n_fields), 7.0),
+            all_ndvi=np.full((n_days, n_fields), 0.4),
+            kr_init=np.ones(n_fields),
+            ke_max=np.full(n_fields, 1.2),
+            irr_status=np.zeros(n_fields),
+            gw_status=np.zeros(n_fields),
+            zr_min=np.full(n_fields, 0.5),
+            zr_max=np.full(n_fields, 0.5),
+            zr_init=np.full(n_fields, 0.5),
+        )
+        out = _unpack(_run_loop_jit(**inputs))
+
+        total_eta = out["eta"].sum(axis=0)
+        total_runoff = out["runoff"].sum(axis=0)
+        total_dperc = out["dperc"].sum(axis=0)
+        delta_depl = out["final_depl_root"] - inputs["depl_root_init"]
+
+        residual = -total_eta - total_runoff - total_dperc + delta_depl
+        np.testing.assert_allclose(
+            residual,
+            0.0,
+            atol=1e-6,
+            err_msg="Water balance does not close under combined caps",
         )

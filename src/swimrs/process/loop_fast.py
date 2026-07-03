@@ -39,6 +39,7 @@ def _run_loop_jit(
     all_tmax: np.ndarray,
     all_srad: np.ndarray,
     all_irr_flag: np.ndarray,
+    all_f_sub: np.ndarray,
     # Properties: (n_fields,)
     awc: np.ndarray,
     rew: np.ndarray,
@@ -51,7 +52,6 @@ def _run_loop_jit(
     perennial: np.ndarray,
     gw_status: np.ndarray,
     ke_max: np.ndarray,
-    f_sub: np.ndarray,
     # Parameters: (n_fields,)
     kc_max: np.ndarray,
     kc_min: np.ndarray,
@@ -333,7 +333,12 @@ def _run_loop_jit(
         # Constrain ET to available water (prevents phantom ET)
         # Available water = current storage + infiltration
         available_for_et = (taw - depl_root) + infiltration
+        eta_uncapped = eta
         eta = np.minimum(eta, np.maximum(0.0, available_for_et))
+        # The cap reduces E and T proportionally: scale evap to the share
+        # actually contained in the capped eta, so the Ze update and the TEW
+        # adjustment below never account for evaporation that didn't happen
+        evap = evap * (eta / np.maximum(eta_uncapped, 1e-12))
 
         # ================================================================
         # 11. UPDATE Ze WITH EVAPORATION
@@ -430,7 +435,7 @@ def _run_loop_jit(
         # ================================================================
         FSUB_THRESHOLD = 0.2
         gw_sim = np.where(
-            (gw_status > 0.5) & (f_sub > FSUB_THRESHOLD) & (depl_after_et > raw),
+            (gw_status > 0.5) & (all_f_sub[day_idx] > FSUB_THRESHOLD) & (depl_after_et > raw),
             depl_after_et - raw,
             0.0,
         )
@@ -648,7 +653,20 @@ def run_daily_loop_fast(
     kc_max = (
         props.kc_max.astype(np.float64) if props.kc_max is not None else np.full(n_fields, 1.25)
     )
-    f_sub = props.f_sub.astype(np.float64) if props.f_sub is not None else np.zeros(n_fields)
+    # Daily f_sub: year-specific values when available (matches run_daily_loop),
+    # else the static property broadcast across all days
+    f_sub_static = props.f_sub.astype(np.float64) if props.f_sub is not None else np.zeros(n_fields)
+    all_f_sub = np.empty((n_days, n_fields), dtype=np.float64)
+    if swim_input.has_year_specific_gwsub():
+        current_year = None
+        for day_idx in range(n_days):
+            year = swim_input.get_date(day_idx).year
+            if year != current_year:
+                current_year = year
+                f_sub_year = swim_input.get_f_sub_for_year(year).astype(np.float64)
+            all_f_sub[day_idx, :] = f_sub_year
+    else:
+        all_f_sub[:] = f_sub_static
 
     # Extract parameter arrays
     kc_min = params.kc_min.astype(np.float64)
@@ -728,6 +746,7 @@ def run_daily_loop_fast(
         all_tmax,
         all_srad,
         all_irr_flag,
+        all_f_sub,
         awc,
         rew,
         tew,
@@ -739,7 +758,6 @@ def run_daily_loop_fast(
         perennial,
         gw_status,
         ke_max,
-        f_sub,
         kc_max,
         kc_min,
         ndvi_k,
