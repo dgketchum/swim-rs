@@ -370,7 +370,7 @@ class TestComputeIrrigationDataLulc:
 
         return xr.Dataset({"ndvi": da(ndvi), "etf": da(etf), "eto": da(eto), "prcp": da(prcp)})
 
-    def _run(self, ds, method, lulc=(10, "glc10")):
+    def _run(self, ds, method, lulc=(10, "glc10"), **kwargs):
         calc = _make_calculator()
         # classifier reads LULC from the zarr root; mock it to a fixed class
         calc._get_lulc_by_site = MagicMock(return_value={"A": lulc} if lulc else {})
@@ -384,6 +384,7 @@ class TestComputeIrrigationDataLulc:
             use_mask=False,
             use_lulc=True,
             lulc_irr_method=method,
+            **kwargs,
         )
 
     @staticmethod
@@ -523,3 +524,97 @@ class TestComputeIrrigationDataLulc:
                 assert set(site[y]) == {"irr_doys", "irrigated", "f_irr"}
             assert "etf_fallback_scale" not in site
             assert "evidence" not in site
+
+
+class TestStage2RetainAndSeason:
+    """Stage 2 Schmitt trigger + demand-season rescue at equipped fields.
+
+    Motivating case: Mediterranean-climate irrigated fields (CA delta) whose
+    wet-winter years dilute the calendar-year ET/PPT ratio below any workable
+    annual threshold even though the crop transpires through a nearly rain-free
+    summer. The retain threshold keeps marginal years; the season test rescues
+    the wet-winter years; neither can fire at a non-equipped (dryland) field.
+    """
+
+    # reuse the lulc-classifier harness without inheriting (inheritance would
+    # re-collect the parent class's tests under this class)
+    _make_ds = TestComputeIrrigationDataLulc._make_ds
+    _run = TestComputeIrrigationDataLulc._run
+    _flags = staticmethod(TestComputeIrrigationDataLulc._flags)
+
+    def _make_med_ds(
+        self, years, wet_years=(), fallow_years=(), winter_prcp=3.0, wet_winter_prcp=12.0
+    ):
+        """Mediterranean profile: dry high-ET summer (Apr-Oct), rainy winter.
+
+        ``wet_years`` get a winter wet enough to push the annual ratio below
+        1.0; ``fallow_years`` also get a senesced (low-ET) summer.
+        """
+        dates = pd.date_range(f"{years[0]}-01-01", f"{years[-1]}-12-31", freq="D")
+        months = dates.month.values
+        yrs = dates.year.values
+        summer = np.isin(months, [4, 5, 6, 7, 8, 9, 10])
+
+        etf = np.where(summer, 0.9, 0.2)
+        eto = np.where(summer, 6.0, 1.0)
+        prcp = np.where(summer, 0.1, winter_prcp)
+        for y in wet_years:
+            prcp[(yrs == y) & ~summer] = wet_winter_prcp
+        for y in fallow_years:
+            etf[(yrs == y) & summer] = 0.15
+
+        ndvi = 0.2 + 0.5 * np.exp(-((months - 7.0) ** 2) / 8.0)
+
+        def da(vals):
+            return xr.DataArray(
+                np.asarray(vals)[:, None],
+                dims=["time", "site"],
+                coords={"time": dates, "site": ["A"]},
+            )
+
+        return xr.Dataset({"ndvi": da(ndvi), "etf": da(etf), "eto": da(eto), "prcp": da(prcp)})
+
+    def test_season_test_rescues_wet_winter_year(self):
+        """A wet-winter year (annual ratio < 1.0) at an equipped field is
+        flagged via the demand-season balance."""
+        years = [2019, 2020, 2021]
+        ds = self._make_med_ds(years, wet_years=[2021])
+        flags = self._flags(self._run(ds, "annual_2yr"), years)
+        assert flags == {2019: 1, 2020: 1, 2021: 1}
+
+    def test_wet_winter_year_missed_without_season_test(self):
+        """Disabling the season test (huge storage allowance) reproduces the
+        old false negative — proves the rescue comes from the season path."""
+        years = [2019, 2020, 2021]
+        ds = self._make_med_ds(years, wet_years=[2021])
+        flags = self._flags(self._run(ds, "annual_2yr", season_storage_mm=1e6), years)
+        assert flags == {2019: 1, 2020: 1, 2021: 0}
+
+    def test_retain_threshold_keeps_marginal_year(self):
+        """An equipped field's year with annual ratio between retain (1.1) and
+        equip (1.3) thresholds stays irrigated; raising retain to the equip
+        threshold reproduces the old flip-to-fallow."""
+        years = [2019, 2020, 2021]
+        # winter rain tuned so the middle year's annual ratio lands ~1.2
+        ds = self._make_med_ds(years, wet_years=[2020], wet_winter_prcp=6.4)
+        kw = {"season_storage_mm": 1e6}  # isolate the annual retain path
+        assert self._flags(self._run(ds, "annual_2yr", **kw), years)[2020] == 1
+        assert (
+            self._flags(self._run(ds, "annual_2yr", annual_retain_ratio=1.3, **kw), years)[2020]
+            == 0
+        )
+
+    def test_fallow_year_at_equipped_field_stays_off(self):
+        """A senesced summer (low season ET) in a wet year does not pass the
+        season test on stored winter moisture — the storage allowance holds."""
+        years = [2019, 2020, 2021]
+        ds = self._make_med_ds(years, wet_years=[2021], fallow_years=[2021])
+        flags = self._flags(self._run(ds, "annual_2yr"), years)
+        assert flags == {2019: 1, 2020: 1, 2021: 0}
+
+    def test_dryland_field_untouched_by_new_stage2(self):
+        """Neither retain nor season test can fire at a never-equipped field."""
+        years = [2019, 2020, 2021]
+        ds = self._make_ds(years, crop_years=[2020])
+        flags = self._flags(self._run(ds, "annual_2yr"), years)
+        assert flags == {2019: 0, 2020: 0, 2021: 0}

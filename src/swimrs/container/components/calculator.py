@@ -267,6 +267,8 @@ class Calculator(Component):
         gwsub_irr_fallback: bool = True,
         lulc_irr_method: str = "annual_2yr",
         annual_subsidy_ratio: float = 1.3,
+        annual_retain_ratio: float = 1.1,
+        season_storage_mm: float = 150.0,
         etf_gap_fallback_model: str | None = None,
     ) -> ProvenanceEvent:
         """
@@ -305,8 +307,15 @@ class Calculator(Component):
                     a lone drought or boundary year while admitting genuine
                     intermittent-irrigation fields. STAGE 2 then flags, within an
                     equipped field, each year whose single-year ET/PPT exceeds
-                    annual_subsidy_ratio (others are fallow). Non-equipped
-                    (dryland) fields are never flagged.
+                    annual_retain_ratio (a lower keep-on threshold than the
+                    Stage 1 equip threshold — Schmitt trigger), OR whose
+                    demand-season balance ET_season/(PPT_season +
+                    season_storage_mm) exceeds annual_subsidy_ratio. The season
+                    test rescues wet-winter years (Mediterranean climates) whose
+                    calendar-year ratio is diluted below any usable threshold by
+                    off-season rain even though the crop transpires through a
+                    nearly rain-free summer. Non-equipped (dryland) fields are
+                    never flagged.
                 "annual": same two-stage rule with single-year windows in Stage 1.
                 "monthly": legacy test — irrigated if >= 3 months have
                     ET/(PPT+1) > 1.3. Over-flags moisture-banking dryland
@@ -333,8 +342,16 @@ class Calculator(Component):
             lulc_irr_method: Subsidy test for use_lulc mode — "annual_2yr"
                 (default), "annual", or "monthly" (legacy). See above.
             annual_subsidy_ratio: ET/PPT ratio above which a balance window is
-                treated as subsidized — used by both the Stage 1 site
-                one-third test and the Stage 2 per-year test (default 1.3).
+                treated as subsidized — used by the Stage 1 site one-third
+                test and the Stage 2 demand-season test (default 1.3).
+            annual_retain_ratio: Stage 2 keep-on threshold for the single-year
+                ratio at an equipped field (default 1.1). Lower than the
+                Stage 1 equip threshold so a marginal year at an established
+                irrigated field does not flip to fallow.
+            season_storage_mm: Soil-storage allowance (mm) added to demand-season
+                precipitation in the Stage 2 season test (default 150) — the
+                carryover water a non-irrigated field could plausibly draw, so
+                senesced/fallow years do not pass on stored winter moisture.
             etf_gap_fallback_model: Optional second ETf model (e.g. "ptjpl")
                 averaged with the primary into the nanmean ensemble that drives
                 the annual/annual_2yr water balance. Fills the primary's capture
@@ -416,6 +433,8 @@ class Calculator(Component):
                 gwsub_data if gwsub_irr_fallback else None,
                 lulc_irr_method=lulc_irr_method,
                 annual_subsidy_ratio=annual_subsidy_ratio,
+                annual_retain_ratio=annual_retain_ratio,
+                season_storage_mm=season_storage_mm,
             )
 
             # Write results
@@ -439,6 +458,8 @@ class Calculator(Component):
                     "gwsub_irr_fallback": gwsub_irr_fallback,
                     "lulc_irr_method": lulc_irr_method,
                     "annual_subsidy_ratio": annual_subsidy_ratio,
+                    "annual_retain_ratio": annual_retain_ratio,
+                    "season_storage_mm": season_storage_mm,
                     "etf_gap_fallback_model": etf_gap_fallback_model,
                     "lookback": lookback,
                     "ndvi_min_start": ndvi_min_start,
@@ -1076,6 +1097,8 @@ class Calculator(Component):
         gwsub_data: dict[str, dict] | None = None,
         lulc_irr_method: str = "annual_2yr",
         annual_subsidy_ratio: float = 1.3,
+        annual_retain_ratio: float = 1.1,
+        season_storage_mm: float = 150.0,
     ) -> dict[str, dict]:
         """
         Compute irrigation windows for each field and year.
@@ -1097,7 +1120,9 @@ class Calculator(Component):
             windows exceed annual_subsidy_ratio (robust to a lone drought/
             boundary year and to dryland moisture banking); Stage 2 then flags,
             within an equipped field, each year whose single-year ET/PPT exceeds
-            the ratio.
+            annual_retain_ratio, or whose demand-season balance
+            ET/(PPT + season_storage_mm) exceeds annual_subsidy_ratio (rescues
+            wet-winter years the calendar-year ratio dilutes).
             "annual" is the same rule with single-year Stage 1 windows;
             "monthly" is the legacy >=3-months-of-ET/(PPT+1)>1.3 test.
 
@@ -1161,6 +1186,15 @@ class Calculator(Component):
                 monthly_idx = site_eta_s.index.to_period("M")
                 eta_monthly_all = site_eta_s.groupby(monthly_idx).sum()
                 ppt_monthly_all = site_ppt_s.groupby(monthly_idx).sum()
+                eto_monthly_all = site_eto_s.groupby(monthly_idx).sum()
+                # Demand season: months whose climatological ETo exceeds PPT —
+                # the part of the year where sustained ET cannot come from
+                # concurrent rain (used by the Stage 2 season test)
+                clim_eto = eto_monthly_all.groupby(eto_monthly_all.index.month).mean()
+                clim_ppt = ppt_monthly_all.groupby(ppt_monthly_all.index.month).mean()
+                season_months = [
+                    m for m in range(1, 13) if clim_eto.get(m, 0.0) > clim_ppt.get(m, 0.0)
+                ]
                 year_idx = site_eta_s.index.year
                 eta_yearly_all = site_eta_s.groupby(year_idx).sum()
                 ppt_yearly_all = site_ppt_s.groupby(year_idx).sum()
@@ -1233,16 +1267,51 @@ class Calculator(Component):
                         irrigated = subsidy >= 3 and cropped
                     else:
                         # Stage 2: within an irrigation-equipped field (the
-                        # Stage 1 mode test, precomputed above), flag each year
-                        # whose single-year balance is subsidized; wet years at
-                        # or below the ratio are fallow. Dryland fields are never
-                        # equipped, so a lone drought or boundary year cannot
-                        # create spurious irrigation.
+                        # Stage 1 mode test, precomputed above), a year stays
+                        # irrigated if its single-year balance exceeds the
+                        # retain threshold (lower than the Stage 1 equip
+                        # threshold: an established irrigated field should not
+                        # flip to fallow on a marginal year), OR if its
+                        # demand-season balance is subsidized. Wet winters in
+                        # Mediterranean climates dilute the calendar-year ratio
+                        # below any workable threshold even though the crop
+                        # transpires through a nearly rain-free summer; the
+                        # season test scopes the balance to months where ET
+                        # cannot come from concurrent rain, with a soil-storage
+                        # allowance so senesced/fallow years drawing stored
+                        # winter moisture do not pass. Dryland fields are never
+                        # equipped, so neither test can create spurious
+                        # irrigation there.
                         if equipped:
                             ppt_y = float(ppt_yearly_all.get(yr, 0.0))
                             eta_y = float(eta_yearly_all.get(yr, 0.0))
                             ratio = eta_y / (ppt_y + 1.0) if ppt_y > 0 else 0.0
-                            irrigated = ratio > annual_subsidy_ratio
+                            irrigated = ratio > annual_retain_ratio
+                            if not irrigated and len(season_months) >= 3:
+                                # season test only on years whose full demand
+                                # season lies within the record (a truncated
+                                # boundary year would understate season sums)
+                                season_start = pd.Timestamp(year=yr, month=season_months[0], day=1)
+                                season_end = pd.Period(
+                                    year=yr, month=season_months[-1], freq="M"
+                                ).end_time
+                                if (
+                                    season_start >= time_index.min()
+                                    and season_end <= time_index.max()
+                                ):
+                                    periods = [
+                                        pd.Period(year=yr, month=m, freq="M") for m in season_months
+                                    ]
+                                    sea_eta = sum(
+                                        float(eta_monthly_all.get(p, 0.0)) for p in periods
+                                    )
+                                    sea_ppt = sum(
+                                        float(ppt_monthly_all.get(p, 0.0)) for p in periods
+                                    )
+                                    irrigated = (
+                                        sea_eta / (sea_ppt + season_storage_mm)
+                                        > annual_subsidy_ratio
+                                    )
                         else:
                             irrigated = False
 
