@@ -1,0 +1,81 @@
+project = "8_Soil_Moisture"
+root = "/data/ssd1/swim"
+
+[paths]
+project_workspace = "{root}/{project}"
+data = "{project_workspace}/data"
+gis = "{data}/gis"
+# 28 USDA-NRCS SCAN cropland soil-moisture stations, screened from the ISMN
+# archive (FROM-GLC10 cropland gate). Created by build_scan_fields.py as 150 m
+# circular buffers around each station coordinate. In-situ soil moisture is
+# validation-only and is never a model input.
+fields_shapefile = "{gis}/scan_fields.shp"
+properties = "{data}/properties"
+lulc = "{properties}/{project}_landcover.csv"
+properties_json = "{properties}/{project}_properties.json"
+container = "{data}/{project}.swim"
+
+# Remote sensing
+remote_sensing = "{data}/remote_sensing"
+landsat = "{remote_sensing}/landsat"
+
+[paths.conus]
+met = "{data}/meteorology/gridmet"
+gridmet_centroids = "{gis}/gridmet_centroids.shp"
+gridmet_mapping = "{gis}/scan_fields_gfid.shp"
+# Reference ET is OpenET bias-corrected ETo/ETr (1999+), ingested by
+# build_container.py; pre-1999 spinup uses raw GridMET.
+irr = "{properties}/{project}_irr.csv"
+ssurgo = "{properties}/{project}_ssurgo.csv"
+snodas_in = "{data}/snow/snodas/extracts"
+
+[earth_engine]
+bucket = "wudr"
+
+[ids]
+feature_id = "site_id"
+
+[ids.conus]
+gridmet_join_id = "site_id"
+gridmet_id = "GFID"  # Column name for GridMET cell ID in mapping shapefile
+state_col = "state"
+
+[data_sources]
+met_source = "gridmet"
+snow_source = "snodas"
+soil_source = "ssurgo"
+mask_mode = "none"
+
+[misc]
+irrigation_threshold = 0.3
+elev_units = "m"
+refet_type = "eto"
+runoff_process = "cn"
+
+[date_range]
+start_date = "1995-01-01"
+end_date = "2025-12-31"
+
+[crop_coefficient]
+kc_proxy = "etf"
+cover_proxy = "ndvi"
+
+[validation]
+# No flux towers here; ground truth is in-situ SCAN soil moisture (theta), used
+# only at evaluation (evaluate.py) against modeled theta_avail. Never a model
+# input. Kept for path-compatibility with the shared evaluate/transfer machinery.
+flux_dir = "{data}/daily_flux_files_2pt1"
+
+[calibration]
+pest_run_dir = "{project_workspace}/pestrun"
+# "ensemble" + "computed" = simple nanmean of the 6 OpenET v2.1 members — the
+# Run 22 publication target methodology replicated from Example 5.
+etf_target_model = "ensemble"
+ensemble_source = "computed"  # "computed" = DIY mean of members, "openet" = pre-computed OpenET ensemble
+etf_ensemble_members = ["ssebop", "sims", "geesebal", "eemetric", "ptjpl", "disalexi"]
+workers = 20
+realizations = 200
+calibration_dir = "{pest_run_dir}/pest/mult"
+obs_folder = "{pest_run_dir}/obs"
+initial_values_csv = "{pest_run_dir}/params.csv"
+spinup = "{pest_run_dir}/spinup.json"
