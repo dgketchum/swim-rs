@@ -172,6 +172,8 @@ class DailyOutput:
     dperc_irr: NDArray[np.float64] = field(default=None)
     irr_frac_root: NDArray[np.float64] = field(default=None)
     irr_frac_l3: NDArray[np.float64] = field(default=None)
+    daw3: NDArray[np.float64] = field(default=None)
+    zr: NDArray[np.float64] = field(default=None)
 
     def __post_init__(self):
         """Initialize output arrays."""
@@ -212,6 +214,10 @@ class DailyOutput:
             self.irr_frac_root = np.zeros(shape, dtype=np.float64)
         if self.irr_frac_l3 is None:
             self.irr_frac_l3 = np.zeros(shape, dtype=np.float64)
+        if self.daw3 is None:
+            self.daw3 = np.zeros(shape, dtype=np.float64)
+        if self.zr is None:
+            self.zr = np.zeros(shape, dtype=np.float64)
 
 
 def run_daily_loop(

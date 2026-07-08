@@ -91,6 +91,8 @@ def _unpack(result):
         "dperc",
         "irr_sim",
         "gw_sim",
+        "daw3",
+        "zr",
         # final state
         "final_depl_root",
         "final_depl_ze",

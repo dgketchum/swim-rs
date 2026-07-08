@@ -98,6 +98,8 @@ def _run_loop_jit(
     out_dperc = np.zeros((n_days, n_fields), dtype=np.float64)
     out_irr_sim = np.zeros((n_days, n_fields), dtype=np.float64)
     out_gw_sim = np.zeros((n_days, n_fields), dtype=np.float64)
+    out_daw3 = np.zeros((n_days, n_fields), dtype=np.float64)
+    out_zr = np.zeros((n_days, n_fields), dtype=np.float64)
 
     # State arrays (copy to avoid modifying inputs)
     depl_root = depl_root_init.copy()
@@ -560,6 +562,8 @@ def _run_loop_jit(
         out_dperc[day_idx, :] = dperc_out
         out_irr_sim[day_idx, :] = irr_sim
         out_gw_sim[day_idx, :] = gw_sim
+        out_daw3[day_idx, :] = daw3
+        out_zr[day_idx, :] = zr
 
     return (
         out_eta,
@@ -576,6 +580,8 @@ def _run_loop_jit(
         out_dperc,
         out_irr_sim,
         out_gw_sim,
+        out_daw3,
+        out_zr,
         # Final state
         depl_root,
         depl_ze,
@@ -727,6 +733,8 @@ def run_daily_loop_fast(
         out_dperc,
         out_irr_sim,
         out_gw_sim,
+        out_daw3,
+        out_zr,
         final_depl_root,
         final_depl_ze,
         final_swe,
@@ -800,6 +808,8 @@ def run_daily_loop_fast(
     output.dperc = out_dperc
     output.irr_sim = out_irr_sim
     output.gw_sim = out_gw_sim
+    output.daw3 = out_daw3
+    output.zr = out_zr
     _check_finite_state_arrays(
         "run_daily_loop_fast/output",
         {
