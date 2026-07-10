@@ -459,6 +459,55 @@ end_date = "2020-12-31"
         assert config.max_irr_rate == 100.0
 
 
+class TestStressDepletionFraction:
+    """WP-C7 mad-split: misc.stress_depletion_fraction config parsing."""
+
+    def _write_toml(self, tmp_path, misc_block=""):
+        gis_dir = tmp_path / "gis"
+        gis_dir.mkdir(exist_ok=True)
+        shapefile = gis_dir / "fields.shp"
+        shapefile.touch()
+        toml_content = f"""
+project = "test_project"
+root = "{tmp_path}"
+
+[paths]
+fields_shapefile = "{shapefile}"
+
+[ids]
+feature_id = "FID"
+
+[date_range]
+start_date = "2020-01-01"
+end_date = "2020-12-31"
+{misc_block}
+"""
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text(toml_content)
+        return toml_file
+
+    def test_default_is_none(self, tmp_path):
+        """Absent from TOML -> None (legacy mad-driven Ks, bit-for-bit)."""
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path)))
+        assert cfg.stress_depletion_fraction is None
+
+    def test_reads_fraction(self, tmp_path):
+        """[misc] stress_depletion_fraction is parsed as a float."""
+        block = "[misc]\nstress_depletion_fraction = 0.5\n"
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path, block)))
+        assert cfg.stress_depletion_fraction == 0.5
+
+    @pytest.mark.parametrize("bad", [0.0, 1.0, -0.1, 1.5])
+    def test_out_of_range_raises(self, tmp_path, bad):
+        """Values outside the open interval (0, 1) are rejected."""
+        block = f"[misc]\nstress_depletion_fraction = {bad}\n"
+        cfg = ProjectConfig()
+        with pytest.raises(ValueError, match="stress_depletion_fraction"):
+            cfg.read_config(str(self._write_toml(tmp_path, block)))
+
+
 class TestResolvePathsEdgeCases:
     """Tests for _resolve_paths edge cases."""
 
@@ -591,3 +640,51 @@ class TestReadForecastParameters:
         assert "aw" in config.forecast_parameter_groups
         assert config.forecast_parameters is not None
         assert len(config.parameter_list) == 4  # 2 params x 2 fields
+
+
+class TestSchedulerCalibrationParams:
+    """WP-C1: scheduler_calibration_params config gating."""
+
+    def _write_toml(self, tmp_path, calib_block=""):
+        gis_dir = tmp_path / "gis"
+        gis_dir.mkdir(exist_ok=True)
+        shapefile = gis_dir / "fields.shp"
+        shapefile.touch()
+        toml_content = f"""
+project = "test_project"
+root = "{tmp_path}"
+
+[paths]
+fields_shapefile = "{shapefile}"
+
+[ids]
+feature_id = "FID"
+
+[date_range]
+start_date = "2020-01-01"
+end_date = "2020-12-31"
+{calib_block}
+"""
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text(toml_content)
+        return toml_file
+
+    def test_default_is_empty(self, tmp_path):
+        """Absent from TOML -> empty list (Ex5/6/7 unchanged)."""
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path)))
+        assert cfg.scheduler_calibration_params == []
+
+    def test_reads_from_calibration_section(self, tmp_path):
+        """[calibration] scheduler_calibration_params is parsed."""
+        block = '[calibration]\nscheduler_calibration_params = ["refill_frac", "min_irr_days"]\n'
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path, block)))
+        assert cfg.scheduler_calibration_params == ["refill_frac", "min_irr_days"]
+
+    def test_invalid_name_raises(self, tmp_path):
+        """An unknown scheduler param name is rejected."""
+        block = '[calibration]\nscheduler_calibration_params = ["refill_frac", "bogus"]\n'
+        cfg = ProjectConfig()
+        with pytest.raises(ValueError, match="bogus"):
+            cfg.read_config(str(self._write_toml(tmp_path, block)))

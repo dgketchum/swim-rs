@@ -320,6 +320,23 @@ class FieldProperties:
     f_sub : NDArray[np.float64]
         Groundwater subsidy fraction (0-1), derived from ETa/PPT ratio
         where f_sub = (ratio - 1) / ratio when ratio > 1
+    refill_frac : NDArray[np.float64]
+        Irrigation refill target as a fraction of the current root-zone
+        depletion (WP-C1 scheduler realism). The scheduler applies
+        ``depletion * refill_frac`` on an irrigation event. The default
+        ``1.1`` reproduces the historical hardcoded refill-past-FC behavior;
+        values ``< 1.0`` leave the profile below field capacity, restoring
+        dry-down amplitude.
+    min_irr_days : NDArray[np.float64]
+        Minimum return interval (days) between irrigation events per field
+        (WP-C1). A new demand trigger within ``min_irr_days`` of the previous
+        event is suppressed. The default ``0`` disables the constraint (no
+        minimum interval), reproducing the historical near-daily top-up.
+    irr_depth : NDArray[np.float64]
+        Optional fixed application depth (mm) per irrigation event (WP-C1).
+        When ``> 0`` it overrides the depletion-proportional refill target so
+        the model applies discrete depths. The default ``0`` disables it
+        (use the ``refill_frac`` refill target).
     """
 
     n_fields: int
@@ -338,6 +355,10 @@ class FieldProperties:
     ke_max: NDArray[np.float64] = field(default=None)
     kc_max: NDArray[np.float64] = field(default=None)
     f_sub: NDArray[np.float64] = field(default=None)
+    # WP-C1 scheduler-realism knobs (defaults reproduce legacy behavior)
+    refill_frac: NDArray[np.float64] = field(default=None)
+    min_irr_days: NDArray[np.float64] = field(default=None)
+    irr_depth: NDArray[np.float64] = field(default=None)
 
     def __post_init__(self):
         """Initialize arrays with reasonable defaults if not provided."""
@@ -372,6 +393,14 @@ class FieldProperties:
             self.kc_max = np.full(n, 1.25, dtype=np.float64)  # Default: typical crop max
         if self.f_sub is None:
             self.f_sub = np.zeros(n, dtype=np.float64)  # Default: no GW subsidy
+        # WP-C1 scheduler-realism defaults reproduce the legacy hardcoded behavior:
+        # refill to 110% of depletion, no minimum return interval, no fixed depth.
+        if self.refill_frac is None:
+            self.refill_frac = np.full(n, 1.1, dtype=np.float64)
+        if self.min_irr_days is None:
+            self.min_irr_days = np.zeros(n, dtype=np.float64)
+        if self.irr_depth is None:
+            self.irr_depth = np.zeros(n, dtype=np.float64)
 
     def compute_taw(self, zr: NDArray[np.float64]) -> NDArray[np.float64]:
         """Compute total available water for given root depth.
@@ -653,12 +682,24 @@ def load_pest_mult_properties(
         ke_max=base_props.ke_max.copy(),
         kc_max=base_props.kc_max.copy(),
         f_sub=base_props.f_sub.copy(),
+        refill_frac=base_props.refill_frac.copy(),
+        min_irr_days=base_props.min_irr_days.copy(),
+        irr_depth=base_props.irr_depth.copy(),
     )
 
-    # Property params from PEST
+    # Property params from PEST. refill_frac / min_irr_days are the WP-C1
+    # scheduler-realism knobs; they only appear in the mult dir when the
+    # project opts them into calibration (scheduler_calibration_params).
     property_params = {
         "aw": "awc",
         "mad": "mad",
+        "refill_frac": "refill_frac",
+        "min_irr_days": "min_irr_days",
+        # WP-C5 surface evap-layer capacities. Only present in the mult dir when the
+        # project opts them into calibration (ssm_surface_capacity); the exists-guard
+        # below makes this entry inert otherwise.
+        "rew": "rew",
+        "tew": "tew",
     }
 
     for pest_name, attr_name in property_params.items():

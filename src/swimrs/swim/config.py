@@ -80,6 +80,7 @@ class ProjectConfig:
         self.elev_units = None
         self.refet_type = None
         self.transpiration_cover_scaling = None
+        self.stress_depletion_fraction = None
         self.start_dt = None
         self.end_dt = None
         self.kc_proxy = None
@@ -107,6 +108,31 @@ class ProjectConfig:
             "ks_alpha",
             "kr_alpha",
         ]
+        # WP-C1 scheduler-realism knobs to activate as calibratable parameters.
+        # Empty by default so existing projects (Ex5/6/7) are unchanged; set e.g.
+        # ["refill_frac", "min_irr_days"] in the TOML [calibration] section to add
+        # them to the PEST parameter set.
+        self.scheduler_calibration_params = []
+        # WP-C4 SMAP surface-soil-moisture (SSM) anomaly objective term. OFF by
+        # default so every existing calibration (Ex5/6/7, e8cal, e8c1) is byte-for-
+        # byte unchanged. When ssm_calibration=True, PestBuilder adds a third
+        # observation group (deseasonalized SMAP L3 surface anomaly vs the modeled
+        # FAO-56 surface-layer anomaly). The SSM target is the SMAP *satellite*
+        # product only (ssm_data_path); in-situ SCAN theta is never a calibration input.
+        self.ssm_calibration = False
+        self.ssm_data_path = None  # parquet: long (date, site_id, smap_l3_sm)
+        self.ssm_value_col = "smap_l3_sm"
+        self.ssm_weighting_phi_share = 0.15  # SSM share of ETf information mass
+        self.ssm_weighting_sd_floor = 0.03  # m3/m3 anomaly noise floor
+        self.ssm_min_seasons = 2  # require >= N growing-season years of SMAP capture
+        self.ssm_ze = 0.10  # FAO-56 surface evaporation-layer depth (m)
+        self.ssm_gated_sites = []  # footprint-compromised SMAP pixels to exclude
+        # WP-C5: free the surface evap-layer capacities (REW/TEW) as calibratable
+        # parameters. Only meaningful with ssm_calibration=True — the SMAP surface
+        # observation is what identifies them (ET alone cannot; they were dropped in
+        # 5f79a8c for exactly that reason). OFF by default so e8c4 and every prior
+        # run stay byte-for-byte reproducible; a new config opts in for the e8c5 A/B.
+        self.ssm_surface_capacity = False
         self.workers = None
         self.realizations = None
         self.calibration_dir = None
@@ -344,6 +370,14 @@ class ProjectConfig:
         self.elev_units = misc_conf.get("elev_units", "m")
         self.refet_type = misc_conf.get("refet_type")
         self.transpiration_cover_scaling = bool(misc_conf.get("transpiration_cover_scaling", True))
+        sdf = misc_conf.get("stress_depletion_fraction", None)
+        if sdf is not None:
+            sdf = float(sdf)
+            if not (0.0 < sdf < 1.0):
+                raise ValueError(
+                    f"misc.stress_depletion_fraction={sdf!r} must be a fraction in (0, 1)."
+                )
+            self.stress_depletion_fraction = sdf
         # IER has been retired; only Curve Number runoff is supported.
         runoff_process = (misc_conf.get("runoff_process", "cn") or "cn").strip().lower()
         if runoff_process != "cn":
@@ -402,6 +436,44 @@ class ProjectConfig:
         reg_params = calib_toml_conf.get("prior_regularization_params")
         if reg_params is not None:
             self.prior_regularization_params = list(reg_params)
+        sched_params = calib_toml_conf.get("scheduler_calibration_params")
+        if sched_params is not None:
+            allowed = {"refill_frac", "min_irr_days"}
+            bad = set(sched_params) - allowed
+            if bad:
+                raise ValueError(
+                    f"Invalid scheduler_calibration_params {sorted(bad)}; "
+                    f"allowed: {sorted(allowed)}"
+                )
+            self.scheduler_calibration_params = list(sched_params)
+
+        # WP-C4 SMAP SSM objective term (default OFF -> existing builds unchanged).
+        self.ssm_calibration = bool(calib_toml_conf.get("ssm_calibration", False))
+        self.ssm_data_path = calib_toml_conf.get("ssm_data_path", self.ssm_data_path)
+        self.ssm_value_col = calib_toml_conf.get("ssm_value_col", self.ssm_value_col)
+        self.ssm_weighting_phi_share = calib_toml_conf.get(
+            "ssm_weighting_phi_share", self.ssm_weighting_phi_share
+        )
+        self.ssm_weighting_sd_floor = calib_toml_conf.get(
+            "ssm_weighting_sd_floor", self.ssm_weighting_sd_floor
+        )
+        self.ssm_min_seasons = calib_toml_conf.get("ssm_min_seasons", self.ssm_min_seasons)
+        self.ssm_ze = calib_toml_conf.get("ssm_ze", self.ssm_ze)
+        gated = calib_toml_conf.get("ssm_gated_sites")
+        if gated is not None:
+            self.ssm_gated_sites = list(gated)
+        self.ssm_surface_capacity = bool(
+            calib_toml_conf.get("ssm_surface_capacity", self.ssm_surface_capacity)
+        )
+        if self.ssm_calibration and not self.ssm_data_path:
+            raise ValueError(
+                "ssm_calibration=True requires ssm_data_path (SMAP L3 per-site parquet)"
+            )
+        if self.ssm_surface_capacity and not self.ssm_calibration:
+            raise ValueError(
+                "ssm_surface_capacity=True requires ssm_calibration=True — the SMAP "
+                "surface observation is what identifies REW/TEW; ET alone cannot."
+            )
 
         # Forecast
         self.forecast_parameters_csv = forecast_toml_conf.get("forecast_parameters")

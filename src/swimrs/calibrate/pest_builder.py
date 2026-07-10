@@ -18,6 +18,7 @@ with warnings.catch_warnings():
     from pyemu.utils import PstFrom
     from pyemu.utils.os_utils import run_ossystem, run_sp
 
+from swimrs.calibrate.ssm_obs import GROW_MONTHS, build_ssm_observation
 from swimrs.container.schema import SWE_PATHS, find_swe_path
 from swimrs.process.input import build_swim_input
 
@@ -114,6 +115,7 @@ class PestBuilder:
 
         self.pest = None
         self.etf_std = None
+        self._ssm_cache = None
         self.etf_capture_indexes = []
         self._weight_audit_rows = []
         self._regularization_active = False
@@ -287,6 +289,59 @@ class PestBuilder:
         result["swe"] = df[fid] if fid in df.columns else np.nan
         return result
 
+    def _ssm_enabled(self) -> bool:
+        return bool(getattr(self.config, "ssm_calibration", False))
+
+    def _ssm_surface_capacity_enabled(self) -> bool:
+        """REW/TEW are free only when SSM is on AND surface-capacity is requested."""
+        return self._ssm_enabled() and bool(getattr(self.config, "ssm_surface_capacity", False))
+
+    def _load_ssm_table(self) -> dict:
+        """Load and cache the SMAP L3 per-site parquet as {site_id: date-indexed Series}.
+
+        The SSM calibration target is the SMAP L3 *satellite* product only. In-situ
+        SCAN theta is never read here (validation-only).
+        """
+        if getattr(self, "_ssm_cache", None) is not None:
+            return self._ssm_cache
+        path = getattr(self.config, "ssm_data_path", None)
+        if not path:
+            raise ValueError("ssm_calibration=True but config.ssm_data_path is unset")
+        df = pd.read_parquet(path)
+        val_col = getattr(self.config, "ssm_value_col", "smap_l3_sm")
+        df["date"] = pd.to_datetime(df["date"])
+        cache = {}
+        for sid, g in df.groupby("site_id"):
+            s = g.set_index("date")[val_col].sort_index()
+            cache[str(sid)] = s[~s.index.duplicated(keep="first")]
+        self._ssm_cache = cache
+        return cache
+
+    def _ssm_frame(self, fid: str):
+        """Per-field SMAP anomaly on the config daily grid.
+
+        Returns (anom_full[n_days], capture_idx, used). Deseasonalized SMAP L3 surface
+        anomaly on growing-season capture days; NaN elsewhere. Sites in
+        ``ssm_gated_sites`` (footprint-compromised pixels) or failing the min-seasons
+        gate contribute no weighted obs.
+        """
+        grid = pd.date_range(self.config.start_dt, self.config.end_dt, freq="D")
+        table = self._load_ssm_table()
+        series = table.get(str(fid))
+        if series is None:
+            return np.full(len(grid), np.nan), np.array([], dtype=int), False
+        aligned = series.reindex(grid)
+        gated = str(fid) in set(getattr(self.config, "ssm_gated_sites", []) or [])
+        return build_ssm_observation(
+            smap_values=aligned.values,
+            months=grid.month.values,
+            years=grid.year.values,
+            doy=grid.dayofyear.values,
+            grow_months=GROW_MONTHS,
+            min_seasons=int(getattr(self.config, "ssm_min_seasons", 2)),
+            gated=gated,
+        )
+
     def close(self) -> None:
         """Close container if we own it."""
         if self._owns_container and self._container is not None:
@@ -309,6 +364,7 @@ class PestBuilder:
 
         et_ins = [f"etf_{fid}.ins" for fid in targets]
         swe_ins = [f"swe_{fid}.ins" for fid in targets]
+        ssm_ins = [f"ssm_{fid}.ins" for fid in targets]
 
         init_pars = self.initial_parameter_dict()
         p_list = list(init_pars.keys())
@@ -391,6 +447,29 @@ class PestBuilder:
                     else:
                         params.append((k, 0.20, f"p_{k}_0_constant.csv"))
 
+                elif "refill_frac_" in k:
+                    # Active only for irrigated fields; rainfed fields skip the
+                    # scheduler entirely, so pin them at the legacy inert 1.1.
+                    if self._field_irr_fraction(fid) > 0.2:
+                        params.append((k, 0.5, f"p_{k}_0_constant.csv"))
+                        pars[k]["lower_bound"] = 0.3
+                        pars[k]["upper_bound"] = 1.1
+                    else:
+                        params.append((k, 1.1, f"p_{k}_0_constant.csv"))
+                        pars[k]["lower_bound"] = 1.0
+                        pars[k]["upper_bound"] = 1.15
+
+                elif "min_irr_days_" in k:
+                    if self._field_irr_fraction(fid) > 0.2:
+                        params.append((k, 6.0, f"p_{k}_0_constant.csv"))
+                        pars[k]["lower_bound"] = 1.0
+                        pars[k]["upper_bound"] = 21.0
+                    else:
+                        # Inert: ~1 day == no constraint on a field that never irrigates.
+                        params.append((k, 1.2, f"p_{k}_0_constant.csv"))
+                        pars[k]["lower_bound"] = 1.0
+                        pars[k]["upper_bound"] = 2.0
+
                 else:
                     params.append((k, pars[k]["initial_value"], f"p_{k}_0_constant.csv"))
 
@@ -401,7 +480,17 @@ class PestBuilder:
 
         for e, (ii, r) in enumerate(df.iterrows()):
             pars[ii]["use_rows"] = e
-            if any(prefix in ii for prefix in ["aw_", "ke_max_", "mad_", "ndvi_0_"]):
+            if any(
+                prefix in ii
+                for prefix in [
+                    "aw_",
+                    "ke_max_",
+                    "mad_",
+                    "ndvi_0_",
+                    "refill_frac_",
+                    "min_irr_days_",
+                ]
+            ):
                 val = float(r["value"])
                 pars[ii]["initial_value"] = val
 
@@ -418,6 +507,7 @@ class PestBuilder:
 
         etf_obs_files = [f"obs/obs_etf_{fid}.np" for fid in targets]
         swe_obs_files = [f"obs/obs_swe_{fid}.np" for fid in targets]
+        ssm_obs_files = [f"obs/obs_ssm_{fid}.np" for fid in targets]
 
         dct = {
             "targets": targets,
@@ -425,6 +515,8 @@ class PestBuilder:
             "swe_obs": {"file": swe_obs_files, "insfile": swe_ins},
             "pars": pars,
         }
+        if self._ssm_enabled():
+            dct["ssm_obs"] = {"file": ssm_obs_files, "insfile": ssm_ins}
 
         return dct
 
@@ -484,6 +576,9 @@ class PestBuilder:
         i = self._write_etf_obs(target_etf, members)
         count = i + 1
         self._write_swe_obs(count)
+        if self._ssm_enabled():
+            # SSM group is appended after ETf (count dfs) and SWE (len(targets) dfs).
+            self._write_ssm_obs(count + len(self.pest_args["targets"]))
 
         ofiles = [str(x).replace("obs", "pred") for x in self.pest.output_filenames]
         self.pest.output_filenames = ofiles
@@ -497,6 +592,8 @@ class PestBuilder:
 
         # Build portable input file and generate forward run script
         self._build_swim_input()
+        if self._ssm_enabled():
+            self._write_ssm_targets()
         self._write_forward_run_script()
 
         self._finalize_obs()
@@ -587,6 +684,20 @@ class PestBuilder:
         except Exception as e:
             raise RuntimeError(f"Failed to export observations to {obs_dir}: {e}") from e
 
+        if self._ssm_enabled():
+            self._export_ssm_observations(obs_dir, fields)
+
+    def _export_ssm_observations(self, obs_dir: Path, fields: list) -> None:
+        """Write obs_ssm_{fid}.np (deseasonalized SMAP L3 surface anomaly) per field.
+
+        Mirrors the ETf/SWE .np obsval files: PstFrom reads these as obsval. NaN off
+        capture days (weights are zeroed there in _write_ssm_obs). The anomaly is on
+        the SMAP satellite series only — SCAN theta never enters.
+        """
+        for fid in fields:
+            anom_full, _idx, _used = self._ssm_frame(fid)
+            np.savetxt(os.path.join(obs_dir, f"obs_ssm_{fid}.np"), anom_full)
+
     def print_build_diagnostics(self, max_groups: int = 25) -> pd.DataFrame:
         """Print a compact diagnostics table after building the PEST++ project.
 
@@ -673,6 +784,18 @@ class PestBuilder:
             swe_nonzero = int((nonzero_w & swe_mask.values).sum())
             swe_valid = int((valid_obs & swe_mask.values).sum())
             print(f"SWE: valid={swe_valid}, nonzero_weight={swe_nonzero}")
+
+        ssm_mask = obs.index.to_series().str.contains("obs_ssm_", case=False, regex=False)
+        if ssm_mask.any():
+            ssm_nonzero = int((nonzero_w & ssm_mask.values).sum())
+            ssm_valid = int((valid_obs & ssm_mask.values).sum())
+            ssm_sites = int(
+                obs[ssm_mask & (w.values > 0)]
+                .index.to_series()
+                .str.extract(r"obs_ssm_(.+?)_otype:", expand=False)
+                .nunique()
+            )
+            print(f"SSM: valid={ssm_valid}, nonzero_weight={ssm_nonzero}, sites={ssm_sites}")
 
         table = self._build_obs_diagnostics_table(obs)
         # Limit printed rows for readability
@@ -814,6 +937,7 @@ def run():
         base_props=swim_input.properties,
     )
 
+    # __SSM_IMPORTS__
     # Run the model (uses fast JIT-compiled loop)
     output, _ = run_daily_loop_fast(
         swim_input=swim_input,
@@ -828,6 +952,7 @@ def run():
         swe_path = os.path.join(pred_dir, f"pred_swe_{fid}.np")
         np.savetxt(etf_path, np.nan_to_num(output.etf[:, i], nan=0.0))
         np.savetxt(swe_path, np.nan_to_num(output.swe[:, i], nan=0.0))
+        # __SSM_WRITE__
 
     elapsed = time.time() - start_time
     print(f"Execution time: {elapsed:.2f} seconds")
@@ -836,6 +961,40 @@ def run():
 if __name__ == "__main__":
     run()
 '''
+
+        # WP-C4: inject the SMAP surface-moisture prediction block only when the SSM
+        # objective is active. Disabled -> the two placeholder lines are removed and
+        # the script is identical to the ETf/SWE-only forward runner.
+        if self._ssm_enabled():
+            ze = float(getattr(self.config, "ssm_ze", 0.10))
+            ssm_imports = (
+                "import pandas as pd\n"
+                "    from swimrs.calibrate.ssm_obs import model_ssm_prediction\n"
+                "    ssm_targets = np.load(os.path.join(cwd, 'ssm_targets.npz'))\n"
+                "    ssm_doy = pd.date_range(\n"
+                "        swim_input.start_date, periods=swim_input.n_days, freq='D'\n"
+                "    ).dayofyear.values\n"
+                f"    ssm_ze = {ze!r}"
+            )
+            ssm_write = (
+                "ssm_path = os.path.join(pred_dir, f'pred_ssm_{fid}.np')\n"
+                "        cap = (\n"
+                "            ssm_targets[str(fid)]\n"
+                "            if str(fid) in ssm_targets.files\n"
+                "            else np.array([], dtype=int)\n"
+                "        )\n"
+                "        pred_ssm = model_ssm_prediction(\n"
+                "            output.depl_ze[:, i], ssm_doy, cap, ze=ssm_ze\n"
+                "        )\n"
+                "        np.savetxt(ssm_path, np.nan_to_num(pred_ssm, nan=0.0))"
+            )
+            script_content = script_content.replace("# __SSM_IMPORTS__", ssm_imports).replace(
+                "# __SSM_WRITE__", ssm_write
+            )
+        else:
+            script_content = script_content.replace("    # __SSM_IMPORTS__\n", "").replace(
+                "\n        # __SSM_WRITE__", ""
+            )
 
         with open(script_path, "w") as f:
             f.write(script_content)
@@ -850,9 +1009,34 @@ if __name__ == "__main__":
         Writes loc.mat and localizer_summary.json to the pest directory.
         """
         et_params = ["aw", "ndvi_k", "ndvi_0", "mad", "kr_alpha", "ks_alpha"]
+        # Scheduler-realism knobs perturb the soil-water balance and therefore ETf,
+        # so they belong to the ET-observation localizer group when active.
+        et_params += [
+            n
+            for n in getattr(self.config, "scheduler_calibration_params", []) or []
+            if n in ("refill_frac", "min_irr_days")
+        ]
         snow_params = ["swe_alpha", "swe_beta"]
 
         par_relation = {"etf": et_params, "swe": snow_params}
+
+        # WP-C4: the SMAP surface-moisture anomaly informs the soil-water store and
+        # the irrigation scheduler — the levers that break the no-stress-band
+        # equifinality. Let SSM update aw/mad/ks/kr (store + stress shape + trigger)
+        # and, when active, the scheduler-realism knobs (refill_frac/min_irr_days)
+        # that pin the root zone at FC. It must NOT touch snow or NDVI params.
+        if self._ssm_enabled():
+            ssm_params = ["aw", "mad", "ks_alpha", "kr_alpha"]
+            ssm_params += [
+                n
+                for n in getattr(self.config, "scheduler_calibration_params", []) or []
+                if n in ("refill_frac", "min_irr_days")
+            ]
+            # WP-C5: the surface-capacity params are identified by (and only by) the
+            # SMAP surface observation — tie them to the SSM group, never to et/swe.
+            if self._ssm_surface_capacity_enabled():
+                ssm_params += ["rew", "tew"]
+            par_relation["ssm"] = ssm_params
 
         pst = Pst(self.pst_file)
 
@@ -876,7 +1060,7 @@ if __name__ == "__main__":
         # so a site ID that is a prefix of another (e.g. "us-ne1"/"us-ne11")
         # cannot cross-link rows or columns.
         def obs_site(name):
-            for tag in ("obs_etf_", "obs_swe_"):
+            for tag in ("obs_etf_", "obs_swe_", "obs_ssm_"):
                 if tag in name:
                     return name.split(tag, 1)[1].split("_otype:", 1)[0]
             return None
@@ -957,6 +1141,30 @@ if __name__ == "__main__":
         pst.write(self.pst_file, version=2)
         if self.verbose:
             print(f"writing {self.pst_file} with noptmax={noptmax}, {reals} realizations")
+
+    def _field_irr_fraction(self, fid) -> float:
+        """Mean irrigation fraction for a field (properties preferred, else dynamics).
+
+        Mirrors the irrigation-status logic used for the mad / ndvi_0 priors so the
+        scheduler-realism knobs (refill_frac, min_irr_days) can be given active
+        bounds on irrigated fields and collapsed to their legacy inert values on
+        rainfed fields.
+        """
+        try:
+            return float(
+                np.nanmean([self.plot_properties[fid]["irr"][str(yr)] for yr in range(1987, 2023)])
+            )
+        except Exception:
+            irr_data = self.irr.get(fid, {})
+            irr_vals = []
+            for yy, vv in irr_data.items():
+                if yy == "fallow_years":
+                    continue
+                try:
+                    irr_vals.append(float(vv.get("f_irr", np.nan)))
+                except Exception:
+                    continue
+            return float(np.nanmean(irr_vals)) if irr_vals else 0.0
 
     def initial_parameter_dict(self) -> OrderedDict:
         p = OrderedDict(
@@ -1059,6 +1267,74 @@ if __name__ == "__main__":
             }
         )
 
+        # WP-C1 scheduler-realism knobs (opt-in via config.scheduler_calibration_params).
+        # Only active for irrigated fields; per-field bounds are collapsed to the
+        # legacy inert values for rainfed fields in build_pest_args (mirrors the
+        # irrigation-dependent handling of mad). Default-empty config leaves the
+        # parameter set identical to Ex5/6/7.
+        sched = list(getattr(self.config, "scheduler_calibration_params", []) or [])
+        sched_specs = {
+            # Refill target as a fraction of depletion. 1.1 = legacy refill-past-FC;
+            # < 1.0 leaves the profile below field capacity.
+            "refill_frac": {
+                "file": self.params_file,
+                "std": 0.15,
+                "initial_value": 0.5,
+                "lower_bound": 0.3,
+                "upper_bound": 1.1,
+                "pargp": "refill_frac",
+                "index_cols": 0,
+                "use_cols": 1,
+                "use_rows": None,
+            },
+            # Minimum irrigation return interval (days). 1 ~ effectively off.
+            "min_irr_days": {
+                "file": self.params_file,
+                "std": 3.0,
+                "initial_value": 6.0,
+                "lower_bound": 1.0,
+                "upper_bound": 21.0,
+                "pargp": "min_irr_days",
+                "index_cols": 0,
+                "use_cols": 1,
+                "use_rows": None,
+            },
+        }
+        for name in sched:
+            if name in sched_specs:
+                p[name] = sched_specs[name]
+
+        # WP-C5 surface evaporation-layer capacities. REW/TEW were calibratable
+        # historically but removed (5f79a8c) because ETf alone cannot identify them.
+        # They are re-enabled ONLY when the SMAP surface-moisture objective is active
+        # (ssm_surface_capacity=True): that satellite surface observation is the
+        # identifying constraint, and the localizer restricts them to the SSM group
+        # so ETf residuals never drive them. Bounds/init reproduce the historical
+        # values (rew 2-6 mm, tew 6-29 mm); std is ~1/4 of range, mirroring aw.
+        if self._ssm_surface_capacity_enabled():
+            p["rew"] = {
+                "file": self.params_file,
+                "std": 1.0,
+                "initial_value": 3.0,
+                "lower_bound": 2.0,
+                "upper_bound": 6.0,
+                "pargp": "rew",
+                "index_cols": 0,
+                "use_cols": 1,
+                "use_rows": None,
+            }
+            p["tew"] = {
+                "file": self.params_file,
+                "std": 4.0,
+                "initial_value": 18.0,
+                "lower_bound": 6.0,
+                "upper_bound": 29.0,
+                "pargp": "tew",
+                "index_cols": 0,
+                "use_cols": 1,
+                "use_rows": None,
+            }
+
         return p
 
     def dry_run(self, exe: str = "pestpp-ies") -> None:
@@ -1112,6 +1388,7 @@ if __name__ == "__main__":
                 transpiration_cover_scaling=getattr(
                     self.config, "transpiration_cover_scaling", True
                 ),
+                stress_depletion_fraction=getattr(self.config, "stress_depletion_fraction", None),
                 # Fresh calibration: a stale calibration/ group (e.g. from a
                 # copied container) must not contaminate the PEST base run.
                 use_container_calibration=False,
@@ -1213,6 +1490,7 @@ if __name__ == "__main__":
             max_irr_rate=getattr(self.config, "max_irr_rate", 100.0) or 100.0,
             fields=self.plot_order,
             transpiration_cover_scaling=getattr(self.config, "transpiration_cover_scaling", True),
+            stress_depletion_fraction=getattr(self.config, "stress_depletion_fraction", None),
             # Fresh calibration: a stale calibration/ group (e.g. from a
             # copied container) must not contaminate the PEST base run.
             use_container_calibration=False,
@@ -1274,6 +1552,57 @@ if __name__ == "__main__":
             d.drop(columns=["idx"], inplace=True)
 
             self.pest.obs_dfs[j + count] = d
+
+    def _write_ssm_obs(self, count: int) -> None:
+        """Write the SMAP L3 surface-anomaly observation group (mirrors _write_swe_obs).
+
+        Placeholder weight 1.0 on growing-season SMAP capture days; 0 elsewhere. Final
+        weights (SSM error model + phi-share balance vs ETf) are set in _finalize_obs.
+        obsval is the deseasonalized SMAP anomaly (can be negative), so validity is the
+        capture-day mask, not obsval>0.
+        """
+        obsnme_str = "oname:obs_ssm_{}_otype:arr_i:{}_j:0"
+
+        for j, fid in enumerate(self.pest_args["targets"]):
+            _anom, capture_idx, _used = self._ssm_frame(fid)
+
+            self.pest.add_observations(
+                self.pest_args["ssm_obs"]["file"][j],
+                insfile=self.pest_args["ssm_obs"]["insfile"][j],
+            )
+
+            valid = [obsnme_str.format(fid, int(k)) for k in capture_idx]
+
+            d = self.pest.obs_dfs[j + count].copy()
+            d["weight"] = 0.0
+            try:
+                d.loc[valid, "weight"] = 1.0
+            except KeyError:
+                valid = [v.lower() for v in valid]
+                d.loc[valid, "weight"] = 1.0
+
+            d.loc[np.isnan(d["obsval"]), "weight"] = 0.0
+            d.loc[np.isnan(d["obsval"]), "obsval"] = -99.0
+
+            d["idx"] = d.index.map(lambda i: int(i.split(":")[3].split("_")[0]))
+            d = d.sort_values(by="idx")
+            d.drop(columns=["idx"], inplace=True)
+
+            self.pest.obs_dfs[j + count] = d
+
+    def _write_ssm_targets(self) -> None:
+        """Ship per-field SMAP capture-day indices to workers (baked into pest_dir).
+
+        os_utils.start_workers copies the whole pest_dir to each worker, so this npz
+        rides along with swim_input.h5. The forward run deseasonalizes the modeled
+        surface anomaly on exactly these days so obs and pred share one anomaly
+        definition (same DOY climatology basis, same day set).
+        """
+        targets = {}
+        for fid in self.pest_args["targets"]:
+            _anom, capture_idx, _used = self._ssm_frame(fid)
+            targets[str(fid)] = np.asarray(capture_idx, dtype=np.int64)
+        np.savez(os.path.join(self.pest_dir, "ssm_targets.npz"), **targets)
 
     def _write_etf_obs(self, target: str, members: list[str] | None) -> int:
         obsnme_str = "oname:obs_etf_{}_otype:arr_i:{}_j:0"
@@ -1507,6 +1836,28 @@ if __name__ == "__main__":
                 c = np.sqrt(phi_share / (1.0 - phi_share) * etf_phi / len(swe_idx))
                 obs.loc[swe_idx, "weight"] = c / swe_sd
 
+        # WP-C4: SMAP surface-anomaly group. Fixed anomaly-noise floor (m3/m3); the
+        # group is phi-share-balanced against ETf exactly like SWE. Amplitude is
+        # preserved (no per-obs fractional sd) so a variance-collapsed model is
+        # penalized. obsval is a deseasonalized anomaly (can be negative), so valid
+        # obs are selected by placeholder weight and the -99 sentinel, not obsval>0.
+        if self._ssm_enabled():
+            ssm_sd_floor = float(getattr(self.config, "ssm_weighting_sd_floor", 0.03))
+            ssm_phi_share = float(getattr(self.config, "ssm_weighting_phi_share", 0.15))
+            ssm_idx = [
+                i
+                for i, r in obs.iterrows()
+                if "obs_ssm_" in i and r["obsval"] != -99.0 and float(r["weight"]) > 0.0
+            ]
+            if ssm_idx:
+                obs.loc[ssm_idx, "standard_deviation"] = ssm_sd_floor
+                etf_w = obs.loc[etf_idx, "weight"].astype(float)
+                etf_sd = obs.loc[etf_idx, "standard_deviation"].astype(float)
+                etf_phi = float(((etf_w * etf_sd) ** 2).sum())
+                if etf_phi > 0:
+                    c = np.sqrt(ssm_phi_share / (1.0 - ssm_phi_share) * etf_phi / len(ssm_idx))
+                    obs.loc[ssm_idx, "weight"] = c / ssm_sd_floor
+
         # add time information
         obs["time"] = [float(i.split(":")[3].split("_")[0]) for i in obs.index]
 
@@ -1587,8 +1938,17 @@ if __name__ == "__main__":
         """Return the list of parameter groups to regularize."""
         configured = getattr(self.config, "prior_regularization_params", None)
         if configured:
-            return list(configured)
-        return ["aw", "ndvi_k", "ndvi_0", "mad", "ks_alpha", "kr_alpha"]
+            groups = list(configured)
+        else:
+            groups = ["aw", "ndvi_k", "ndvi_0", "mad", "ks_alpha", "kr_alpha"]
+        # WP-C5: pull the surface-capacity params toward their FAO-56 prior whenever
+        # active (regardless of the configured list), so weak per-site signal cannot
+        # let them wander. Inert when off (params absent from init_pars anyway).
+        if self._ssm_surface_capacity_enabled():
+            for g in ("rew", "tew"):
+                if g not in groups:
+                    groups.append(g)
+        return groups
 
     def add_regularization(self) -> None:
         """Activate prior regularization toward the current parameter values.
