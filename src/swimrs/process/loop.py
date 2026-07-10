@@ -174,6 +174,7 @@ class DailyOutput:
     irr_frac_l3: NDArray[np.float64] = field(default=None)
     daw3: NDArray[np.float64] = field(default=None)
     zr: NDArray[np.float64] = field(default=None)
+    depl_ze: NDArray[np.float64] = field(default=None)
 
     def __post_init__(self):
         """Initialize output arrays."""
@@ -218,6 +219,8 @@ class DailyOutput:
             self.daw3 = np.zeros(shape, dtype=np.float64)
         if self.zr is None:
             self.zr = np.zeros(shape, dtype=np.float64)
+        if self.depl_ze is None:
+            self.depl_ze = np.zeros(shape, dtype=np.float64)
 
 
 def run_daily_loop(
@@ -225,6 +228,7 @@ def run_daily_loop(
     parameters: CalibrationParameters | None = None,
     properties: FieldProperties | None = None,
     cover_scaling: bool | None = None,
+    stress_depletion_fraction: float | None = None,
 ) -> tuple[DailyOutput, WaterBalanceState]:
     """Run the daily water balance simulation loop.
 
@@ -247,6 +251,8 @@ def run_daily_loop(
     """
     if cover_scaling is None:
         cover_scaling = getattr(swim_input, "cover_scaling", True)
+    if stress_depletion_fraction is None:
+        stress_depletion_fraction = getattr(swim_input, "stress_depletion_fraction", None)
 
     params = parameters if parameters is not None else swim_input.parameters
     props = properties if properties is not None else swim_input.properties
@@ -307,6 +313,7 @@ def run_daily_loop(
             irr_flag=irr_flag,
             f_sub=current_f_sub,
             cover_scaling=cover_scaling,
+            stress_depletion_fraction=stress_depletion_fraction,
         )
 
         # Store outputs
@@ -345,6 +352,7 @@ def step_day(
     irr_flag: NDArray[np.bool_],
     f_sub: NDArray[np.float64] | None = None,
     cover_scaling: bool = True,
+    stress_depletion_fraction: float | None = None,
 ) -> dict[str, NDArray[np.float64]]:
     """Execute a single daily time step.
 
@@ -456,6 +464,13 @@ def step_day(
     # Legacy model compute_field_et.py line 76-79 uses swb.zr (not updated yet)
     taw = props.compute_taw(state.zr)  # Use previous zr, not zr_new
     raw = props.compute_raw(taw)
+    # WP-C7 mad-split: when configured, the Ks stress onset uses a fixed
+    # FAO-56 p (stress depletion fraction), decoupling it from the mad-driven
+    # irrigation trigger / gw-subsidy which continue to use `raw`.
+    if stress_depletion_fraction is None:
+        raw_stress = raw
+    else:
+        raw_stress = stress_depletion_fraction * taw
 
     # 7. Update surface layer (Ze) with water inputs
     # Matches legacy model compute_field_et.py line 64:
@@ -467,7 +482,7 @@ def step_day(
 
     # 9. Calculate base Kr and Ks (using current depletion)
     kr_base = kr_reduction(props.tew, state.depl_ze, props.rew)
-    ks_base = ks_stress(taw, state.depl_root, raw)
+    ks_base = ks_stress(taw, state.depl_root, raw_stress)
 
     # Apply damping
     kr_new = kr_damped(kr_base, state.kr, params.kr_damp)
