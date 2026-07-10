@@ -1,0 +1,89 @@
+project = "9_Bushland"
+root = "/data/ssd1/swim"
+
+[paths]
+project_workspace = "{root}/{project}"
+data = "{project_workspace}/data"
+gis = "{data}/gis"
+# 4 USDA-ARS Bushland (TX) weighing-lysimeter fields (NE/SE/NW/SW), each a
+# ~4.4 ha uniformly managed square with a 3x3 m precision lysimeter at its
+# centre. Built by build_bushland_fields.py from
+# data/bushland/bushland_lysimeter_fields.fgb (the field polygons). The metered
+# daily irrigation and gold-standard weighing-lysimeter ET are used ONLY at the
+# WP-B2 prescribed-irrigation comparison (prescribed_et.py), never to derive a
+# model parameter and never in calibration.
+fields_shapefile = "{gis}/bushland_fields.shp"
+properties = "{data}/properties"
+lulc = "{properties}/{project}_landcover.csv"
+properties_json = "{properties}/{project}_properties.json"
+container = "{data}/{project}.swim"
+
+# Remote sensing
+remote_sensing = "{data}/remote_sensing"
+landsat = "{remote_sensing}/landsat"
+
+[paths.conus]
+met = "{data}/meteorology/gridmet"
+# Shared CONUS GridMET centroid grid (EPSG:5071), copied into this project by
+# build_bushland_fields.py so the example is self-contained.
+gridmet_centroids = "{gis}/gridmet_centroids.shp"
+gridmet_mapping = "{gis}/bushland_fields_gfid.shp"
+# Reference ET is OpenET bias-corrected ETo/ETr (1999+), ingested by
+# build_container.py; pre-1999 spinup uses raw GridMET.
+irr = "{properties}/{project}_irr.csv"
+ssurgo = "{properties}/{project}_ssurgo.csv"
+snodas_in = "{data}/snow/snodas/extracts"
+
+[earth_engine]
+bucket = "wudr"
+
+[ids]
+feature_id = "site_id"
+
+[ids.conus]
+gridmet_join_id = "site_id"
+gridmet_id = "GFID"  # Column name for GridMET cell ID in mapping shapefile
+state_col = "state"
+
+[data_sources]
+met_source = "gridmet"
+snow_source = "snodas"
+soil_source = "ssurgo"
+mask_mode = "none"
+
+[misc]
+irrigation_threshold = 0.3
+elev_units = "m"
+refet_type = "eto"
+runoff_process = "cn"
+
+[date_range]
+# 2 spinup years (2014-2015; scheduler-driven, no lysimeter overlap) then the
+# three OpenET-era Bushland crop-years: maize 2016, maize 2018, soybean 2019.
+start_date = "2014-01-01"
+end_date = "2019-12-31"
+
+[crop_coefficient]
+kc_proxy = "etf"
+cover_proxy = "ndvi"
+
+[validation]
+# No flux towers here; the ground truth is the weighing-lysimeter ET (and the
+# metered irrigation), used only at prescribed_et.py. Never a model input. Kept
+# for path-compatibility with the shared evaluate/transfer machinery.
+flux_dir = "{data}/daily_flux_files_2pt1"
+
+[calibration]
+# This example runs FORWARD only (WP-B2 is a forward-run comparison, no PEST++).
+# The block mirrors Example 5 Run 22 so build_container.py can assemble the
+# 6-model OpenET v2.1 ETf ensemble the forward run reads as its crop coefficient.
+pest_run_dir = "{project_workspace}/pestrun"
+etf_target_model = "ensemble"
+ensemble_source = "computed"  # "computed" = DIY mean of members
+etf_ensemble_members = ["ssebop", "sims", "geesebal", "eemetric", "ptjpl", "disalexi"]
+workers = 20
+realizations = 200
+calibration_dir = "{pest_run_dir}/pest/mult"
+obs_folder = "{pest_run_dir}/obs"
+initial_values_csv = "{pest_run_dir}/params.csv"
+spinup = "{pest_run_dir}/spinup.json"
