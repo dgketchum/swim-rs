@@ -79,9 +79,9 @@ def _archive_pest_outputs(m_dir, p_dir, results_dir, project, noptmax):
     print(f"Archived PEST trajectory + problem definition to {arc}")
 
 
-def _load_config() -> ProjectConfig:
+def _load_config(config_path: str | None = None) -> ProjectConfig:
     project_dir = Path(__file__).resolve().parent
-    conf = project_dir / "5_Flux_Ensemble.toml"
+    conf = Path(config_path) if config_path else project_dir / "5_Flux_Ensemble.toml"
 
     cfg = ProjectConfig()
     if os.path.isdir("/data/ssd2/swim"):
@@ -237,6 +237,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Run Ex5 calibration")
     parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to project TOML (default: 5_Flux_Ensemble.toml). Use a "
+        "variant config to enable the WP-C7 mad split (stress_depletion_fraction).",
+    )
+    parser.add_argument(
         "--etf-weighting-mode",
         choices=["spread", "fixed_sd"],
         default=None,
@@ -297,7 +304,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    cfg = _load_config()
+    cfg = _load_config(args.config)
 
     # Apply CLI overrides to config
     if args.etf_weighting_mode is not None:
