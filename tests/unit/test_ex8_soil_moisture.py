@@ -148,3 +148,64 @@ def test_deseasonalize_preserves_interannual_anomaly(ev):
     # each day's climatology is the 2-year mean (2.0); anomalies are -1 and +1
     assert anom[anom.index.year == 2001].round(6).eq(-1.0).all()
     assert anom[anom.index.year == 2002].round(6).eq(1.0).all()
+
+
+# --------------------------------------------------------------------------- #
+# evaluate.py: depth_weighted_rootzone (midpoint layer-thickness weighting)
+# --------------------------------------------------------------------------- #
+
+
+def _obs(**cols):
+    n = len(next(iter(cols.values())))
+    idx = pd.date_range("2020-01-01", periods=n, freq="D")
+    return pd.DataFrame(cols, index=idx)
+
+
+def test_depth_weighted_matches_midpoint_layer_weights(ev):
+    # sensors at 5/20/50 cm -> midpoint bounds [0, 12.5, 35, 50] -> thick [12.5, 22.5, 15]
+    obs = _obs(soil_vwc_5=[0.1], soil_vwc_20=[0.2], soil_vwc_50=[0.3])
+    got = ev.depth_weighted_rootzone(obs).iloc[0]
+    exp = (0.1 * 12.5 + 0.2 * 22.5 + 0.3 * 15.0) / 50.0
+    assert got == pytest.approx(exp)
+    # the 5 cm sensor is down-weighted vs the unweighted mean (0.2) it replaces
+    assert got != pytest.approx(0.2)
+
+
+def test_depth_weighted_constant_profile_is_identity(ev):
+    # weights sum to 1, so a flat profile returns that constant
+    obs = _obs(soil_vwc_5=[0.25], soil_vwc_20=[0.25], soil_vwc_50=[0.25])
+    assert ev.depth_weighted_rootzone(obs).iloc[0] == pytest.approx(0.25)
+
+
+def test_depth_weighted_column_order_independent(ev):
+    # depths are sorted internally -> DataFrame column order must not matter
+    a = ev.depth_weighted_rootzone(_obs(soil_vwc_5=[0.1], soil_vwc_20=[0.2], soil_vwc_50=[0.3]))
+    b = ev.depth_weighted_rootzone(_obs(soil_vwc_50=[0.3], soil_vwc_5=[0.1], soil_vwc_20=[0.2]))
+    assert a.iloc[0] == pytest.approx(b.iloc[0])
+
+
+def test_depth_weighted_deepest_layer_capped_at_deepest_sensor(ev):
+    # a max_depth_cm beyond the deepest sensor must NOT extrapolate the bottom layer
+    obs = _obs(soil_vwc_5=[0.1], soil_vwc_20=[0.2], soil_vwc_50=[0.3])
+    shallow = ev.depth_weighted_rootzone(obs, max_depth_cm=101.0).iloc[0]
+    deep = ev.depth_weighted_rootzone(obs, max_depth_cm=500.0).iloc[0]
+    assert shallow == pytest.approx(deep)
+
+
+def test_depth_weighted_renormalizes_missing_sensor(ev):
+    # 20 cm sensor missing this row -> weights renormalize over the 5/50 cm layers only
+    obs = _obs(soil_vwc_5=[0.1], soil_vwc_20=[np.nan], soil_vwc_50=[0.3])
+    got = ev.depth_weighted_rootzone(obs).iloc[0]
+    exp = (0.1 * 12.5 + 0.3 * 15.0) / (12.5 + 15.0)
+    assert got == pytest.approx(exp)
+
+
+def test_depth_weighted_all_nan_row_is_nan(ev):
+    obs = _obs(soil_vwc_5=[np.nan], soil_vwc_20=[np.nan], soil_vwc_50=[np.nan])
+    assert np.isnan(ev.depth_weighted_rootzone(obs).iloc[0])
+
+
+def test_depth_weighted_no_sensor_columns_returns_nan(ev):
+    # no soil_vwc_* columns at all -> all-NaN series aligned to the input index
+    out = ev.depth_weighted_rootzone(_obs(profile_mean_theta=[0.2, 0.3]))
+    assert out.isna().all() and len(out) == 2

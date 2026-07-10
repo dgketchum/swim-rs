@@ -14,6 +14,14 @@ Comparison is in scale-invariant space (Pearson, Spearman, anomaly-r after remov
 the day-of-year climatology), which sidesteps sensor calibration offsets. In-situ
 theta is used ONLY here at evaluation — never as a model input.
 
+Observations are paired to the model layer they physically represent (see PAIRS):
+the root-zone bucket (theta_avail, integrated over zr_max) is scored against a
+DEPTH-WEIGHTED SCAN profile mean (not the unweighted mean, which over-weights the
+shallow high-variance sensors a bulk average cannot track), and the surface evap
+layer (surface_sm_proxy = -depl_ze) is scored against the 5 cm sensor — the SMAP
+analog. The legacy unweighted-mean and single-deep-sensor pairings are kept for
+reference so the correction is auditable.
+
 Observed theta comes from the screened SCAN archive (validation-only):
     /data/ssd1/swim/soil_moisture/scan/SCAN_<station>.parquet
     schema: date, soil_vwc_{5,10,20,50,101}, profile_mean_theta
@@ -30,6 +38,7 @@ rz_depletion where available (bit-for-bit sanity, mirroring run_theta_mead.py).
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -55,7 +64,21 @@ from swimrs.process.loop_fast import run_daily_loop_fast  # noqa: E402
 from swimrs.swim.config import ProjectConfig  # noqa: E402
 
 SITES_CSV = HERE / "data" / "scan_sites.csv"
+DIAG_CSV = HERE / "notes" / "paper" / "data" / "e8cal_dynamic_range_diag.csv"
 GROW_MONTHS = range(4, 11)  # Apr-Oct
+
+# Explicit like-for-like (model_var, obs_var, label) pairings. The root-zone bucket
+# (theta_avail, a depth-integrated average over zr_max) is compared against a
+# DEPTH-WEIGHTED SCAN profile mean, not the unweighted mean that over-weights the
+# shallow high-variance sensors. The surface evap layer (surface_sm_proxy = -depl_ze)
+# is compared against the shallowest sensor (5 cm) — the SMAP analog. The legacy
+# unweighted-mean and single deep-sensor pairings are retained for reference.
+PAIRS = [
+    ("theta_avail", "rootzone_theta", "rootzone depth-wtd"),
+    ("surface_sm_proxy", "soil_vwc_5", "surface 5cm (SMAP-analog)"),
+    ("theta_avail", "profile_mean_theta", "legacy unwtd mean"),
+    ("theta_avail", "soil_vwc_50", "deep sensor 50cm"),
+]
 
 
 def _load_config() -> ProjectConfig:
@@ -99,6 +122,7 @@ def run_model(cfg, container, par_csv, fids):
             empirical_kc_max=True,
             mask_mode=getattr(cfg, "mask_mode", "none"),
             transpiration_cover_scaling=getattr(cfg, "transpiration_cover_scaling", True),
+            stress_depletion_fraction=getattr(cfg, "stress_depletion_fraction", None),
         )
         output, _ = run_daily_loop_fast(si)
         dates = pd.date_range(si.start_date, periods=si.n_days, freq="D")
@@ -109,12 +133,17 @@ def run_model(cfg, container, par_csv, fids):
             depl = output.depl_root[:, i]
             daw3 = output.daw3[:, i]
             zr = output.zr[:, i]
+            ze = output.depl_ze[:, i]  # surface evap-layer depletion (mm)
             theta_avail = theta_available(awc[i], zr, depl, daw3, zr_max[i])  # m3/m3
             results[fid] = pd.DataFrame(
                 {
                     "depl_root": depl,
                     "theta_avail": theta_avail,
                     "sm_proxy": -depl,  # raw first-pass proxy for reference
+                    # surface-layer moisture proxy (drier = more depleted); the
+                    # SMAP/shallow-sensor analog. Correlation is scale-invariant so
+                    # -depl_ze suffices without converting to a VWC.
+                    "surface_sm_proxy": -ze,
                 },
                 index=dates,
             )
@@ -146,6 +175,41 @@ def _deseasonalize(s):
     return s - s.groupby(s.index.dayofyear).transform("mean")
 
 
+def depth_weighted_rootzone(obs, max_depth_cm=101.0):
+    """Depth-weighted mean of the soil_vwc_* sensors (midpoint-layer weights).
+
+    Each sensor represents the soil layer bounded by the midpoints to its
+    neighbours (deepest layer capped at the deepest sensor — no extrapolation).
+    Weighting by layer thickness down-weights the shallow high-variance sensors so
+    the observed quantity matches theta_avail's bulk root-zone character, rather
+    than the unweighted profile mean which gives a 5 cm probe the same weight as a
+    50 cm probe. Per-row missing sensors are renormalized over whatever is present.
+    """
+    cols, depths = [], []
+    for c in obs.columns:
+        m = re.fullmatch(r"soil_vwc_(\d+)", c)
+        if m:
+            cols.append(c)
+            depths.append(float(m.group(1)))
+    if not cols:
+        return pd.Series(np.nan, index=obs.index)
+    order = np.argsort(depths)
+    depths = np.asarray(depths)[order]
+    cols = [cols[i] for i in order]
+    bounds = [0.0]
+    for j in range(len(depths) - 1):
+        bounds.append(0.5 * (depths[j] + depths[j + 1]))
+    bounds.append(min(max_depth_cm, depths[-1]))
+    thick = np.array([max(0.0, bounds[j + 1] - bounds[j]) for j in range(len(depths))])
+    sub = obs[cols].astype(float)
+    present = sub.notna().values
+    w = np.where(present, thick[None, :], 0.0)
+    wsum = w.sum(axis=1)
+    num = np.nansum(np.where(present, sub.values * thick[None, :], 0.0), axis=1)
+    out = np.where(wsum > 0.0, num / np.where(wsum > 0.0, wsum, 1.0), np.nan)
+    return pd.Series(out, index=obs.index)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -153,11 +217,6 @@ def main() -> None:
     ap.add_argument("--container", required=True, help="Calibrated SCAN container (.swim)")
     ap.add_argument("--par-csv", required=True, help="Calibrated par.csv (…3.par.csv)")
     ap.add_argument("--out-dir", default=str(HERE / "results"), help="Output directory")
-    ap.add_argument(
-        "--obs-vars",
-        default="profile_mean_theta,soil_vwc_50",
-        help="Observed columns to score against",
-    )
     ap.add_argument("--no-figures", action="store_true", help="Skip per-site figures")
     args = ap.parse_args()
 
@@ -165,7 +224,6 @@ def main() -> None:
     sites = pd.read_csv(SITES_CSV)
     fids = sites["site_id"].astype(str).tolist()
     theta_by_fid = dict(zip(sites["site_id"].astype(str), sites["theta_csv"]))
-    obs_vars = [v.strip() for v in args.obs_vars.split(",")]
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -187,32 +245,36 @@ def main() -> None:
             print(f"  {fid}: observed theta missing, skipping")
             continue
 
-        avail_obs = [v for v in obs_vars if v in obs.columns]
-        df = model[fid].join(obs[avail_obs], how="inner")
-        gs = df[df.index.month.isin(GROW_MONTHS)]
+        obs = obs.copy()
+        obs["rootzone_theta"] = depth_weighted_rootzone(obs)
+        mdf = model[fid]
 
-        for ycol in avail_obs:
-            for mcol in ("theta_avail", "sm_proxy"):
-                d = gs[[ycol, mcol]].dropna()
-                if len(d) < 30:
-                    continue
-                an_o = _deseasonalize(d[ycol]).dropna()
-                an_m = _deseasonalize(d[mcol]).reindex(an_o.index).dropna()
-                an_o = an_o.reindex(an_m.index)
-                rows.append(
-                    dict(
-                        site_id=fid,
-                        obs_var=ycol,
-                        model_var=mcol,
-                        n=len(d),
-                        pearson=round(pearsonr(d[ycol], d[mcol])[0], 3),
-                        spearman=round(spearmanr(d[ycol], d[mcol])[0], 3),
-                        anom_r=round(pearsonr(an_o, an_m)[0], 3) if len(an_m) > 30 else np.nan,
-                    )
+        for mcol, ycol, _lbl in PAIRS:
+            if mcol not in mdf.columns or ycol not in obs.columns:
+                continue
+            df = mdf[[mcol]].join(obs[[ycol]], how="inner")
+            gs = df[df.index.month.isin(GROW_MONTHS)]
+            d = gs[[ycol, mcol]].dropna()
+            if len(d) < 30:
+                continue
+            an_o = _deseasonalize(d[ycol]).dropna()
+            an_m = _deseasonalize(d[mcol]).reindex(an_o.index).dropna()
+            an_o = an_o.reindex(an_m.index)
+            rows.append(
+                dict(
+                    site_id=fid,
+                    obs_var=ycol,
+                    model_var=mcol,
+                    n=len(d),
+                    pearson=round(pearsonr(d[ycol], d[mcol])[0], 3),
+                    spearman=round(spearmanr(d[ycol], d[mcol])[0], 3),
+                    anom_r=round(pearsonr(an_o, an_m)[0], 3) if len(an_m) > 30 else np.nan,
                 )
+            )
 
-        if not args.no_figures and "theta_avail" in df and obs_vars[0] in df:
-            dd = df[[obs_vars[0], "theta_avail"]].dropna()
+        if not args.no_figures:
+            fdf = mdf[["theta_avail"]].join(obs[["rootzone_theta"]], how="inner")
+            dd = fdf[fdf.index.month.isin(GROW_MONTHS)][["rootzone_theta", "theta_avail"]].dropna()
             if len(dd) > 30:
 
                 def _nrm(x):
@@ -220,7 +282,10 @@ def main() -> None:
 
                 fig, ax = plt.subplots(figsize=(13, 4))
                 ax.plot(
-                    dd.index, _nrm(dd[obs_vars[0]]), lw=0.6, label=f"observed {obs_vars[0]} (norm)"
+                    dd.index,
+                    _nrm(dd["rootzone_theta"]),
+                    lw=0.6,
+                    label="observed root-zone theta (depth-wtd, norm)",
                 )
                 ax.plot(
                     dd.index,
@@ -229,7 +294,7 @@ def main() -> None:
                     alpha=0.8,
                     label="SWIM theta_avail (norm)",
                 )
-                r = pearsonr(dd[obs_vars[0]], dd["theta_avail"])[0]
+                r = pearsonr(dd["rootzone_theta"], dd["theta_avail"])[0]
                 ax.set_title(f"{fid}: n={len(dd)}  Pearson r={r:.2f}")
                 ax.legend(loc="upper right", fontsize=8)
                 ax.set_ylabel("normalized [0,1]")
@@ -240,15 +305,35 @@ def main() -> None:
     res = pd.DataFrame(rows)
     out_csv = out_dir / "scan_theta_correlations.csv"
     res.to_csv(out_csv, index=False)
-    pd.set_option("display.width", 180, "display.max_rows", 200)
-    print(f"\n=== theta_avail vs observed SCAN theta ({len(res)} site-metric rows) ===")
+    pd.set_option("display.width", 180, "display.max_rows", 400)
+    print(f"\n=== modeled vs observed SCAN theta ({len(res)} site-metric rows) ===")
     if not res.empty:
         print(res.to_string(index=False))
-        ta = res[res.model_var == "theta_avail"]
-        print("\n--- theta_avail summary by obs_var (median across sites) ---")
-        print(
-            ta.groupby("obs_var")[["pearson", "spearman", "anom_r"]].median().round(3).to_string()
-        )
+        print("\n--- median across sites, by pairing ---")
+        for mcol, ycol, lbl in PAIRS:
+            sub = res[(res.model_var == mcol) & (res.obs_var == ycol)]
+            if sub.empty:
+                continue
+            med = sub[["pearson", "spearman", "anom_r"]].median().round(3)
+            print(
+                f"  [{lbl:<26}] {mcol} vs {ycol}: "
+                f"n_sites={len(sub)}  pearson={med.pearson}  "
+                f"spearman={med.spearman}  anom_r={med.anom_r}"
+            )
+
+        # Irrigation split (authoritative labels from the water-balance algorithm,
+        # never an a-priori override). SCAN theta stays validation-only throughout.
+        if DIAG_CSV.exists():
+            irr = pd.read_csv(DIAG_CSV).set_index("site_id")["irrigated"]
+            res2 = res.assign(irrigated=res.site_id.map(irr))
+            print("\n--- median by pairing x irrigation (pearson / anom_r) ---")
+            for mcol, ycol, lbl in PAIRS:
+                sub = res2[(res2.model_var == mcol) & (res2.obs_var == ycol)]
+                if sub.empty or sub.irrigated.isna().all():
+                    continue
+                g = sub.groupby("irrigated")[["pearson", "anom_r"]].median().round(3)
+                print(f"\n  [{lbl}] {mcol} vs {ycol}")
+                print(g.to_string().replace("\n", "\n    "))
     print(f"\nwrote {out_csv}")
 
 
