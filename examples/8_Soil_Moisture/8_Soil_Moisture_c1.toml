@@ -1,0 +1,80 @@
+project = "8_Soil_Moisture"
+root = "/data/ssd1/swim"
+
+# WP-C1 scheduler-realism variant of 8_Soil_Moisture.toml. Identical to the
+# canonical config except: (1) pest_run_dir -> pestrun_c1 so no canonical e8cal
+# artifact is touched, and (2) scheduler_calibration_params activates the
+# refill_frac + min_irr_days knobs (loop_fast scheduler). Launch against the
+# e8c1 container copy via --container. See notes/paper/wp_c1_forward_whatif.md.
+
+[paths]
+project_workspace = "{root}/{project}"
+data = "{project_workspace}/data"
+gis = "{data}/gis"
+fields_shapefile = "{gis}/scan_fields.shp"
+properties = "{data}/properties"
+lulc = "{properties}/{project}_landcover.csv"
+properties_json = "{properties}/{project}_properties.json"
+container = "{data}/{project}.swim"
+
+# Remote sensing
+remote_sensing = "{data}/remote_sensing"
+landsat = "{remote_sensing}/landsat"
+
+[paths.conus]
+met = "{data}/meteorology/gridmet"
+gridmet_centroids = "{gis}/gridmet_centroids.shp"
+gridmet_mapping = "{gis}/scan_fields_gfid.shp"
+irr = "{properties}/{project}_irr.csv"
+ssurgo = "{properties}/{project}_ssurgo.csv"
+snodas_in = "{data}/snow/snodas/extracts"
+
+[earth_engine]
+bucket = "wudr"
+
+[ids]
+feature_id = "site_id"
+
+[ids.conus]
+gridmet_join_id = "site_id"
+gridmet_id = "GFID"
+state_col = "state"
+
+[data_sources]
+met_source = "gridmet"
+snow_source = "snodas"
+soil_source = "ssurgo"
+mask_mode = "none"
+
+[misc]
+irrigation_threshold = 0.3
+elev_units = "m"
+refet_type = "eto"
+runoff_process = "cn"
+
+[date_range]
+start_date = "1995-01-01"
+end_date = "2025-12-31"
+
+[crop_coefficient]
+kc_proxy = "etf"
+cover_proxy = "ndvi"
+
+[validation]
+flux_dir = "{data}/daily_flux_files_2pt1"
+
+[calibration]
+pest_run_dir = "{project_workspace}/pestrun_c1"
+etf_target_model = "ensemble"
+ensemble_source = "computed"
+etf_ensemble_members = ["ssebop", "sims", "geesebal", "eemetric", "ptjpl", "disalexi"]
+# WP-C1: activate the scheduler-realism knobs as calibratable parameters. Active
+# only on irrigated fields (rainfed fields skip the scheduler; their bounds are
+# collapsed to the legacy inert values in PestBuilder).
+scheduler_calibration_params = ["refill_frac", "min_irr_days"]
+workers = 20
+realizations = 200
+calibration_dir = "{pest_run_dir}/pest/mult"
+obs_folder = "{pest_run_dir}/obs"
+initial_values_csv = "{pest_run_dir}/params.csv"
+spinup = "{pest_run_dir}/spinup.json"

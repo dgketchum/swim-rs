@@ -34,9 +34,14 @@ import calibrate as c5  # noqa: E402  (Example 5 pipeline)
 
 from swimrs.swim.config import ProjectConfig  # noqa: E402
 
+# Config TOML to load. Defaults to the canonical 8_Soil_Moisture.toml (e8cal); set
+# via --config to a variant such as 8_Soil_Moisture_c1.toml (WP-C1 scheduler recal,
+# which repoints pest_run_dir to pestrun_c1 and activates the scheduler knobs).
+CONFIG_FILE = HERE / "8_Soil_Moisture.toml"
+
 
 def _load_config() -> ProjectConfig:
-    conf = HERE / "8_Soil_Moisture.toml"
+    conf = CONFIG_FILE
     cfg = ProjectConfig()
     if os.path.isdir("/data/ssd2/swim"):
         cfg.read_config(str(conf), calibrate=True)
@@ -53,6 +58,12 @@ c5.__file__ = str(HERE / "calibrate.py")
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run Example 8 calibration")
     parser.add_argument("--container", type=str, default=None, help="Override container path")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Config TOML (default 8_Soil_Moisture.toml; use 8_Soil_Moisture_c1.toml for WP-C1)",
+    )
     parser.add_argument("--results-tag", default="e8cal", help="Results subdirectory name")
     parser.add_argument(
         "--etf-target-model",
@@ -78,6 +89,10 @@ def main() -> None:
         help="Preserve pest/master/workers dirs after archiving (RUN_POLICY)",
     )
     args = parser.parse_args()
+
+    if args.config is not None:
+        global CONFIG_FILE
+        CONFIG_FILE = Path(args.config).resolve()
 
     cfg = _load_config()
     if args.etf_target_model is not None:
