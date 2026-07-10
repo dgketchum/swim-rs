@@ -31,6 +31,7 @@ def _make_inputs(*, n_days=N_DAYS, n_fields=N_FIELDS, **overrides):
         all_srad=np.full((n_days, n_fields), 250.0),
         all_irr_flag=np.zeros((n_days, n_fields)),
         all_f_sub=np.zeros((n_days, n_fields)),
+        all_prescribed_irr=np.full((n_days, n_fields), np.nan),
         # Properties (n_fields,)
         awc=np.full(n_fields, 150.0),
         rew=np.full(n_fields, 8.0),
@@ -39,6 +40,10 @@ def _make_inputs(*, n_days=N_DAYS, n_fields=N_FIELDS, **overrides):
         zr_max=np.full(n_fields, 1.2),
         zr_min=np.full(n_fields, 0.1),
         mad=np.full(n_fields, 0.5),
+        # WP-C1 scheduler-realism knobs at legacy defaults
+        refill_frac=np.full(n_fields, 1.1),
+        min_irr_days=np.zeros(n_fields),
+        irr_depth=np.zeros(n_fields),
         irr_status=np.zeros(n_fields),
         perennial=np.zeros(n_fields),
         gw_status=np.zeros(n_fields),
@@ -53,6 +58,8 @@ def _make_inputs(*, n_days=N_DAYS, n_fields=N_FIELDS, **overrides):
         kr_damp=np.full(n_fields, 0.5),
         ks_damp=np.full(n_fields, 0.5),
         max_irr_rate=np.full(n_fields, 25.0),
+        # WP-C7 mad split: -1.0 sentinel reuses mad*taw for the Ks stress onset
+        stress_depl_frac=-1.0,
         # Initial state (n_fields,)
         depl_root_init=np.full(n_fields, 10.0),
         depl_ze_init=np.full(n_fields, 5.0),
@@ -93,6 +100,7 @@ def _unpack(result):
         "gw_sim",
         "daw3",
         "zr",
+        "depl_ze",
         # final state
         "final_depl_root",
         "final_depl_ze",
@@ -519,3 +527,60 @@ class TestTEWEvapCap:
             atol=1e-6,
             err_msg="Water balance does not close under combined caps",
         )
+
+
+class TestStressDepletionSplit:
+    """WP-C7: the FAO-56 stress fraction p (Ks onset) split from the trigger mad.
+
+    The scalar ``stress_depl_frac`` fixes p for the Ks stress function only;
+    ``< 0`` is the sentinel that reuses ``mad*taw`` so the legacy single-mad
+    behavior is reproduced bit-for-bit.
+    """
+
+    def test_sentinel_matches_equal_mad_bitforbit(self):
+        """When p == mad, the fixed-p path equals the reuse-mad sentinel exactly."""
+        mad_val = 0.5
+        reuse = _unpack(
+            _run_loop_jit(**_make_inputs(mad=np.full(N_FIELDS, mad_val), stress_depl_frac=-1.0))
+        )
+        fixed = _unpack(
+            _run_loop_jit(**_make_inputs(mad=np.full(N_FIELDS, mad_val), stress_depl_frac=mad_val))
+        )
+        for key in ("eta", "etf", "ks", "depl_root", "irr_sim", "gw_sim"):
+            np.testing.assert_array_equal(
+                reuse[key], fixed[key], err_msg=f"{key} differs between p==mad and sentinel"
+            )
+
+    def test_fixed_p_changes_ks_when_differs_from_mad(self):
+        """Fixing p away from mad must actually move the Ks stress onset.
+
+        Drydown scenario (no rain/irrigation): taw = 150 mm with depletion 90 mm
+        so p=0.7 leaves the root zone un-stressed (Dr < 105) while p=0.3 puts it
+        in the stress band (Dr > 45). Day-0 has ample available water (60 mm >>
+        the ~4 mm potential ET), so ET is stress-limited, not availability-limited
+        — the split shows up directly. (Cumulative ET over a full drydown is
+        water-conserved and would equalize, so we assert on day 0.)
+        """
+        common = dict(
+            n_fields=1,
+            mad=np.full(1, 0.7),
+            awc=np.full(1, 150.0),
+            zr_min=np.full(1, 1.0),
+            zr_max=np.full(1, 1.0),
+            zr_init=np.full(1, 1.0),
+            depl_root_init=np.full(1, 90.0),
+            all_prcp=np.zeros((N_DAYS, 1)),
+            all_etr=np.full((N_DAYS, 1), 7.0),
+            all_ndvi=np.full((N_DAYS, 1), 0.5),
+            irr_status=np.zeros(1),
+            gw_status=np.zeros(1),
+            ks_init=np.ones(1),
+        )
+        reuse = _unpack(_run_loop_jit(**_make_inputs(stress_depl_frac=-1.0, **common)))
+        low_p = _unpack(_run_loop_jit(**_make_inputs(stress_depl_frac=0.3, **common)))
+
+        # p=0.7 leaves day-0 un-stressed (Ks=1); p=0.3 stresses -> lower Ks and ET
+        assert reuse["ks"][0, 0] == pytest.approx(1.0)
+        assert low_p["ks"][0, 0] < reuse["ks"][0, 0]
+        assert low_p["eta"][0, 0] < reuse["eta"][0, 0]
+        assert not np.array_equal(low_p["ks"], reuse["ks"])

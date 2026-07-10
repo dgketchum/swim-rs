@@ -113,6 +113,8 @@ class SwimInput:
         self.end_date = datetime.fromisoformat(config["end_date"])
         self.refet_type = config.get("refet_type", "eto")
         self.cover_scaling = config.get("transpiration_cover_scaling", True)
+        # WP-C7 mad split: absent (older h5) or null -> None -> legacy single-mad Ks.
+        self.stress_depletion_fraction = config.get("stress_depletion_fraction", None)
 
         # Load field info
         self.fids = [
@@ -185,6 +187,11 @@ class SwimInput:
             ke_max=props["ke_max"][:] if "ke_max" in props else None,
             kc_max=props["kc_max"][:] if "kc_max" in props else None,
             f_sub=props["f_sub"][:] if "f_sub" in props else None,
+            # WP-C1 scheduler-realism knobs. Absent in older h5 files → None,
+            # which FieldProperties defaults to the legacy behavior (1.1, 0, 0).
+            refill_frac=props["refill_frac"][:] if "refill_frac" in props else None,
+            min_irr_days=props["min_irr_days"][:] if "min_irr_days" in props else None,
+            irr_depth=props["irr_depth"][:] if "irr_depth" in props else None,
         )
 
     def _load_parameters(self, h5: h5py.File) -> CalibrationParameters:
@@ -314,6 +321,25 @@ class SwimInput:
             return irr[day_idx, :].astype(bool)
         return irr[:].astype(bool)
 
+    def get_prescribed_irr(self) -> NDArray[np.float64] | None:
+        """Get the diagnostic prescribed-irrigation array, if present.
+
+        Returns
+        -------
+        NDArray[np.float64] | None
+            ``(n_days, n_fields)`` mm/day array where finite values override the
+            internal scheduler and ``NaN`` means "use the scheduler", or ``None``
+            when no ``prescribed_irrigation/irr_mm`` group is in the HDF5 file.
+
+        This is a diagnostic physics-bypass (WP-B0). It is never written by the
+        production input builder unless an explicit observed series is supplied.
+        """
+        if self._h5_file is None:
+            raise RuntimeError("HDF5 file not open")
+        if "prescribed_irrigation/irr_mm" not in self._h5_file:
+            return None
+        return self._h5_file["prescribed_irrigation/irr_mm"][:].astype(np.float64)
+
     def get_date(self, day_idx: int) -> datetime:
         """Get date for a given day index."""
         from datetime import timedelta
@@ -383,6 +409,9 @@ class SwimInput:
             "kr_alpha": "kr_damp",
             "ks_alpha": "ks_damp",
             "mad": None,  # Handled as mad in properties
+            "refill_frac": None,  # WP-C1 property
+            "min_irr_days": None,  # WP-C1 property
+            "irr_depth": None,  # WP-C1 property
         }
 
         for mult_file in mult_dir.glob("p_*_constant.csv"):
@@ -449,7 +478,9 @@ def build_swim_input(
     ndvi_mode: str = "observed",
     max_irr_rate: float = 100.0,
     transpiration_cover_scaling: bool = True,
+    stress_depletion_fraction: float | None = None,
     use_container_calibration: bool = True,
+    prescribed_irr_path: Path | str | None = None,
 ) -> SwimInput:
     """Build HDF5 input file from SwimContainer.
 
@@ -501,6 +532,15 @@ def build_swim_input(
         ``calibrated_params_path`` is given. Set False when building inputs
         for a fresh calibration so a stale ``calibration/`` group (e.g. from
         a copied container) cannot contaminate the PEST base run.
+    prescribed_irr_path : Path | str, optional
+        Path to a diagnostic observed daily-irrigation table (parquet or CSV),
+        date-indexed with one column per field UID, values in mm/day. When given,
+        it is aligned to the simulation date range and field order and written to
+        the run HDF5 as ``prescribed_irrigation/irr_mm`` (missing field/day cells
+        become ``NaN`` = "use the scheduler"). The fast loop then overrides its
+        internal ``irr_sim`` wherever a finite value is present. This is a
+        physics-bypass for attribution experiments (WP-B0/B1) only — never a
+        production or calibration input.
 
     Returns
     -------
@@ -577,6 +617,9 @@ def build_swim_input(
             "end_date": end_date.isoformat(),
             "refet_type": refet_type,
             "transpiration_cover_scaling": transpiration_cover_scaling,
+            # WP-C7 mad split: None (default) -> the loop reuses mad*taw for the Ks
+            # stress onset (legacy). A float fixes the FAO-56 depletion fraction p.
+            "stress_depletion_fraction": stress_depletion_fraction,
         }
         h5.attrs["config"] = json.dumps(config)
 
@@ -619,6 +662,12 @@ def build_swim_input(
 
         # Write year-specific groundwater subsidy
         _write_gwsub_from_container(h5, container_data, fids, n_fields)
+
+        # Write diagnostic prescribed-irrigation override (WP-B0), if supplied
+        if prescribed_irr_path is not None:
+            _write_prescribed_irrigation(
+                h5, prescribed_irr_path, fids, n_fields, n_days, start_date
+            )
 
         # Load spinup from JSON file if provided
         if spinup_json_path is not None:
@@ -908,9 +957,17 @@ def _write_properties_from_container(
     zr_max = np.array([props.get(fid, {}).get("root_depth", 1.0) for fid in fids])
     zr_min = np.where(perennial, zr_max, 0.1)
 
-    # Defaults
+    # Defaults (FAO-56). WP-C5: a calibrated REW/TEW overrides per field where
+    # present, so an evaluation/transfer run reflects the surface-capacity posterior
+    # instead of re-scoring with the priors (which would mask the SSM effect).
     rew = np.full(n_fields, 3.0)
     tew = np.full(n_fields, 18.0)
+    if calibrated_params is not None and "rew" in calibrated_params:
+        mask = ~np.isnan(calibrated_params["rew"])
+        rew[mask] = calibrated_params["rew"][mask]
+    if calibrated_params is not None and "tew" in calibrated_params:
+        mask = ~np.isnan(calibrated_params["tew"])
+        tew[mask] = calibrated_params["tew"][mask]
 
     # CN2 from clay
     clay = np.array([props.get(fid, {}).get("clay", 20.0) for fid in fids])
@@ -921,6 +978,22 @@ def _write_properties_from_container(
     if calibrated_params is not None and "mad" in calibrated_params:
         mask = ~np.isnan(calibrated_params["mad"])
         mad[mask] = calibrated_params["mad"][mask]
+
+    # WP-C1 scheduler-realism knobs. Defaults reproduce the legacy scheduler
+    # (refill to 110% of depletion, no minimum interval, no fixed depth); a
+    # calibrated value overrides per field where present.
+    refill_frac = np.full(n_fields, 1.1)
+    min_irr_days = np.zeros(n_fields)
+    irr_depth = np.zeros(n_fields)
+    if calibrated_params is not None:
+        for pname, arr in (
+            ("refill_frac", refill_frac),
+            ("min_irr_days", min_irr_days),
+            ("irr_depth", irr_depth),
+        ):
+            if pname in calibrated_params:
+                mask = ~np.isnan(calibrated_params[pname])
+                arr[mask] = calibrated_params[pname][mask]
 
     # Irrigation status from dynamics
     irr_data = dynamics.get("irr", {})
@@ -993,6 +1066,9 @@ def _write_properties_from_container(
     props_group.create_dataset("ke_max", data=ke_max)
     props_group.create_dataset("kc_max", data=kc_max)
     props_group.create_dataset("f_sub", data=f_sub)
+    props_group.create_dataset("refill_frac", data=refill_frac)
+    props_group.create_dataset("min_irr_days", data=min_irr_days)
+    props_group.create_dataset("irr_depth", data=irr_depth)
 
 
 def _write_parameters_from_container(
@@ -1262,6 +1338,55 @@ def _write_irrigation_from_container(
     irr_group.create_dataset("irr_flag", data=irr_flag, compression="gzip")
 
 
+def _write_prescribed_irrigation(
+    h5: h5py.File,
+    prescribed_irr_path: Path | str,
+    fids: list[str],
+    n_fields: int,
+    n_days: int,
+    start_date: datetime,
+):
+    """Write a diagnostic prescribed-irrigation array to HDF5 (WP-B0).
+
+    Loads a date-indexed table (parquet or CSV) with one column per field UID,
+    values in mm/day, and aligns it to the simulation ``(n_days, n_fields)`` grid.
+    Cells with no supplied value are ``NaN`` — the sentinel the fast loop reads as
+    "no prescription, use the scheduler". This is a physics-bypass for attribution
+    experiments only; the production builder never calls it unless an explicit
+    observed series path is passed.
+    """
+    path = Path(prescribed_irr_path)
+    if not path.exists():
+        raise FileNotFoundError(f"prescribed_irr_path does not exist: {path}")
+
+    if path.suffix.lower() in (".parquet", ".pq"):
+        table = pd.read_parquet(path)
+    else:
+        table = pd.read_csv(path)
+
+    # Resolve the date index (accept a 'date'/'datetime' column or an existing one).
+    if not isinstance(table.index, pd.DatetimeIndex):
+        date_col = next((c for c in ("date", "datetime", "time") if c in table.columns), None)
+        if date_col is None:
+            raise ValueError(
+                f"prescribed_irr table {path} needs a DatetimeIndex or a "
+                "'date'/'datetime'/'time' column"
+            )
+        table[date_col] = pd.to_datetime(table[date_col])
+        table = table.set_index(date_col)
+    table = table.sort_index()
+
+    sim_dates = pd.date_range(start_date, periods=n_days, freq="D")
+    arr = np.full((n_days, n_fields), np.nan, dtype=np.float64)
+    for j, fid in enumerate(fids):
+        if fid in table.columns:
+            aligned = table[fid].reindex(sim_dates)
+            arr[:, j] = aligned.to_numpy(dtype=np.float64)
+
+    grp = h5.create_group("prescribed_irrigation")
+    grp.create_dataset("irr_mm", data=arr, compression="gzip")
+
+
 def _safe_int(value) -> int | None:
     try:
         return int(value)
@@ -1514,6 +1639,13 @@ def _load_calibrated_params(
         "swe_beta": "swe_beta",
         "aw": "aw",
         "mad": "mad",
+        # WP-C1 scheduler-realism knobs (property-space, like mad/aw)
+        "refill_frac": "refill_frac",
+        "min_irr_days": "min_irr_days",
+        "irr_depth": "irr_depth",
+        # WP-C5 surface evap-layer capacities (property-space, like aw)
+        "rew": "rew",
+        "tew": "tew",
     }
 
     # NaN = "not calibrated" so callers' masked assignment preserves

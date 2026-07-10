@@ -40,6 +40,7 @@ def _run_loop_jit(
     all_srad: np.ndarray,
     all_irr_flag: np.ndarray,
     all_f_sub: np.ndarray,
+    all_prescribed_irr: np.ndarray,
     # Properties: (n_fields,)
     awc: np.ndarray,
     rew: np.ndarray,
@@ -48,6 +49,9 @@ def _run_loop_jit(
     zr_max: np.ndarray,
     zr_min: np.ndarray,
     mad: np.ndarray,
+    refill_frac: np.ndarray,
+    min_irr_days: np.ndarray,
+    irr_depth: np.ndarray,
     irr_status: np.ndarray,
     perennial: np.ndarray,
     gw_status: np.ndarray,
@@ -62,6 +66,11 @@ def _run_loop_jit(
     kr_damp: np.ndarray,
     ks_damp: np.ndarray,
     max_irr_rate: np.ndarray,
+    # Scalar config: FAO-56 stress depletion fraction p (WP-C7 mad split).
+    # < 0 is the sentinel for "reuse mad" -> raw_stress == raw == mad*taw
+    # (bit-for-bit legacy). >= 0 fixes p so the Ks stress onset uses p*taw while
+    # the irrigation trigger and gw subsidy keep the calibrated mad*taw.
+    stress_depl_frac: float,
     # Initial state: (n_fields,)
     depl_root_init: np.ndarray,
     depl_ze_init: np.ndarray,
@@ -100,6 +109,7 @@ def _run_loop_jit(
     out_gw_sim = np.zeros((n_days, n_fields), dtype=np.float64)
     out_daw3 = np.zeros((n_days, n_fields), dtype=np.float64)
     out_zr = np.zeros((n_days, n_fields), dtype=np.float64)
+    out_depl_ze = np.zeros((n_days, n_fields), dtype=np.float64)
 
     # State arrays (copy to avoid modifying inputs)
     depl_root = depl_root_init.copy()
@@ -119,6 +129,9 @@ def _run_loop_jit(
     irr_continue = np.zeros(n_fields, dtype=np.float64)
     next_day_irr = np.zeros(n_fields, dtype=np.float64)
     prev_irr_sim = np.zeros(n_fields, dtype=np.float64)
+    # WP-C1 minimum-return-interval tracking: days since the last new irrigation
+    # event per field. Initialized large so the first event is never blocked.
+    days_since_event = np.full(n_fields, 1.0e6, dtype=np.float64)
 
     # Constants
     albedo_min = 0.45
@@ -277,7 +290,17 @@ def _run_loop_jit(
         # ================================================================
         taw = awc * zr
         taw = np.maximum(taw, np.maximum(tew, 0.001))
+        # raw = mad * taw is the MANAGEMENT depletion: it drives the irrigation
+        # trigger (step 13) and the groundwater subsidy (step 14).
         raw = mad * taw
+        # WP-C7: the FAO-56 stress-onset threshold p is a distinct (physiological)
+        # quantity. When stress_depl_frac >= 0 it is fixed independently of the
+        # calibrated management mad; the < 0 sentinel reuses raw so the legacy
+        # single-mad behavior is reproduced bit-for-bit.
+        if stress_depl_frac < 0.0:
+            raw_stress = raw
+        else:
+            raw_stress = stress_depl_frac * taw
 
         # ================================================================
         # 7. UPDATE SURFACE LAYER (Ze)
@@ -297,8 +320,8 @@ def _run_loop_jit(
         )
         kr_base = np.minimum(1.0, kr_base)
 
-        # Ks base
-        denom_ks = taw - raw
+        # Ks base (stress onset governed by raw_stress = p*taw, not the trigger's mad*taw)
+        denom_ks = taw - raw_stress
         ks_base = np.where(
             denom_ks > 1e-6,
             np.maximum(0.0, (taw - depl_root) / denom_ks),
@@ -376,8 +399,11 @@ def _run_loop_jit(
         irr_sim = np.zeros(n_fields, dtype=np.float64)
         irr_continue_new = np.zeros(n_fields, dtype=np.float64)
         next_day_irr_new = np.zeros(n_fields, dtype=np.float64)
+        # WP-C1: 1.0 where a NEW irrigation event fires this day (resets the
+        # return-interval clock). Kept per-field so the vectorized clock update
+        # after the loop is deterministic.
+        event_fired = np.zeros(n_fields, dtype=np.float64)
         temp_threshold = 5.0
-        refill_factor = 1.1
 
         for i in range(n_fields):
             # Skip if not an irrigated field
@@ -388,12 +414,30 @@ def _run_loop_jit(
             if temp_avg[i] < temp_threshold:
                 continue
 
+            # WP-C1 minimum-return-interval gate: suppress a NEW demand trigger
+            # within `min_irr_days` of the previous event. Carryover (an event
+            # already in progress) is unaffected. The `min_irr_days[i] > 0.5`
+            # guard short-circuits when the constraint is off (default 0), so
+            # the value of days_since_event is never read and the legacy path
+            # is reproduced bit-for-bit.
+            blocked_by_interval = (min_irr_days[i] > 0.5) and (
+                days_since_event[i] < min_irr_days[i]
+            )
+
             # Check if new irrigation is needed (depl > RAW on irrigation day)
-            needs_irrigation = (irr_flag[i] > 0.5) and (depl_after_et[i] > raw[i])
+            needs_irrigation = (
+                (irr_flag[i] > 0.5) and (depl_after_et[i] > raw[i]) and (not blocked_by_interval)
+            )
             has_carryover = irr_continue[i] > 0.5
 
-            # Calculate target refill amount
-            target_amount = depl_after_et[i] * refill_factor
+            # Calculate target refill amount. `irr_depth > 0` prescribes a fixed
+            # discrete application depth per event; otherwise refill to
+            # `refill_frac` of the current depletion (default 1.1 = legacy
+            # refill-past-FC, < 1.0 leaves the profile below field capacity).
+            if irr_depth[i] > 0.0:
+                target_amount = irr_depth[i]
+            else:
+                target_amount = depl_after_et[i] * refill_frac[i]
 
             # First, handle carryover from previous day
             irr_waiting = next_day_irr[i]
@@ -419,6 +463,7 @@ def _run_loop_jit(
                 if potential_irr > max_irr_rate[i]:
                     potential_irr = max_irr_rate[i]
                 irr_sim[i] = potential_irr
+                event_fired[i] = 1.0
 
             # Set continuation flag for next day
             # Legacy behavior: irr_flag AND (max_irr_rate < target_amount)
@@ -429,6 +474,23 @@ def _run_loop_jit(
         # Update state for next iteration
         irr_continue = irr_continue_new
         next_day_irr = next_day_irr_new
+        # WP-C1: advance the return-interval clock, resetting on new events.
+        days_since_event = np.where(event_fired > 0.5, 0.0, days_since_event + 1.0)
+
+        # ================================================================
+        # 13b. PRESCRIBED-IRRIGATION OVERRIDE (diagnostic physics-bypass)
+        # Where a finite observed daily irrigation is supplied, it REPLACES the
+        # scheduler's computed amount for that field/day, unconditionally (the
+        # irr_status / cold / RAW gates do not apply to an exogenous series).
+        # NaN sentinel = "no prescription, keep the scheduler". This runs before
+        # the water balance applies irr_sim (step 15) and before prev_irr_sim is
+        # captured (step 19), so the override flows fully through the balance.
+        # This is a DIAGNOSTIC override only, never a production/calibration input.
+        # ================================================================
+        for i in range(n_fields):
+            pv = all_prescribed_irr[day_idx, i]
+            if not np.isnan(pv):
+                irr_sim[i] = pv
 
         # ================================================================
         # 14. GROUNDWATER SUBSIDY
@@ -564,6 +626,7 @@ def _run_loop_jit(
         out_gw_sim[day_idx, :] = gw_sim
         out_daw3[day_idx, :] = daw3
         out_zr[day_idx, :] = zr
+        out_depl_ze[day_idx, :] = depl_ze
 
     return (
         out_eta,
@@ -582,6 +645,7 @@ def _run_loop_jit(
         out_gw_sim,
         out_daw3,
         out_zr,
+        out_depl_ze,
         # Final state
         depl_root,
         depl_ze,
@@ -600,6 +664,7 @@ def run_daily_loop_fast(
     parameters: CalibrationParameters | None = None,
     properties: FieldProperties | None = None,
     cover_scaling: bool | None = None,
+    prescribed_irr: np.ndarray | None = None,
 ) -> tuple[DailyOutput, WaterBalanceState]:
     """Run daily water balance simulation using JIT-compiled loop.
 
@@ -619,6 +684,14 @@ def run_daily_loop_fast(
     properties : FieldProperties, optional
         Field properties. If not provided, uses swim_input.properties.
         Pass custom properties to use PEST++ calibrated values (awc, mad).
+    prescribed_irr : np.ndarray, optional
+        Diagnostic exogenous daily irrigation, shape ``(n_days, n_fields)`` in
+        mm/day. Where a value is finite it REPLACES the internal scheduler's
+        ``irr_sim`` for that field/day; ``NaN`` means "use the scheduler". If not
+        given here, it falls back to ``swim_input.get_prescribed_irr()`` (the h5
+        ``prescribed_irrigation/irr_mm`` group), and finally to an all-NaN array
+        (scheduler everywhere, i.e. baseline). This is a physics-bypass for
+        attribution experiments only — never a production or calibration input.
     Returns
     -------
     output : DailyOutput
@@ -628,6 +701,12 @@ def run_daily_loop_fast(
     """
     if cover_scaling is None:
         cover_scaling = getattr(swim_input, "cover_scaling", True)
+
+    # WP-C7 mad split: the FAO-56 stress depletion fraction p. None (the default
+    # for every existing project) -> -1.0 sentinel -> the loop reuses mad*taw for
+    # the Ks stress onset, reproducing the legacy single-mad behavior bit-for-bit.
+    sdf = getattr(swim_input, "stress_depletion_fraction", None)
+    stress_depl_frac = -1.0 if sdf is None else float(sdf)
 
     n_days = swim_input.n_days
     n_fields = swim_input.n_fields
@@ -644,6 +723,21 @@ def run_daily_loop_fast(
     all_srad = swim_input.get_time_series("srad").astype(np.float64)
     all_irr_flag = swim_input.get_irr_flag().astype(np.float64)
 
+    # Prescribed-irrigation override: explicit argument wins, then the h5 group,
+    # then an all-NaN array (baseline: scheduler everywhere). NaN is the sentinel
+    # for "no prescription this field/day", so numba stays nopython.
+    if prescribed_irr is None:
+        prescribed_irr = swim_input.get_prescribed_irr()
+    if prescribed_irr is None:
+        all_prescribed_irr = np.full((n_days, n_fields), np.nan, dtype=np.float64)
+    else:
+        all_prescribed_irr = np.asarray(prescribed_irr, dtype=np.float64)
+        if all_prescribed_irr.shape != (n_days, n_fields):
+            raise ValueError(
+                "prescribed_irr must have shape (n_days, n_fields) = "
+                f"{(n_days, n_fields)}, got {all_prescribed_irr.shape}"
+            )
+
     # Extract property arrays
     awc = props.awc.astype(np.float64)
     rew = props.rew.astype(np.float64)
@@ -652,6 +746,25 @@ def run_daily_loop_fast(
     zr_max = props.zr_max.astype(np.float64)
     zr_min = props.zr_min.astype(np.float64)
     mad = props.mad.astype(np.float64)
+    # WP-C1 scheduler-realism knobs. getattr fallbacks keep older FieldProperties
+    # (or hand-built ones) working with the legacy defaults (refill 1.1, no min
+    # interval, no fixed depth).
+    refill_frac_attr = getattr(props, "refill_frac", None)
+    refill_frac = (
+        refill_frac_attr.astype(np.float64)
+        if refill_frac_attr is not None
+        else np.full(n_fields, 1.1)
+    )
+    min_irr_days_attr = getattr(props, "min_irr_days", None)
+    min_irr_days = (
+        min_irr_days_attr.astype(np.float64)
+        if min_irr_days_attr is not None
+        else np.zeros(n_fields)
+    )
+    irr_depth_attr = getattr(props, "irr_depth", None)
+    irr_depth = (
+        irr_depth_attr.astype(np.float64) if irr_depth_attr is not None else np.zeros(n_fields)
+    )
     irr_status = props.irr_status.astype(np.float64)
     perennial = props.perennial.astype(np.float64)
     gw_status = props.gw_status.astype(np.float64)
@@ -735,6 +848,7 @@ def run_daily_loop_fast(
         out_gw_sim,
         out_daw3,
         out_zr,
+        out_depl_ze,
         final_depl_root,
         final_depl_ze,
         final_swe,
@@ -755,6 +869,7 @@ def run_daily_loop_fast(
         all_srad,
         all_irr_flag,
         all_f_sub,
+        all_prescribed_irr,
         awc,
         rew,
         tew,
@@ -762,6 +877,9 @@ def run_daily_loop_fast(
         zr_max,
         zr_min,
         mad,
+        refill_frac,
+        min_irr_days,
+        irr_depth,
         irr_status,
         perennial,
         gw_status,
@@ -775,6 +893,7 @@ def run_daily_loop_fast(
         kr_damp,
         ks_damp,
         max_irr_rate,
+        stress_depl_frac,
         depl_root_init,
         depl_ze_init,
         swe_init,
@@ -810,6 +929,7 @@ def run_daily_loop_fast(
     output.gw_sim = out_gw_sim
     output.daw3 = out_daw3
     output.zr = out_zr
+    output.depl_ze = out_depl_ze
     _check_finite_state_arrays(
         "run_daily_loop_fast/output",
         {
