@@ -551,19 +551,27 @@ def main():
     parser.add_argument(
         "--container",
         default=None,
-        help="Container path for BOTH calibration and evaluation. For Run 22 "
+        help="Container path for BOTH calibration and evaluation. REQUIRED for "
+        "calibration/evaluation runs (not for --summary-only). For Run 22 "
         "footing pass the run22-seeded ablation container (calibration group "
-        "already absent). Defaults to {data}/{project}.swim (the stale base).",
+        "already absent), e.g. {data}/5_Flux_Ensemble_run22ablation.swim. "
+        "There is deliberately no default: the tag defaults to 'run22', and "
+        "silently falling back to the stale base {data}/{project}.swim would "
+        "overwrite Run-22-labeled results on the wrong footing.",
     )
     args = parser.parse_args()
+
+    if not args.summary_only and args.container is None:
+        parser.error(
+            "--container is required for calibration/evaluation runs. Pass the "
+            "container matching the tag (Run 22 footing: the run22-seeded "
+            "ablation container, e.g. {data}/5_Flux_Ensemble_run22ablation.swim)."
+        )
 
     cfg = _load_config()
     results_root = os.path.join(cfg.project_ws, "results")
 
-    if args.container is not None:
-        container_path = args.container
-    else:
-        container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}.swim")
+    container_path = args.container
 
     tag = args.tag
     exp_dirs = {

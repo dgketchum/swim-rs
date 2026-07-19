@@ -216,3 +216,15 @@ class TestPairedDeltaSummary:
         df = wa._build_paired_delta_summary(paired_dirs, str(s), reps=500)
         assert set(df["scale"]) == {"daily"}
         assert len(df) == 4
+
+
+class TestCli:
+    def test_container_required_for_calibration_runs(self, wa, monkeypatch, capsys):
+        # The tag defaults to run22; without an explicit container a bare run
+        # would silently calibrate the stale base container into
+        # Run-22-labeled result dirs. The CLI must refuse instead.
+        monkeypatch.setattr("sys.argv", ["run_weighting_ablation.py"])
+        with pytest.raises(SystemExit) as exc:
+            wa.main()
+        assert exc.value.code == 2
+        assert "--container is required" in capsys.readouterr().err
