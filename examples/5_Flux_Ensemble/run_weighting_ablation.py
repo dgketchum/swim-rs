@@ -44,7 +44,9 @@ def _load_config():
     return cfg
 
 
-def run_calibration(cfg, experiment_id, experiment_spec, results_dir, debug_fields=None):
+def run_calibration(
+    cfg, experiment_id, experiment_spec, results_dir, debug_fields=None, container_path=None
+):
     from calibrate import run_pest_sequence
 
     cfg.etf_weighting_mode = experiment_spec["etf_weighting_mode"]
@@ -54,6 +56,7 @@ def run_calibration(cfg, experiment_id, experiment_spec, results_dir, debug_fiel
 
     print(f"\n{'=' * 80}")
     print(f"CALIBRATION: {experiment_id} (weighting_mode={cfg.etf_weighting_mode})")
+    print(f"Container: {container_path}")
     print(f"Results: {results_dir}")
     print(f"{'=' * 80}\n")
 
@@ -63,12 +66,14 @@ def run_calibration(cfg, experiment_id, experiment_spec, results_dir, debug_fiel
         results_dir,
         pdc_remove=False,
         debug_fields=debug_fields,
+        container_path=container_path,
     )
     elapsed = time.time() - t0
 
     runtime = {
         "experiment_id": experiment_id,
         "weighting_mode": cfg.etf_weighting_mode,
+        "container_path": container_path,
         "fixed_sd": cfg.etf_weighting_fixed_sd,
         "spread_floor": cfg.etf_weighting_spread_floor,
         "min_members": cfg.etf_weighting_min_members,
@@ -97,13 +102,18 @@ def _find_par_csv(results_dir, project):
     return None
 
 
-def run_evaluation(cfg, experiment_id, results_dir, mode="daily", debug_fields=None):
-    """Run canonical evaluation for one experiment.
+def run_evaluation(
+    cfg, experiment_id, results_dir, container_path, mode="daily", debug_fields=None
+):
+    """Run canonical evaluation for one experiment on the Run 22 footing.
 
     mode: 'daily' (volk source), 'monthly', or 'etf'.
+    The container is the same Run 22-footed container used for calibration, and
+    the flux reference is resolved from the TOML (Volk v2.1 daily_flux_files_2pt1)
+    via resolve_flux_dir — NOT the legacy daily_flux_files directory.
     When debug_fields is set, limits evaluation to that subset only.
     """
-    from evaluate import evaluate, evaluate_etf, evaluate_monthly, load_config
+    from evaluate import evaluate, evaluate_etf, evaluate_monthly, resolve_flux_dir
 
     from swimrs.container import SwimContainer
 
@@ -113,26 +123,23 @@ def run_evaluation(cfg, experiment_id, results_dir, mode="daily", debug_fields=N
         print(f"  WARNING: no par.csv found in {results_dir}, skipping evaluation")
         return
 
-    container_path = os.path.join(cfg.data_dir, f"{project}.swim")
     container = SwimContainer.open(container_path, mode="r")
-    flux_dir = os.path.join(cfg.data_dir, "daily_flux_files")
+    flux_dir = resolve_flux_dir(cfg)
 
     if debug_fields is not None:
         fids = [f for f in debug_fields if f in container.field_uids]
     else:
         fids = container.field_uids
 
-    eval_cfg = load_config()
-
     try:
         if mode == "monthly":
-            metrics = evaluate_monthly(eval_cfg, container, par_csv, fids, flux_dir)
+            metrics = evaluate_monthly(cfg, container, par_csv, fids, flux_dir)
             out_csv = os.path.join(results_dir, "evaluation_monthly_metrics.csv")
         elif mode == "etf":
-            metrics = evaluate_etf(eval_cfg, container, par_csv, fids)
+            metrics = evaluate_etf(cfg, container, par_csv, fids)
             out_csv = os.path.join(results_dir, "evaluation_etf_metrics.csv")
         else:
-            metrics = evaluate(eval_cfg, container, par_csv, fids, flux_dir, openet_source="volk")
+            metrics = evaluate(cfg, container, par_csv, fids, flux_dir, openet_source="volk")
             out_csv = os.path.join(results_dir, "evaluation_metrics.csv")
         metrics.to_csv(out_csv)
         print(f"  {experiment_id} {mode} metrics -> {out_csv}")
@@ -162,7 +169,16 @@ def _build_paired_deltas(e1_path, e2_path, summary_dir, label):
     e1, e2 = e1.loc[common], e2.loc[common]
 
     paired = pd.DataFrame(index=common)
-    for metric in ["r2_swim", "rmse_swim", "bias_swim", "r2", "rmse", "bias"]:
+    for metric in [
+        "r2_swim",
+        "rmse_swim",
+        "bias_swim",
+        "kge_swim",
+        "r2",
+        "rmse",
+        "bias",
+        "kge",
+    ]:
         e1_col = metric if metric in e1.columns else None
         e2_col = metric if metric in e2.columns else None
         if e1_col and e2_col:
@@ -221,37 +237,67 @@ def _build_weight_summary(exp_dir, summary_dir, exp_id):
     print(f"  Weight summary ({exp_id}): {out_path}")
 
 
-def _build_phi_summary(results_root, summary_dir):
-    """Parse phi.meas.csv from both runs and write phi_summary.csv."""
+PHI_REQUIRED_COLUMNS = ["iteration", "total_runs", "mean", "standard_deviation"]
+
+
+def _read_phi_iterations(phi_path):
+    """Read phi.meas.csv as one row per IES iteration, sorted by iteration.
+
+    Actual pestpp-ies schema: ``iteration,total_runs,mean,standard_deviation,
+    min,max,<realization columns...>`` — ROWS are iterations (0..noptmax), not
+    realizations. The per-iteration ensemble-mean phi is the ``mean`` column.
+    Raises on missing required columns, duplicate iterations, or a sequence
+    that is not contiguous from 0, rather than silently mislabeling
+    realization columns as iterations.
+    """
+    import pandas as pd
+
+    phi = pd.read_csv(phi_path)
+    missing = [c for c in PHI_REQUIRED_COLUMNS if c not in phi.columns]
+    if missing:
+        raise ValueError(f"{phi_path}: missing required phi columns {missing}")
+    phi["iteration"] = phi["iteration"].astype(int)
+    if phi["iteration"].duplicated().any():
+        raise ValueError(f"{phi_path}: duplicate phi iterations {sorted(phi['iteration'])}")
+    phi = phi.sort_values("iteration").reset_index(drop=True)
+    expected = list(range(len(phi)))
+    if list(phi["iteration"]) != expected:
+        raise ValueError(
+            f"{phi_path}: phi iterations not contiguous from 0: {list(phi['iteration'])}"
+        )
+    return phi
+
+
+def _build_phi_summary(exp_dirs, summary_dir):
+    """Parse phi.meas.csv from both runs and write phi_summary.csv.
+
+    Phi is weight-scale-confounded across weighting schemes and is retained
+    here as a descriptive convergence diagnostic only — it is NOT a
+    model-skill claim and must not be compared across arms as accuracy.
+    """
     import pandas as pd
 
     rows = []
-    for exp_id, tag in [
-        ("e1_spread", "ablation_e1_spread"),
-        ("e2_fixed_sd", "ablation_e2_fixed_sd"),
-    ]:
-        exp_dir = os.path.join(results_root, tag)
+    for exp_id, exp_dir in exp_dirs.items():
         phi_path = os.path.join(exp_dir, "5_Flux_Ensemble.phi.meas.csv")
         rt_path = os.path.join(exp_dir, "runtime.json")
 
         if not os.path.exists(phi_path):
             continue
 
-        phi = pd.read_csv(phi_path, index_col=0)
-        # phi.meas.csv: rows are realizations, columns are iterations
-        # Mean phi per iteration
-        iter_means = phi.mean(axis=0)
+        phi = _read_phi_iterations(phi_path)
         row = {"experiment_id": exp_id}
-        for j, val in enumerate(iter_means):
-            row[f"phi_iter_{j}"] = round(float(val), 1)
-        row["phi_initial"] = round(float(iter_means.iloc[0]), 1)
-        row["phi_final"] = round(float(iter_means.iloc[-1]), 1)
+        for it, val in zip(phi["iteration"], phi["mean"]):
+            row[f"phi_iter_{it}"] = round(float(val), 1)
+        row["phi_initial"] = round(float(phi["mean"].iloc[0]), 1)
+        row["phi_final"] = round(float(phi["mean"].iloc[-1]), 1)
         row["phi_reduction_pct"] = (
-            round(100 * (1 - iter_means.iloc[-1] / iter_means.iloc[0]), 1)
-            if iter_means.iloc[0] > 0
+            round(100 * (1 - phi["mean"].iloc[-1] / phi["mean"].iloc[0]), 3)
+            if phi["mean"].iloc[0] > 0
             else 0
         )
-        row["n_iterations"] = len(iter_means)
+        row["n_phi_records"] = len(phi)
+        row["nopt_iterations"] = int(phi["iteration"].iloc[-1])
 
         if os.path.exists(rt_path):
             with open(rt_path) as f:
@@ -267,16 +313,19 @@ def _build_phi_summary(results_root, summary_dir):
         print(f"  Phi summary: {out_path}")
 
 
-def _build_ablation_summary(results_root, summary_dir):
-    """Build single ablation_summary.csv with one row per experiment."""
+def _build_ablation_summary(exp_dirs, summary_dir):
+    """Build single ablation_summary.csv with one row per experiment.
+
+    Reports the paper's standard metric set (NSE [=r2 column], KGE, RMSE, bias)
+    as per-site cohort medians. The signed bias medians here are the
+    descriptive cohort-median MBE; the accuracy-oriented bias contrast (paired
+    absolute MBE) lives in paired_delta_summary.csv. Phi columns are excluded
+    (weight-scale-confounded across arms; see phi_summary.csv).
+    """
     import pandas as pd
 
     rows = []
-    for exp_id, tag in [
-        ("e1_spread", "ablation_e1_spread"),
-        ("e2_fixed_sd", "ablation_e2_fixed_sd"),
-    ]:
-        exp_dir = os.path.join(results_root, tag)
+    for exp_id, exp_dir in exp_dirs.items():
         row = {"experiment_id": exp_id}
 
         # Runtime
@@ -292,7 +341,7 @@ def _build_ablation_summary(results_root, summary_dir):
                 }
             )
 
-        # Daily metrics
+        # Daily metrics (r2 column IS the paper's NSE)
         daily_path = os.path.join(exp_dir, "evaluation_metrics.csv")
         if os.path.exists(daily_path):
             d = pd.read_csv(daily_path, index_col=0)
@@ -301,6 +350,8 @@ def _build_ablation_summary(results_root, summary_dir):
             row["daily_r2_median"] = round(valid.median(), 3)
             row["daily_rmse_median"] = round(d["rmse_swim"].dropna().median(), 3)
             row["daily_bias_median"] = round(d["bias_swim"].dropna().median(), 3)
+            if "kge_swim" in d.columns:
+                row["daily_kge_median"] = round(d["kge_swim"].dropna().median(), 3)
 
         # Monthly metrics
         monthly_path = os.path.join(exp_dir, "evaluation_monthly_metrics.csv")
@@ -311,14 +362,12 @@ def _build_ablation_summary(results_root, summary_dir):
             row["monthly_r2_median"] = round(valid.median(), 3)
             row["monthly_rmse_median"] = round(m["rmse_swim"].dropna().median(), 2)
             row["monthly_bias_median"] = round(m["bias_swim"].dropna().median(), 2)
+            if "kge_swim" in m.columns:
+                row["monthly_kge_median"] = round(m["kge_swim"].dropna().median(), 3)
 
-        # Phi
-        phi_path = os.path.join(exp_dir, "5_Flux_Ensemble.phi.meas.csv")
-        if os.path.exists(phi_path):
-            phi = pd.read_csv(phi_path, index_col=0)
-            iter_means = phi.mean(axis=0)
-            row["phi_initial"] = round(float(iter_means.iloc[0]), 1)
-            row["phi_final"] = round(float(iter_means.iloc[-1]), 1)
+        # Phi deliberately excluded here: weight-scale-confounded across arms.
+        # Corrected per-iteration values live in the explicitly diagnostic
+        # phi_summary.csv (_build_phi_summary).
 
         rows.append(row)
 
@@ -329,11 +378,92 @@ def _build_ablation_summary(results_root, summary_dir):
         print(f"  Ablation summary: {out_path}")
 
 
-def summarize_ablation(results_root):
+DELTA_SPECS = [
+    # (metric label, source column, delta definition, favorable direction, use_abs)
+    ("nse", "r2_swim", "nse_spread - nse_fixed_sd", "positive", False),
+    ("kge", "kge_swim", "kge_spread - kge_fixed_sd", "positive", False),
+    ("rmse", "rmse_swim", "rmse_spread - rmse_fixed_sd", "negative", False),
+    ("abs_mbe", "bias_swim", "abs(mbe_spread) - abs(mbe_fixed_sd)", "negative", True),
+]
+
+
+def _bootstrap_median_ci(deltas, reps, rng):
+    """95% site-bootstrap CI of the median paired delta (resamples sites)."""
+    import numpy as np
+
+    deltas = np.asarray(deltas, dtype=float)
+    n = len(deltas)
+    idx = rng.integers(0, n, size=(reps, n))
+    medians = np.median(deltas[idx], axis=1)
+    return float(np.percentile(medians, 2.5)), float(np.percentile(medians, 97.5))
+
+
+def _build_paired_delta_summary(exp_dirs, summary_dir, seed=42, reps=10000):
+    """Write paired_delta_summary.csv: paired spread-minus-fixed effects + CIs.
+
+    The primary ablation evidence: per-site paired deltas (spread − fixed_sd)
+    with deterministic 95% site-bootstrap intervals. Finite values are
+    filtered per metric; sites (not days) are resampled; the bias contrast is
+    accuracy-oriented absolute MBE, |MBE_spread| − |MBE_fixed| (signed
+    cohort-median MBE stays in ablation_summary.csv as a descriptive
+    quantity). No win-rate fields.
+
+    One rng is seeded per scale and drawn sequentially across the metrics in
+    DELTA_SPECS order — that order is load-bearing for reproducibility of the
+    archived intervals; do not reorder DELTA_SPECS.
+    """
+    import numpy as np
+    import pandas as pd
+
+    rows = []
+    for scale, fname in [
+        ("daily", "evaluation_metrics.csv"),
+        ("monthly", "evaluation_monthly_metrics.csv"),
+    ]:
+        e1_path = os.path.join(exp_dirs["e1_spread"], fname)
+        e2_path = os.path.join(exp_dirs["e2_fixed_sd"], fname)
+        if not (os.path.exists(e1_path) and os.path.exists(e2_path)):
+            print(f"  Skipping paired delta summary ({scale}) — missing evaluation files")
+            continue
+        e1 = pd.read_csv(e1_path, index_col=0)
+        e2 = pd.read_csv(e2_path, index_col=0)
+        common = e1.index.intersection(e2.index)
+        e1, e2 = e1.loc[common], e2.loc[common]
+
+        rng = np.random.default_rng(seed)
+        for metric, col, definition, favorable, use_abs in DELTA_SPECS:
+            a = e1[col].abs() if use_abs else e1[col]
+            b = e2[col].abs() if use_abs else e2[col]
+            finite = np.isfinite(a.values) & np.isfinite(b.values)
+            deltas = (a[finite] - b[finite]).values
+            lo, hi = _bootstrap_median_ci(deltas, reps, rng)
+            rows.append(
+                {
+                    "scale": scale,
+                    "metric": metric,
+                    "n_sites": int(finite.sum()),
+                    "delta_definition": definition,
+                    "favorable_direction": favorable,
+                    "median_delta": float(np.median(deltas)),
+                    "mean_delta": float(np.mean(deltas)),
+                    "bootstrap_seed": seed,
+                    "bootstrap_reps": reps,
+                    "ci_lower": lo,
+                    "ci_upper": hi,
+                }
+            )
+
+    if rows:
+        df = pd.DataFrame(rows)
+        out_path = os.path.join(summary_dir, "paired_delta_summary.csv")
+        df.to_csv(out_path, index=False)
+        print(f"  Paired delta summary: {out_path}")
+        return df
+    return None
+
+
+def summarize_ablation(e1_dir, e2_dir, summary_dir):
     """Produce all paired comparison and diagnostic artifacts for E1 vs E2."""
-    e1_dir = os.path.join(results_root, "ablation_e1_spread")
-    e2_dir = os.path.join(results_root, "ablation_e2_fixed_sd")
-    summary_dir = os.path.join(results_root, "ablation_summary")
     os.makedirs(summary_dir, exist_ok=True)
 
     # Paired deltas: daily, monthly, ETf
@@ -353,11 +483,30 @@ def summarize_ablation(results_root):
     _build_weight_summary(e1_dir, summary_dir, "e1_spread")
     _build_weight_summary(e2_dir, summary_dir, "e2_fixed_sd")
 
-    # Phi convergence summary
-    _build_phi_summary(results_root, summary_dir)
+    exp_dirs = {"e1_spread": e1_dir, "e2_fixed_sd": e2_dir}
+
+    # Phi convergence summary (descriptive diagnostic only)
+    _build_phi_summary(exp_dirs, summary_dir)
 
     # One-row-per-experiment ablation summary
-    _build_ablation_summary(results_root, summary_dir)
+    _build_ablation_summary(exp_dirs, summary_dir)
+
+    # Paired uncertainty table (primary ablation evidence)
+    _build_paired_delta_summary(exp_dirs, summary_dir)
+
+
+def regenerate_summaries(e1_dir, e2_dir, summary_dir):
+    """Regenerate only the derived summary CSVs from existing arm outputs.
+
+    Rebuilds phi_summary.csv, ablation_summary.csv, and
+    paired_delta_summary.csv. Does NOT touch calibration or evaluation
+    outputs, the raw paired_site_deltas_*.csv files, or the weight summaries.
+    """
+    os.makedirs(summary_dir, exist_ok=True)
+    exp_dirs = {"e1_spread": e1_dir, "e2_fixed_sd": e2_dir}
+    _build_phi_summary(exp_dirs, summary_dir)
+    _build_ablation_summary(exp_dirs, summary_dir)
+    _build_paired_delta_summary(exp_dirs, summary_dir)
 
 
 def main():
@@ -384,10 +533,43 @@ def main():
         default=None,
         help="Run only one experiment (e1=spread, e2=fixed_sd)",
     )
+    parser.add_argument(
+        "--tag",
+        default="run22",
+        help="Results-dir tag: outputs land in ablation_{tag}_{exp}/ and "
+        "ablation_{tag}_summary/ (default 'run22'). The untagged April dirs "
+        "(ablation_e1_spread etc.) are the stale reference and must not be touched.",
+    )
+    parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Regenerate only phi_summary.csv, ablation_summary.csv, and "
+        "paired_delta_summary.csv from existing arm outputs. No calibration, "
+        "no evaluation; raw paired_site_deltas_*.csv and weight summaries "
+        "are left untouched.",
+    )
+    parser.add_argument(
+        "--container",
+        default=None,
+        help="Container path for BOTH calibration and evaluation. For Run 22 "
+        "footing pass the run22-seeded ablation container (calibration group "
+        "already absent). Defaults to {data}/{project}.swim (the stale base).",
+    )
     args = parser.parse_args()
 
     cfg = _load_config()
     results_root = os.path.join(cfg.project_ws, "results")
+
+    if args.container is not None:
+        container_path = args.container
+    else:
+        container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}.swim")
+
+    tag = args.tag
+    exp_dirs = {
+        exp_id: os.path.join(results_root, f"ablation_{tag}_{exp_id}") for exp_id in EXPERIMENTS
+    }
+    summary_dir = os.path.join(results_root, f"ablation_{tag}_summary")
 
     debug_fields = None
     if args.debug_fields:
@@ -397,6 +579,14 @@ def main():
         cfg.realizations = 20
         cfg.workers = min(10, cfg.workers)
         print("DRY RUN: realizations=20, reduced workers")
+
+    if args.summary_only:
+        print(f"Summary-only: regenerating derived CSVs -> {summary_dir}")
+        regenerate_summaries(exp_dirs["e1_spread"], exp_dirs["e2_fixed_sd"], summary_dir)
+        return
+
+    print(f"Container: {container_path}")
+    print(f"Tag: {tag}  (summary -> {summary_dir})")
 
     # Determine which experiments to run
     run_ids = list(EXPERIMENTS.keys())
@@ -408,23 +598,33 @@ def main():
     # Phase 1: Calibration
     if not args.skip_calibration:
         for exp_id in run_ids:
-            exp_dir = os.path.join(results_root, f"ablation_{exp_id}")
-            run_calibration(cfg, exp_id, EXPERIMENTS[exp_id], exp_dir, debug_fields)
+            run_calibration(
+                cfg,
+                exp_id,
+                EXPERIMENTS[exp_id],
+                exp_dirs[exp_id],
+                debug_fields,
+                container_path=container_path,
+            )
 
     # Phase 2: Evaluation (daily + monthly + ETf)
     for exp_id in run_ids:
-        exp_dir = os.path.join(results_root, f"ablation_{exp_id}")
+        exp_dir = exp_dirs[exp_id]
         if not os.path.exists(exp_dir):
             print(f"  Skipping evaluation for {exp_id} (no results dir)")
             continue
         print(f"\nEvaluating {exp_id}...")
-        run_evaluation(cfg, exp_id, exp_dir, mode="daily", debug_fields=debug_fields)
-        run_evaluation(cfg, exp_id, exp_dir, mode="monthly", debug_fields=debug_fields)
-        run_evaluation(cfg, exp_id, exp_dir, mode="etf", debug_fields=debug_fields)
+        run_evaluation(
+            cfg, exp_id, exp_dir, container_path, mode="daily", debug_fields=debug_fields
+        )
+        run_evaluation(
+            cfg, exp_id, exp_dir, container_path, mode="monthly", debug_fields=debug_fields
+        )
+        run_evaluation(cfg, exp_id, exp_dir, container_path, mode="etf", debug_fields=debug_fields)
 
     # Phase 3: Summary
     print("\nSummarizing ablation...")
-    summarize_ablation(results_root)
+    summarize_ablation(exp_dirs["e1_spread"], exp_dirs["e2_fixed_sd"], summary_dir)
 
 
 if __name__ == "__main__":
