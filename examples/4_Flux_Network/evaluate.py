@@ -35,6 +35,13 @@ from swimrs.swim.config import ProjectConfig
 # exclusions can be added without ad hoc filters elsewhere.
 EXCLUDED_SITES = {"MB_Pch"}
 
+# Minimum number of paired observations required to compute per-site metrics.
+# Used as the single source of truth for both the metric routine (calc_metrics)
+# and every admission gate (daily, monthly, ETf), so a site can never be
+# admitted with too few points to score — which previously left NaN metric rows
+# in the monthly output (monthly gate was 6 while calc_metrics required 10).
+MIN_OBS_FOR_METRICS = 10
+
 
 def apply_exclusions(fids):
     """Filter site list through the canonical exclusion policy."""
@@ -159,19 +166,34 @@ def load_ssebop_etf(container, fid):
 
 
 def calc_metrics(obs, mod):
-    """Calculate R2, Pearson r, RMSE, bias between obs and mod arrays."""
+    """Metrics between obs and mod arrays.
+
+    Returns NSE (1-SSE/SST; stored under key ``r2`` for downstream compatibility),
+    Pearson ``r``, ``rmse``, MBE (stored under ``bias``), and ``kge`` (KGE-2009).
+    Below ``MIN_OBS_FOR_METRICS`` finite pairs every metric is NaN.
+    """
     mask = np.isfinite(obs) & np.isfinite(mod)
     obs, mod = obs[mask], mod[mask]
-    if len(obs) < 10:
-        return {"n": len(obs), "r2": np.nan, "r": np.nan, "rmse": np.nan, "bias": np.nan}
+    if len(obs) < MIN_OBS_FOR_METRICS:
+        return {
+            "n": len(obs),
+            "r2": np.nan,
+            "r": np.nan,
+            "rmse": np.nan,
+            "bias": np.nan,
+            "kge": np.nan,
+        }
     r, _ = stats.pearsonr(obs, mod)
     r2 = r2_score(obs, mod)
     rmse = np.sqrt(mean_squared_error(obs, mod))
     bias = float((mod - obs).mean())
-    return {"n": len(obs), "r2": r2, "r": r, "rmse": rmse, "bias": bias}
+    alpha = np.std(mod) / np.std(obs) if np.std(obs) > 0 else np.nan
+    beta = np.mean(mod) / np.mean(obs) if np.mean(obs) > 0 else np.nan
+    kge = 1.0 - np.sqrt((r - 1.0) ** 2 + (alpha - 1.0) ** 2 + (beta - 1.0) ** 2)
+    return {"n": len(obs), "r2": r2, "r": r, "rmse": rmse, "bias": bias, "kge": kge}
 
 
-def evaluate(cfg, container, par_csv, fids, flux_dir):
+def evaluate(cfg, container, par_csv, fids, flux_dir, out_dir=None):
     """Run calibrated model and evaluate against flux tower ET and SSEBop NHM.
 
     Both SWIM and SSEBop are scored on the exact same set of days per site
@@ -180,6 +202,7 @@ def evaluate(cfg, container, par_csv, fids, flux_dir):
 
     Returns DataFrame with per-field metrics for SWIM and SSEBop NHM.
     """
+    out_dir = out_dir or os.path.join(cfg.project_ws, "results")
     fids = apply_exclusions(fids)
     print(f"Evaluating {len(fids)} fields from {par_csv}")
 
@@ -192,7 +215,11 @@ def evaluate(cfg, container, par_csv, fids, flux_dir):
     model_results = run_calibrated_model(cfg, container, fids, calibrated_params)
 
     rows = []
-    excluded = []
+    # Seed with the canonical policy exclusions (dropped by apply_exclusions
+    # before the loop) so the ledger reconciles: configured - excluded = scored.
+    excluded = [
+        {"site": s, "reason": "canonical_exclusion_data_quality"} for s in sorted(EXCLUDED_SITES)
+    ]
     for fid in fids:
         flux_et = load_flux_et(fid, flux_dir)
         if flux_et.empty:
@@ -210,8 +237,9 @@ def evaluate(cfg, container, par_csv, fids, flux_dir):
 
         # Common dates between model and flux
         common = swim_et.index.intersection(flux_et.index)
-        if len(common) < 10:
+        if len(common) < MIN_OBS_FOR_METRICS:
             print(f"  {fid}: only {len(common)} overlapping days, skipping")
+            excluded.append({"site": fid, "reason": "below_min_overlapping_days"})
             continue
 
         obs = flux_et.loc[common].values
@@ -232,16 +260,16 @@ def evaluate(cfg, container, par_csv, fids, flux_dir):
 
         row = {"fid": fid, "n": n_paired}
 
-        if n_paired >= 10:
+        if n_paired >= MIN_OBS_FOR_METRICS:
             m = calc_metrics(obs[paired_mask], swim_vals[paired_mask])
-            for k in ["r2", "r", "rmse", "bias"]:
+            for k in ["r2", "r", "rmse", "bias", "kge"]:
                 row[f"{k}_swim"] = m[k]
 
             m = calc_metrics(obs[paired_mask], ssebop_vals[paired_mask])
-            for k in ["r2", "r", "rmse", "bias"]:
+            for k in ["r2", "r", "rmse", "bias", "kge"]:
                 row[f"{k}_ssebop"] = m[k]
         else:
-            for k in ["r2", "r", "rmse", "bias"]:
+            for k in ["r2", "r", "rmse", "bias", "kge"]:
                 row[f"{k}_swim"] = np.nan
                 row[f"{k}_ssebop"] = np.nan
 
@@ -249,9 +277,9 @@ def evaluate(cfg, container, par_csv, fids, flux_dir):
 
         r2s = row.get("r2_swim", np.nan)
         r2b = row.get("r2_ssebop", np.nan)
-        print(f"  {fid}: n_paired={n_paired:>5d}  R2_swim={r2s:.3f}  R2_ssebop={r2b:.3f}")
+        print(f"  {fid}: n_paired={n_paired:>5d}  NSE_swim={r2s:.3f}  NSE_ssebop={r2b:.3f}")
 
-    write_excluded_sites(excluded, os.path.join(cfg.project_ws, "results"))
+    write_excluded_sites(excluded, out_dir)
 
     if not rows:
         print("No fields with sufficient data for evaluation.")
@@ -267,14 +295,15 @@ def evaluate(cfg, container, par_csv, fids, flux_dir):
     print(f"PAIRED AGGREGATE ({len(common_df)} fields, both models on identical days)")
     print("=" * 80)
     header = f"{'model':<12}"
-    for stat in ["r2", "r", "rmse", "bias"]:
-        header += f"  {stat + '_mean':>10}  {stat + '_med':>10}"
+    for stat in ["r2", "r", "rmse", "bias", "kge"]:
+        disp = "nse" if stat == "r2" else stat
+        header += f"  {disp + '_mean':>10}  {disp + '_med':>10}"
     print(header)
     print("-" * len(header))
 
     for model_name in ["swim", "ssebop"]:
         line = f"{model_name:<12}"
-        for stat in ["r2", "r", "rmse", "bias"]:
+        for stat in ["r2", "r", "rmse", "bias", "kge"]:
             col = f"{stat}_{model_name}"
             if col in common_df.columns:
                 vals = common_df[col].dropna()
@@ -283,15 +312,10 @@ def evaluate(cfg, container, par_csv, fids, flux_dir):
                 line += f"  {'n/a':>10}  {'n/a':>10}"
         print(line)
 
-    wins = int((common_df["r2_swim"] > common_df["r2_ssebop"]).sum())
-    n = len(common_df)
-    if n:
-        print(f"\nSWIM daily win rate (R2): {wins}/{n} = {100 * wins / n:.0f}%")
-
     return metrics_df
 
 
-def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
+def evaluate_monthly(cfg, container, par_csv, fids, flux_dir, out_dir=None):
     """Monthly aggregation of ET evaluation with strictly paired months.
 
     Intersects daily indices first, restricts every series to flux-valid days,
@@ -299,6 +323,7 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
     set. Only months with at least 20 valid daily flux observations are kept.
     Both SWIM and SSEBop are scored on the exact same set of months per site.
     """
+    out_dir = out_dir or os.path.join(cfg.project_ws, "results")
     fids = apply_exclusions(fids)
     print(f"Monthly evaluation: {len(fids)} fields from {par_csv}")
 
@@ -311,7 +336,11 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
     model_results = run_calibrated_model(cfg, container, fids, calibrated_params)
 
     rows = []
-    excluded = []
+    # Seed with the canonical policy exclusions so the monthly ledger reconciles:
+    # configured - excluded = scored (109).
+    excluded = [
+        {"site": s, "reason": "canonical_exclusion_data_quality"} for s in sorted(EXCLUDED_SITES)
+    ]
     for fid in fids:
         flux_et = load_flux_et(fid, flux_dir)
         if flux_et.empty:
@@ -329,6 +358,7 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
         # Intersect daily indices first, then aggregate to monthly
         daily_common = swim_et.index.intersection(flux_et.index)
         if len(daily_common) < 30:
+            excluded.append({"site": fid, "reason": "below_30_paired_days"})
             continue
 
         swim_daily = swim_et.loc[daily_common]
@@ -360,28 +390,31 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
         paired_months = all_idx[paired_mask]
         n_paired = len(paired_months)
 
-        if n_paired < 6:
+        if n_paired < MIN_OBS_FOR_METRICS:
+            excluded.append(
+                {"site": fid, "reason": f"below_monthly_metric_floor_{MIN_OBS_FOR_METRICS}mo"}
+            )
             continue
 
         obs = flux_monthly.loc[paired_months].values
         row = {"fid": fid, "n_months": n_paired}
 
         m = calc_metrics(obs, swim_monthly.reindex(paired_months).values)
-        for k in ["r2", "r", "rmse", "bias"]:
+        for k in ["r2", "r", "rmse", "bias", "kge"]:
             row[f"{k}_swim"] = m[k]
 
         m = calc_metrics(obs, ssebop_on_idx.loc[paired_months].values)
-        for k in ["r2", "r", "rmse", "bias"]:
+        for k in ["r2", "r", "rmse", "bias", "kge"]:
             row[f"{k}_ssebop"] = m[k]
 
         rows.append(row)
         print(
             f"  {fid}: n_months_paired={n_paired:>4d}  "
-            f"R2_swim={row['r2_swim']:.3f}  R2_ssebop={row['r2_ssebop']:.3f}  "
+            f"NSE_swim={row['r2_swim']:.3f}  NSE_ssebop={row['r2_ssebop']:.3f}  "
             f"RMSE_swim={row['rmse_swim']:.2f}  RMSE_ssebop={row['rmse_ssebop']:.2f}"
         )
 
-    write_excluded_sites(excluded, os.path.join(cfg.project_ws, "results"))
+    write_excluded_sites(excluded, out_dir, filename="evaluation_sites_excluded_monthly.csv")
 
     if not rows:
         print("No fields with sufficient monthly data.")
@@ -393,14 +426,15 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
     print(f"PAIRED MONTHLY AGGREGATE ({len(metrics_df)} fields, identical months)")
     print("=" * 80)
     header = f"{'model':<12}"
-    for stat in ["r2", "r", "rmse", "bias"]:
-        header += f"  {stat + '_mean':>10}  {stat + '_med':>10}"
+    for stat in ["r2", "r", "rmse", "bias", "kge"]:
+        disp = "nse" if stat == "r2" else stat
+        header += f"  {disp + '_mean':>10}  {disp + '_med':>10}"
     print(header)
     print("-" * len(header))
 
     for model_name in ["swim", "ssebop"]:
         line = f"{model_name:<12}"
-        for stat in ["r2", "r", "rmse", "bias"]:
+        for stat in ["r2", "r", "rmse", "bias", "kge"]:
             col = f"{stat}_{model_name}"
             if col in metrics_df.columns:
                 vals = metrics_df[col].dropna()
@@ -408,13 +442,6 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
             else:
                 line += f"  {'n/a':>10}  {'n/a':>10}"
         print(line)
-
-    has_both = metrics_df["r2_swim"].notna() & metrics_df["r2_ssebop"].notna()
-    paired = metrics_df.loc[has_both]
-    wins = int((paired["r2_swim"] > paired["r2_ssebop"]).sum())
-    n = len(paired)
-    if n:
-        print(f"\nSWIM monthly win rate (R2): {wins}/{n} = {100 * wins / n:.0f}%")
 
     return metrics_df
 
@@ -444,18 +471,18 @@ def evaluate_etf(cfg, container, par_csv, fids):
 
         obs_etf = etf_series.dropna()
         obs_etf = obs_etf[obs_etf > 0]
-        if len(obs_etf) < 10:
+        if len(obs_etf) < MIN_OBS_FOR_METRICS:
             continue
 
         common = swim_etf.index.intersection(obs_etf.index)
-        if len(common) < 10:
+        if len(common) < MIN_OBS_FOR_METRICS:
             continue
 
         s = swim_etf.loc[common].values
         o = obs_etf.loc[common].values
         valid = np.isfinite(s) & np.isfinite(o)
         s, o = s[valid], o[valid]
-        if len(s) < 10:
+        if len(s) < MIN_OBS_FOR_METRICS:
             continue
 
         m = calc_metrics(o, s)
@@ -472,7 +499,7 @@ def evaluate_etf(cfg, container, par_csv, fids):
     print("=" * 70)
     print(
         f"  Fields: {len(df)}  "
-        f"R2_mean={df['r2'].mean():.3f}  R2_med={df['r2'].median():.3f}  "
+        f"NSE_mean={df['r2'].mean():.3f}  NSE_med={df['r2'].median():.3f}  "
         f"RMSE_mean={df['rmse'].mean():.3f}  bias_mean={df['bias'].mean():.3f}"
     )
 
@@ -480,10 +507,10 @@ def evaluate_etf(cfg, container, par_csv, fids):
     ranked = df.sort_values("r2")
     print("\nWorst 10 fields:")
     for fid, row in ranked.head(10).iterrows():
-        print(f"  {fid:<20} R2={row['r2']:.3f}  RMSE={row['rmse']:.3f}")
+        print(f"  {fid:<20} NSE={row['r2']:.3f}  RMSE={row['rmse']:.3f}")
     print("\nBest 10 fields:")
     for fid, row in ranked.tail(10).iterrows():
-        print(f"  {fid:<20} R2={row['r2']:.3f}  RMSE={row['rmse']:.3f}")
+        print(f"  {fid:<20} NSE={row['r2']:.3f}  RMSE={row['rmse']:.3f}")
 
     return df
 
@@ -523,18 +550,27 @@ if __name__ == "__main__":
         default=None,
         help="Override container path (default: derived from config)",
     )
+    parser.add_argument(
+        "--out-dir",
+        type=str,
+        default=None,
+        help="Directory for output metrics/excluded CSVs (default: results/). "
+        "Use a tagged dir (e.g. results/julyphysics) to avoid clobbering an "
+        "archived top-level run.",
+    )
     args = parser.parse_args()
 
     cfg = load_config()
     flux_dir = cfg.flux_dir
-    results_dir = os.path.join(cfg.project_ws, "results")
+    par_search_dir = os.path.join(cfg.project_ws, "results")
+    out_dir = args.out_dir or par_search_dir
 
     if args.par_csv:
         par_csv = args.par_csv
     else:
-        par_csv = find_par_csv(results_dir, cfg.project_name)
+        par_csv = find_par_csv(par_search_dir, cfg.project_name)
     if par_csv is None:
-        raise FileNotFoundError(f"No .par.csv found in {results_dir}")
+        raise FileNotFoundError(f"No .par.csv found in {par_search_dir}")
     print(f"Using parameters: {par_csv}")
 
     if args.container:
@@ -551,15 +587,15 @@ if __name__ == "__main__":
 
     try:
         if args.monthly:
-            metrics = evaluate_monthly(cfg, container, par_csv, fids, flux_dir)
-            out_csv = os.path.join(results_dir, "evaluation_monthly_metrics.csv")
+            metrics = evaluate_monthly(cfg, container, par_csv, fids, flux_dir, out_dir=out_dir)
+            out_csv = os.path.join(out_dir, "evaluation_monthly_metrics.csv")
         elif args.etf:
             metrics = evaluate_etf(cfg, container, par_csv, fids)
-            out_csv = os.path.join(results_dir, "evaluation_etf_metrics.csv")
+            out_csv = os.path.join(out_dir, "evaluation_etf_metrics.csv")
         else:
-            metrics = evaluate(cfg, container, par_csv, fids, flux_dir)
-            out_csv = os.path.join(results_dir, "evaluation_metrics.csv")
-        os.makedirs(results_dir, exist_ok=True)
+            metrics = evaluate(cfg, container, par_csv, fids, flux_dir, out_dir=out_dir)
+            out_csv = os.path.join(out_dir, "evaluation_metrics.csv")
+        os.makedirs(out_dir, exist_ok=True)
         metrics.to_csv(out_csv)
         print(f"\nMetrics saved to {out_csv}")
     finally:
