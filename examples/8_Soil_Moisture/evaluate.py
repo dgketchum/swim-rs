@@ -81,8 +81,8 @@ PAIRS = [
 ]
 
 
-def _load_config() -> ProjectConfig:
-    conf = HERE / "8_Soil_Moisture.toml"
+def _load_config(config_path=None) -> ProjectConfig:
+    conf = Path(config_path) if config_path else HERE / "8_Soil_Moisture.toml"
     cfg = ProjectConfig()
     if os.path.isdir("/data/ssd2/swim"):
         cfg.read_config(str(conf))
@@ -218,9 +218,12 @@ def main() -> None:
     ap.add_argument("--par-csv", required=True, help="Calibrated par.csv (…3.par.csv)")
     ap.add_argument("--out-dir", default=str(HERE / "results"), help="Output directory")
     ap.add_argument("--no-figures", action="store_true", help="Skip per-site figures")
+    ap.add_argument(
+        "--config", default=None, help="Override config TOML (default: 8_Soil_Moisture.toml)"
+    )
     args = ap.parse_args()
 
-    cfg = _load_config()
+    cfg = _load_config(args.config)
     sites = pd.read_csv(SITES_CSV)
     fids = sites["site_id"].astype(str).tolist()
     theta_by_fid = dict(zip(sites["site_id"].astype(str), sites["theta_csv"]))
@@ -269,6 +272,9 @@ def main() -> None:
                     pearson=round(pearsonr(d[ycol], d[mcol])[0], 3),
                     spearman=round(spearmanr(d[ycol], d[mcol])[0], 3),
                     anom_r=round(pearsonr(an_o, an_m)[0], 3) if len(an_m) > 30 else np.nan,
+                    std_ratio=round(d[mcol].std() / d[ycol].std(), 3)
+                    if d[ycol].std() > 0
+                    else np.nan,
                 )
             )
 
@@ -314,11 +320,11 @@ def main() -> None:
             sub = res[(res.model_var == mcol) & (res.obs_var == ycol)]
             if sub.empty:
                 continue
-            med = sub[["pearson", "spearman", "anom_r"]].median().round(3)
+            med = sub[["pearson", "spearman", "anom_r", "std_ratio"]].median().round(3)
             print(
                 f"  [{lbl:<26}] {mcol} vs {ycol}: "
                 f"n_sites={len(sub)}  pearson={med.pearson}  "
-                f"spearman={med.spearman}  anom_r={med.anom_r}"
+                f"spearman={med.spearman}  anom_r={med.anom_r}  std_ratio={med.std_ratio}"
             )
 
         # Irrigation split (authoritative labels from the water-balance algorithm,
@@ -326,12 +332,12 @@ def main() -> None:
         if DIAG_CSV.exists():
             irr = pd.read_csv(DIAG_CSV).set_index("site_id")["irrigated"]
             res2 = res.assign(irrigated=res.site_id.map(irr))
-            print("\n--- median by pairing x irrigation (pearson / anom_r) ---")
+            print("\n--- median by pairing x irrigation (pearson / anom_r / std_ratio) ---")
             for mcol, ycol, lbl in PAIRS:
                 sub = res2[(res2.model_var == mcol) & (res2.obs_var == ycol)]
                 if sub.empty or sub.irrigated.isna().all():
                     continue
-                g = sub.groupby("irrigated")[["pearson", "anom_r"]].median().round(3)
+                g = sub.groupby("irrigated")[["pearson", "anom_r", "std_ratio"]].median().round(3)
                 print(f"\n  [{lbl}] {mcol} vs {ycol}")
                 print(g.to_string().replace("\n", "\n    "))
     print(f"\nwrote {out_csv}")

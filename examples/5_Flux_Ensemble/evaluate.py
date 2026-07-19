@@ -57,9 +57,9 @@ VOLK_COLUMN_MAP = {
 }
 
 
-def load_config():
+def load_config(config_path=None):
     project_dir = Path(__file__).resolve().parent
-    conf = project_dir / "5_Flux_Ensemble.toml"
+    conf = Path(config_path) if config_path else project_dir / "5_Flux_Ensemble.toml"
     cfg = ProjectConfig()
     if os.path.isdir("/data/ssd2/swim"):
         cfg.read_config(str(conf), calibrate=True)
@@ -208,16 +208,26 @@ def load_volk_openet_et(fid, openet_daily_dir):
 
 
 def calc_metrics(obs, mod):
-    """Calculate R2, Pearson r, RMSE, bias between obs and mod arrays."""
+    """Calculate R2, Pearson r, RMSE, bias, KGE between obs and mod arrays."""
     mask = np.isfinite(obs) & np.isfinite(mod)
     obs, mod = obs[mask], mod[mask]
     if len(obs) < 10:
-        return {"n": len(obs), "r2": np.nan, "r": np.nan, "rmse": np.nan, "bias": np.nan}
+        return {
+            "n": len(obs),
+            "r2": np.nan,
+            "r": np.nan,
+            "rmse": np.nan,
+            "bias": np.nan,
+            "kge": np.nan,
+        }
     r, _ = stats.pearsonr(obs, mod)
     r2 = r2_score(obs, mod)
     rmse = np.sqrt(mean_squared_error(obs, mod))
     bias = float((mod - obs).mean())
-    return {"n": len(obs), "r2": r2, "r": r, "rmse": rmse, "bias": bias}
+    alpha = np.std(mod) / np.std(obs) if np.std(obs) > 0 else np.nan
+    beta = np.mean(mod) / np.mean(obs) if np.mean(obs) > 0 else np.nan
+    kge = 1.0 - np.sqrt((r - 1.0) ** 2 + (alpha - 1.0) ** 2 + (beta - 1.0) ** 2)
+    return {"n": len(obs), "r2": r2, "r": r, "rmse": rmse, "bias": bias, "kge": kge}
 
 
 def _get_diy_openet(container, fid, irr_data, etref):
@@ -354,14 +364,14 @@ def evaluate(cfg, container, par_csv, fids, flux_dir, openet_source="diy"):
 
         if n_paired >= 10:
             m = calc_metrics(obs[paired_mask], swim_vals[paired_mask])
-            for k in ["r2", "r", "rmse", "bias"]:
+            for k in ["r2", "r", "rmse", "bias", "kge"]:
                 row[f"{k}_swim"] = m[k]
 
             m = calc_metrics(obs[paired_mask], ens_vals[paired_mask])
-            for k in ["r2", "r", "rmse", "bias"]:
+            for k in ["r2", "r", "rmse", "bias", "kge"]:
                 row[f"{k}_ensemble"] = m[k]
         else:
-            for k in ["r2", "r", "rmse", "bias"]:
+            for k in ["r2", "r", "rmse", "bias", "kge"]:
                 row[f"{k}_swim"] = np.nan
                 row[f"{k}_ensemble"] = np.nan
 
@@ -369,7 +379,7 @@ def evaluate(cfg, container, par_csv, fids, flux_dir, openet_source="diy"):
         # SWIM is re-scored per model so swim-vs-ptjpl uses the same days as ptjpl-vs-flux.
         for model_name in OPEN_SOURCE_MODELS:
             if model_name not in et_daily_by_model:
-                for k in ["r2", "r", "rmse", "bias"]:
+                for k in ["r2", "r", "rmse", "bias", "kge"]:
                     row[f"{k}_{model_name}"] = np.nan
                     row[f"r2_swim_vs_{model_name}"] = np.nan
                 continue
@@ -382,10 +392,10 @@ def evaluate(cfg, container, par_csv, fids, flux_dir, openet_source="diy"):
                     obs[model_paired], swim_vals[model_paired]
                 )
             else:
-                m = {"r2": np.nan, "r": np.nan, "rmse": np.nan, "bias": np.nan}
+                m = {"r2": np.nan, "r": np.nan, "rmse": np.nan, "bias": np.nan, "kge": np.nan}
                 row[f"r2_swim_vs_{model_name}"] = np.nan
 
-            for k in ["r2", "r", "rmse", "bias"]:
+            for k in ["r2", "r", "rmse", "bias", "kge"]:
                 row[f"{k}_{model_name}"] = m[k]
 
         rows.append(row)
@@ -411,14 +421,14 @@ def evaluate(cfg, container, par_csv, fids, flux_dir, openet_source="diy"):
     print(f"PAIRED AGGREGATE ({len(common_df)} fields, SWIM+ensemble on identical days)")
     print("=" * 80)
     header = f"{'model':<12}"
-    for stat in ["r2", "r", "rmse", "bias"]:
+    for stat in ["r2", "r", "rmse", "bias", "kge"]:
         header += f"  {stat + '_mean':>10}  {stat + '_med':>10}"
     print(header)
     print("-" * len(header))
 
     for model_name in all_models:
         line = f"{model_name:<12}"
-        for stat in ["r2", "r", "rmse", "bias"]:
+        for stat in ["r2", "r", "rmse", "bias", "kge"]:
             col = f"{stat}_{model_name}"
             if col in common_df.columns:
                 vals = common_df[col].dropna()
@@ -619,14 +629,14 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
 
         row = {"fid": fid, "n": n_paired}
         m = calc_metrics(obs, swim_monthly.reindex(paired_months).values)
-        for k in ["r2", "r", "rmse", "bias"]:
+        for k in ["r2", "r", "rmse", "bias", "kge"]:
             row[f"{k}_swim"] = m[k]
 
         # Score each model — per-model paired months (flux + swim + model all finite)
         swim_on_paired = swim_monthly.reindex(paired_months).values
         for model_name in all_models:
             if model_name not in volk_monthly:
-                for k in ["r2", "r", "rmse", "bias"]:
+                for k in ["r2", "r", "rmse", "bias", "kge"]:
                     row[f"{k}_{model_name}"] = np.nan
                 continue
 
@@ -635,9 +645,9 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
             if model_valid.sum() >= 6:
                 m = calc_metrics(obs[model_valid], model_vals[model_valid])
             else:
-                m = {"r2": np.nan, "r": np.nan, "rmse": np.nan, "bias": np.nan}
+                m = {"r2": np.nan, "r": np.nan, "rmse": np.nan, "bias": np.nan, "kge": np.nan}
 
-            for k in ["r2", "r", "rmse", "bias"]:
+            for k in ["r2", "r", "rmse", "bias", "kge"]:
                 row[f"{k}_{model_name}"] = m[k]
 
         rows.append(row)
@@ -660,7 +670,9 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
     print("\n" + "=" * 80)
     print(f"PAIRED MONTHLY AGGREGATE ({len(common_df)} fields, identical months)")
     print("=" * 80)
-    header = f"{'model':<12}  {'r2_mean':>10}  {'r2_med':>10}  {'r_mean':>10}  {'r_med':>10}  {'rmse_mean':>10}  {'rmse_med':>10}  {'bias_mean':>10}  {'bias_med':>10}"
+    header = f"{'model':<12}"
+    for stat in ["r2", "r", "rmse", "bias", "kge"]:
+        header += f"  {stat + '_mean':>10}  {stat + '_med':>10}"
     print(header)
     print("-" * len(header))
 
@@ -672,7 +684,7 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
         if vals.empty:
             continue
         line = f"{model_name:<12}"
-        for stat in ["r2", "r", "rmse", "bias"]:
+        for stat in ["r2", "r", "rmse", "bias", "kge"]:
             col = f"{stat}_{model_name}"
             s = common_df[col].dropna()
             line += f"  {s.mean():>10.3f}  {s.median():>10.3f}"
@@ -747,9 +759,15 @@ if __name__ == "__main__":
         default=None,
         help="Override container path (default: derived from config)",
     )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Override config TOML (default: 5_Flux_Ensemble.toml)",
+    )
     args = parser.parse_args()
 
-    cfg = load_config()
+    cfg = load_config(args.config)
     flux_dir = resolve_flux_dir(cfg)
     results_dir = os.path.join(cfg.project_ws, "results")
 
