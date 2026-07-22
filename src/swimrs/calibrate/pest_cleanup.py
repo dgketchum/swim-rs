@@ -70,6 +70,7 @@ class PestResults:
         "params.csv",
         "localizer_summary.json",
         "loc.mat",
+        "weight_audit.csv",
     ]
 
     # Files to keep only on failure (in addition to archive files)

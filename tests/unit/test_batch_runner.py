@@ -486,6 +486,7 @@ class TestArchivePestOutputs:
         master.mkdir(parents=True)
         (pest / "project.pst").write_text("pst")
         (pest / "loc.mat").write_text("loc")
+        (pest / "weight_audit.csv").write_text("audit")
         (master / "project.rec").write_text("rec")
         (master / "project.phi.meas.csv").write_text("phi")
         for i in range(4):
@@ -520,8 +521,10 @@ class TestArchivePestOutputs:
         assert (archive / "project.par_data.csv").exists()
         assert (archive / "project.obs+noise.csv").exists()
         assert (archive / "project.base.rei").exists()
+        # ETf weight decomposition survives cleanup (auxiliary-source runs)
+        assert (archive / "weight_audit.csv").exists()
         assert not (archive / "project.jcb").exists()
-        assert len(copied) == 16
+        assert len(copied) == 17
 
     def test_verify_ok_after_archive(self, tmp_path):
         from swimrs.calibrate.batch_support import archive_pest_outputs, verify_pest_archive

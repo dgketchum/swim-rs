@@ -683,6 +683,9 @@ PEST_ARCHIVE_PATTERNS = [
     "*.tplfile_data.csv",
     "*.obs+noise.csv",
     "*.base.rei",
+    # per-build ETf weight decomposition (PestBuilder.export_weight_audit);
+    # required by RUN_POLICY Category 3 for auxiliary-source runs
+    "weight_audit.csv",
 ]
 
 
