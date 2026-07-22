@@ -688,3 +688,90 @@ end_date = "2020-12-31"
         cfg = ProjectConfig()
         with pytest.raises(ValueError, match="bogus"):
             cfg.read_config(str(self._write_toml(tmp_path, block)))
+
+
+class TestAuxiliaryEtfConfig:
+    """E3 ECOSTRESS additional-date design: etf_auxiliary_* config parsing.
+
+    The auxiliary source is opt-in; absent keys must leave every existing
+    calibration byte-for-byte unchanged (default non-regression).
+    """
+
+    def _write_toml(self, tmp_path, calib_block=""):
+        gis_dir = tmp_path / "gis"
+        gis_dir.mkdir(exist_ok=True)
+        shapefile = gis_dir / "fields.shp"
+        shapefile.touch()
+        toml_content = f"""
+project = "test_project"
+root = "{tmp_path}"
+
+[paths]
+fields_shapefile = "{shapefile}"
+
+[ids]
+feature_id = "FID"
+
+[date_range]
+start_date = "2020-01-01"
+end_date = "2020-12-31"
+{calib_block}
+"""
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text(toml_content)
+        return toml_file
+
+    def test_defaults_disabled(self, tmp_path):
+        """Absent from TOML -> auxiliary source off, scale/policy at defaults."""
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path)))
+        assert cfg.etf_auxiliary_model is None
+        assert cfg.etf_auxiliary_instrument is None
+        assert cfg.etf_auxiliary_fixed_sd == 0.33
+        assert cfg.etf_auxiliary_overlap_policy == "exclude_if_any_primary_member"
+
+    def test_init_defaults_disabled(self):
+        """Bare ProjectConfig() carries the same disabled defaults."""
+        cfg = ProjectConfig()
+        assert cfg.etf_auxiliary_model is None
+        assert cfg.etf_auxiliary_instrument is None
+        assert cfg.etf_auxiliary_fixed_sd == 0.33
+        assert cfg.etf_auxiliary_overlap_policy == "exclude_if_any_primary_member"
+
+    def test_reads_auxiliary_keys(self, tmp_path):
+        block = (
+            "[calibration]\n"
+            'etf_auxiliary_model = "ptjpl"\n'
+            'etf_auxiliary_instrument = "ecostress"\n'
+            "etf_auxiliary_fixed_sd = 0.33\n"
+            'etf_auxiliary_overlap_policy = "exclude_if_any_primary_member"\n'
+        )
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path, block)))
+        assert cfg.etf_auxiliary_model == "ptjpl"
+        assert cfg.etf_auxiliary_instrument == "ecostress"
+        assert cfg.etf_auxiliary_fixed_sd == 0.33
+        assert cfg.etf_auxiliary_overlap_policy == "exclude_if_any_primary_member"
+
+    def test_model_without_instrument_raises(self, tmp_path):
+        block = '[calibration]\netf_auxiliary_model = "ptjpl"\n'
+        cfg = ProjectConfig()
+        with pytest.raises(ValueError, match="set together"):
+            cfg.read_config(str(self._write_toml(tmp_path, block)))
+
+    def test_instrument_without_model_raises(self, tmp_path):
+        block = '[calibration]\netf_auxiliary_instrument = "ecostress"\n'
+        cfg = ProjectConfig()
+        with pytest.raises(ValueError, match="set together"):
+            cfg.read_config(str(self._write_toml(tmp_path, block)))
+
+    def test_invalid_overlap_policy_raises(self, tmp_path):
+        block = (
+            "[calibration]\n"
+            'etf_auxiliary_model = "ptjpl"\n'
+            'etf_auxiliary_instrument = "ecostress"\n'
+            'etf_auxiliary_overlap_policy = "merge"\n'
+        )
+        cfg = ProjectConfig()
+        with pytest.raises(ValueError, match="overlap_policy"):
+            cfg.read_config(str(self._write_toml(tmp_path, block)))

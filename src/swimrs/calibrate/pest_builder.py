@@ -119,6 +119,12 @@ class PestBuilder:
         self.etf_capture_indexes = []
         self._weight_audit_rows = []
         self._regularization_active = False
+        # Auxiliary (additional-date) ETf bookkeeping: obs ids of auxiliary-only
+        # observations, per-fid, and globally for the noise/SWE-balance step.
+        self.etf_aux_obs_ids = set()
+        self._aux_only_ids_by_fid = {}
+        self._aux_raw_by_fid = {}
+        self._aux_overlap_dates_by_fid = {}
 
         self.params_file = os.path.join(self.pest_run_dir, "params.csv")
 
@@ -187,16 +193,22 @@ class PestBuilder:
         # Date range from container
         self.date_range = (self._container.start_date, self._container.end_date)
 
-    def _get_etf_data(self, fid: str, model: str = "ssebop") -> pd.DataFrame:
+    def _get_etf_data(
+        self, fid: str, model: str = "ssebop", instrument: str | None = None
+    ) -> pd.DataFrame:
         """
         Get ETf data for a field from container.
 
         Returns DataFrame with columns like '{model}_etf_{mask}' for each mask.
 
         If model='ensemble', computes the mean across all available ETf models.
+        Instrument defaults to the config target instrument; pass explicitly for
+        an auxiliary source on a different instrument.
         """
         if self._container is None:
             raise ValueError("No container available. Pass container to PestBuilder.__init__")
+
+        inst = instrument or self.etf_instrument
 
         result = pd.DataFrame(
             index=pd.date_range(self.config.start_dt, self.config.end_dt, freq="D")
@@ -207,7 +219,7 @@ class PestBuilder:
             if ensemble_source == "openet":
                 # Use OpenET's pre-computed ensemble directly from the container
                 for mask in self.masks:
-                    path = f"remote_sensing/etf/{self.etf_instrument}/ensemble/{mask}"
+                    path = f"remote_sensing/etf/{inst}/ensemble/{mask}"
                     if path in self._container.state.root:
                         df = self._container.query.dataframe(path, fields=[fid])
                         if fid in df.columns:
@@ -222,8 +234,7 @@ class PestBuilder:
                         m
                         for m in configured_members
                         if any(
-                            f"remote_sensing/etf/{self.etf_instrument}/{m}/{mask}"
-                            in self._container.state.root
+                            f"remote_sensing/etf/{inst}/{m}/{mask}" in self._container.state.root
                             for mask in self.masks
                         )
                     ]
@@ -235,7 +246,7 @@ class PestBuilder:
                 for mask in self.masks:
                     mask_data = []
                     for m in available_models:
-                        path = f"remote_sensing/etf/{self.etf_instrument}/{m}/{mask}"
+                        path = f"remote_sensing/etf/{inst}/{m}/{mask}"
                         if path in self._container.state.root:
                             df = self._container.query.dataframe(path, fields=[fid])
                             if fid in df.columns:
@@ -246,7 +257,7 @@ class PestBuilder:
                         result[f"ensemble_etf_{mask}"] = combined.mean(axis=1)
         else:
             for mask in self.masks:
-                path = f"remote_sensing/etf/{self.etf_instrument}/{model}/{mask}"
+                path = f"remote_sensing/etf/{inst}/{model}/{mask}"
                 if path in self._container.state.root:
                     df = self._container.query.dataframe(path, fields=[fid])
                     if fid in df.columns:
@@ -597,6 +608,11 @@ class PestBuilder:
         self._write_forward_run_script()
 
         self._finalize_obs()
+
+        # Persist the per-observation weight audit next to the .pst so every
+        # build (including batch_runner batches) leaves an audit artifact.
+        self.export_weight_audit(os.path.join(self.pest_dir, "weight_audit.csv"))
+
         if self.verbose:
             self.print_build_diagnostics()
 
@@ -620,13 +636,17 @@ class PestBuilder:
             "fid",
             "date",
             "obsval",
+            "source",
             "member_count",
             "member_mean",
             "member_std",
             "weight_mode",
+            "error_scale",
             "weight_pre_pdc",
             "weight_final",
             "eligible",
+            "aux_overlap_excluded",
+            "aux_raw_value",
         ]
         df = df[[c for c in col_order if c in df.columns]]
         df.to_csv(output_path, index=False)
@@ -667,6 +687,8 @@ class PestBuilder:
 
         ensemble_source = getattr(self.config, "ensemble_source", "computed")
         ensemble_members = getattr(self.config, "etf_ensemble_members", None)
+        aux_model = getattr(self.config, "etf_auxiliary_model", None)
+        aux_instrument = getattr(self.config, "etf_auxiliary_instrument", None)
 
         try:
             self._container.export.observations(
@@ -680,6 +702,8 @@ class PestBuilder:
                 end_date=end_date,
                 ensemble_source=ensemble_source,
                 ensemble_members=ensemble_members,
+                auxiliary_model=aux_model,
+                auxiliary_instrument=aux_instrument,
             )
         except Exception as e:
             raise RuntimeError(f"Failed to export observations to {obs_dir}: {e}") from e
@@ -1612,6 +1636,26 @@ if __name__ == "__main__":
         spread_floor = getattr(self.config, "etf_weighting_spread_floor", 0.1)
         min_members = getattr(self.config, "etf_weighting_min_members", 2)
 
+        # Auxiliary additional-date source (e.g. ECOSTRESS PT-JPL): fills only
+        # dates with no primary retrieval at all. A date with any primary value
+        # — including a one-member date the min_members rule zero-weights —
+        # never takes the auxiliary (overlap policy exclude_if_any_primary_member).
+        aux_model = getattr(self.config, "etf_auxiliary_model", None)
+        aux_instrument = getattr(self.config, "etf_auxiliary_instrument", None)
+        aux_enabled = bool(aux_model) and bool(aux_instrument)
+        aux_fixed_sd = float(getattr(self.config, "etf_auxiliary_fixed_sd", 0.33))
+
+        if aux_enabled and self.masks != ["no_mask"]:
+            # Under irrigation mask-switching, the builder's aux date-class
+            # detection (cross-mask mean) and the exporter's obsval fill
+            # (mask-switched series) can disagree, silently mislabeling dates.
+            # Only mask_mode="none" is supported until switching-aware
+            # detection is implemented.
+            raise NotImplementedError(
+                "etf_auxiliary_* requires mask_mode='none' (masks=['no_mask']); "
+                f"got masks={self.masks}."
+            )
+
         if members is not None:
             self.etf_std = {fid: None for fid in self.pest_args["targets"]}
 
@@ -1637,6 +1681,34 @@ if __name__ == "__main__":
                 for mask in self.masks:
                     if f"{target}_etf_{mask}" in r and not np.isnan(r[f"{target}_etf_{mask}"]):
                         captures_for_this_target.append(etf.loc[ix, "obs_id"])
+
+            if aux_enabled:
+                aux = self._get_etf_data(fid, model=aux_model, instrument=aux_instrument)
+                aux_cols = [
+                    c for c in (f"{aux_model}_etf_{m}" for m in self.masks) if c in aux.columns
+                ]
+                primary_cols = [
+                    c for c in (f"{target}_etf_{m}" for m in self.masks) if c in etf.columns
+                ]
+                primary_present = (
+                    etf[primary_cols].notna().any(axis=1)
+                    if primary_cols
+                    else pd.Series(False, index=etf.index)
+                )
+                if aux_cols:
+                    aux_raw = aux[aux_cols].mean(axis=1)
+                    aux_finite = aux_raw.notna()
+                else:
+                    aux_raw = pd.Series(np.nan, index=etf.index)
+                    aux_finite = pd.Series(False, index=etf.index)
+
+                aux_only = aux_finite & ~primary_present
+                aux_only_ids = etf.loc[aux_only, "obs_id"].tolist()
+                self._aux_only_ids_by_fid[fid] = set(aux_only_ids)
+                self.etf_aux_obs_ids.update(aux_only_ids)
+                self._aux_raw_by_fid[fid] = aux_raw
+                self._aux_overlap_dates_by_fid[fid] = set(etf.index[aux_finite & primary_present])
+                captures_for_this_target.extend(aux_only_ids)
 
             self.etf_capture_indexes.append(captures_for_this_target)
 
@@ -1703,6 +1775,9 @@ if __name__ == "__main__":
             if not captures_for_this_df.empty and total_valid_obs > 0:
                 obsvals = d.loc[captures_for_this_df, "obsval"].values
 
+                aux_ids = self._aux_only_ids_by_fid.get(fid, set()) if aux_enabled else set()
+                is_aux = np.array([o in aux_ids for o in captures_for_this_df], dtype=bool)
+
                 # Build common eligibility mask from member count so that
                 # both spread and fixed_sd modes use the same capture dates.
                 if self.etf_std is not None and self.etf_std.get(fid) is not None:
@@ -1722,25 +1797,35 @@ if __name__ == "__main__":
                         obsvals / (std_vals + spread_floor),
                         0.0,
                     )
-                    d.loc[captures_for_this_df, "weight"] = weights
                 else:
                     weights = np.where(eligible, obsvals / fixed_sd, 0.0)
-                    d.loc[captures_for_this_df, "weight"] = weights
+
+                # Auxiliary-only dates carry zero primary members, so they are
+                # ineligible above; the fixed predefined error scale is their
+                # only weight path. Primary dates are never touched here.
+                if is_aux.any():
+                    weights = np.where(is_aux, obsvals / aux_fixed_sd, weights)
+
+                d.loc[captures_for_this_df, "weight"] = weights
 
             # Collect weight audit rows for ablation diagnostics.
             # obs_idx values are Timestamps from the ETf DataFrame index.
             if not captures_for_this_df.empty and total_valid_obs > 0:
+                overlap_dates = self._aux_overlap_dates_by_fid.get(fid, set())
+                aux_raw = self._aux_raw_by_fid.get(fid)
                 date_stamps = self.observation_index[fid].loc[captures_for_this_df, "obs_idx"]
                 for j_cap, (obs_id, dt) in enumerate(zip(captures_for_this_df, date_stamps)):
                     weight_val = float(d.loc[obs_id, "weight"])
+                    aux_row = bool(is_aux[j_cap])
                     row = {
                         "fid": fid,
                         "date": dt.strftime("%Y-%m-%d") if hasattr(dt, "strftime") else str(dt),
                         "obsval": obsvals[j_cap],
+                        "source": "auxiliary" if aux_row else "primary",
                         "weight_mode": weighting_mode,
                         "weight_pre_pdc": weight_val,
                         "weight_final": weight_val,
-                        "eligible": bool(eligible[j_cap]),
+                        "eligible": aux_row or bool(eligible[j_cap]),
                     }
                     if self.etf_std is not None and self.etf_std.get(fid) is not None:
                         std_df = self.etf_std[fid]
@@ -1751,6 +1836,21 @@ if __name__ == "__main__":
                         row["member_count"] = 0
                         row["member_mean"] = np.nan
                         row["member_std"] = np.nan
+                    if aux_enabled:
+                        if aux_row:
+                            row["error_scale"] = aux_fixed_sd
+                        elif np.isfinite(row["member_std"]):
+                            row["error_scale"] = row["member_std"] + spread_floor
+                        else:
+                            row["error_scale"] = fixed_sd
+                        # A primary date where the auxiliary also retrieved: the
+                        # auxiliary value is excluded, recorded here for audit.
+                        row["aux_overlap_excluded"] = (not aux_row) and (dt in overlap_dates)
+                        row["aux_raw_value"] = (
+                            float(aux_raw.loc[dt])
+                            if aux_raw is not None and dt in aux_raw.index
+                            else np.nan
+                        )
                     self._weight_audit_rows.append(row)
 
             d.loc[d["obsval"].isna(), "obsval"] = -99.0
@@ -1811,6 +1911,20 @@ if __name__ == "__main__":
         else:
             obs.loc[etf_idx, "standard_deviation"] = fixed_sd
 
+        # Auxiliary-only dates carry the predefined auxiliary error scale, the
+        # same value their weight assumes (weight = obsval / aux_fixed_sd).
+        aux_obs_ids = [i for i in getattr(self, "etf_aux_obs_ids", set()) if i in obs.index]
+        if aux_obs_ids:
+            aux_fixed_sd = float(getattr(self.config, "etf_auxiliary_fixed_sd", 0.33))
+            obs.loc[aux_obs_ids, "standard_deviation"] = aux_fixed_sd
+
+        # SWE/SSM groups are phi-share-balanced against the *primary* ETf subset
+        # only. Auxiliary observations are excluded so that in an additional-date
+        # treatment the SWE/SSM weights match the primary-only control exactly
+        # (one-variable ablation invariant).
+        aux_id_set = set(aux_obs_ids)
+        primary_etf_idx = [i for i in etf_idx if i not in aux_id_set]
+
         # SWE noise is a physical error model for gridded SWE products
         # (fractional error with a floor), and the weight is derived from the
         # same sd so phi weighting and the IES noise/update covariance agree.
@@ -1829,8 +1943,8 @@ if __name__ == "__main__":
             # expected group phi when residuals match the error model is
             # sum((weight*sd)^2), so weight = c/sd gives phi_swe = n*c^2 and
             # the target share s requires n*c^2 = s/(1-s) * phi_etf.
-            etf_w = obs.loc[etf_idx, "weight"].astype(float)
-            etf_sd = obs.loc[etf_idx, "standard_deviation"].astype(float)
+            etf_w = obs.loc[primary_etf_idx, "weight"].astype(float)
+            etf_sd = obs.loc[primary_etf_idx, "standard_deviation"].astype(float)
             etf_phi = float(((etf_w * etf_sd) ** 2).sum())
             if etf_phi > 0:
                 c = np.sqrt(phi_share / (1.0 - phi_share) * etf_phi / len(swe_idx))
@@ -1851,8 +1965,8 @@ if __name__ == "__main__":
             ]
             if ssm_idx:
                 obs.loc[ssm_idx, "standard_deviation"] = ssm_sd_floor
-                etf_w = obs.loc[etf_idx, "weight"].astype(float)
-                etf_sd = obs.loc[etf_idx, "standard_deviation"].astype(float)
+                etf_w = obs.loc[primary_etf_idx, "weight"].astype(float)
+                etf_sd = obs.loc[primary_etf_idx, "standard_deviation"].astype(float)
                 etf_phi = float(((etf_w * etf_sd) ** 2).sum())
                 if etf_phi > 0:
                     c = np.sqrt(ssm_phi_share / (1.0 - ssm_phi_share) * etf_phi / len(ssm_idx))
@@ -1902,14 +2016,22 @@ if __name__ == "__main__":
         print(f"  Applied prior params to {n_updated} parameters from {prior_params_path}")
 
     @staticmethod
-    def _etf_information_mass_by_site(pst) -> dict:
-        """Compute sum(weight²) for ETf observations per site."""
+    def _etf_information_mass_by_site(pst, exclude: set | None = None) -> dict:
+        """Compute sum(weight²) for ETf observations per site.
+
+        `exclude` drops observation names (e.g. auxiliary additional-date obs)
+        so prior-regularization budgets stay balanced against the primary ETf
+        subset only, matching the SWE/SSM invariant in `_finalize_obs`.
+        """
         obs = pst.observation_data
         etf_mask = obs.index.str.contains("obs_etf_", case=False)
         etf_obs = obs.loc[etf_mask].copy()
+        exclude = exclude or set()
 
         site_mass = {}
         for obs_name, row in etf_obs.iterrows():
+            if obs_name in exclude:
+                continue
             w = float(row.get("weight", 0.0))
             if not np.isfinite(w) or w <= 0:
                 continue
@@ -1977,7 +2099,9 @@ if __name__ == "__main__":
         par = pst.parameter_data
 
         # Step 1: site-local ETf information mass
-        site_mass = self._etf_information_mass_by_site(pst)
+        site_mass = self._etf_information_mass_by_site(
+            pst, exclude=getattr(self, "etf_aux_obs_ids", None)
+        )
 
         # Step 2: count regularized parameters per site
         site_param_count = {}

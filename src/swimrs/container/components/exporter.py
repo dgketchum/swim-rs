@@ -342,6 +342,8 @@ class Exporter(Component):
         end_date: str | None = None,
         ensemble_source: str | None = None,
         ensemble_members: list[str] | None = None,
+        auxiliary_model: str | None = None,
+        auxiliary_instrument: str | None = None,
     ) -> ProvenanceEvent:
         """
         Export observation files for model calibration.
@@ -362,6 +364,11 @@ class Exporter(Component):
             fields: Fields to export (default: all)
             start_date: Optional start date filter
             end_date: Optional end date filter
+            auxiliary_model: Optional auxiliary ETf model filling only dates
+                where the primary target has no retrieval (additional-date
+                design: a date with any primary value never takes the
+                auxiliary). Requires auxiliary_instrument.
+            auxiliary_instrument: Instrument for the auxiliary ETf source.
 
         Returns:
             ProvenanceEvent recording the operation
@@ -443,6 +450,24 @@ class Exporter(Component):
                             end_date=end_date,
                         )
 
+            # Load auxiliary ETf (additional-date source, e.g. ECOSTRESS PT-JPL)
+            aux_data = {}
+            if auxiliary_model and auxiliary_instrument:
+                for mask in masks:
+                    aux_path = f"remote_sensing/etf/{auxiliary_instrument}/{auxiliary_model}/{mask}"
+                    if aux_path in self._state.root:
+                        aux_data[mask] = self._state.get_xarray(
+                            aux_path,
+                            fields=target_fields,
+                            start_date=start_date,
+                            end_date=end_date,
+                        )
+                if not aux_data:
+                    raise ValueError(
+                        f"Auxiliary ETf source remote_sensing/etf/{auxiliary_instrument}/"
+                        f"{auxiliary_model} not found in container for masks {masks}."
+                    )
+
             # Load SWE data
             swe_data = None
             swe_path = find_swe_path(self._state.root)
@@ -464,6 +489,14 @@ class Exporter(Component):
                 # given zero weight downstream.
                 if etf_values is None:
                     etf_values = np.full(len(time_index), np.nan, dtype=float)
+
+                if aux_data:
+                    aux_values = self._build_switched_etf(
+                        fid, aux_data, irr_data, masks, irr_threshold, time_index
+                    )
+                    if aux_values is not None:
+                        etf_values = self._fill_auxiliary(etf_values, aux_values)
+
                 etf_file = output_dir / f"obs_etf_{fid}.np"
                 np.savetxt(etf_file, etf_values)
                 exported_count += 1
@@ -497,12 +530,28 @@ class Exporter(Component):
                     "etf_model": etf_model,
                     "masks": list(masks),
                     "irr_threshold": irr_threshold,
+                    "auxiliary_model": auxiliary_model,
+                    "auxiliary_instrument": auxiliary_instrument,
                 },
                 fields_affected=target_fields,
                 records_count=exported_count,
             )
 
             return event
+
+    @staticmethod
+    def _fill_auxiliary(primary: np.ndarray, auxiliary: np.ndarray) -> np.ndarray:
+        """Fill primary-ETf gaps with auxiliary values (additional-date design).
+
+        A date takes the auxiliary value only when the primary has no retrieval
+        at all; any date with a finite primary value keeps it untouched, so the
+        primary observation set is preserved exactly.
+        """
+        out = np.asarray(primary, dtype=float).copy()
+        aux = np.asarray(auxiliary, dtype=float)
+        fill = ~np.isfinite(out) & np.isfinite(aux)
+        out[fill] = aux[fill]
+        return out
 
     def _build_switched_etf(
         self,

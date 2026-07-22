@@ -96,6 +96,18 @@ class ProjectConfig:
         self.etf_weighting_fixed_sd = 0.33
         self.etf_weighting_spread_floor = 0.1
         self.etf_weighting_min_members = 2
+        # Opt-in auxiliary ETf source (E3 ECOSTRESS additional-date design).
+        # OFF (None) by default so every existing calibration is byte-for-byte
+        # unchanged. When model+instrument are both set, dates with no primary
+        # retrieval take the auxiliary obsval at weight obsval/fixed_sd with
+        # noise SD fixed_sd; any date with a primary retrieval ignores the
+        # auxiliary entirely (it never mixes into the target or the weight).
+        # The fixed SD is a predefined error scale, not a validated product
+        # uncertainty, and must not be tuned against flux ET.
+        self.etf_auxiliary_model = None
+        self.etf_auxiliary_instrument = None
+        self.etf_auxiliary_fixed_sd = 0.33
+        self.etf_auxiliary_overlap_policy = "exclude_if_any_primary_member"
         self.swe_weighting_sd_frac = 0.3
         self.swe_weighting_sd_floor = 10.0
         self.swe_weighting_phi_share = 0.15
@@ -419,6 +431,24 @@ class ProjectConfig:
         self.etf_weighting_fixed_sd = calib_toml_conf.get("etf_weighting_fixed_sd", 0.33)
         self.etf_weighting_spread_floor = calib_toml_conf.get("etf_weighting_spread_floor", 0.1)
         self.etf_weighting_min_members = calib_toml_conf.get("etf_weighting_min_members", 2)
+        self.etf_auxiliary_model = calib_toml_conf.get("etf_auxiliary_model")
+        self.etf_auxiliary_instrument = calib_toml_conf.get("etf_auxiliary_instrument")
+        if bool(self.etf_auxiliary_model) != bool(self.etf_auxiliary_instrument):
+            raise ValueError(
+                "etf_auxiliary_model and etf_auxiliary_instrument must be set together "
+                f"(got model={self.etf_auxiliary_model!r}, "
+                f"instrument={self.etf_auxiliary_instrument!r})."
+            )
+        self.etf_auxiliary_fixed_sd = calib_toml_conf.get("etf_auxiliary_fixed_sd", 0.33)
+        self.etf_auxiliary_overlap_policy = calib_toml_conf.get(
+            "etf_auxiliary_overlap_policy", "exclude_if_any_primary_member"
+        )
+        if self.etf_auxiliary_overlap_policy != "exclude_if_any_primary_member":
+            raise ValueError(
+                f"Invalid etf_auxiliary_overlap_policy="
+                f"{self.etf_auxiliary_overlap_policy!r}. "
+                "Only 'exclude_if_any_primary_member' is supported."
+            )
         self.swe_weighting_sd_frac = calib_toml_conf.get("swe_weighting_sd_frac", 0.3)
         self.swe_weighting_sd_floor = calib_toml_conf.get("swe_weighting_sd_floor", 10.0)
         self.swe_weighting_phi_share = calib_toml_conf.get("swe_weighting_phi_share", 0.15)

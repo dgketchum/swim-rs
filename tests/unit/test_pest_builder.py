@@ -508,3 +508,340 @@ class TestSweWeightBalance:
         etf_phi = ((ew * esd) ** 2).sum()
         swe_phi = ((sw * ssd) ** 2).sum()
         assert np.isclose(swe_phi / (swe_phi + etf_phi), 0.15)
+
+
+# ---------------------------------------------------------------------------
+# Auxiliary (additional-date) ETf source — E3 Landsat + ECOSTRESS design.
+# The real _write_etf_obs / _finalize_obs / _fill_auxiliary code paths are
+# exercised on synthetic frames via a fake PstFrom and a stubbed container
+# getter. Frozen design: dates with any primary member keep the Landsat rule
+# (ECOSTRESS excluded, incl. one-member zero-weight dates); dates with only
+# the auxiliary get weight obsval/aux_fixed_sd and noise SD aux_fixed_sd.
+# ---------------------------------------------------------------------------
+
+from pathlib import Path as _Path
+
+from swimrs.container.components.exporter import Exporter
+
+
+class _FakePest:
+    """Minimal PstFrom stand-in: reads the .np obsval file like PstFrom does."""
+
+    def __init__(self):
+        self.obs_dfs = []
+
+    def add_observations(self, filename, insfile=None):
+        vals = np.atleast_1d(np.loadtxt(filename))
+        fid = _Path(filename).stem.replace("obs_etf_", "")
+        idx = [f"oname:obs_etf_{fid}_otype:arr_i:{j}_j:0".lower() for j in range(len(vals))]
+        self.obs_dfs.append(pd.DataFrame({"obsval": vals, "weight": 1.0}, index=idx))
+
+
+_FID = "s1"
+_DATES = pd.date_range("2020-01-01", "2020-01-10", freq="D")
+
+
+def _frame(col, values):
+    return pd.DataFrame({col: values}, index=_DATES)
+
+
+def _synthetic_frames():
+    """10-day scenario covering every date class in the frozen design.
+
+    d0 both members; d1 nothing; d2 auxiliary only; d3 one member + auxiliary
+    (no substitution); d4 both members + auxiliary (overlap excluded);
+    d5-d9 nothing.
+    """
+    nan = np.nan
+    ssebop = [0.5, nan, nan, 0.4, 0.5, nan, nan, nan, nan, nan]
+    ptjpl = [0.7, nan, nan, nan, 0.7, nan, nan, nan, nan, nan]
+    ensemble = [0.6, nan, nan, 0.4, 0.6, nan, nan, nan, nan, nan]
+    aux = [nan, nan, 0.8, 0.9, 0.75, nan, nan, nan, nan, nan]
+    return {
+        ("ensemble", None): _frame("ensemble_etf_no_mask", ensemble),
+        ("ssebop", None): _frame("ssebop_etf_no_mask", ssebop),
+        ("ptjpl", None): _frame("ptjpl_etf_no_mask", ptjpl),
+        ("ptjpl", "ecostress"): _frame("ptjpl_etf_no_mask", aux),
+    }
+
+
+def _write_obs_file(tmp_path, frames, with_aux):
+    """Build obs_etf_{fid}.np the way the exporter does (primary + aux fill)."""
+    primary = frames[("ensemble", None)]["ensemble_etf_no_mask"].values
+    if with_aux:
+        aux = frames[("ptjpl", "ecostress")]["ptjpl_etf_no_mask"].values
+        combined = Exporter._fill_auxiliary(primary, aux)
+    else:
+        combined = np.asarray(primary, dtype=float)
+    obs_file = tmp_path / f"obs_etf_{_FID}.np"
+    np.savetxt(obs_file, combined)
+    return obs_file
+
+
+def _harness(tmp_path, with_aux):
+    frames = _synthetic_frames()
+    obs_file = _write_obs_file(tmp_path, frames, with_aux)
+
+    cfg_kwargs = dict(
+        start_dt=_DATES[0],
+        end_dt=_DATES[-1],
+        etf_weighting_mode="spread",
+        etf_weighting_fixed_sd=0.33,
+        etf_weighting_spread_floor=0.05,
+        etf_weighting_min_members=2,
+    )
+    if with_aux:
+        cfg_kwargs.update(
+            etf_auxiliary_model="ptjpl",
+            etf_auxiliary_instrument="ecostress",
+            etf_auxiliary_fixed_sd=0.33,
+        )
+
+    b = PestBuilder.__new__(PestBuilder)
+    b.config = _Cfg(**cfg_kwargs)
+    b.masks = ["no_mask"]
+    b.irr = {}
+    b.etf_std = None
+    b.pest = _FakePest()
+    b.observation_index = {}
+    b.etf_capture_indexes = []
+    b._weight_audit_rows = []
+    b.etf_aux_obs_ids = set()
+    b._aux_only_ids_by_fid = {}
+    b._aux_raw_by_fid = {}
+    b._aux_overlap_dates_by_fid = {}
+    b.conflicted_obs = None
+    b.verbose = False
+    b.obs_idx_file = str(tmp_path / "idx.csv")
+    b.pest_args = {
+        "targets": [_FID],
+        "etf_obs": {"file": [str(obs_file)], "insfile": [None]},
+    }
+    b._get_etf_data = lambda fid, model="ssebop", instrument=None: frames[
+        (model, instrument)
+    ].copy()
+    return b
+
+
+def _obsname(j):
+    return f"oname:obs_etf_{_FID}_otype:arr_i:{j}_j:0".lower()
+
+
+def _spread_weight(obsval, member_vals, floor=0.05):
+    return obsval / (np.std(member_vals, ddof=1) + floor)
+
+
+class TestAuxiliaryEtfWeights:
+    """_write_etf_obs with the auxiliary additional-date source."""
+
+    def _run(self, tmp_path, with_aux):
+        b = _harness(tmp_path, with_aux)
+        b._write_etf_obs("ensemble", ["ssebop", "ptjpl"])
+        return b, b.pest.obs_dfs[0]
+
+    def test_default_non_regression(self, tmp_path):
+        """No aux config -> weights identical to the pre-change behavior."""
+        _, d = self._run(tmp_path, with_aux=False)
+        w = d["weight"].values
+        expected_d0 = _spread_weight(0.6, [0.5, 0.7])
+        assert np.isclose(w[0], expected_d0)
+        assert w[2] == 0.0  # no retrieval, no aux
+        assert w[3] == 0.0  # one member: min_members zero-weights it
+        assert np.isclose(w[4], expected_d0)
+        assert all(w[j] == 0.0 for j in [1, 5, 6, 7, 8, 9])
+        assert d["obsval"].iloc[2] == -99.0
+
+    def test_primary_weights_unchanged_by_aux(self, tmp_path):
+        """Every Landsat date keeps its control weight bit-for-bit."""
+        _, d_ctrl = self._run(tmp_path, with_aux=False)
+        _, d_trt = self._run(tmp_path, with_aux=True)
+        primary_days = [0, 1, 3, 4, 5, 6, 7, 8, 9]
+        assert np.allclose(
+            d_ctrl["weight"].values[primary_days], d_trt["weight"].values[primary_days]
+        )
+        assert np.allclose(
+            d_ctrl["obsval"].values[primary_days], d_trt["obsval"].values[primary_days]
+        )
+
+    def test_aux_only_date_weight(self, tmp_path):
+        """ECOSTRESS-only date: obsval from aux, weight obsval/0.33."""
+        b, d = self._run(tmp_path, with_aux=True)
+        assert np.isclose(d["obsval"].iloc[2], 0.8)
+        assert np.isclose(d["weight"].iloc[2], 0.8 / 0.33)
+        assert b.etf_aux_obs_ids == {_obsname(2)}
+
+    def test_overlap_excluded(self, tmp_path):
+        """Aux on a two-member date changes nothing; recorded as overlap."""
+        b, d = self._run(tmp_path, with_aux=True)
+        assert np.isclose(d["weight"].iloc[4], _spread_weight(0.6, [0.5, 0.7]))
+        assert np.isclose(d["obsval"].iloc[4], 0.6)
+        assert _DATES[4] in b._aux_overlap_dates_by_fid[_FID]
+
+    def test_no_substitution_on_one_member_date(self, tmp_path):
+        """One-member Landsat date stays zero-weighted, aux not substituted."""
+        b, d = self._run(tmp_path, with_aux=True)
+        assert d["weight"].iloc[3] == 0.0
+        assert np.isclose(d["obsval"].iloc[3], 0.4)  # Landsat value, not aux 0.9
+        assert _DATES[3] in b._aux_overlap_dates_by_fid[_FID]
+        assert _obsname(3) not in b.etf_aux_obs_ids
+
+    def test_zero_weight_without_retrieval(self, tmp_path):
+        """No Landsat, no aux -> obsval -99, weight 0."""
+        _, d = self._run(tmp_path, with_aux=True)
+        for j in [1, 5, 6, 7, 8, 9]:
+            assert d["obsval"].iloc[j] == -99.0
+            assert d["weight"].iloc[j] == 0.0
+
+    def test_obsval_agreement_export_pst_audit(self, tmp_path):
+        """The .np export, PST obsval, and audit row agree on the aux date."""
+        b, d = self._run(tmp_path, with_aux=True)
+        exported = np.loadtxt(tmp_path / f"obs_etf_{_FID}.np")
+        assert np.isclose(exported[2], d["obsval"].iloc[2])
+        audit = pd.DataFrame(b._weight_audit_rows)
+        aux_row = audit[audit["source"] == "auxiliary"].iloc[0]
+        assert aux_row["date"] == "2020-01-03"
+        assert np.isclose(aux_row["obsval"], exported[2])
+        assert np.isclose(aux_row["error_scale"], 0.33)
+
+    def test_audit_rows_and_export(self, tmp_path):
+        """Audit carries source class, overlap exclusion, and error scale."""
+        b, _ = self._run(tmp_path, with_aux=True)
+        audit = pd.DataFrame(b._weight_audit_rows).set_index("date")
+        assert audit.loc["2020-01-01", "source"] == "primary"
+        assert not audit.loc["2020-01-01", "aux_overlap_excluded"]
+        assert audit.loc["2020-01-03", "source"] == "auxiliary"
+        assert audit.loc["2020-01-03", "member_count"] == 0
+        assert audit.loc["2020-01-04", "aux_overlap_excluded"]
+        assert np.isclose(audit.loc["2020-01-04", "aux_raw_value"], 0.9)
+        assert audit.loc["2020-01-05", "aux_overlap_excluded"]
+
+        out = tmp_path / "weight_audit.csv"
+        b.export_weight_audit(str(out))
+        cols = pd.read_csv(out).columns
+        for c in ["source", "error_scale", "aux_overlap_excluded", "aux_raw_value"]:
+            assert c in cols
+
+
+class TestAuxiliaryFinalizeObs:
+    """_finalize_obs: aux noise SD and the SWE one-variable invariant."""
+
+    def _build_pst(self, tmp_path, n_etf, etf_weights, name="proj.pst"):
+        pst_file = tmp_path / name
+        fid = "us-ne1"
+        etf_names = [_obs_name("etf", fid, k) for k in range(n_etf)]
+        swe_names = [_obs_name("swe", fid, k) for k in range(n_etf, n_etf + 2)]
+        pst = Pst.from_par_obs_names([_par_name("aw", fid)], etf_names + swe_names)
+        obs = pst.observation_data
+        obs.loc[etf_names, "weight"] = etf_weights
+        obs.loc[swe_names, "obsval"] = [50.0, 120.0]
+        obs.loc[swe_names, "weight"] = 1.0
+        pst.write(str(pst_file), version=2)
+        return pst_file, fid, etf_names, swe_names
+
+    def test_aux_noise_sd_is_aux_fixed_sd(self, tmp_path):
+        """Aux obs get etf_auxiliary_fixed_sd, not the NaN-spread fallback."""
+        pst_file, fid, etf_names, _ = self._build_pst(tmp_path, 5, [2.0, 3.0, 1.5, 0.0, 2.0])
+        b = _bare_builder(
+            pst_file,
+            pest_args={"targets": [fid]},
+            config=_Cfg(
+                etf_weighting_fixed_sd=0.33,
+                etf_weighting_spread_floor=0.05,
+                etf_auxiliary_fixed_sd=0.4,  # distinct from fixed_sd fallback
+            ),
+            etf_std={fid: pd.DataFrame({"std": [0.05, 0.2, 0.1, 0.15, np.nan]})},
+            etf_aux_obs_ids={etf_names[4]},
+        )
+        b._finalize_obs()
+        obs = Pst(str(pst_file)).observation_data
+        sd = obs.loc[etf_names, "standard_deviation"].astype(float).values
+        assert np.allclose(sd[:4], [0.10, 0.25, 0.15, 0.20])
+        assert np.isclose(sd[4], 0.4)
+
+    def test_swe_weights_match_control(self, tmp_path):
+        """SWE balance uses the primary subset only: control == treatment."""
+        # Control: 4 primary ETf obs, no aux.
+        ctrl_pst, fid, _, ctrl_swe = self._build_pst(
+            tmp_path, 4, [2.0, 3.0, 1.5, 0.0], name="ctrl.pst"
+        )
+        b_ctrl = _bare_builder(
+            ctrl_pst,
+            pest_args={"targets": [fid]},
+            config=_Cfg(etf_weighting_spread_floor=0.05),
+            etf_std={fid: pd.DataFrame({"std": [0.05, 0.2, 0.1, 0.15]})},
+        )
+        b_ctrl._finalize_obs()
+
+        # Treatment: same 4 primary obs plus one active aux obs.
+        trt_pst, fid, trt_etf, trt_swe = self._build_pst(
+            tmp_path, 5, [2.0, 3.0, 1.5, 0.0, 2.5], name="trt.pst"
+        )
+        b_trt = _bare_builder(
+            trt_pst,
+            pest_args={"targets": [fid]},
+            config=_Cfg(
+                etf_weighting_spread_floor=0.05,
+                etf_auxiliary_fixed_sd=0.33,
+            ),
+            etf_std={fid: pd.DataFrame({"std": [0.05, 0.2, 0.1, 0.15, np.nan]})},
+            etf_aux_obs_ids={trt_etf[4]},
+        )
+        b_trt._finalize_obs()
+
+        ctrl_obs = Pst(str(ctrl_pst)).observation_data
+        trt_obs = Pst(str(trt_pst)).observation_data
+        cw = ctrl_obs.loc[ctrl_swe, "weight"].astype(float).values
+        tw = trt_obs.loc[trt_swe, "weight"].astype(float).values
+        assert np.allclose(cw, tw)
+        assert (cw > 0).all()
+
+        # Sanity: the aux obs is genuinely active in the treatment, so a
+        # whole-group balance would have shifted SWE weights.
+        assert float(trt_obs.loc[trt_etf[4], "weight"]) > 0
+
+
+class TestExporterFillAuxiliary:
+    """Exporter._fill_auxiliary: gap-fill only, primary preserved exactly."""
+
+    def test_fills_only_gaps(self):
+        primary = np.array([0.6, np.nan, np.nan, 0.4])
+        aux = np.array([0.9, 0.8, np.nan, 0.9])
+        out = Exporter._fill_auxiliary(primary, aux)
+        assert np.isclose(out[0], 0.6)  # primary kept despite aux overlap
+        assert np.isclose(out[1], 0.8)  # gap filled
+        assert np.isnan(out[2])  # no retrieval anywhere
+        assert np.isclose(out[3], 0.4)  # primary kept
+
+    def test_inputs_not_mutated(self):
+        primary = np.array([np.nan, 0.5])
+        aux = np.array([0.7, 0.9])
+        out = Exporter._fill_auxiliary(primary, aux)
+        assert np.isnan(primary[0]) and np.isclose(out[0], 0.7)
+        assert np.isclose(primary[1], 0.5) and np.isclose(out[1], 0.5)
+
+
+class TestAuxiliaryGuards:
+    """Review fixes: irrigation-mask guard and info-mass aux exclusion."""
+
+    def test_aux_with_irrigation_masks_raises(self, tmp_path):
+        """Aux source under mask-switching is unsupported and must not run."""
+        b = _harness(tmp_path, with_aux=True)
+        b.masks = ["inv_irr", "irr"]
+        with pytest.raises(NotImplementedError, match="no_mask"):
+            b._write_etf_obs("ensemble", ["ssebop", "ptjpl"])
+
+    def test_info_mass_excludes_aux_obs(self, tmp_path):
+        """Prior-regularization budgets balance on the primary subset only."""
+        fid = "us-ne1"
+        etf_names = [_obs_name("etf", fid, k) for k in range(4)]
+        pst = Pst.from_par_obs_names([_par_name("aw", fid)], etf_names)
+        pst.observation_data["weight"] = 2.0
+        pst_file = tmp_path / "proj.pst"
+        pst.write(str(pst_file), version=2)
+        pst = Pst(str(pst_file))
+
+        full = PestBuilder._etf_information_mass_by_site(pst)
+        assert np.isclose(full[fid], 16.0)  # 4 obs * 2^2
+
+        primary = PestBuilder._etf_information_mass_by_site(pst, exclude={etf_names[3]})
+        assert np.isclose(primary[fid], 12.0)  # aux obs dropped
