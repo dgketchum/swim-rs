@@ -339,7 +339,7 @@ def draw_panel_a(out_dir):
     ax_inset.text(
         0.02,
         0.95,
-        f"E3: {len(e3)} sites, 13 countries, 5 continents",
+        f"E3: {len(e3)} sites",
         transform=ax_inset.transAxes,
         fontsize=5,
         va="top",
@@ -730,7 +730,7 @@ def draw_panel_c(out_dir):
             "exp": "E2",
             "domain": "CONUS\ncropland",
             "period": "1995\u20132025",
-            "etf": "OpenET 6-model\nMAD ensemble ETf",
+            "etf": "OpenET 6-model\nmean ETf",
             "sensors": ["L"],
             "sensors_text": "Landsat\n6 models",
             "weighting": "spread-\nweighted",
@@ -739,28 +739,28 @@ def draw_panel_c(out_dir):
             "color": EXPERIMENT_COLORS["E2"],
         },
         {
-            "exp": "E3-LS",
-            "domain": "International\ncrop/grass",
+            "exp": "E3",
+            "domain": "International\ncropland",
             "period": "2013\u20132025",
-            "etf": "Landsat SSEBop\n+ PT-JPL ETf",
+            "etf": "Landsat 2-model\nmean ETf",
             "sensors": ["L"],
             "sensors_text": "Landsat\n2 models",
-            "weighting": "uniform",
+            "weighting": "spread-\nweighted",
             "sites": f"{n_e3}",
-            "question": "Generalizes with\nglobal inputs?",
-            "color": EXPERIMENT_COLORS["E3-LS"],
+            "question": "Transfers with\nglobal inputs?",
+            "color": EXPERIMENT_COLORS["E3"],
         },
         {
-            "exp": "E3-\nTriple",
-            "domain": "Same E3\n+ ECOSTRESS",
+            "exp": "E3+\nEC",
+            "domain": "Same E3\nsensitivity",
             "period": "2013\u20132025",
-            "etf": "Landsat + ECOSTRESS\nPT-JPL ETf",
+            "etf": "Primary ETf + ECOSTRESS\non Landsat-gap dates",
             "sensors": ["L", "EC"],
-            "sensors_text": "2 platforms\n3 ETf products",
-            "weighting": "uniform",
+            "sensors_text": "Landsat 2 models\n+ EC PT-JPL",
+            "weighting": "spread +\nfixed scale",
             "sites": f"{n_e3}",
-            "question": "Higher density\nimproves calib.?",
-            "color": EXPERIMENT_COLORS["E3-Triple"],
+            "question": "Extra dates\nimprove calib.?",
+            "color": EXPERIMENT_COLORS["E3-EC"],
         },
     ]
 
@@ -937,7 +937,10 @@ def draw_assembly_reference(out_dir):
     ax_c.axis("off")
 
     print("Assembly preview (raster, not editable):")
-    # Only export PNG — the SVG/PDF would just embed rasters
+    # The reference SVG/PDF embed the panel rasters; editable vector panels are
+    # exported separately. Rebuild these reference files with the preview so
+    # stale panel content cannot remain in the active handoff directory.
+    export_figure(fig, out_dir / "fig1_assembly_reference")
     stem = out_dir / "fig1_assembly_preview"
     stem.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(
@@ -982,7 +985,7 @@ Land-cover fills (Panel A, reused in caption):
   Wetland/riparian: #CC6677 (rose)
 
 Experiment accents (Panel C row stripes):
-  E1: #4477AA  E2: #228833  E3-LS: #EE6677  E3-Triple: #CCBB44
+  E1: #4477AA  E2: #228833  E3: #EE6677  E3+EC: #CCBB44
 
 Architecture regions (Panel B):
   Inputs: light blue (#DCEAF7)
@@ -1005,13 +1008,14 @@ Source Sans 3 or Arial, 7-9 pt body, 10 pt panel labels.
 
 ## Elements that should NOT change without scientific review
 - Site locations on maps
-- Site counts (derived from config shapefiles: E1: 160, E2: 60, E3: 75)
+- Site counts (derived from config shapefiles: E1: 160, E2: 60, E3: 66)
 - Experiment labels and definitions
-- Calibration target names (SSEBop NHM, OpenET MAD, etc.)
+- Calibration target names (SSEBop NHM, OpenET six-model mean, etc.)
 - Validation-only status of flux towers (flux tower ET is NOT used for calibration)
 - Direction of calibration arrows (satellite ETf -> residuals -> PEST++ -> params -> model)
 - Which products belong to E1/E2/E3
-- E3-LS vs E3-Triple distinction (Landsat-only vs Landsat + ECOSTRESS)
+- E3 primary versus E3+EC sensitivity distinction (primary Landsat target versus
+  fixed-scale ECOSTRESS observations added only on Landsat-gap dates)
 - The dashed firewall separating calibration from validation
 
 ## Expected final deliverables
