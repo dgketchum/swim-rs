@@ -221,22 +221,21 @@ def total_soil_water(
 def actual_et(
     ks: NDArray[np.float64],
     kcb: NDArray[np.float64],
-    fc: NDArray[np.float64],
+    fc_t: NDArray[np.float64],
     ke: NDArray[np.float64],
     kc_max: NDArray[np.float64],
     refet: NDArray[np.float64],
-    cover_scaling: bool = True,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Calculate actual evapotranspiration using dual crop coefficient.
 
-    Kc_act = min(fc * Ks * Kcb + Ke, Kc_max)
+    Kc_act = min(fc_t * Ks * Kcb + Ke, Kc_max)
     ETc_act = Kc_act * RefET
 
     Physical constraints:
         - 0 <= Kc_act <= Kc_max
         - ETc_act = 0 when RefET = 0
-        - Transpiration reduced by Ks (stress) and fc (cover)
+        - Transpiration reduced by Ks (stress) and fc_t (cover)
 
     Parameters
     ----------
@@ -244,8 +243,10 @@ def actual_et(
         Water stress coefficient [0, 1]
     kcb : (n_fields,)
         Basal crop coefficient
-    fc : (n_fields,)
-        Fractional vegetation cover [0, 1]
+    fc_t : (n_fields,)
+        Transpiration cover weight [0, 1] from
+        :func:`swimrs.process.cover_modes.transpiration_cover_factor`; all ones under
+        the canonical FAO-56 (``none``) form.
     ke : (n_fields,)
         Soil evaporation coefficient
     kc_max : (n_fields,)
@@ -265,10 +266,7 @@ def actual_et(
     etc_act = np.empty(n, dtype=np.float64)
 
     for i in prange(n):
-        if cover_scaling:
-            kc_raw = fc[i] * ks[i] * kcb[i] + ke[i]
-        else:
-            kc_raw = ks[i] * kcb[i] + ke[i]
+        kc_raw = fc_t[i] * ks[i] * kcb[i] + ke[i]
 
         # Cap at maximum
         if kc_raw > kc_max[i]:

@@ -135,9 +135,13 @@ class TestParsePestParCsv:
 
     def test_all_params(self, tmp_path):
         fids = ["1"]
+        # Both NDVI-Kcb curve parameterizations. A real run carries only one
+        # (the modes are exclusive), but the parser must recognize either.
         params = {
             "ndvi_k": {"1": 10.0},
             "ndvi_0": {"1": 0.5},
+            "ndvi_alpha": {"1": 0.2},
+            "ndvi_beta": {"1": 1.25},
             "swe_alpha": {"1": 0.4},
             "swe_beta": {"1": 2.5},
             "ks_alpha": {"1": 0.2},

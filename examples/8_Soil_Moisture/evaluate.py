@@ -122,6 +122,10 @@ def run_model(cfg, container, par_csv, fids):
             empirical_kc_max=True,
             mask_mode=getattr(cfg, "mask_mode", "none"),
             transpiration_cover_scaling=getattr(cfg, "transpiration_cover_scaling", True),
+            transpiration_cover_mode=getattr(cfg, "transpiration_cover_mode", None),
+            cover_linear_ndvi_bare=getattr(cfg, "cover_linear_ndvi_bare", None),
+            cover_linear_ndvi_full=getattr(cfg, "cover_linear_ndvi_full", None),
+            kcb_ndvi_mode=getattr(cfg, "kcb_ndvi_mode", None),
             stress_depletion_fraction=getattr(cfg, "stress_depletion_fraction", None),
         )
         output, _ = run_daily_loop_fast(si)

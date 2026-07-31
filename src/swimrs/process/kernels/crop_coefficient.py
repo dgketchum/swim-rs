@@ -10,7 +10,7 @@ import numpy as np
 from numba import njit, prange
 from numpy.typing import NDArray
 
-__all__ = ["kcb_sigmoid", "kcb_linear"]
+__all__ = ["kcb_sigmoid", "kcb_linear", "kcb_affine"]
 
 
 @njit(cache=True, fastmath=True, parallel=True)
@@ -135,5 +135,64 @@ def kcb_linear(
                 kcb[i] = kc_min[i]
             else:
                 kcb[i] = kcb_raw
+
+    return kcb
+
+
+@njit(cache=True, fastmath=True, parallel=True)
+def kcb_affine(
+    ndvi: NDArray[np.float64],
+    kc_max: NDArray[np.float64],
+    ndvi_alpha: NDArray[np.float64],
+    ndvi_beta: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """
+    Basal crop coefficient from NDVI using the linear NDVI-Kcb relation.
+
+    Kcb = ndvi_beta * NDVI + ndvi_alpha
+
+    This is the standard remote-sensing crop-coefficient form and the relation
+    SWIM's predecessor used before the sigmoid (``model/obs_kcb_daily.py``,
+    removed in ``d77bc84``). Slope and intercept are both free, so the curve is
+    two-parameter like the sigmoid.
+
+    Parameters
+    ----------
+    ndvi : (n_fields,)
+        Normalized Difference Vegetation Index
+    kc_max : (n_fields,)
+        Maximum crop coefficient per field, used only as the upper clip
+    ndvi_alpha : (n_fields,)
+        Intercept, historically ~0.2 with bounds [-0.7, 1.5]
+    ndvi_beta : (n_fields,)
+        Slope, historically ~1.25 with bounds [0.5, 1.7]
+
+    Returns
+    -------
+    kcb : (n_fields,)
+        Basal crop coefficient, bounded [0, Kc_max]
+
+    Notes
+    -----
+    Unlike :func:`kcb_linear`, the endpoints are not NDVI values: the ramp is
+    parameterized directly by slope and intercept, which is what makes it a
+    drop-in two-parameter replacement for the logistic.
+
+    The clip to ``[0, Kc_max]`` is a deliberate departure from the legacy
+    implementation, which had none. Downstream ``fc`` and root-depth ratios
+    assume ``Kcb <= Kc_max``; an unclipped ramp violates that at high NDVI.
+    """
+    n = ndvi.shape[0]
+    kcb = np.empty(n, dtype=np.float64)
+
+    for i in prange(n):
+        kcb_raw = ndvi_beta[i] * ndvi[i] + ndvi_alpha[i]
+
+        if kcb_raw > kc_max[i]:
+            kcb[i] = kc_max[i]
+        elif kcb_raw < 0.0:
+            kcb[i] = 0.0
+        else:
+            kcb[i] = kcb_raw
 
     return kcb

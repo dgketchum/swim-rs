@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from swimrs.process.input import SwimInput
     from swimrs.process.state import CalibrationParameters, FieldProperties
 
+from swimrs.process.cover_modes import resolve_cover_mode, transpiration_cover_factor
+from swimrs.process.kcb_modes import KCB_MODE_LINEAR, resolve_kcb_mode
 from swimrs.process.loop import (
     DailyOutput,
     _check_finite_state_arrays,
@@ -61,6 +63,8 @@ def _run_loop_jit(
     kc_min: np.ndarray,
     ndvi_k: np.ndarray,
     ndvi_0: np.ndarray,
+    ndvi_alpha: np.ndarray,
+    ndvi_beta: np.ndarray,
     swe_alpha: np.ndarray,
     swe_beta: np.ndarray,
     kr_damp: np.ndarray,
@@ -86,7 +90,14 @@ def _run_loop_jit(
     s4_init: np.ndarray,
     daw3_init: np.ndarray,
     taw3_init: np.ndarray,
-    cover_scaling: bool,
+    # Transpiration cover weight: integer mode code (swimrs.process.cover_modes) plus
+    # the optional explicit linear-ramp endpoints (lo < 0 -> sigmoid-matched).
+    cover_mode: int,
+    cover_lin_lo: float,
+    cover_lin_hi: float,
+    # NDVI->Kcb curve: integer mode code (swimrs.process.kcb_modes). 0 = sigmoid
+    # on (ndvi_k, ndvi_0); 1 = linear on (ndvi_alpha, ndvi_beta).
+    kcb_mode: int,
 ):
     """JIT-compiled daily loop using vectorized array operations.
 
@@ -257,14 +268,24 @@ def _run_loop_jit(
         infiltration = precip_eff - runoff
 
         # ================================================================
-        # 3. CROP COEFFICIENT (Kcb from NDVI via sigmoid)
-        # Kcb = Kc_max / (1 + exp(-k * (NDVI - NDVI_0)))
+        # 3. CROP COEFFICIENT (Kcb from NDVI)
+        # sigmoid: Kcb = Kc_max / (1 + exp(-k * (NDVI - NDVI_0)))
+        # linear:  Kcb = ndvi_beta * NDVI + ndvi_alpha
+        # kcb_norm = Kcb / Kc_max feeds the cover weight; under the sigmoid it
+        # IS the logistic, taken directly rather than by division so the
+        # default path stays bit-for-bit identical to prior runs.
         # ================================================================
-        exp_val = -ndvi_k * (ndvi - ndvi_0)
-        exp_val = np.maximum(-20.0, np.minimum(20.0, exp_val))
-        sigmoid = 1.0 / (1.0 + np.exp(exp_val))
-        kcb = kc_max * sigmoid
-        kcb = np.maximum(0.0, np.minimum(kc_max, kcb))
+        if kcb_mode == KCB_MODE_LINEAR:
+            kcb = ndvi_beta * ndvi + ndvi_alpha
+            kcb = np.maximum(0.0, np.minimum(kc_max, kcb))
+            kcb_norm = np.where(kc_max > 1e-6, kcb / kc_max, 0.0)
+        else:
+            exp_val = -ndvi_k * (ndvi - ndvi_0)
+            exp_val = np.maximum(-20.0, np.minimum(20.0, exp_val))
+            sigmoid = 1.0 / (1.0 + np.exp(exp_val))
+            kcb = kc_max * sigmoid
+            kcb = np.maximum(0.0, np.minimum(kc_max, kcb))
+            kcb_norm = sigmoid
 
         # ================================================================
         # 4. FRACTIONAL COVER from Kcb (FAO-56)
@@ -344,13 +365,14 @@ def _run_loop_jit(
 
         # ================================================================
         # 10. ACTUAL ET (FAO-56 dual crop coefficient)
-        # Kc_act = fc * Ks * Kcb + Ke, capped at Kc_max
-        # fc scales transpiration by fractional cover
+        # Kc_act = fc_t * Ks * Kcb + Ke, capped at Kc_max
+        # fc_t is the transpiration cover weight selected by cover_mode; the
+        # evaporation fraction few = 1 - fc above is unaffected by the mode.
         # ================================================================
-        if cover_scaling:
-            kc_act = fc * ks * kcb + ke
-        else:
-            kc_act = ks * kcb + ke
+        fc_t = transpiration_cover_factor(
+            cover_mode, ndvi, fc, kcb_norm, ndvi_k, ndvi_0, cover_lin_lo, cover_lin_hi
+        )
+        kc_act = fc_t * ks * kcb + ke
         kc_act = np.minimum(kc_max, kc_act)
         eta = kc_act * etr
         evap = ke * etr
@@ -665,6 +687,8 @@ def run_daily_loop_fast(
     properties: FieldProperties | None = None,
     cover_scaling: bool | None = None,
     prescribed_irr: np.ndarray | None = None,
+    cover_mode: str | int | None = None,
+    kcb_mode: str | int | None = None,
 ) -> tuple[DailyOutput, WaterBalanceState]:
     """Run daily water balance simulation using JIT-compiled loop.
 
@@ -692,6 +716,15 @@ def run_daily_loop_fast(
         ``prescribed_irrigation/irr_mm`` group), and finally to an all-NaN array
         (scheduler everywhere, i.e. baseline). This is a physics-bypass for
         attribution experiments only — never a production or calibration input.
+    cover_mode : str | int, optional
+        Transpiration cover-weight formulation (``none``/``kcb``/``sigmoid``/
+        ``linear``; see :mod:`swimrs.process.cover_modes`). Defaults to the mode baked
+        into ``swim_input`` at build time, itself defaulting to ``kcb`` — the
+        historical ``transpiration_cover_scaling=True`` behavior.
+    kcb_mode : str | int, optional
+        NDVI→Kcb curve (``sigmoid``/``linear``; see
+        :mod:`swimrs.process.kcb_modes`). Defaults to the mode baked into
+        ``swim_input`` at build time, itself defaulting to ``sigmoid``.
     Returns
     -------
     output : DailyOutput
@@ -699,8 +732,18 @@ def run_daily_loop_fast(
     final_state : WaterBalanceState
         Final state after simulation
     """
-    if cover_scaling is None:
-        cover_scaling = getattr(swim_input, "cover_scaling", True)
+    if cover_mode is None and cover_scaling is None:
+        cover_mode = getattr(swim_input, "cover_mode", None)
+        cover_scaling = getattr(swim_input, "cover_scaling", None)
+    cover_mode_code = resolve_cover_mode(cover_mode, cover_scaling)
+
+    lin_lo, lin_hi = getattr(swim_input, "cover_linear_ndvi_range", (None, None))
+    cover_lin_lo = -1.0 if lin_lo is None else float(lin_lo)
+    cover_lin_hi = -1.0 if lin_hi is None else float(lin_hi)
+
+    if kcb_mode is None:
+        kcb_mode = getattr(swim_input, "kcb_mode", None)
+    kcb_mode_code = resolve_kcb_mode(kcb_mode)
 
     # WP-C7 mad split: the FAO-56 stress depletion fraction p. None (the default
     # for every existing project) -> -1.0 sentinel -> the loop reuses mad*taw for
@@ -791,6 +834,8 @@ def run_daily_loop_fast(
     kc_min = params.kc_min.astype(np.float64)
     ndvi_k = params.ndvi_k.astype(np.float64)
     ndvi_0 = params.ndvi_0.astype(np.float64)
+    ndvi_alpha = params.ndvi_alpha.astype(np.float64)
+    ndvi_beta = params.ndvi_beta.astype(np.float64)
     swe_alpha = params.swe_alpha.astype(np.float64)
     swe_beta = params.swe_beta.astype(np.float64)
     kr_damp = params.kr_damp.astype(np.float64)
@@ -888,6 +933,8 @@ def run_daily_loop_fast(
         kc_min,
         ndvi_k,
         ndvi_0,
+        ndvi_alpha,
+        ndvi_beta,
         swe_alpha,
         swe_beta,
         kr_damp,
@@ -908,7 +955,10 @@ def run_daily_loop_fast(
         s4_init,
         daw3_init,
         taw3_init,
-        cover_scaling,
+        cover_mode_code,
+        cover_lin_lo,
+        cover_lin_hi,
+        kcb_mode_code,
     )
 
     # Package outputs into DailyOutput dataclass

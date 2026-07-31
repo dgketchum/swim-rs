@@ -28,6 +28,9 @@ CALIBRATION_PARAMS = (
     "mad",
     "ndvi_k",
     "ndvi_0",
+    # Linear NDVI-Kcb curve (kcb_ndvi_mode="linear"); absent from sigmoid runs
+    "ndvi_alpha",
+    "ndvi_beta",
     "swe_alpha",
     "swe_beta",
     "ks_damp",
@@ -40,6 +43,8 @@ _PEST_NAME_MAP = {
     "kr_alpha": "kr_damp",
     "ndvi_k": "ndvi_k",
     "ndvi_0": "ndvi_0",
+    "ndvi_alpha": "ndvi_alpha",
+    "ndvi_beta": "ndvi_beta",
     "swe_alpha": "swe_alpha",
     "swe_beta": "swe_beta",
     "aw": "aw",

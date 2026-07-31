@@ -20,6 +20,8 @@ import h5py
 import numpy as np
 import pandas as pd
 
+from swimrs.process.cover_modes import COVER_MODE_NAMES, resolve_cover_mode
+from swimrs.process.kcb_modes import KCB_MODE_NAMES, resolve_kcb_mode
 from swimrs.process.state import (
     CalibrationParameters,
     FieldProperties,
@@ -113,6 +115,19 @@ class SwimInput:
         self.end_date = datetime.fromisoformat(config["end_date"])
         self.refet_type = config.get("refet_type", "eto")
         self.cover_scaling = config.get("transpiration_cover_scaling", True)
+        # Transpiration cover formulation. Absent (older h5) -> None -> the
+        # legacy boolean above decides (True -> 'kcb', False -> 'none').
+        self.cover_mode = config.get("transpiration_cover_mode", None)
+        if self.cover_mode is not None:
+            # Keep the legacy boolean derived from the mode so the two can
+            # never disagree downstream.
+            self.cover_scaling = self.cover_mode != "none"
+        self.cover_linear_ndvi_range = (
+            config.get("cover_linear_ndvi_bare", None),
+            config.get("cover_linear_ndvi_full", None),
+        )
+        # NDVI->Kcb curve. Absent (older h5) or null -> None -> the legacy sigmoid.
+        self.kcb_mode = config.get("kcb_ndvi_mode", None)
         # WP-C7 mad split: absent (older h5) or null -> None -> legacy single-mad Ks.
         self.stress_depletion_fraction = config.get("stress_depletion_fraction", None)
 
@@ -202,6 +217,11 @@ class SwimInput:
             kc_min=params["kc_min"][:],
             ndvi_k=params["ndvi_k"][:],
             ndvi_0=params["ndvi_0"][:],
+            # Linear NDVI-Kcb parameters. Absent in h5 files written before the
+            # linear curve existed -> None -> the dataclass defaults, which are
+            # inert under the sigmoid those files use.
+            ndvi_alpha=params["ndvi_alpha"][:] if "ndvi_alpha" in params else None,
+            ndvi_beta=params["ndvi_beta"][:] if "ndvi_beta" in params else None,
             swe_alpha=params["swe_alpha"][:],
             swe_beta=params["swe_beta"][:],
             kr_damp=params["kr_damp"][:],
@@ -404,6 +424,8 @@ class SwimInput:
             "aw": None,  # Handled separately as property
             "ndvi_k": "ndvi_k",
             "ndvi_0": "ndvi_0",
+            "ndvi_alpha": "ndvi_alpha",
+            "ndvi_beta": "ndvi_beta",
             "swe_alpha": "swe_alpha",
             "swe_beta": "swe_beta",
             "kr_alpha": "kr_damp",
@@ -478,6 +500,10 @@ def build_swim_input(
     ndvi_mode: str = "observed",
     max_irr_rate: float = 100.0,
     transpiration_cover_scaling: bool = True,
+    transpiration_cover_mode: str | None = None,
+    cover_linear_ndvi_bare: float | None = None,
+    cover_linear_ndvi_full: float | None = None,
+    kcb_ndvi_mode: str | None = None,
     stress_depletion_fraction: float | None = None,
     use_container_calibration: bool = True,
     prescribed_irr_path: Path | str | None = None,
@@ -526,6 +552,24 @@ def build_swim_input(
     max_irr_rate : float
         Maximum daily irrigation application rate (mm/day). Defaults to 100.0
         for backward compatibility when not specified in project config.
+    transpiration_cover_scaling : bool
+        Legacy toggle for the cover-scaled transpiration term. Superseded by
+        *transpiration_cover_mode*; kept so existing callers keep working.
+    transpiration_cover_mode : str, optional
+        Transpiration cover formulation — ``none`` (FAO-56 ``Ks*Kcb + Ke``),
+        ``kcb`` (default; FAO-56 Eq. 76 cover from Kcb), ``sigmoid``, or
+        ``linear``. See :mod:`swimrs.process.cover_modes`. When given it
+        overrides *transpiration_cover_scaling*, which is then rewritten to the
+        consistent value so the two can never disagree in the HDF5 config.
+    cover_linear_ndvi_bare, cover_linear_ndvi_full : float, optional
+        Explicit NDVI endpoints for the ``linear`` cover ramp. When omitted the
+        ramp spans the calibrated logistic's 10%–90% range, giving the linear
+        arm the same free parameters as the sigmoid arm.
+    kcb_ndvi_mode : str, optional
+        NDVI→Kcb curve — ``sigmoid`` (default) or ``linear``. See
+        :mod:`swimrs.process.kcb_modes`. The two forms carry different free
+        parameters (``ndvi_k``/``ndvi_0`` vs ``ndvi_alpha``/``ndvi_beta``), so
+        the PEST parameter set must be built for the same mode.
     use_container_calibration : bool
         If True (default), auto-load calibrated parameters from the
         container's ``calibration/`` group when no explicit
@@ -609,6 +653,14 @@ def build_swim_input(
             "Ingest/export the requested series or update the project TOML."
         )
 
+    cover_mode_name = COVER_MODE_NAMES[
+        resolve_cover_mode(
+            transpiration_cover_mode,
+            None if transpiration_cover_mode is not None else transpiration_cover_scaling,
+        )
+    ]
+    kcb_mode_name = KCB_MODE_NAMES[resolve_kcb_mode(kcb_ndvi_mode)]
+
     # Create HDF5 file
     with h5py.File(output_h5, "w") as h5:
         # Config attributes
@@ -616,7 +668,13 @@ def build_swim_input(
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
             "refet_type": refet_type,
-            "transpiration_cover_scaling": transpiration_cover_scaling,
+            "transpiration_cover_mode": cover_mode_name,
+            # Kept in sync with the mode above for readers that predate it.
+            "transpiration_cover_scaling": cover_mode_name != "none",
+            "cover_linear_ndvi_bare": cover_linear_ndvi_bare,
+            "cover_linear_ndvi_full": cover_linear_ndvi_full,
+            # NDVI->Kcb curve: 'sigmoid' (default) or 'linear'.
+            "kcb_ndvi_mode": kcb_mode_name,
             # WP-C7 mad split: None (default) -> the loop reuses mad*taw for the Ks
             # stress onset (legacy). A float fixes the FAO-56 depletion fraction p.
             "stress_depletion_fraction": stress_depletion_fraction,
@@ -1104,6 +1162,11 @@ def _write_parameters_from_container(
     #   - Irrigated crops: 0.55 (moderate NDVI onset with fc scaling)
     #   - Non-irrigated/grassland: 0.15 (transpiration begins at low NDVI)
     ndvi_0 = np.where(irr_status, 0.55, 0.15)
+    # Linear NDVI-Kcb curve (kcb_ndvi_mode="linear"). Legacy priors from
+    # build_pp_files.initial_parameter_dict (pre-3ef4757). Inert under the
+    # default sigmoid, but always written so the h5 schema is mode-independent.
+    ndvi_alpha = np.full(n_fields, 0.2)
+    ndvi_beta = np.full(n_fields, 1.25)
     swe_alpha = np.full(n_fields, 0.5)
     swe_beta = np.full(n_fields, 2.0)
     kr_damp = np.full(n_fields, 0.2)
@@ -1115,6 +1178,8 @@ def _write_parameters_from_container(
         for pname, arr in [
             ("ndvi_k", ndvi_k),
             ("ndvi_0", ndvi_0),
+            ("ndvi_alpha", ndvi_alpha),
+            ("ndvi_beta", ndvi_beta),
             ("swe_alpha", swe_alpha),
             ("swe_beta", swe_beta),
             ("kr_damp", kr_damp),
@@ -1127,6 +1192,8 @@ def _write_parameters_from_container(
     params_group.create_dataset("kc_min", data=kc_min)
     params_group.create_dataset("ndvi_k", data=ndvi_k)
     params_group.create_dataset("ndvi_0", data=ndvi_0)
+    params_group.create_dataset("ndvi_alpha", data=ndvi_alpha)
+    params_group.create_dataset("ndvi_beta", data=ndvi_beta)
     params_group.create_dataset("swe_alpha", data=swe_alpha)
     params_group.create_dataset("swe_beta", data=swe_beta)
     params_group.create_dataset("kr_damp", data=kr_damp)
@@ -1635,6 +1702,9 @@ def _load_calibrated_params(
         "kr_damp": "kr_damp",
         "ndvi_k": "ndvi_k",
         "ndvi_0": "ndvi_0",
+        # Linear NDVI-Kcb curve parameters (kcb_ndvi_mode="linear")
+        "ndvi_alpha": "ndvi_alpha",
+        "ndvi_beta": "ndvi_beta",
         "swe_alpha": "swe_alpha",
         "swe_beta": "swe_beta",
         "aw": "aw",

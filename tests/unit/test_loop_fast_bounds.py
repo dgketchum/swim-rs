@@ -7,6 +7,13 @@ and asserts that outputs respect physical constraints.
 import numpy as np
 import pytest
 
+from swimrs.process.cover_modes import (
+    COVER_MODE_KCB,
+    COVER_MODE_LINEAR,
+    COVER_MODE_NONE,
+    COVER_MODE_SIGMOID,
+)
+from swimrs.process.kcb_modes import KCB_MODE_LINEAR, KCB_MODE_SIGMOID
 from swimrs.process.loop_fast import _run_loop_jit
 
 N_DAYS = 10
@@ -53,6 +60,8 @@ def _make_inputs(*, n_days=N_DAYS, n_fields=N_FIELDS, **overrides):
         kc_min=np.full(n_fields, 0.15),
         ndvi_k=np.full(n_fields, 7.0),
         ndvi_0=np.full(n_fields, 0.45),
+        ndvi_alpha=np.full(n_fields, 0.2),
+        ndvi_beta=np.full(n_fields, 1.25),
         swe_alpha=np.full(n_fields, 0.001),
         swe_beta=np.full(n_fields, 2.0),
         kr_damp=np.full(n_fields, 0.5),
@@ -75,7 +84,12 @@ def _make_inputs(*, n_days=N_DAYS, n_fields=N_FIELDS, **overrides):
         s4_init=np.full(n_fields, 84.7),
         daw3_init=np.zeros(n_fields),
         taw3_init=np.zeros(n_fields),
-        cover_scaling=True,
+        # Transpiration cover weight: default = the FAO-56 Eq. 76 Kcb-derived form
+        cover_mode=COVER_MODE_KCB,
+        cover_lin_lo=-1.0,
+        cover_lin_hi=-1.0,
+        # NDVI->Kcb curve: 0 = the default sigmoid on (ndvi_k, ndvi_0)
+        kcb_mode=KCB_MODE_SIGMOID,
     )
     inputs.update(overrides)
     return inputs
@@ -316,11 +330,11 @@ class TestEdgeCases:
 
 
 class TestCoverScalingToggle:
-    """Verify the transpiration_cover_scaling toggle."""
+    """Verify the transpiration cover-weight modes (swimrs.process.cover_modes)."""
 
-    def test_default_true_matches_original(self):
-        """cover_scaling=True must reproduce the original kc_act = fc*ks*kcb + ke."""
-        inputs = _make_inputs(cover_scaling=True)
+    def test_default_mode_is_kcb(self):
+        """The kcb mode must reproduce the original kc_act = fc*ks*kcb + ke."""
+        inputs = _make_inputs(cover_mode=COVER_MODE_KCB)
         result_on = _unpack(_run_loop_jit(**inputs))
 
         inputs_default = _make_inputs()
@@ -329,14 +343,14 @@ class TestCoverScalingToggle:
         np.testing.assert_array_equal(result_on["eta"], result_default["eta"])
 
     def test_fc_off_raises_et_at_partial_cover(self):
-        """With partial canopy (fc<1), fc-off should produce higher ET than fc-on."""
+        """With partial canopy (fc<1), the none mode gives higher ET than kcb."""
         inputs_on = _make_inputs(
             all_ndvi=np.full((N_DAYS, N_FIELDS), 0.3),
-            cover_scaling=True,
+            cover_mode=COVER_MODE_KCB,
         )
         inputs_off = _make_inputs(
             all_ndvi=np.full((N_DAYS, N_FIELDS), 0.3),
-            cover_scaling=False,
+            cover_mode=COVER_MODE_NONE,
         )
         eta_on = _unpack(_run_loop_jit(**inputs_on))["eta"]
         eta_off = _unpack(_run_loop_jit(**inputs_off))["eta"]
@@ -344,26 +358,66 @@ class TestCoverScalingToggle:
         assert np.any(eta_off > eta_on + 1e-6)
 
     def test_fc_off_preserves_ke_and_few(self):
-        """cover_scaling=False must not change Ke (few = 1-fc stays)."""
-        inputs_on = _make_inputs(cover_scaling=True)
-        inputs_off = _make_inputs(cover_scaling=False)
+        """No cover mode may change Ke: few = 1-fc always uses the Kcb-derived fc."""
+        inputs_on = _make_inputs(cover_mode=COVER_MODE_KCB)
         ke_on = _unpack(_run_loop_jit(**inputs_on))["ke"]
-        ke_off = _unpack(_run_loop_jit(**inputs_off))["ke"]
-        np.testing.assert_array_equal(ke_on, ke_off)
+        for mode in (COVER_MODE_NONE, COVER_MODE_SIGMOID, COVER_MODE_LINEAR):
+            ke_other = _unpack(_run_loop_jit(**_make_inputs(cover_mode=mode)))["ke"]
+            np.testing.assert_array_equal(ke_on, ke_other)
 
     def test_full_cover_no_difference(self):
-        """At fc≈1 (high NDVI), fc-on and fc-off should be nearly identical."""
-        inputs_on = _make_inputs(
-            all_ndvi=np.full((N_DAYS, N_FIELDS), 0.9),
-            cover_scaling=True,
-        )
-        inputs_off = _make_inputs(
-            all_ndvi=np.full((N_DAYS, N_FIELDS), 0.9),
-            cover_scaling=False,
-        )
-        eta_on = _unpack(_run_loop_jit(**inputs_on))["eta"]
-        eta_off = _unpack(_run_loop_jit(**inputs_off))["eta"]
-        np.testing.assert_allclose(eta_on, eta_off, atol=0.5)
+        """At fc≈1 (high NDVI), every cover mode converges."""
+        etas = [
+            _unpack(
+                _run_loop_jit(
+                    **_make_inputs(
+                        all_ndvi=np.full((N_DAYS, N_FIELDS), 0.9),
+                        cover_mode=mode,
+                    )
+                )
+            )["eta"]
+            for mode in (
+                COVER_MODE_NONE,
+                COVER_MODE_KCB,
+                COVER_MODE_SIGMOID,
+                COVER_MODE_LINEAR,
+            )
+        ]
+        for eta in etas[1:]:
+            np.testing.assert_allclose(etas[0], eta, atol=0.5)
+
+    def test_partial_cover_mode_ordering(self):
+        """At partial cover the forms order none > sigmoid ≈ linear > kcb.
+
+        The Kcb-derived form is the most convex in greenness, so it suppresses
+        partial-cover transpiration the hardest; this ordering is what the E1
+        cover-form experiment is testing against flux ET.
+        """
+        eta = {}
+        for name, mode in (
+            ("none", COVER_MODE_NONE),
+            ("kcb", COVER_MODE_KCB),
+            ("sigmoid", COVER_MODE_SIGMOID),
+            ("linear", COVER_MODE_LINEAR),
+        ):
+            inputs = _make_inputs(
+                all_ndvi=np.full((N_DAYS, N_FIELDS), 0.3),
+                cover_mode=mode,
+            )
+            eta[name] = _unpack(_run_loop_jit(**inputs))["eta"].sum()
+
+        assert eta["none"] > eta["sigmoid"] > eta["kcb"]
+        assert eta["none"] > eta["linear"] > eta["kcb"]
+
+    def test_linear_explicit_endpoints_are_honored(self):
+        """Explicit ramp endpoints must override the sigmoid-matched placement."""
+        base = dict(all_ndvi=np.full((N_DAYS, N_FIELDS), 0.3), cover_mode=COVER_MODE_LINEAR)
+        default_ramp = _unpack(_run_loop_jit(**_make_inputs(**base)))["eta"]
+        # A ramp that only reaches full cover at NDVI 2.0 keeps fc_t tiny at 0.3
+        late_ramp = _unpack(
+            _run_loop_jit(**_make_inputs(cover_lin_lo=0.2, cover_lin_hi=2.0, **base))
+        )["eta"]
+        assert late_ramp.sum() < default_ramp.sum()
 
 
 class TestTEWEvapCap:
@@ -584,3 +638,93 @@ class TestStressDepletionSplit:
         assert low_p["ks"][0, 0] < reuse["ks"][0, 0]
         assert low_p["eta"][0, 0] < reuse["eta"][0, 0]
         assert not np.array_equal(low_p["ks"], reuse["ks"])
+
+
+class TestKcbNdviMode:
+    """Verify the NDVI->Kcb curve modes (swimrs.process.kcb_modes)."""
+
+    def test_default_mode_is_sigmoid(self):
+        """Omitting kcb_mode must reproduce the logistic bit-for-bit."""
+        explicit = _unpack(_run_loop_jit(**_make_inputs(kcb_mode=KCB_MODE_SIGMOID)))
+        default = _unpack(_run_loop_jit(**_make_inputs()))
+        np.testing.assert_array_equal(explicit["kcb"], default["kcb"])
+        np.testing.assert_array_equal(explicit["eta"], default["eta"])
+
+    def test_linear_kcb_matches_closed_form(self):
+        """Kcb = beta*NDVI + alpha, clipped to [0, kc_max]."""
+        ndvi = 0.4
+        alpha, beta = 0.1, 1.5
+        out = _unpack(
+            _run_loop_jit(
+                **_make_inputs(
+                    all_ndvi=np.full((N_DAYS, N_FIELDS), ndvi),
+                    ndvi_alpha=np.full(N_FIELDS, alpha),
+                    ndvi_beta=np.full(N_FIELDS, beta),
+                    kcb_mode=KCB_MODE_LINEAR,
+                )
+            )
+        )
+        np.testing.assert_allclose(out["kcb"], beta * ndvi + alpha)
+
+    def test_linear_kcb_clipped_to_kc_max(self):
+        """A steep ramp at high NDVI must not push Kcb past kc_max."""
+        out = _unpack(
+            _run_loop_jit(
+                **_make_inputs(
+                    all_ndvi=np.full((N_DAYS, N_FIELDS), 0.95),
+                    ndvi_alpha=np.full(N_FIELDS, 0.5),
+                    ndvi_beta=np.full(N_FIELDS, 1.7),
+                    kcb_mode=KCB_MODE_LINEAR,
+                )
+            )
+        )
+        assert np.all(out["kcb"] <= 1.25 + 1e-12)
+        np.testing.assert_allclose(out["kcb"], 1.25)
+
+    def test_linear_kcb_floored_at_zero(self):
+        """A negative intercept at low NDVI must not produce negative Kcb."""
+        out = _unpack(
+            _run_loop_jit(
+                **_make_inputs(
+                    all_ndvi=np.full((N_DAYS, N_FIELDS), 0.05),
+                    ndvi_alpha=np.full(N_FIELDS, -0.7),
+                    ndvi_beta=np.full(N_FIELDS, 0.5),
+                    kcb_mode=KCB_MODE_LINEAR,
+                )
+            )
+        )
+        np.testing.assert_array_equal(out["kcb"], np.zeros_like(out["kcb"]))
+
+    def test_sigmoid_params_inert_under_linear(self):
+        """ndvi_k/ndvi_0 must have no effect once the curve is linear."""
+        base = dict(
+            all_ndvi=np.full((N_DAYS, N_FIELDS), 0.45),
+            kcb_mode=KCB_MODE_LINEAR,
+        )
+        a = _unpack(_run_loop_jit(**_make_inputs(ndvi_k=np.full(N_FIELDS, 3.0), **base)))
+        b = _unpack(_run_loop_jit(**_make_inputs(ndvi_k=np.full(N_FIELDS, 20.0), **base)))
+        np.testing.assert_array_equal(a["eta"], b["eta"])
+
+    def test_linear_params_inert_under_sigmoid(self):
+        """ndvi_alpha/ndvi_beta must have no effect under the default curve."""
+        a = _unpack(_run_loop_jit(**_make_inputs(ndvi_alpha=np.full(N_FIELDS, -0.5))))
+        b = _unpack(_run_loop_jit(**_make_inputs(ndvi_alpha=np.full(N_FIELDS, 1.4))))
+        np.testing.assert_array_equal(a["eta"], b["eta"])
+
+    def test_cover_weight_follows_the_linear_curve(self):
+        """The Kcb-derived cover weight must track the linear Kcb, not a logistic.
+
+        This is the coupling that makes the standard-FAO-56 arm meaningful:
+        under cover_mode=none the linear curve alone sets transpiration, and
+        turning the cover weight back on must still reduce it at partial cover.
+        """
+        base = dict(
+            all_ndvi=np.full((N_DAYS, N_FIELDS), 0.35),
+            ndvi_alpha=np.full(N_FIELDS, 0.1),
+            ndvi_beta=np.full(N_FIELDS, 1.5),
+            kcb_mode=KCB_MODE_LINEAR,
+        )
+        unweighted = _unpack(_run_loop_jit(**_make_inputs(cover_mode=COVER_MODE_NONE, **base)))
+        weighted = _unpack(_run_loop_jit(**_make_inputs(cover_mode=COVER_MODE_KCB, **base)))
+        np.testing.assert_array_equal(unweighted["kcb"], weighted["kcb"])
+        assert weighted["eta"].sum() < unweighted["eta"].sum()

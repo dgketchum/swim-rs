@@ -11,11 +11,13 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from swimrs.process.cover_modes import resolve_cover_mode, transpiration_cover_factor
+from swimrs.process.kcb_modes import KCB_MODE_LINEAR, resolve_kcb_mode
 from swimrs.process.kernels.cover import (
     exposed_soil_fraction,
     fractional_cover,
 )
-from swimrs.process.kernels.crop_coefficient import kcb_sigmoid
+from swimrs.process.kernels.crop_coefficient import kcb_affine, kcb_sigmoid
 from swimrs.process.kernels.evaporation import ke_coefficient, kr_damped, kr_reduction
 from swimrs.process.kernels.irrigation import groundwater_subsidy, irrigation_demand
 from swimrs.process.kernels.irrigation_tracking import (
@@ -229,6 +231,8 @@ def run_daily_loop(
     properties: FieldProperties | None = None,
     cover_scaling: bool | None = None,
     stress_depletion_fraction: float | None = None,
+    cover_mode: str | int | None = None,
+    kcb_mode: str | int | None = None,
 ) -> tuple[DailyOutput, WaterBalanceState]:
     """Run the daily water balance simulation loop.
 
@@ -249,8 +253,14 @@ def run_daily_loop(
     final_state : WaterBalanceState
         Final state after simulation
     """
-    if cover_scaling is None:
-        cover_scaling = getattr(swim_input, "cover_scaling", True)
+    if cover_mode is None and cover_scaling is None:
+        cover_mode = getattr(swim_input, "cover_mode", None)
+        cover_scaling = getattr(swim_input, "cover_scaling", None)
+    cover_mode_code = resolve_cover_mode(cover_mode, cover_scaling)
+    cover_lin_lo, cover_lin_hi = getattr(swim_input, "cover_linear_ndvi_range", (None, None))
+    if kcb_mode is None:
+        kcb_mode = getattr(swim_input, "kcb_mode", None)
+    kcb_mode_code = resolve_kcb_mode(kcb_mode)
     if stress_depletion_fraction is None:
         stress_depletion_fraction = getattr(swim_input, "stress_depletion_fraction", None)
 
@@ -312,7 +322,9 @@ def run_daily_loop(
             srad=srad,
             irr_flag=irr_flag,
             f_sub=current_f_sub,
-            cover_scaling=cover_scaling,
+            cover_mode=cover_mode_code,
+            cover_linear_ndvi_range=(cover_lin_lo, cover_lin_hi),
+            kcb_mode=kcb_mode_code,
             stress_depletion_fraction=stress_depletion_fraction,
         )
 
@@ -351,7 +363,9 @@ def step_day(
     srad: NDArray[np.float64],
     irr_flag: NDArray[np.bool_],
     f_sub: NDArray[np.float64] | None = None,
-    cover_scaling: bool = True,
+    cover_mode: str | int | None = None,
+    cover_linear_ndvi_range: tuple[float | None, float | None] = (None, None),
+    kcb_mode: str | int | None = None,
     stress_depletion_fraction: float | None = None,
 ) -> dict[str, NDArray[np.float64]]:
     """Execute a single daily time step.
@@ -445,12 +459,29 @@ def step_day(
     # Net infiltration
     infiltration = precip_eff - runoff
 
-    # 3. Crop coefficient calculation (sigmoid)
-    kcb = kcb_sigmoid(ndvi, props.kc_max, params.ndvi_k, params.ndvi_0)
+    # 3. Crop coefficient calculation (sigmoid, or the linear NDVI-Kcb relation)
+    if resolve_kcb_mode(kcb_mode) == KCB_MODE_LINEAR:
+        kcb = kcb_affine(ndvi, props.kc_max, params.ndvi_alpha, params.ndvi_beta)
+    else:
+        kcb = kcb_sigmoid(ndvi, props.kc_max, params.ndvi_k, params.ndvi_0)
 
     # 4. Fractional cover from Kcb (FAO-56)
     fc = fractional_cover(kcb, params.kc_min, props.kc_max)
     few = exposed_soil_fraction(fc)
+
+    # Transpiration cover weight. `few` above always stays on the Kcb-derived
+    # fc; only the transpiration term follows the configured cover mode.
+    lin_lo, lin_hi = cover_linear_ndvi_range
+    fc_t = transpiration_cover_factor(
+        resolve_cover_mode(cover_mode),
+        np.ascontiguousarray(ndvi, dtype=np.float64),
+        np.ascontiguousarray(fc, dtype=np.float64),
+        np.ascontiguousarray(kcb / props.kc_max, dtype=np.float64),
+        np.ascontiguousarray(params.ndvi_k, dtype=np.float64),
+        np.ascontiguousarray(params.ndvi_0, dtype=np.float64),
+        -1.0 if lin_lo is None else float(lin_lo),
+        -1.0 if lin_hi is None else float(lin_hi),
+    )
 
     # 5. Calculate new root depth from kcb (but don't apply redistribution yet)
     # Legacy model: root growth is applied at END of daily loop
@@ -495,7 +526,7 @@ def step_day(
     ke = ke_coefficient(kr_new, props.kc_max, kcb, few, props.ke_max)
 
     # 11. Calculate actual ET and evaporation
-    kc_act, eta = actual_et(ks_new, kcb, fc, ke, props.kc_max, etr, cover_scaling)
+    kc_act, eta = actual_et(ks_new, kcb, fc_t, ke, props.kc_max, etr)
     evap = ke * etr  # Soil evaporation component
 
     # 11a. Constrain ET to available water (prevents phantom ET)

@@ -21,6 +21,12 @@ with warnings.catch_warnings():
 from swimrs.calibrate.ssm_obs import GROW_MONTHS, build_ssm_observation
 from swimrs.container.schema import SWE_PATHS, find_swe_path
 from swimrs.process.input import build_swim_input
+from swimrs.process.kcb_modes import (
+    KCB_MODE_NAMES,
+    KCB_SIGMOID_PARAMS,
+    kcb_mode_parameters,
+    resolve_kcb_mode,
+)
 
 
 class PestBuilder:
@@ -1032,7 +1038,10 @@ if __name__ == "__main__":
 
         Writes loc.mat and localizer_summary.json to the pest directory.
         """
-        et_params = ["aw", "ndvi_k", "ndvi_0", "mad", "kr_alpha", "ks_alpha"]
+        # The NDVI-curve parameters are mode-dependent: sigmoid -> ndvi_k/ndvi_0,
+        # linear -> ndvi_alpha/ndvi_beta. Both drive Kcb, hence the ET group.
+        et_params = ["aw", "mad", "kr_alpha", "ks_alpha"]
+        et_params += list(kcb_mode_parameters(getattr(self.config, "kcb_ndvi_mode", None)))
         # Scheduler-realism knobs perturb the soil-water balance and therefore ETf,
         # so they belong to the ET-observation localizer group when active.
         et_params += [
@@ -1190,6 +1199,10 @@ if __name__ == "__main__":
                     continue
             return float(np.nanmean(irr_vals)) if irr_vals else 0.0
 
+    def _kcb_mode_name(self) -> str:
+        """Configured NDVI-Kcb curve name ('sigmoid' or 'linear')."""
+        return KCB_MODE_NAMES[resolve_kcb_mode(getattr(self.config, "kcb_ndvi_mode", None))]
+
     def initial_parameter_dict(self) -> OrderedDict:
         p = OrderedDict(
             {
@@ -1290,6 +1303,39 @@ if __name__ == "__main__":
                 },
             }
         )
+
+        # NDVI-Kcb curve. The default sigmoid calibrates (ndvi_k, ndvi_0); the
+        # linear relation calibrates (ndvi_alpha, ndvi_beta) instead. Both are
+        # two-parameter, so the swap does not change the number of free
+        # parameters -- required for a fair Kcb-form comparison. Bounds and
+        # initial values are the historical ones from build_pp_files
+        # (pre-3ef4757), i.e. the priors in force when SWIM last ran the linear
+        # relation. std is ~1/4 of the range, mirroring aw.
+        if self._kcb_mode_name() == "linear":
+            del p["ndvi_k"]
+            del p["ndvi_0"]
+            p["ndvi_alpha"] = {
+                "file": self.params_file,
+                "std": 0.55,
+                "initial_value": 0.2,
+                "lower_bound": -0.7,
+                "upper_bound": 1.5,
+                "pargp": "ndvi_alpha",
+                "index_cols": 0,
+                "use_cols": 1,
+                "use_rows": None,
+            }
+            p["ndvi_beta"] = {
+                "file": self.params_file,
+                "std": 0.3,
+                "initial_value": 1.25,
+                "lower_bound": 0.5,
+                "upper_bound": 1.7,
+                "pargp": "ndvi_beta",
+                "index_cols": 0,
+                "use_cols": 1,
+                "use_rows": None,
+            }
 
         # WP-C1 scheduler-realism knobs (opt-in via config.scheduler_calibration_params).
         # Only active for irrigated fields; per-field bounds are collapsed to the
@@ -1412,6 +1458,10 @@ if __name__ == "__main__":
                 transpiration_cover_scaling=getattr(
                     self.config, "transpiration_cover_scaling", True
                 ),
+                transpiration_cover_mode=getattr(self.config, "transpiration_cover_mode", None),
+                cover_linear_ndvi_bare=getattr(self.config, "cover_linear_ndvi_bare", None),
+                cover_linear_ndvi_full=getattr(self.config, "cover_linear_ndvi_full", None),
+                kcb_ndvi_mode=getattr(self.config, "kcb_ndvi_mode", None),
                 stress_depletion_fraction=getattr(self.config, "stress_depletion_fraction", None),
                 # Fresh calibration: a stale calibration/ group (e.g. from a
                 # copied container) must not contaminate the PEST base run.
@@ -1514,6 +1564,10 @@ if __name__ == "__main__":
             max_irr_rate=getattr(self.config, "max_irr_rate", 100.0) or 100.0,
             fields=self.plot_order,
             transpiration_cover_scaling=getattr(self.config, "transpiration_cover_scaling", True),
+            transpiration_cover_mode=getattr(self.config, "transpiration_cover_mode", None),
+            cover_linear_ndvi_bare=getattr(self.config, "cover_linear_ndvi_bare", None),
+            cover_linear_ndvi_full=getattr(self.config, "cover_linear_ndvi_full", None),
+            kcb_ndvi_mode=getattr(self.config, "kcb_ndvi_mode", None),
             stress_depletion_fraction=getattr(self.config, "stress_depletion_fraction", None),
             # Fresh calibration: a stale calibration/ group (e.g. from a
             # copied container) must not contaminate the PEST base run.
@@ -2063,6 +2117,13 @@ if __name__ == "__main__":
             groups = list(configured)
         else:
             groups = ["aw", "ndvi_k", "ndvi_0", "mad", "ks_alpha", "kr_alpha"]
+        # Under the linear NDVI-Kcb curve the sigmoid parameters do not exist,
+        # so substitute the curve parameters that do. Without this the linear
+        # arm silently loses NDVI-curve regularization that the sigmoid arm has.
+        curve_params = kcb_mode_parameters(getattr(self.config, "kcb_ndvi_mode", None))
+        if set(curve_params) != set(KCB_SIGMOID_PARAMS):
+            groups = [g for g in groups if g not in KCB_SIGMOID_PARAMS]
+            groups += [g for g in curve_params if g not in groups]
         # WP-C5: pull the surface-capacity params toward their FAO-56 prior whenever
         # active (regardless of the configured list), so weak per-site signal cannot
         # let them wander. Inert when off (params absent from init_pars anyway).

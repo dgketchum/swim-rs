@@ -508,6 +508,134 @@ end_date = "2020-12-31"
             cfg.read_config(str(self._write_toml(tmp_path, block)))
 
 
+class TestTranspirationCoverMode:
+    """misc.transpiration_cover_mode parsing (E1 cover-form experiment)."""
+
+    def _write_toml(self, tmp_path, misc_block=""):
+        gis_dir = tmp_path / "gis"
+        gis_dir.mkdir(exist_ok=True)
+        shapefile = gis_dir / "fields.shp"
+        shapefile.touch()
+        toml_content = f"""
+project = "test_project"
+root = "{tmp_path}"
+
+[paths]
+fields_shapefile = "{shapefile}"
+
+[ids]
+feature_id = "FID"
+
+[date_range]
+start_date = "2020-01-01"
+end_date = "2020-12-31"
+{misc_block}
+"""
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text(toml_content)
+        return toml_file
+
+    def test_default_is_none_with_scaling_on(self, tmp_path):
+        """Absent from TOML -> no mode, legacy cover scaling on (kcb form)."""
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path)))
+        assert cfg.transpiration_cover_mode is None
+        assert cfg.transpiration_cover_scaling is True
+
+    @pytest.mark.parametrize("mode", ["none", "kcb", "sigmoid", "linear"])
+    def test_reads_each_mode(self, tmp_path, mode):
+        block = f'[misc]\ntranspiration_cover_mode = "{mode}"\n'
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path, block)))
+        assert cfg.transpiration_cover_mode == mode
+        assert cfg.transpiration_cover_scaling is (mode != "none")
+
+    def test_unknown_mode_raises(self, tmp_path):
+        block = '[misc]\ntranspiration_cover_mode = "quadratic"\n'
+        cfg = ProjectConfig()
+        with pytest.raises(ValueError, match="Unknown transpiration cover mode"):
+            cfg.read_config(str(self._write_toml(tmp_path, block)))
+
+    def test_mode_contradicting_legacy_bool_raises(self, tmp_path):
+        """A mode that disagrees with an explicit boolean must fail loudly."""
+        block = '[misc]\ntranspiration_cover_mode = "none"\ntranspiration_cover_scaling = true\n'
+        cfg = ProjectConfig()
+        with pytest.raises(ValueError, match="contradicts"):
+            cfg.read_config(str(self._write_toml(tmp_path, block)))
+
+    def test_linear_endpoints_must_be_paired(self, tmp_path):
+        block = '[misc]\ntranspiration_cover_mode = "linear"\ncover_linear_ndvi_bare = 0.15\n'
+        cfg = ProjectConfig()
+        with pytest.raises(ValueError, match="cover_linear_ndvi"):
+            cfg.read_config(str(self._write_toml(tmp_path, block)))
+
+    def test_linear_endpoints_parsed(self, tmp_path):
+        block = (
+            '[misc]\ntranspiration_cover_mode = "linear"\n'
+            "cover_linear_ndvi_bare = 0.15\ncover_linear_ndvi_full = 0.8\n"
+        )
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path, block)))
+        assert cfg.cover_linear_ndvi_bare == 0.15
+        assert cfg.cover_linear_ndvi_full == 0.8
+
+
+class TestKcbNdviMode:
+    """misc.kcb_ndvi_mode parsing (standard-FAO-56 arm of the E1 experiment)."""
+
+    def _write_toml(self, tmp_path, misc_block=""):
+        gis_dir = tmp_path / "gis"
+        gis_dir.mkdir(exist_ok=True)
+        shapefile = gis_dir / "fields.shp"
+        shapefile.touch()
+        toml_content = f"""
+project = "test_project"
+root = "{tmp_path}"
+
+[paths]
+fields_shapefile = "{shapefile}"
+
+[ids]
+feature_id = "FID"
+
+[date_range]
+start_date = "2020-01-01"
+end_date = "2020-12-31"
+{misc_block}
+"""
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text(toml_content)
+        return toml_file
+
+    def test_default_is_none(self, tmp_path):
+        """Absent from TOML -> None, which the loop resolves to the sigmoid."""
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path)))
+        assert cfg.kcb_ndvi_mode is None
+
+    @pytest.mark.parametrize("mode", ["sigmoid", "linear"])
+    def test_reads_each_mode(self, tmp_path, mode):
+        block = f'[misc]\nkcb_ndvi_mode = "{mode}"\n'
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path, block)))
+        assert cfg.kcb_ndvi_mode == mode
+
+    def test_unknown_mode_raises(self, tmp_path):
+        block = '[misc]\nkcb_ndvi_mode = "logistic"\n'
+        cfg = ProjectConfig()
+        with pytest.raises(ValueError, match="Unknown kcb NDVI mode"):
+            cfg.read_config(str(self._write_toml(tmp_path, block)))
+
+    def test_independent_of_cover_mode(self, tmp_path):
+        """The Kcb curve and the cover weight are orthogonal (the 2x2 factorial)."""
+        block = '[misc]\nkcb_ndvi_mode = "linear"\ntranspiration_cover_mode = "none"\n'
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path, block)))
+        assert cfg.kcb_ndvi_mode == "linear"
+        assert cfg.transpiration_cover_mode == "none"
+        assert cfg.transpiration_cover_scaling is False
+
+
 class TestResolvePathsEdgeCases:
     """Tests for _resolve_paths edge cases."""
 

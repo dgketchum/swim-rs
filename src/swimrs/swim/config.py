@@ -5,6 +5,9 @@ import subprocess
 import pandas as pd
 import toml
 
+from swimrs.process.cover_modes import COVER_MODE_NAMES, resolve_cover_mode
+from swimrs.process.kcb_modes import KCB_MODE_NAMES, resolve_kcb_mode
+
 
 class ProjectConfig:
     """Configuration manager for SWIM-RS projects.
@@ -80,6 +83,10 @@ class ProjectConfig:
         self.elev_units = None
         self.refet_type = None
         self.transpiration_cover_scaling = None
+        self.transpiration_cover_mode = None
+        self.cover_linear_ndvi_bare = None
+        self.cover_linear_ndvi_full = None
+        self.kcb_ndvi_mode = None
         self.stress_depletion_fraction = None
         self.start_dt = None
         self.end_dt = None
@@ -382,6 +389,28 @@ class ProjectConfig:
         self.elev_units = misc_conf.get("elev_units", "m")
         self.refet_type = misc_conf.get("refet_type")
         self.transpiration_cover_scaling = bool(misc_conf.get("transpiration_cover_scaling", True))
+        # Transpiration cover formulation (swimrs.process.cover_modes). Absent ->
+        # the legacy boolean above decides. resolve_cover_mode raises on an
+        # unknown name or on a mode that contradicts the boolean.
+        cover_mode = misc_conf.get("transpiration_cover_mode", None)
+        if cover_mode is not None:
+            explicit_bool = misc_conf.get("transpiration_cover_scaling", None)
+            code = resolve_cover_mode(cover_mode, explicit_bool)
+            self.transpiration_cover_mode = COVER_MODE_NAMES[code]
+            self.transpiration_cover_scaling = self.transpiration_cover_mode != "none"
+        self.cover_linear_ndvi_bare = misc_conf.get("cover_linear_ndvi_bare", None)
+        self.cover_linear_ndvi_full = misc_conf.get("cover_linear_ndvi_full", None)
+        if (self.cover_linear_ndvi_bare is None) != (self.cover_linear_ndvi_full is None):
+            raise ValueError(
+                "misc.cover_linear_ndvi_bare and misc.cover_linear_ndvi_full must be set "
+                "together (or both omitted, which places the ramp on the calibrated logistic)."
+            )
+        # NDVI->Kcb curve (swimrs.process.kcb_modes). Absent -> 'sigmoid', the
+        # historical default. 'linear' swaps the calibrated curve parameters
+        # from (ndvi_k, ndvi_0) to (ndvi_alpha, ndvi_beta) in PestBuilder.
+        kcb_mode = misc_conf.get("kcb_ndvi_mode", None)
+        if kcb_mode is not None:
+            self.kcb_ndvi_mode = KCB_MODE_NAMES[resolve_kcb_mode(kcb_mode)]
         sdf = misc_conf.get("stress_depletion_fraction", None)
         if sdf is not None:
             sdf = float(sdf)

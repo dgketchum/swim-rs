@@ -20,6 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
+from swimrs.process.cover_modes import COVER_MODE_KCB
+from swimrs.process.kcb_modes import KCB_MODE_SIGMOID
 from swimrs.process.loop_fast import _run_loop_jit
 from swimrs.process.state import FieldProperties
 
@@ -69,6 +71,8 @@ def _scenario(*, refill_frac=1.1, min_irr_days=0.0, irr_depth=0.0):
         kc_min=np.full(n_fields, 0.15),
         ndvi_k=np.full(n_fields, 7.0),
         ndvi_0=np.full(n_fields, 0.45),
+        ndvi_alpha=np.full(n_fields, 0.2),
+        ndvi_beta=np.full(n_fields, 1.25),
         swe_alpha=np.full(n_fields, 0.3),
         swe_beta=np.full(n_fields, 2.0),
         kr_damp=np.full(n_fields, 0.5),
@@ -90,7 +94,12 @@ def _scenario(*, refill_frac=1.1, min_irr_days=0.0, irr_depth=0.0):
         s4_init=np.full(n_fields, 84.7),
         daw3_init=np.zeros(n_fields),
         taw3_init=np.zeros(n_fields),
-        cover_scaling=True,
+        # Transpiration cover weight: default = the FAO-56 Eq. 76 Kcb-derived form
+        cover_mode=COVER_MODE_KCB,
+        cover_lin_lo=-1.0,
+        cover_lin_hi=-1.0,
+        # NDVI->Kcb curve: 0 = the default sigmoid on (ndvi_k, ndvi_0)
+        kcb_mode=KCB_MODE_SIGMOID,
     )
 
 

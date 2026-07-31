@@ -464,6 +464,12 @@ class CalibrationParameters:
         Sigmoid steepness parameter for Kcb
     ndvi_0 : NDArray[np.float64]
         Sigmoid midpoint (inflection) NDVI
+    ndvi_alpha : NDArray[np.float64]
+        Intercept of the linear NDVI-Kcb relation. Used only when the Kcb curve
+        is ``linear`` (see :mod:`swimrs.process.kcb_modes`); inert under the
+        default sigmoid, where ``ndvi_k``/``ndvi_0`` are the free parameters.
+    ndvi_beta : NDArray[np.float64]
+        Slope of the linear NDVI-Kcb relation. Inert under the sigmoid.
     swe_alpha : NDArray[np.float64]
         Snow melt radiation coefficient
     swe_beta : NDArray[np.float64]
@@ -480,6 +486,8 @@ class CalibrationParameters:
     kc_min: NDArray[np.float64] = field(default=None)
     ndvi_k: NDArray[np.float64] = field(default=None)
     ndvi_0: NDArray[np.float64] = field(default=None)
+    ndvi_alpha: NDArray[np.float64] = field(default=None)
+    ndvi_beta: NDArray[np.float64] = field(default=None)
     swe_alpha: NDArray[np.float64] = field(default=None)
     swe_beta: NDArray[np.float64] = field(default=None)
     kr_damp: NDArray[np.float64] = field(default=None)
@@ -495,6 +503,12 @@ class CalibrationParameters:
             self.ndvi_k = np.full(n, 7.0, dtype=np.float64)
         if self.ndvi_0 is None:
             self.ndvi_0 = np.full(n, 0.4, dtype=np.float64)
+        # Legacy linear NDVI-Kcb priors (build_pp_files.initial_parameter_dict,
+        # pre-3ef4757): intercept 0.2, slope 1.25.
+        if self.ndvi_alpha is None:
+            self.ndvi_alpha = np.full(n, 0.2, dtype=np.float64)
+        if self.ndvi_beta is None:
+            self.ndvi_beta = np.full(n, 1.25, dtype=np.float64)
         if self.swe_alpha is None:
             self.swe_alpha = np.full(n, 0.5, dtype=np.float64)
         if self.swe_beta is None:
@@ -532,6 +546,8 @@ class CalibrationParameters:
         params.kc_min = base.kc_min.copy()
         params.ndvi_k = base.ndvi_k.copy()
         params.ndvi_0 = base.ndvi_0.copy()
+        params.ndvi_alpha = base.ndvi_alpha.copy()
+        params.ndvi_beta = base.ndvi_beta.copy()
         params.swe_alpha = base.swe_alpha.copy()
         params.swe_beta = base.swe_beta.copy()
         params.kr_damp = base.kr_damp.copy()
@@ -552,6 +568,8 @@ class CalibrationParameters:
         params.kc_min = self.kc_min.copy()
         params.ndvi_k = self.ndvi_k.copy()
         params.ndvi_0 = self.ndvi_0.copy()
+        params.ndvi_alpha = self.ndvi_alpha.copy()
+        params.ndvi_beta = self.ndvi_beta.copy()
         params.swe_alpha = self.swe_alpha.copy()
         params.swe_beta = self.swe_beta.copy()
         params.kr_damp = self.kr_damp.copy()
@@ -605,6 +623,8 @@ class CalibrationParameters:
         param_map = {
             "ndvi_k": "ndvi_k",
             "ndvi_0": "ndvi_0",
+            "ndvi_alpha": "ndvi_alpha",
+            "ndvi_beta": "ndvi_beta",
             "swe_alpha": "swe_alpha",
             "swe_beta": "swe_beta",
             "kr_alpha": "kr_damp",  # PEST uses alpha, we use damp

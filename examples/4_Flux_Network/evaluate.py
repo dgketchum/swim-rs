@@ -55,9 +55,9 @@ def apply_exclusions(fids):
     return fids
 
 
-def load_config():
+def load_config(config_path=None):
     project_dir = Path(__file__).resolve().parent
-    conf = project_dir / "4_Flux_Network.toml"
+    conf = Path(config_path) if config_path else project_dir / "4_Flux_Network.toml"
     cfg = ProjectConfig()
     if os.path.isdir("/data/ssd1/swim"):
         cfg.read_config(str(conf), calibrate=True)
@@ -115,6 +115,14 @@ def run_calibrated_model(cfg, container, fids, calibrated_params):
             fields=fids,
             empirical_kc_max=True,
             mask_mode=getattr(cfg, "mask_mode", "irrigation"),
+            # The physics switches must match the arm that produced par_csv;
+            # without these the evaluation silently runs default physics.
+            transpiration_cover_scaling=getattr(cfg, "transpiration_cover_scaling", True),
+            transpiration_cover_mode=getattr(cfg, "transpiration_cover_mode", None),
+            cover_linear_ndvi_bare=getattr(cfg, "cover_linear_ndvi_bare", None),
+            cover_linear_ndvi_full=getattr(cfg, "cover_linear_ndvi_full", None),
+            kcb_ndvi_mode=getattr(cfg, "kcb_ndvi_mode", None),
+            stress_depletion_fraction=getattr(cfg, "stress_depletion_fraction", None),
         )
 
         output, _ = run_daily_loop_fast(swim_input)
@@ -558,9 +566,17 @@ if __name__ == "__main__":
         "Use a tagged dir (e.g. results/julyphysics) to avoid clobbering an "
         "archived top-level run.",
     )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Override the project TOML (default: 4_Flux_Network.toml). Required "
+        "for runs calibrated under non-default physics (e.g. a cover-form arm) "
+        "so evaluation reproduces the same forward model.",
+    )
     args = parser.parse_args()
 
-    cfg = load_config()
+    cfg = load_config(args.config)
     flux_dir = cfg.flux_dir
     par_search_dir = os.path.join(cfg.project_ws, "results")
     out_dir = args.out_dir or par_search_dir
