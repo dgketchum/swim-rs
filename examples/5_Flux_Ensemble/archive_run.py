@@ -105,6 +105,21 @@ def _glc10_label(code):
 def cat1_enrich(cfg, container, container_path, prov_dir, log_path, gaps):
     os.makedirs(prov_dir, exist_ok=True)
 
+    # config.toml + config_sha256.txt — snapshot the TOML that was actually
+    # loaded (cfg.config_path), not a hardcoded default. Runs on a variant
+    # config are otherwise indistinguishable from the canonical one in the
+    # archive, which is exactly the provenance failure this category exists
+    # to prevent.
+    src_cfg = getattr(cfg, "config_path", None)
+    if src_cfg and os.path.exists(src_cfg):
+        shutil.copyfile(src_cfg, os.path.join(prov_dir, "config.toml"))
+        with open(src_cfg, "rb") as fh:
+            digest = hashlib.sha256(fh.read()).hexdigest()
+        with open(os.path.join(prov_dir, "config_sha256.txt"), "w") as fh:
+            fh.write(f"{digest}  {os.path.basename(src_cfg)}\n")
+    else:
+        gaps.append(f"Cat1: config.toml not snapshotted (config_path={src_cfg!r})")
+
     # environment.json
     def _cmd(args):
         try:
@@ -819,13 +834,22 @@ def main():
     ap.add_argument("--par-csv", default=None, help="Override posterior par.csv")
     ap.add_argument("--log", default=None, help="calibration stdout log to archive")
     ap.add_argument(
+        "--config",
+        default=None,
+        help="Path to the project TOML the run was calibrated with (default: "
+        "5_Flux_Ensemble.toml). REQUIRED for any run using a variant config — "
+        "Cat 1 snapshots this file, and Cat 6 rebuilds swim_input from it, so "
+        "the wrong config silently evaluates posterior parameters under the "
+        "wrong physics.",
+    )
+    ap.add_argument(
         "--only",
         default=None,
         help="Comma-separated category numbers to run (e.g. 2,5). Default: all.",
     )
     args = ap.parse_args()
 
-    cfg = ev.load_config()
+    cfg = ev.load_config(args.config)
     project = cfg.project_name
     results_dir = os.path.join(cfg.project_ws, "results", args.results_tag)
     archive = os.path.join(results_dir, "archive")
