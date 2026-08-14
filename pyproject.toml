@@ -43,6 +43,9 @@ dependencies = [
   "refet>=0.4.2",
   "jinja2",
   "pyyaml",
+  "pystac-client>=0.9.0",
+  "planetary-computer>=1.0.0",
+  "exactextract>=0.3.0",
 ]
 
 [project.optional-dependencies]
