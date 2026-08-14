@@ -28,6 +28,7 @@ GRIDMET_FACTOR = 1.0
 IRR = "projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp"
 WEST_STATES = ["AZ", "CA", "CO", "ID", "MT", "NM", "NV", "OR", "UT", "WA", "WY"]
 EAST_STATES_FC = "users/dgketchum/boundaries/eastern_38_dissolved"
+IRRIGATION_MASK_TYPES = frozenset({"irr", "inv_irr", "no_mask"})
 
 # Public LANID irrigation datasets
 _LANID_V2 = "users/xyhuwmir4/LANID_postCls/LANID_v2"
@@ -165,6 +166,37 @@ def get_irrigation_mask(
         irr = ee.Image(1).subtract(irr_mask)
 
     return irr, irr_mask
+
+
+def clip_and_apply_irrigation_mask(
+    image: ee.Image,
+    geometry: ee.Geometry,
+    mask_type: str,
+    *,
+    irr: ee.Image | None = None,
+    irr_mask: ee.Image | None = None,
+) -> ee.Image:
+    """Clip an image and intersect its existing mask with an irrigation mask.
+
+    ``updateMask`` is intentional: unlike the deprecated ``mask`` setter, it
+    cannot reopen pixels rejected by the source image's cloud, snow, or
+    saturation mask.
+    """
+    if mask_type not in IRRIGATION_MASK_TYPES:
+        allowed = ", ".join(sorted(IRRIGATION_MASK_TYPES))
+        raise ValueError(f"Unknown mask_type {mask_type!r}; expected one of {allowed}")
+
+    clipped = image.clip(geometry)
+    if mask_type == "no_mask":
+        return clipped
+    if mask_type == "irr":
+        if irr_mask is None:
+            raise ValueError("irr_mask is required when mask_type='irr'")
+        return clipped.updateMask(irr_mask)
+
+    if irr is None:
+        raise ValueError("irr is required when mask_type='inv_irr'")
+    return clipped.updateMask(irr.gt(0))
 
 
 def setup_irrigation_masks() -> tuple[ee.ImageCollection, ee.Image, ee.Image, ee.FeatureCollection]:

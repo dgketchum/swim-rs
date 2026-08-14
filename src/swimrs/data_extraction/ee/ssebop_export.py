@@ -19,6 +19,7 @@ from swimrs.utils.optional_deps import missing_optional_dependency
 from .common import (
     LANDSAT_COLLECTIONS,
     build_feature_collection,
+    clip_and_apply_irrigation_mask,
     export_table_to_gcs,
     get_irrigation_mask,
     load_shapefile,
@@ -158,13 +159,13 @@ def export_ssebop_zonal_stats(
                         print(f"{_name} returned error {e}")
                         continue
 
-                    # Apply masking
-                    if mask_type == "no_mask":
-                        etf_img = etf_img.clip(polygon)
-                    elif mask_type == "irr":
-                        etf_img = etf_img.clip(polygon).mask(irr_mask)
-                    elif mask_type == "inv_irr":
-                        etf_img = etf_img.clip(polygon).mask(irr.gt(0))
+                    etf_img = clip_and_apply_irrigation_mask(
+                        etf_img,
+                        polygon,
+                        mask_type,
+                        irr=irr,
+                        irr_mask=irr_mask,
+                    )
 
                     if first:
                         bands = etf_img

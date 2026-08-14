@@ -21,6 +21,7 @@ import ee
 import geopandas as gpd
 from tqdm import tqdm
 
+from swimrs.data_extraction.ee.common import clip_and_apply_irrigation_mask
 from swimrs.data_extraction.ee.ee_utils import (
     as_ee_feature_collection,
     get_lanid,
@@ -109,12 +110,17 @@ def export_ndvi_images(
 
         img = coll.filterMetadata("system:index", "equals", img_id).first()
 
-        if mask_type == "no_mask":
-            img = img.clip(feature_coll.geometry()).multiply(1000).int()
-        elif mask_type == "irr":
-            img = img.clip(feature_coll.geometry()).mask(irr_mask).multiply(1000).int()
-        elif mask_type == "inv_irr":
-            img = img.clip(feature_coll.geometry()).mask(irr.gt(0)).multiply(1000).int()
+        img = (
+            clip_and_apply_irrigation_mask(
+                img,
+                feature_coll.geometry(),
+                mask_type,
+                irr=irr,
+                irr_mask=irr_mask,
+            )
+            .multiply(1000)
+            .int()
+        )
 
         if debug:
             point = ee.Geometry.Point([-105.793, 46.1684])
@@ -272,12 +278,13 @@ def sparse_sample_ndvi(
 
                 nd_img = coll.filterMetadata("system:index", "equals", img_id).first().rename(_name)
 
-                if mask_type == "no_mask":
-                    nd_img = nd_img.clip(fc.geometry())
-                elif mask_type == "irr":
-                    nd_img = nd_img.clip(fc.geometry()).mask(irr_mask)
-                elif mask_type == "inv_irr":
-                    nd_img = nd_img.clip(fc.geometry()).mask(irr.gt(0))
+                nd_img = clip_and_apply_irrigation_mask(
+                    nd_img,
+                    fc.geometry(),
+                    mask_type,
+                    irr=irr,
+                    irr_mask=irr_mask,
+                )
 
                 if first:
                     bands = nd_img
@@ -412,6 +419,11 @@ def clustered_sample_ndvi(
             irr_coll.filterDate(f"{year}-01-01", f"{year}-12-31").select("classification").mosaic()
         )
         irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
+        mask_irr = irr
+        mask_irr_mask = irr_mask
+        if not use_west:
+            mask_irr_mask = lanid.select(f"irr_{year}").clip(east_fc)
+            mask_irr = ee.Image(1).subtract(mask_irr_mask)
 
         first, bands = True, None
         selectors = [feature_id]
@@ -446,20 +458,13 @@ def clustered_sample_ndvi(
 
             nd_img = coll.filterMetadata("system:index", "equals", img_id).first().rename(_name)
 
-            if mask_type == "no_mask":
-                nd_masked = nd_img.clip(feature_coll.geometry())
-            elif mask_type == "irr":
-                east_mask = lanid.select(f"irr_{year}").clip(east_fc)
-                nd_masked = nd_img.clip(feature_coll.geometry()).mask(
-                    irr_mask if use_west else east_mask
-                )
-            elif mask_type == "inv_irr":
-                east_inv = ee.Image(1).subtract(lanid.select(f"irr_{year}").clip(east_fc))
-                nd_masked = nd_img.clip(feature_coll.geometry()).mask(
-                    irr.gt(0) if use_west else east_inv.gt(0)
-                )
-            else:
-                nd_masked = nd_img.clip(feature_coll.geometry())
+            nd_masked = clip_and_apply_irrigation_mask(
+                nd_img,
+                feature_coll.geometry(),
+                mask_type,
+                irr=mask_irr,
+                irr_mask=mask_irr_mask,
+            )
 
             if first:
                 bands = nd_masked

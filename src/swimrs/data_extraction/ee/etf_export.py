@@ -29,6 +29,7 @@ from .common import (
     LANDSAT_COLLECTIONS,
     WEST_STATES,
     build_feature_collection,
+    clip_and_apply_irrigation_mask,
     export_table,
     get_irrigation_mask,
     get_pathrows_from_scenes,
@@ -462,13 +463,13 @@ def _export_etf_sparse(
                         print(f"{_name} error: {e}")
                         continue
 
-                    # Apply masking
-                    if mask_type == "irr":
-                        etf_img = etf_img.clip(polygon).mask(irr_mask)
-                    elif mask_type == "inv_irr":
-                        etf_img = etf_img.clip(polygon).mask(irr.gt(0))
-                    else:
-                        etf_img = etf_img.clip(polygon)
+                    etf_img = clip_and_apply_irrigation_mask(
+                        etf_img,
+                        polygon,
+                        mask_type,
+                        irr=irr,
+                        irr_mask=irr_mask,
+                    )
 
                     if first:
                         bands = etf_img
@@ -615,13 +616,13 @@ def _export_etf_clustered(
                     print(f"{_name} error: {e}")
                     continue
 
-                # Apply masking
-                if mask_type == "irr":
-                    etf_img = etf_img.clip(fc_geometry).mask(irr_mask)
-                elif mask_type == "inv_irr":
-                    etf_img = etf_img.clip(fc_geometry).mask(irr.gt(0))
-                else:
-                    etf_img = etf_img.clip(fc_geometry)
+                etf_img = clip_and_apply_irrigation_mask(
+                    etf_img,
+                    fc_geometry,
+                    mask_type,
+                    irr=irr,
+                    irr_mask=irr_mask,
+                )
 
                 if first:
                     bands = etf_img

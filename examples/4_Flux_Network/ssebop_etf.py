@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 from swimrs.data_extraction.ee.common import (
     build_feature_collection,
+    clip_and_apply_irrigation_mask,
     export_table,
     get_irrigation_mask,
     load_shapefile,
@@ -138,13 +139,13 @@ def extract_ssebop_nhm_etf(
                     .rename(_name)
                 )
 
-                # Apply masking
-                if mask_type == "irr":
-                    etf_img = etf_img.clip(polygon).mask(irr_mask)
-                elif mask_type == "inv_irr":
-                    etf_img = etf_img.clip(polygon).mask(irr.gt(0))
-                else:
-                    etf_img = etf_img.clip(polygon)
+                etf_img = clip_and_apply_irrigation_mask(
+                    etf_img,
+                    polygon,
+                    mask_type,
+                    irr=irr,
+                    irr_mask=irr_mask,
+                )
 
                 if first:
                     bands = etf_img
