@@ -152,6 +152,20 @@ class TestFieldProperties:
         expected = np.array([50.0, 150.0, 160.0])  # mm
         assert_array_almost_equal(taw, expected)
 
+    def test_source_water_capacity_carries_fixed_shallow_root_buffer(self):
+        """Tracer capacity matches the shallow floor and grows conservatively."""
+        props = FieldProperties(n_fields=2)
+        props.awc = np.array([120.0, 200.0])
+        props.tew = np.array([18.0, 15.0])
+        props.zr_min = np.array([0.1, 0.1])
+
+        shallow = props.compute_source_water_capacity(np.array([0.1, 0.1]))
+        deep = props.compute_source_water_capacity(np.array([0.5, 0.5]))
+
+        assert_array_almost_equal(shallow, [18.0, 20.0])
+        assert_array_almost_equal(deep, [66.0, 100.0])
+        assert_array_almost_equal(deep - shallow, props.awc * 0.4)
+
     def test_compute_raw(self):
         """RAW = p * TAW."""
         props = FieldProperties(n_fields=3)

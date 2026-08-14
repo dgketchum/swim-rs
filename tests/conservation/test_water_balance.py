@@ -20,11 +20,10 @@ Key fluxes:
     Inputs: precip (natural), irr_sim (external), gw_sim (external)
     Outputs: runoff, eta, dperc_out
 
-Note on irrigation bypass: 10% of applied irrigation bypasses the root zone
-and goes directly to deep percolation (gross_dperc = dperc + 0.1 * irr_sim).
-This represents irrigation inefficiency (preferential flow, non-uniform
-application, etc.). Only 90% of irrigation enters the root zone. Mass is
-conserved: 90% + 10% = 100%.
+Note on irrigation-forced drainage: gross irrigation is conceptually mixed in
+the root zone before a fixed drainage flux equal to 10% of irrigation is
+withdrawn. The water-balance implementation uses the algebraically equivalent
+90% net root-zone addition. Mass is conserved: 90% + 10% = 100%.
 """
 
 from __future__ import annotations
@@ -70,6 +69,12 @@ def compute_total_water(state: WaterBalanceState, props: FieldProperties) -> np.
     return state.swe + root_water + state.daw3
 
 
+def compute_irrigation_water(state: WaterBalanceState, props: FieldProperties) -> np.ndarray:
+    """Compute irrigation-source water stored in the root zone and layer 3."""
+    root_water = np.maximum(props.compute_source_water_capacity(state.zr) - state.depl_root, 0.0)
+    return root_water * state.irr_frac_root + state.daw3 * state.irr_frac_l3
+
+
 def compute_water_balance_error(
     state_before: WaterBalanceState,
     state_after: WaterBalanceState,
@@ -101,9 +106,8 @@ def compute_water_balance_error(
 
     Notes
     -----
-    Irrigation bypass (10% to deep percolation) is properly accounted for:
-    90% enters root zone + 10% bypasses to dperc = 100% total. No extra
-    water is created.
+    Irrigation-forced drainage is properly accounted for: 90% remains as the
+    net root-zone addition and 10% enters the drainage pathway.
     """
     water_before = compute_total_water(state_before, props)
     water_after = compute_total_water(state_after, props)
@@ -118,9 +122,24 @@ def compute_water_balance_error(
     external = day_out["irr_sim"] + day_out["gw_sim"]
 
     # Mass balance: storage_change = inflows - outflows + external
-    # No extra terms needed - irrigation bypass is properly accounted for
+    # No extra terms are needed for irrigation-forced drainage.
     expected = inflows - outflows + external
     return delta_storage - expected
+
+
+def compute_irrigation_balance_error(
+    state_before: WaterBalanceState,
+    state_after: WaterBalanceState,
+    props: FieldProperties,
+    day_out: dict,
+) -> np.ndarray:
+    """Compute the irrigation-source balance residual for one daily step."""
+    irrigation_before = compute_irrigation_water(state_before, props)
+    irrigation_after = compute_irrigation_water(state_after, props)
+    expected_after = (
+        irrigation_before + day_out["irr_sim"] - day_out["et_irr"] - day_out["dperc_irr"]
+    )
+    return irrigation_after - expected_after
 
 
 def create_test_setup(
@@ -325,6 +344,15 @@ def run_step_with_balance_check(
         atol=atol,
         rtol=rtol,
         err_msg=f"Water balance error: {error} mm (water_before={water_before})",
+    )
+
+    irrigation_error = compute_irrigation_balance_error(state_before, state, props, day_out)
+    assert_allclose(
+        irrigation_error,
+        np.zeros_like(irrigation_error),
+        atol=1e-8,
+        rtol=1e-10,
+        err_msg=f"Irrigation-source balance error: {irrigation_error} mm",
     )
 
     return day_out
@@ -625,8 +653,8 @@ class TestIrrigationConservation:
         # Both days should conserve water
         # (already verified by run_step_with_balance_check)
 
-    def test_irrigation_bypass_to_layer3(self):
-        """10% irrigation bypass goes to layer 3."""
+    def test_irrigation_forced_drainage_to_layer3(self):
+        """The fixed irrigation-forced drainage flux enters layer 3."""
         state, props, params = create_test_setup(
             n_fields=1,
             depl_root=60.0,
@@ -649,15 +677,11 @@ class TestIrrigationConservation:
         daw3_before = state.daw3[0]
         day_out = run_step_with_balance_check(state, props, params, inputs)
 
-        # If irrigation occurred, layer 3 should get some water from the bypass
-        # (10% of irrigation bypasses root zone and goes directly to L3)
+        # If irrigation occurred, layer 3 should receive the forced drainage.
         if day_out["irr_sim"][0] > 0:
-            irr_bypass = 0.1 * day_out["irr_sim"][0]
-            # Layer 3 should have increased by at least the bypass amount
-            # (unless it was already full and overflowed)
             daw3_after = state.daw3[0]
             assert daw3_after >= daw3_before or day_out["dperc"][0] > 0, (
-                "Layer 3 should receive bypass water or overflow to dperc"
+                "Layer 3 should receive forced drainage or overflow to dperc"
             )
 
 
@@ -745,6 +769,8 @@ class TestRootGrowthConservation:
             zr_max=1.0,
             perennial=False,  # Allow root growth
         )
+        state.irr_frac_root[:] = 0.2
+        state.irr_frac_l3[:] = 0.8
 
         inputs = create_daily_inputs(
             n_fields=1,
@@ -773,6 +799,8 @@ class TestRootGrowthConservation:
             zr_max=1.0,
             perennial=False,
         )
+        state.irr_frac_root[:] = 0.75
+        state.irr_frac_l3[:] = 0.1
 
         inputs = create_daily_inputs(
             n_fields=1,
@@ -846,6 +874,8 @@ class TestRootGrowthConservation:
             zr_max=1.0,
             perennial=False,
         )
+        state.irr_frac_root[:] = 0.75
+        state.irr_frac_l3[:] = 0.1
 
         inputs = create_daily_inputs(
             n_fields=1,
@@ -1032,6 +1062,36 @@ class TestMultiDayConservation:
 
 class TestEdgeCases:
     """Tests for edge cases and numerical stability."""
+
+    def test_shallow_root_source_tracking_uses_natural_buffer(self):
+        """Source storage closes when TEW requires a shallow-root buffer."""
+        state, props, params = create_test_setup(
+            n_fields=1,
+            depl_root=10.0,
+            zr=0.1,
+            awc=120.0,
+            zr_min=0.1,
+            zr_max=0.1,
+            irr_status=True,
+        )
+        props.tew[:] = 18.0
+        state.irr_frac_root[:] = 0.25
+
+        assert props.awc[0] * state.zr[0] < props.compute_taw(state.zr)[0]
+
+        inputs = create_daily_inputs(
+            n_fields=1,
+            ndvi=0.2,
+            etr=5.0,
+            prcp=0.0,
+            irr_flag=True,
+        )
+        day_out = run_step_with_balance_check(state, props, params, inputs)
+
+        assert 0.0 <= state.irr_frac_root[0] <= 1.0
+        assert 0.0 <= state.irr_frac_l3[0] <= 1.0
+        assert day_out["et_irr"][0] >= 0.0
+        assert day_out["dperc_irr"][0] >= 0.0
 
     def test_depletion_capped_at_taw(self):
         """Depletion is capped at TAW during drought.

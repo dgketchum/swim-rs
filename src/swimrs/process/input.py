@@ -251,7 +251,8 @@ class SwimInput:
             # Irrigation fraction tracking
             irr_frac_root=spinup["irr_frac_root"][:] if "irr_frac_root" in spinup else None,
             irr_frac_l3=spinup["irr_frac_l3"][:] if "irr_frac_l3" in spinup else None,
-            # Pass irr_status for fallback initialization when fractions not in spinup
+            # Retained for WaterBalanceState.from_spinup call compatibility;
+            # missing source fractions now initialize explicitly to zero.
             irr_status=self.properties.irr_status,
         )
 
@@ -1578,9 +1579,10 @@ def _load_spinup_json(
         "s2": np.full(n_fields, default_s),
         "s3": np.full(n_fields, default_s),
         "s4": np.full(n_fields, default_s),
-        # Note: irr_frac_root and irr_frac_l3 are not initialized with defaults
-        # here. If present in JSON, they will be added. If not present, they
-        # will be initialized based on irr_status in from_spinup().
+        # Missing source composition is explicit: preexisting water starts as
+        # non-irrigation and should be equilibrated with a source-tracking spinup.
+        "irr_frac_root": np.zeros(n_fields),
+        "irr_frac_l3": np.zeros(n_fields),
     }
 
     # Map spinup JSON keys to our state keys
@@ -1609,9 +1611,6 @@ def _load_spinup_json(
             field_spinup = spinup_data[fid]
             for json_key, state_key in key_map.items():
                 if json_key in field_spinup:
-                    # For irrigation fractions, create array on first use
-                    if state_key not in spinup_state:
-                        spinup_state[state_key] = np.zeros(n_fields)
                     spinup_state[state_key][fid_idx] = field_spinup[json_key]
 
     return spinup_state
@@ -1632,11 +1631,18 @@ def _write_spinup(
         spinup.create_dataset("ks", data=spinup_state.get("ks", np.ones(n_fields)))
         spinup.create_dataset("zr", data=spinup_state.get("zr", np.full(n_fields, 0.1)))
 
+        # Layer 3 and source-composition state are always explicit so a restart
+        # never infers provenance from irrigation status.
+        spinup.create_dataset("daw3", data=spinup_state.get("daw3", np.zeros(n_fields)))
+        spinup.create_dataset("taw3", data=spinup_state.get("taw3", np.zeros(n_fields)))
+        spinup.create_dataset(
+            "irr_frac_root", data=spinup_state.get("irr_frac_root", np.zeros(n_fields))
+        )
+        spinup.create_dataset(
+            "irr_frac_l3", data=spinup_state.get("irr_frac_l3", np.zeros(n_fields))
+        )
+
         # Optional spinup arrays
-        if "daw3" in spinup_state:
-            spinup.create_dataset("daw3", data=spinup_state["daw3"])
-        if "taw3" in spinup_state:
-            spinup.create_dataset("taw3", data=spinup_state["taw3"])
         if "depl_ze" in spinup_state:
             spinup.create_dataset("depl_ze", data=spinup_state["depl_ze"])
         if "albedo" in spinup_state:
@@ -1652,11 +1658,6 @@ def _write_spinup(
             spinup.create_dataset("s3", data=spinup_state["s3"])
         if "s4" in spinup_state:
             spinup.create_dataset("s4", data=spinup_state["s4"])
-        # Irrigation fraction tracking
-        if "irr_frac_root" in spinup_state:
-            spinup.create_dataset("irr_frac_root", data=spinup_state["irr_frac_root"])
-        if "irr_frac_l3" in spinup_state:
-            spinup.create_dataset("irr_frac_l3", data=spinup_state["irr_frac_l3"])
     else:
         # Default initialization
         spinup.create_dataset("depl_root", data=np.zeros(n_fields))
@@ -1664,6 +1665,10 @@ def _write_spinup(
         spinup.create_dataset("kr", data=np.ones(n_fields))
         spinup.create_dataset("ks", data=np.ones(n_fields))
         spinup.create_dataset("zr", data=np.full(n_fields, 0.1))
+        spinup.create_dataset("daw3", data=np.zeros(n_fields))
+        spinup.create_dataset("taw3", data=np.zeros(n_fields))
+        spinup.create_dataset("irr_frac_root", data=np.zeros(n_fields))
+        spinup.create_dataset("irr_frac_l3", data=np.zeros(n_fields))
 
 
 def _load_calibrated_params(

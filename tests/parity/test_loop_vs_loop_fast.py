@@ -116,8 +116,26 @@ def _run_both_loops(case_name):
             )
 
             try:
+                initial_state = swim_input.spinup_state.copy()
                 output_py, state_py = run_daily_loop(swim_input)
                 output_fast, state_fast = run_daily_loop_fast(swim_input)
+
+                props = swim_input.properties
+                initial_root_water = np.maximum(
+                    props.compute_source_water_capacity(initial_state.zr) - initial_state.depl_root,
+                    0.0,
+                )
+                final_root_water = np.maximum(
+                    props.compute_source_water_capacity(state_py.zr) - state_py.depl_root,
+                    0.0,
+                )
+                initial_irrigation_storage = (
+                    initial_root_water * initial_state.irr_frac_root
+                    + initial_state.daw3 * initial_state.irr_frac_l3
+                )
+                final_irrigation_storage = (
+                    final_root_water * state_py.irr_frac_root + state_py.daw3 * state_py.irr_frac_l3
+                )
 
                 result = {
                     "n_days": swim_input.n_days,
@@ -144,6 +162,13 @@ def _run_both_loops(case_name):
                         else None
                         for field in STATE_FIELDS
                     },
+                    "source_balance_residual": (
+                        initial_irrigation_storage
+                        + np.sum(output_py.irr_sim, axis=0)
+                        - np.sum(output_py.et_irr, axis=0)
+                        - np.sum(output_py.dperc_irr, axis=0)
+                        - final_irrigation_storage
+                    ),
                 }
             finally:
                 swim_input.close()
@@ -258,6 +283,25 @@ class TestLoopOutputParity:
                 atol=_DEFAULT_ATOL,
                 err_msg=f"{case_name}: total {component} differs",
             )
+
+
+class TestLoopSourceTracking:
+    """Tests for slow-loop irrigation-source accounting."""
+
+    @pytest.mark.parametrize("case_name", ["fort_peck", "crane"])
+    def test_cumulative_source_balance_closes(self, request, case_name):
+        """Irrigation inputs equal source-specific outputs plus storage change."""
+        data = _get_data(request, case_name)
+        assert_allclose(data["source_balance_residual"], 0.0, atol=1e-8, rtol=1e-10)
+
+    @pytest.mark.parametrize("case_name", ["fort_peck", "crane"])
+    def test_source_fluxes_are_bounded_by_total_fluxes(self, request, case_name):
+        """Source-specific fluxes cannot exceed their corresponding totals."""
+        data = _get_data(request, case_name)
+        assert np.all(data["output_py"]["et_irr"] >= 0.0)
+        assert np.all(data["output_py"]["et_irr"] <= data["output_py"]["eta"] + 1e-10)
+        assert np.all(data["output_py"]["dperc_irr"] >= 0.0)
+        assert np.all(data["output_py"]["dperc_irr"] <= data["output_py"]["dperc"] + 1e-10)
 
 
 class TestLoopStateParity:

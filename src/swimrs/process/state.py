@@ -70,8 +70,8 @@ class WaterBalanceState:
         S history from 1-4 days ago (mm), used for smoothed runoff
         on irrigated fields
     irr_frac_root : NDArray[np.float64]
-        Fraction of root zone water that originated from irrigation [0, 1].
-        Used for consumptive use accounting.
+        Fraction of the root-zone source-tracking reservoir that originated
+        from irrigation [0, 1]. Used for consumptive use accounting.
     irr_frac_l3 : NDArray[np.float64]
         Fraction of layer 3 water that originated from irrigation [0, 1].
         Used for deep percolation accounting.
@@ -136,8 +136,8 @@ class WaterBalanceState:
             self.s3 = np.full(n, default_s, dtype=np.float64)
         if self.s4 is None:
             self.s4 = np.full(n, default_s, dtype=np.float64)
-        # Irrigation fraction tracking: default to 0.0 (no irrigation water)
-        # Proper initialization based on irr_status is done in from_spinup()
+        # Irrigation fraction tracking: default to 0.0 (no irrigation water).
+        # Irrigation status alone never implies an initial source composition.
         if self.irr_frac_root is None:
             self.irr_frac_root = np.zeros(n, dtype=np.float64)
         if self.irr_frac_l3 is None:
@@ -194,14 +194,14 @@ class WaterBalanceState:
         s1, s2, s3, s4 : NDArray[np.float64], optional
             S history from 1-4 days ago (mm)
         irr_frac_root : NDArray[np.float64], optional
-            Irrigation fraction in root zone [0, 1]. If not provided,
-            initialized based on irr_status (0.5 if irrigated, 0.0 if not).
+            Irrigation fraction in root zone [0, 1]. If not provided, the
+            initial water is explicitly classified as non-irrigation.
         irr_frac_l3 : NDArray[np.float64], optional
-            Irrigation fraction in layer 3 [0, 1]. If not provided,
-            initialized based on irr_status (0.5 if irrigated, 0.0 if not).
+            Irrigation fraction in layer 3 [0, 1]. If not provided, the
+            initial water is explicitly classified as non-irrigation.
         irr_status : NDArray[np.bool_], optional
-            Whether each field is irrigated. Used to initialize irrigation
-            fractions when they are not provided in spinup data.
+            Retained for call compatibility. Irrigation status does not imply
+            an initial source composition.
 
         Returns
         -------
@@ -237,14 +237,9 @@ class WaterBalanceState:
         # Irrigation fraction tracking
         if irr_frac_root is not None:
             state.irr_frac_root = irr_frac_root.copy()
-        elif irr_status is not None:
-            # Initialize based on irrigation status: 0.5 for irrigated, 0.0 for non-irrigated
-            state.irr_frac_root = np.where(irr_status, 0.5, 0.0).astype(np.float64)
 
         if irr_frac_l3 is not None:
             state.irr_frac_l3 = irr_frac_l3.copy()
-        elif irr_status is not None:
-            state.irr_frac_l3 = np.where(irr_status, 0.5, 0.0).astype(np.float64)
 
         return state
 
@@ -428,6 +423,37 @@ class FieldProperties:
         # to prevent early stress onset with shallow roots
         taw = np.maximum(taw, self.tew)
         return taw
+
+    def compute_source_water_capacity(self, zr: NDArray[np.float64]) -> NDArray[np.float64]:
+        """Compute the conservative root-zone mixing capacity for source tracking.
+
+        The hydrologic TAW floor changes relative to ``awc * zr`` as roots grow,
+        so using ``compute_taw`` directly as tracer storage can create or destroy
+        mixing volume during root-depth redistribution. Source tracking instead
+        carries the maximum shallow-root floor correction as a fixed natural
+        buffer. The resulting capacity changes only with ``awc * zr``, exactly
+        matching movement of the boundary with layer 3.
+
+        The formulation assumes modeled root depth is bounded below by
+        ``zr_min``::
+
+            buffer = max(max(tew, 0.001) - awc * zr_min, 0)
+            source_capacity = awc * zr + buffer
+
+        Parameters
+        ----------
+        zr : NDArray[np.float64]
+            Root depth (m)
+
+        Returns
+        -------
+        NDArray[np.float64]
+            Root-zone source-tracking mixing capacity (mm)
+        """
+        minimum_hydrologic_taw = np.maximum(self.tew, 0.001)
+        shallow_root_capacity = self.awc * self.zr_min
+        natural_buffer = np.maximum(minimum_hydrologic_taw - shallow_root_capacity, 0.0)
+        return self.awc * zr + natural_buffer
 
     def compute_raw(self, taw: NDArray[np.float64]) -> NDArray[np.float64]:
         """Compute readily available water.

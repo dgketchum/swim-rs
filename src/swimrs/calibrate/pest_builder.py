@@ -1485,6 +1485,16 @@ if __name__ == "__main__":
                 # Add optional state if available
                 if final_state.depl_ze is not None:
                     spn_dct[fid]["depl_ze"] = float(final_state.depl_ze[i])
+                if final_state.daw3 is not None:
+                    spn_dct[fid]["daw3"] = float(final_state.daw3[i])
+                if final_state.taw3 is not None:
+                    spn_dct[fid]["taw3"] = float(final_state.taw3[i])
+                if final_state.albedo is not None:
+                    spn_dct[fid]["albedo"] = float(final_state.albedo[i])
+                if final_state.irr_frac_root is not None:
+                    spn_dct[fid]["irr_frac_root"] = float(final_state.irr_frac_root[i])
+                if final_state.irr_frac_l3 is not None:
+                    spn_dct[fid]["irr_frac_l3"] = float(final_state.irr_frac_l3[i])
                 if final_state.s is not None:
                     spn_dct[fid]["s"] = float(final_state.s[i])
                     spn_dct[fid]["s1"] = float(final_state.s1[i])

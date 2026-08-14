@@ -145,8 +145,8 @@ class TestStepDay:
     def test_irrigation_triggers(self, simple_setup):
         """Irrigation triggers when depletion exceeds RAW."""
         state, props, params = simple_setup
-        # Set high depletion to trigger irrigation
-        state.depl_root = np.array([100.0, 100.0, 100.0])
+        # Set depletion above RAW, while keeping it within each root zone's TAW.
+        state.depl_root = np.array([60.0, 70.0, 80.0])
         props.irr_status = np.array([True, True, True])
 
         ndvi = np.array([0.5, 0.5, 0.5])

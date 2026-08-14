@@ -21,7 +21,7 @@ from swimrs.process.kernels.crop_coefficient import kcb_affine, kcb_sigmoid
 from swimrs.process.kernels.evaporation import ke_coefficient, kr_damped, kr_reduction
 from swimrs.process.kernels.irrigation import groundwater_subsidy, irrigation_demand
 from swimrs.process.kernels.irrigation_tracking import (
-    transfer_fraction_with_water,
+    redistribute_irrigation_fractions,
     update_irrigation_fraction_l3,
     update_irrigation_fraction_root,
 )
@@ -59,10 +59,11 @@ if TYPE_CHECKING:
 
 __all__ = ["run_daily_loop", "DailyOutput", "step_day"]
 
-# Irrigation bypass fraction: 10% of applied irrigation bypasses the root zone
-# and goes directly to deep percolation (accounts for preferential flow paths,
-# non-uniform application, etc.). Only 90% actually enters the root zone.
-IRR_BYPASS_FRAC = 0.1
+# Fixed fraction of gross irrigation that forces drainage from the root zone.
+# The water balance applies the algebraically equivalent 90% net addition, but
+# source tracking first mixes all irrigation and then withdraws this drainage
+# proportionally. The drainage is therefore not assumed to be pure irrigation.
+IRR_FORCED_DRAINAGE_FRAC = 0.1
 
 
 def _check_finite_state_arrays(context: str, arrays: dict[str, np.ndarray]) -> None:
@@ -75,6 +76,55 @@ def _check_finite_state_arrays(context: str, arrays: dict[str, np.ndarray]) -> N
     if bad:
         details = ", ".join(f"{name}={count}" for name, count in sorted(bad.items()))
         raise ValueError(f"Non-finite state detected at {context}: {details}")
+
+
+def _check_irrigation_source_balance(
+    irrigation_storage_before: np.ndarray,
+    irrigation_input: np.ndarray,
+    irrigation_et: np.ndarray,
+    irrigation_dperc: np.ndarray,
+    irrigation_storage_after: np.ndarray,
+) -> None:
+    """Require irrigation-source mass to close for every field and day."""
+    residual = (
+        irrigation_storage_before
+        + irrigation_input
+        - irrigation_et
+        - irrigation_dperc
+        - irrigation_storage_after
+    )
+    scale = np.maximum(
+        1.0,
+        np.abs(irrigation_storage_before)
+        + np.abs(irrigation_input)
+        + np.abs(irrigation_et)
+        + np.abs(irrigation_dperc)
+        + np.abs(irrigation_storage_after),
+    )
+    tolerance = 1e-8 + 1e-10 * scale
+    bad = np.abs(residual) > tolerance
+    if np.any(bad):
+        bad_indices = np.flatnonzero(bad)
+        max_idx = int(np.argmax(np.abs(residual)))
+        raise ValueError(
+            "Irrigation-source balance failed: "
+            f"max residual={residual[max_idx]:.12g} mm at field index {max_idx}; "
+            f"failing field indices={bad_indices[:10].tolist()}"
+        )
+
+
+def _check_irrigation_fraction_bounds(context: str, fractions: dict[str, np.ndarray]) -> None:
+    """Require finite irrigation-source fractions within physical bounds."""
+    _check_finite_state_arrays(context, fractions)
+    tolerance = 1e-10
+    for name, values in fractions.items():
+        bad = (values < -tolerance) | (values > 1.0 + tolerance)
+        if np.any(bad):
+            bad_indices = np.flatnonzero(bad)
+            raise ValueError(
+                f"Irrigation-source fraction outside [0, 1] at {context}: "
+                f"{name} failing field indices={bad_indices[:10].tolist()}"
+            )
 
 
 def _enforce_post_redistribution_invariants(
@@ -149,7 +199,7 @@ class DailyOutput:
     dperc_irr : NDArray[np.float64]
         Deep percolation of irrigation water (mm) - return flow
     irr_frac_root : NDArray[np.float64]
-        Irrigation fraction in root zone [0, 1]
+        Irrigation fraction in the root-zone source-tracking reservoir [0, 1]
     irr_frac_l3 : NDArray[np.float64]
         Irrigation fraction in layer 3 [0, 1]
     """
@@ -413,6 +463,12 @@ def step_day(
     daw3_before = state.daw3.copy()
     irr_frac_root_before = state.irr_frac_root.copy()
     irr_frac_l3_before = state.irr_frac_l3.copy()
+    taw = props.compute_taw(state.zr)
+    source_capacity = props.compute_source_water_capacity(state.zr)
+    root_water_before = np.maximum(source_capacity - state.depl_root, 0.0)
+    irrigation_storage_before = (
+        root_water_before * irr_frac_root_before + daw3_before * irr_frac_l3_before
+    )
 
     # 1. Snow partitioning and melt
     rain, snow = partition_precip(prcp, temp_avg)
@@ -493,7 +549,8 @@ def step_day(
 
     # 6. Compute TAW and RAW using PREVIOUS day's root depth (matches legacy)
     # Legacy model compute_field_et.py line 76-79 uses swb.zr (not updated yet)
-    taw = props.compute_taw(state.zr)  # Use previous zr, not zr_new
+    # `taw` was computed from the previous root depth with the source-storage
+    # snapshot, so hydrologic and tracer states use the same depletion.
     raw = props.compute_raw(taw)
     # WP-C7 mad-split: when configured, the Ks stress onset uses a fixed
     # FAO-56 p (stress depletion fraction), decoupling it from the mad-driven
@@ -593,12 +650,11 @@ def step_day(
     f_sub_to_use = f_sub if f_sub is not None else props.f_sub
     gw_sim = groundwater_subsidy(depl_after_et, raw, props.gw_status, f_sub_to_use)
 
-    # 16. Apply irrigation and groundwater subsidy
-    # Note: Only (1 - IRR_BYPASS_FRAC) of irrigation reaches the root zone.
-    # The remaining IRR_BYPASS_FRAC goes directly to deep percolation (step 19).
-    # This accounts for preferential flow, non-uniform application, etc.
-    irr_to_root = (1.0 - IRR_BYPASS_FRAC) * irr_sim
-    depl_new = depl_after_et - irr_to_root - gw_sim
+    # 16. Apply irrigation and groundwater subsidy. Applying 90% as a net
+    # root-zone addition is algebraically equivalent to mixing all irrigation
+    # and then withdrawing the fixed 10% irrigation-forced drainage in step 19.
+    irr_net_to_root = (1.0 - IRR_FORCED_DRAINAGE_FRAC) * irr_sim
+    depl_new = depl_after_et - irr_net_to_root - gw_sim
 
     # 17. Deep percolation (excess water when depl < 0)
     dperc, depl_after_perc = deep_percolation(depl_new)
@@ -608,41 +664,37 @@ def step_day(
     # swb.depl_root = np.where(swb.depl_root > swb.taw, swb.taw, swb.depl_root)
     state.depl_root = np.minimum(depl_after_perc, taw)
 
-    # 19. Layer 3 storage update with gross deep percolation
-    # The IRR_BYPASS_FRAC of irrigation bypasses the root zone directly to dperc.
-    # Combined with irr_to_root from step 16, total = 90% + 10% = 100% (mass conserved).
-    irr_bypass = IRR_BYPASS_FRAC * irr_sim
-    gross_dperc = dperc + irr_bypass
+    # 19. Layer 3 storage update. The fixed irrigation-forced drainage and any
+    # saturation drainage both leave the mixed root-zone reservoir. Source
+    # composition is calculated proportionally below.
+    irr_forced_drainage = IRR_FORCED_DRAINAGE_FRAC * irr_sim
+    root_to_l3 = dperc + irr_forced_drainage
 
     if state.taw3 is not None and np.any(state.taw3 > 0):
-        state.daw3, dperc_out = layer3_storage(state.daw3, state.taw3, gross_dperc)
+        state.daw3, dperc_out = layer3_storage(state.daw3, state.taw3, root_to_l3)
     else:
-        dperc_out = gross_dperc
+        dperc_out = root_to_l3
 
     # === IRRIGATION FRACTION TRACKING ===
     # Track the fraction of soil water that originated from irrigation.
     # This enables consumptive use accounting for water rights.
 
     # 19a. Update root zone irrigation fraction
-    # Uses values BEFORE today's fluxes for consistency
-    # Note: Use irr_to_root (not irr_sim) since that's what enters the root zone
-    state.irr_frac_root, et_irr = update_irrigation_fraction_root(
-        props.awc,
-        zr_prev,
-        depl_root_before,
+    # Natural infiltration mixes before ET. Gross irrigation then mixes before
+    # both irrigation-forced and saturation drainage withdraw proportionally.
+    state.irr_frac_root, et_irr, root_to_l3_irr = update_irrigation_fraction_root(
+        root_water_before,
         irr_frac_root_before,
         infiltration,
-        irr_to_root,
+        irr_sim,
         gw_sim,
         eta,
-        dperc,
+        root_to_l3,
     )
 
     # 19b. Update layer 3 irrigation fraction
-    # The gross_dperc includes the irrigation bypass. For fraction tracking,
-    # we treat the bypass as having 100% irrigation fraction (it's pure irrigation water).
     state.irr_frac_l3, dperc_irr = update_irrigation_fraction_l3(
-        daw3_before, irr_frac_l3_before, gross_dperc, state.irr_frac_root, dperc_out
+        daw3_before, irr_frac_l3_before, root_to_l3, root_to_l3_irr, dperc_out
     )
 
     # 20. Root growth water redistribution (at END of daily loop, matches legacy)
@@ -660,6 +712,7 @@ def step_day(
     )
     state.zr = zr_new
     taw_post = props.compute_taw(state.zr)
+    source_capacity_post = props.compute_source_water_capacity(state.zr)
     state.depl_root, state.daw3, state.taw3 = _enforce_post_redistribution_invariants(
         context="step_day/post_redistribution",
         depl_root=state.depl_root,
@@ -676,43 +729,37 @@ def step_day(
         },
     )
 
-    # 20a. Update irrigation fractions for root growth water transfer
-    # Calculate water before and after redistribution to determine transfer
-    water_root_pre = props.awc * zr_prev - depl_root_pre_redist
-    water_root_post = props.awc * zr_new - state.depl_root
-    water_transfer = water_root_post - water_root_pre  # Positive = L3 to root
+    # 20a. Move source mass with the actual layer-3 exchange. The fixed natural
+    # shallow-root buffer makes source mixing capacity conservative as the root
+    # boundary moves.
+    root_water_pre_redist = np.maximum(source_capacity - depl_root_pre_redist, 0.0)
+    root_water_after = np.maximum(source_capacity_post - state.depl_root, 0.0)
+    state.irr_frac_root, state.irr_frac_l3 = redistribute_irrigation_fractions(
+        root_water_pre_redist,
+        irr_frac_root_pre_redist,
+        daw3_pre_redist,
+        irr_frac_l3_pre_redist,
+        root_water_after,
+        state.daw3,
+    )
+    _check_irrigation_fraction_bounds(
+        "step_day/post_source_redistribution",
+        {
+            "irr_frac_root": state.irr_frac_root,
+            "irr_frac_l3": state.irr_frac_l3,
+        },
+    )
 
-    # Handle fraction transfer based on direction
-    # Roots grew (transfer > 0): L3 water mixed into root zone
-    # Roots receded (transfer < 0): root zone water mixed into L3
-    transfer_positive = np.maximum(water_transfer, 0.0)  # L3 -> root
-    transfer_negative = np.maximum(-water_transfer, 0.0)  # root -> L3
-
-    # Transfer from L3 to root zone (roots growing)
-    if np.any(transfer_positive > 1e-6):
-        _, irr_frac_root_after_grow = transfer_fraction_with_water(
-            daw3_pre_redist,
-            irr_frac_l3_pre_redist,
-            water_root_pre,
-            irr_frac_root_pre_redist,
-            transfer_positive,
-        )
-        state.irr_frac_root = np.where(
-            transfer_positive > 1e-6, irr_frac_root_after_grow, state.irr_frac_root
-        )
-
-    # Transfer from root zone to L3 (roots receding)
-    if np.any(transfer_negative > 1e-6):
-        _, irr_frac_l3_after_recede = transfer_fraction_with_water(
-            water_root_pre,
-            irr_frac_root_pre_redist,
-            daw3_pre_redist,
-            irr_frac_l3_pre_redist,
-            transfer_negative,
-        )
-        state.irr_frac_l3 = np.where(
-            transfer_negative > 1e-6, irr_frac_l3_after_recede, state.irr_frac_l3
-        )
+    irrigation_storage_after = (
+        root_water_after * state.irr_frac_root + state.daw3 * state.irr_frac_l3
+    )
+    _check_irrigation_source_balance(
+        irrigation_storage_before,
+        irr_sim,
+        et_irr,
+        dperc_irr,
+        irrigation_storage_after,
+    )
 
     # 21. Store irr_sim for next day's Ze update
     state.prev_irr_sim = irr_sim.copy()

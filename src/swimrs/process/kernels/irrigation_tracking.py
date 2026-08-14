@@ -1,4 +1,4 @@
-"""Irrigation fraction tracking for consumptive use accounting.
+"""Irrigation-source tracking for consumptive-use accounting.
 
 Tracks the fraction of soil water that originated from irrigation to enable
 legally defensible accounting of consumptive use for water rights purposes.
@@ -12,10 +12,21 @@ Conceptual Model
    - Irrigation (irr_sim): frac = 1 (irrigation)
    - Groundwater subsidy (gw_sim): frac = 0 (natural)
 
-Key Outputs
------------
-- et_irr: eta * irr_frac_root (consumptive use of irrigation water)
-- dperc_irr: dperc_out * irr_frac_l3 (irrigation water leaving as deep perc)
+The root-zone tracer carries the hydrologic depletion within a conservative
+mixing capacity. A fixed natural buffer represents the shallow-root TAW floor,
+so root-depth changes do not create or destroy tracer volume.
+
+Daily Ordering
+--------------
+1. Natural infiltration mixes into the root zone.
+2. ET withdraws water proportionally from that mixture.
+3. Gross irrigation mixes into the root zone; groundwater subsidy is natural.
+4. Irrigation-forced and saturation drainage withdraw proportionally.
+5. Root drainage mixes into layer 3 before bottom-boundary overflow.
+
+The fixed irrigation-forced drainage flux is therefore not assumed to consist
+of newly applied irrigation. It can displace precipitation-derived water that
+was already stored in the soil column.
 
 Conservation Law
 ----------------
@@ -29,52 +40,55 @@ from numba import njit, prange
 from numpy.typing import NDArray
 
 __all__ = [
+    "redistribute_irrigation_fractions",
     "update_irrigation_fraction_root",
     "update_irrigation_fraction_l3",
     "transfer_fraction_with_water",
 ]
 
+SOURCE_WATER_EPS = 1e-12
+
 
 @njit(cache=True, fastmath=True, parallel=True)
 def update_irrigation_fraction_root(
-    awc: NDArray[np.float64],
-    zr: NDArray[np.float64],
-    depl_root: NDArray[np.float64],
+    root_water: NDArray[np.float64],
     irr_frac_root: NDArray[np.float64],
     infiltration: NDArray[np.float64],
     irr_sim: NDArray[np.float64],
     gw_sim: NDArray[np.float64],
     eta: NDArray[np.float64],
-    dperc: NDArray[np.float64],
-) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    root_drainage: NDArray[np.float64],
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Update irrigation fraction in root zone after daily fluxes.
 
     The mixing rule: when adding inflow with frac_in to a pool with frac_pool:
         frac_new = (frac_pool * water_pool + frac_in * inflow) / water_new
 
-    Outflows (ET, dperc) carry the pool's current fraction (proportional withdrawal).
+    Fractions are converted to irrigation-water mass before applying fluxes.
+    Infiltration mixes before ET, while gross irrigation and natural groundwater
+    subsidy mix after ET. Root drainage then carries the resulting mixed
+    fraction. This ordering matches the daily water-balance semantics and
+    conserves irrigation-source mass exactly.
 
     Parameters
     ----------
-    awc : (n_fields,)
-        Available water capacity (mm/m)
-    zr : (n_fields,)
-        Root depth (m)
-    depl_root : (n_fields,)
-        Root zone depletion BEFORE today's fluxes (mm)
+    root_water : (n_fields,)
+        Water in the conservative root-zone source-tracking reservoir before
+        today's fluxes (mm)
     irr_frac_root : (n_fields,)
         Irrigation fraction in root zone BEFORE today's fluxes [0, 1]
     infiltration : (n_fields,)
         Infiltrating precipitation (rain + melt - runoff) (mm), frac = 0
     irr_sim : (n_fields,)
-        Simulated irrigation (mm), frac = 1
+        Gross simulated irrigation (mm), frac = 1
     gw_sim : (n_fields,)
-        Groundwater subsidy (mm), frac = 0; negative values are withdrawals
+        Groundwater subsidy (mm), frac = 0
     eta : (n_fields,)
         Actual ET (mm) - withdrawal
-    dperc : (n_fields,)
-        Deep percolation from root zone (mm) - withdrawal
+    root_drainage : (n_fields,)
+        Total drainage transferred from the root zone to layer 3 (mm),
+        including irrigation-forced and saturation drainage
 
     Returns
     -------
@@ -82,62 +96,62 @@ def update_irrigation_fraction_root(
         Updated irrigation fraction in root zone [0, 1]
     et_irr : (n_fields,)
         ET from irrigation water (mm)
+    root_drainage_irr : (n_fields,)
+        Irrigation-source drainage transferred from the root zone (mm)
 
     Notes
     -----
-    Outflow is calculated BEFORE inflow mixing, so ET carries the pre-mix
-    irrigation fraction. This is conservative (doesn't attribute today's
-    irrigation to today's ET).
+    Today's natural infiltration can supply today's ET. Gross irrigation is
+    mixed only after ET, so irrigation scheduled today cannot supply today's
+    ET. All root drainage is withdrawn after irrigation mixing.
     """
-    n = awc.shape[0]
+    n = root_water.shape[0]
     irr_frac_root_new = np.empty(n, dtype=np.float64)
     et_irr = np.empty(n, dtype=np.float64)
+    root_drainage_irr = np.empty(n, dtype=np.float64)
 
     for i in prange(n):
-        # Water content before today's fluxes
-        water_before = awc[i] * zr[i] - depl_root[i]
+        # Water content before today's fluxes. The hydrologic loop supplies
+        # this directly so source accounting uses the same conservative mixing
+        # reservoir for daily fluxes and root-depth redistribution.
+        water_before = root_water[i]
         if water_before < 0.0:
             water_before = 0.0
 
         frac_before = irr_frac_root[i]
+        if frac_before < 0.0:
+            frac_before = 0.0
+        elif frac_before > 1.0:
+            frac_before = 1.0
+        irr_water_before = frac_before * water_before
 
-        # ET carries current fraction (before mixing)
-        et_irr[i] = eta[i] * frac_before
+        # Natural infiltration mixes before ET. The physical loop caps ET by
+        # this water availability, so eta cannot materially exceed this pool.
+        water_before_et = water_before + infiltration[i]
+        if water_before_et < SOURCE_WATER_EPS:
+            frac_before_et = 0.0
+        else:
+            frac_before_et = irr_water_before / water_before_et
+        et_irr[i] = eta[i] * frac_before_et
+        water_after_et = water_before_et - eta[i]
+        irr_water_after_et = irr_water_before - et_irr[i]
 
-        # Total outflow (all carry current fraction)
-        # gw_sim can be negative (withdrawal from root zone)
-        gw_withdrawal = 0.0
-        if gw_sim[i] < 0.0:
-            gw_withdrawal = -gw_sim[i]
+        # Gross irrigation is mixed before the fixed irrigation-forced
+        # drainage is withdrawn. Groundwater subsidy is a natural source.
+        water_before_drainage = water_after_et + irr_sim[i] + gw_sim[i]
+        irr_water_before_drainage = irr_water_after_et + irr_sim[i]
+        if water_before_drainage < SOURCE_WATER_EPS:
+            frac_before_drainage = 0.0
+        else:
+            frac_before_drainage = irr_water_before_drainage / water_before_drainage
 
-        outflow = eta[i] + dperc[i] + gw_withdrawal
+        root_drainage_irr[i] = root_drainage[i] * frac_before_drainage
+        water_after = water_before_drainage - root_drainage[i]
+        irr_water_after = irr_water_before_drainage - root_drainage_irr[i]
 
-        # Water after outflow
-        water_mid = water_before - outflow
-        if water_mid < 0.0:
-            water_mid = 0.0
-
-        # Inflows and their fractions
-        # infiltration: frac = 0, irr_sim: frac = 1, gw_sim (positive): frac = 0
-        gw_inflow = 0.0
-        if gw_sim[i] > 0.0:
-            gw_inflow = gw_sim[i]
-
-        inflow_natural = infiltration[i] + gw_inflow  # frac = 0
-        inflow_irr = irr_sim[i]  # frac = 1
-        total_inflow = inflow_natural + inflow_irr
-
-        # Water after inflow
-        water_after = water_mid + total_inflow
-
-        # Mix to get new fraction
-        if water_after < 1e-6:
-            # Pool essentially empty
+        if water_after < SOURCE_WATER_EPS:
             irr_frac_root_new[i] = 0.0
         else:
-            # Irrigation water in pool after mixing
-            irr_water_mid = frac_before * water_mid
-            irr_water_after = irr_water_mid + inflow_irr  # inflow_natural has frac=0
             irr_frac_root_new[i] = irr_water_after / water_after
 
         # Clamp to valid range
@@ -146,7 +160,7 @@ def update_irrigation_fraction_root(
         elif irr_frac_root_new[i] > 1.0:
             irr_frac_root_new[i] = 1.0
 
-    return irr_frac_root_new, et_irr
+    return irr_frac_root_new, et_irr, root_drainage_irr
 
 
 @njit(cache=True, fastmath=True, parallel=True)
@@ -154,7 +168,7 @@ def update_irrigation_fraction_l3(
     daw3: NDArray[np.float64],
     irr_frac_l3: NDArray[np.float64],
     gross_dperc: NDArray[np.float64],
-    irr_frac_inflow: NDArray[np.float64],
+    irrigation_inflow: NDArray[np.float64],
     dperc_out: NDArray[np.float64],
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
@@ -168,9 +182,9 @@ def update_irrigation_fraction_l3(
         Irrigation fraction in layer 3 BEFORE today's fluxes [0, 1]
     gross_dperc : (n_fields,)
         Gross deep percolation entering layer 3 (mm)
-        Includes dperc + IRR_BYPASS_FRAC of applied irrigation (bypasses root zone)
-    irr_frac_inflow : (n_fields,)
-        Irrigation fraction of inflowing water (root zone's current fraction)
+        Includes irrigation-forced and saturation drainage from the root zone
+    irrigation_inflow : (n_fields,)
+        Irrigation-source mass in gross_dperc (mm)
     dperc_out : (n_fields,)
         Deep percolation leaving layer 3 (overflow) (mm)
 
@@ -203,11 +217,11 @@ def update_irrigation_fraction_l3(
         water_after_inflow = water_before + inflow
 
         # Calculate mixed fraction after inflow
-        if water_after_inflow < 1e-6:
+        if water_after_inflow < SOURCE_WATER_EPS:
             frac_mixed = 0.0
         else:
             irr_water_before = frac_before * water_before
-            irr_water_inflow = irr_frac_inflow[i] * inflow
+            irr_water_inflow = irrigation_inflow[i]
             frac_mixed = (irr_water_before + irr_water_inflow) / water_after_inflow
 
         # Overflow (dperc_out) carries the mixed fraction
@@ -215,7 +229,7 @@ def update_irrigation_fraction_l3(
 
         # Final water after overflow
         water_final = water_after_inflow - dperc_out[i]
-        if water_final < 1e-6:
+        if water_final < SOURCE_WATER_EPS:
             irr_frac_l3_new[i] = 0.0
         else:
             # Fraction unchanged by proportional withdrawal
@@ -228,6 +242,121 @@ def update_irrigation_fraction_l3(
             irr_frac_l3_new[i] = 1.0
 
     return irr_frac_l3_new, dperc_irr
+
+
+@njit(cache=True, fastmath=True, parallel=True)
+def redistribute_irrigation_fractions(
+    root_water_before: NDArray[np.float64],
+    irr_frac_root_before: NDArray[np.float64],
+    l3_water_before: NDArray[np.float64],
+    irr_frac_l3_before: NDArray[np.float64],
+    root_water_after: NDArray[np.float64],
+    l3_water_after: NDArray[np.float64],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Redistribute source fractions after the root-zone boundary moves.
+
+    Actual layer-3 storage change defines the nominal physical transfer between
+    pools, and water leaving a donor pool carries its current source fraction.
+    The caller's fixed natural shallow-root buffer makes changes in root mixing
+    capacity conservative as the boundary moves. As a final numerical guard,
+    allocation is projected to the nearest feasible two-pool split if a nominal
+    destination cannot represent the transferred irrigation mass. This
+    preserves source mass and fraction bounds without changing hydrology.
+
+    Parameters
+    ----------
+    root_water_before, root_water_after : (n_fields,)
+        Conservative root-zone mixing water before and after redistribution (mm)
+    irr_frac_root_before : (n_fields,)
+        Root-zone irrigation fraction before redistribution [0, 1]
+    l3_water_before, l3_water_after : (n_fields,)
+        Layer-3 water before and after redistribution (mm)
+    irr_frac_l3_before : (n_fields,)
+        Layer-3 irrigation fraction before redistribution [0, 1]
+
+    Returns
+    -------
+    irr_frac_root_after, irr_frac_l3_after : (n_fields,)
+        Source fractions after redistribution. Values are intentionally not
+        clipped; the caller's invariants should expose an impossible state
+        rather than silently destroy source mass.
+    """
+    n = root_water_before.shape[0]
+    irr_frac_root_after = np.empty(n, dtype=np.float64)
+    irr_frac_l3_after = np.empty(n, dtype=np.float64)
+
+    for i in prange(n):
+        root_before = root_water_before[i]
+        if root_before < 0.0:
+            root_before = 0.0
+        l3_before = l3_water_before[i]
+        if l3_before < 0.0:
+            l3_before = 0.0
+        root_after = root_water_after[i]
+        if root_after < 0.0:
+            root_after = 0.0
+        l3_after = l3_water_after[i]
+        if l3_after < 0.0:
+            l3_after = 0.0
+
+        root_fraction = irr_frac_root_before[i]
+        if root_fraction < 0.0:
+            root_fraction = 0.0
+        elif root_fraction > 1.0:
+            root_fraction = 1.0
+        l3_fraction = irr_frac_l3_before[i]
+        if l3_fraction < 0.0:
+            l3_fraction = 0.0
+        elif l3_fraction > 1.0:
+            l3_fraction = 1.0
+
+        root_irrigation = root_before * root_fraction
+        l3_irrigation = l3_before * l3_fraction
+        l3_change = l3_after - l3_before
+
+        if l3_change > SOURCE_WATER_EPS:
+            # Roots receded: actual water added to L3 came from the root pool.
+            transferred = l3_change
+            if transferred > root_before:
+                transferred = root_before
+            irrigation_transferred = transferred * root_fraction
+            root_irrigation -= irrigation_transferred
+            l3_irrigation += irrigation_transferred
+        elif l3_change < -SOURCE_WATER_EPS:
+            # Roots grew: actual water removed from L3 entered the root pool.
+            transferred = -l3_change
+            if transferred > l3_before:
+                transferred = l3_before
+            irrigation_transferred = transferred * l3_fraction
+            l3_irrigation -= irrigation_transferred
+            root_irrigation += irrigation_transferred
+
+        # Project the nominal proportional allocation onto the feasible interval
+        # while preserving total irrigation-source mass across the two pools.
+        total_irrigation = root_before * root_fraction + l3_before * l3_fraction
+        minimum_root_irrigation = total_irrigation - l3_after
+        if minimum_root_irrigation < 0.0:
+            minimum_root_irrigation = 0.0
+        maximum_root_irrigation = total_irrigation
+        if maximum_root_irrigation > root_after:
+            maximum_root_irrigation = root_after
+        if root_irrigation < minimum_root_irrigation:
+            root_irrigation = minimum_root_irrigation
+        elif root_irrigation > maximum_root_irrigation:
+            root_irrigation = maximum_root_irrigation
+        l3_irrigation = total_irrigation - root_irrigation
+
+        if root_after < SOURCE_WATER_EPS:
+            irr_frac_root_after[i] = 0.0
+        else:
+            irr_frac_root_after[i] = root_irrigation / root_after
+
+        if l3_after < SOURCE_WATER_EPS:
+            irr_frac_l3_after[i] = 0.0
+        else:
+            irr_frac_l3_after[i] = l3_irrigation / l3_after
+
+    return irr_frac_root_after, irr_frac_l3_after
 
 
 @njit(cache=True, fastmath=True, parallel=True)
@@ -275,14 +404,14 @@ def transfer_fraction_with_water(
     for i in prange(n):
         # Source: proportional withdrawal, fraction unchanged
         water_from_after = water_from[i] - transfer[i]
-        if water_from_after < 1e-6:
+        if water_from_after < SOURCE_WATER_EPS:
             frac_from_new[i] = 0.0
         else:
             frac_from_new[i] = frac_from[i]
 
         # Destination: mix with incoming water
         water_to_after = water_to[i] + transfer[i]
-        if water_to_after < 1e-6:
+        if water_to_after < SOURCE_WATER_EPS:
             frac_to_new[i] = 0.0
         else:
             irr_water_to = frac_to[i] * water_to[i]

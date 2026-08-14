@@ -11,6 +11,7 @@ from swimrs.process.input import (
     _load_calibrated_params,
     _load_spinup_json,
     _write_prescribed_irrigation,
+    _write_spinup,
 )
 
 
@@ -31,7 +32,18 @@ def test_load_spinup_json_defaults_and_optional_arrays(tmp_path):
     assert np.allclose(state["s"], np.array([84.7, 84.7]))
     assert "irr_frac_root" in state
     assert np.allclose(state["irr_frac_root"], np.array([0.9, 0.0]))
-    assert "irr_frac_l3" not in state
+    assert np.allclose(state["irr_frac_l3"], np.zeros(2))
+
+
+def test_write_spinup_makes_source_and_layer3_state_explicit(tmp_path):
+    path = tmp_path / "spinup.h5"
+    with h5py.File(path, "w") as h5:
+        _write_spinup(h5, n_fields=2, spinup_state=None)
+
+    with h5py.File(path, "r") as h5:
+        for name in ("daw3", "taw3", "irr_frac_root", "irr_frac_l3"):
+            assert name in h5["spinup"]
+            assert np.allclose(h5[f"spinup/{name}"][:], np.zeros(2))
 
 
 def test_load_calibrated_params_is_case_insensitive_on_field_ids(tmp_path):

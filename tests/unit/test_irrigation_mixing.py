@@ -12,10 +12,16 @@ import numpy as np
 from numpy.testing import assert_array_almost_equal
 
 from swimrs.process.kernels.irrigation_tracking import (
+    redistribute_irrigation_fractions,
     transfer_fraction_with_water,
     update_irrigation_fraction_l3,
     update_irrigation_fraction_root,
 )
+
+
+def root_water(awc, zr, depl_root):
+    """Return root-zone water for kernel fixtures without a TEW floor."""
+    return np.maximum(awc * zr - depl_root, 0.0)
 
 
 class TestUpdateIrrigationFractionRoot:
@@ -34,12 +40,19 @@ class TestUpdateIrrigationFractionRoot:
         eta = np.full(n, 5.0)  # mm
         dperc = np.zeros(n)
 
-        frac_new, et_irr = update_irrigation_fraction_root(
-            awc, zr, depl_root, irr_frac_root, infiltration, irr_sim, gw_sim, eta, dperc
+        frac_new, et_irr, drainage_irr = update_irrigation_fraction_root(
+            root_water(awc, zr, depl_root),
+            irr_frac_root,
+            infiltration,
+            irr_sim,
+            gw_sim,
+            eta,
+            dperc,
         )
 
         assert_array_almost_equal(frac_new, 0.0)
         assert_array_almost_equal(et_irr, 0.0)
+        assert_array_almost_equal(drainage_irr, 0.0)
 
     def test_pure_irrigation(self):
         """With only irrigation input, fraction approaches 1."""
@@ -54,13 +67,20 @@ class TestUpdateIrrigationFractionRoot:
         eta = np.full(n, 5.0)
         dperc = np.zeros(n)
 
-        frac_new, et_irr = update_irrigation_fraction_root(
-            awc, zr, depl_root, irr_frac_root, infiltration, irr_sim, gw_sim, eta, dperc
+        frac_new, et_irr, drainage_irr = update_irrigation_fraction_root(
+            root_water(awc, zr, depl_root),
+            irr_frac_root,
+            infiltration,
+            irr_sim,
+            gw_sim,
+            eta,
+            dperc,
         )
 
         # Fraction should stay 1 (only irrigation in, irrigation out)
         assert_array_almost_equal(frac_new, 1.0)
         assert_array_almost_equal(et_irr, eta)  # All ET is from irrigation
+        assert_array_almost_equal(drainage_irr, 0.0)
 
     def test_mixed_sources(self):
         """With 50/50 mix, fraction should be ~0.5."""
@@ -75,37 +95,74 @@ class TestUpdateIrrigationFractionRoot:
         eta = np.full(n, 2.0)
         dperc = np.zeros(n)
 
-        frac_new, et_irr = update_irrigation_fraction_root(
-            awc, zr, depl_root, irr_frac_root, infiltration, irr_sim, gw_sim, eta, dperc
+        frac_new, et_irr, _ = update_irrigation_fraction_root(
+            root_water(awc, zr, depl_root),
+            irr_frac_root,
+            infiltration,
+            irr_sim,
+            gw_sim,
+            eta,
+            dperc,
         )
 
         # Water before: 75 - 50 = 25 mm, 50% irrigation = 12.5 mm irr water
-        # After outflow (2 mm): 23 mm, still 50% = 11.5 mm irr water
-        # Add inflow: 10 natural + 10 irr = 20 mm
-        # Total: 43 mm, irr water = 11.5 + 10 = 21.5 mm
-        # Expected frac = 21.5 / 43 = 0.5
+        # Add 10 mm natural infiltration, then ET removes 2 * (12.5 / 35)
+        # irrigation water. Adding 10 mm irrigation gives ~21.79 / 43.
         assert np.all(frac_new >= 0.4)
         assert np.all(frac_new <= 0.6)
 
-    def test_et_carries_current_fraction(self):
-        """ET uses fraction BEFORE mixing with inflow."""
+    def test_et_carries_fraction_after_natural_infiltration(self):
+        """Same-day natural infiltration dilutes the source fraction of ET."""
         n = 1
         awc = np.array([100.0])
-        zr = np.array([1.0])  # TAW = 100 mm
-        depl_root = np.array([0.0])  # Full water = 100 mm
-        irr_frac_root = np.array([0.3])
-        infiltration = np.array([0.0])
+        zr = np.array([1.0])
+        depl_root = np.array([90.0])  # 10 mm, all irrigation-source
+        irr_frac_root = np.array([1.0])
+        infiltration = np.array([10.0])
         irr_sim = np.array([0.0])
         gw_sim = np.array([0.0])
         eta = np.array([10.0])
         dperc = np.array([0.0])
 
-        frac_new, et_irr = update_irrigation_fraction_root(
-            awc, zr, depl_root, irr_frac_root, infiltration, irr_sim, gw_sim, eta, dperc
+        frac_new, et_irr, drainage_irr = update_irrigation_fraction_root(
+            root_water(awc, zr, depl_root),
+            irr_frac_root,
+            infiltration,
+            irr_sim,
+            gw_sim,
+            eta,
+            dperc,
         )
 
-        # ET should be 30% irrigation
-        assert_array_almost_equal(et_irr, eta * 0.3)
+        assert_array_almost_equal(et_irr, 5.0)
+        assert_array_almost_equal(frac_new, 0.5)
+        assert_array_almost_equal(drainage_irr, 0.0)
+
+    def test_irrigation_forced_drainage_is_proportional(self):
+        """Irrigation-forced drainage inherits the mixed root fraction."""
+        awc = np.array([100.0])
+        zr = np.array([1.0])
+        depl_root = np.array([50.0])  # 50 mm natural water
+        irr_frac_root = np.array([0.0])
+        infiltration = np.array([0.0])
+        irr_sim = np.array([50.0])
+        gw_sim = np.array([0.0])
+        eta = np.array([0.0])
+        root_drainage = np.array([5.0])  # 10% irrigation-forced drainage
+
+        frac_new, et_irr, drainage_irr = update_irrigation_fraction_root(
+            root_water(awc, zr, depl_root),
+            irr_frac_root,
+            infiltration,
+            irr_sim,
+            gw_sim,
+            eta,
+            root_drainage,
+        )
+
+        assert_array_almost_equal(et_irr, 0.0)
+        assert_array_almost_equal(drainage_irr, 2.5)
+        assert_array_almost_equal(frac_new, 0.5)
 
     def test_fraction_bounds(self):
         """Fraction always in [0, 1]."""
@@ -116,16 +173,24 @@ class TestUpdateIrrigationFractionRoot:
         irr_frac_root = np.random.uniform(0, 1, n)
         infiltration = np.random.uniform(0, 20, n)
         irr_sim = np.random.uniform(0, 30, n)
-        gw_sim = np.random.uniform(-5, 10, n)
+        gw_sim = np.random.uniform(0, 10, n)
         eta = np.random.uniform(0, 10, n)
         dperc = np.random.uniform(0, 5, n)
 
-        frac_new, et_irr = update_irrigation_fraction_root(
-            awc, zr, depl_root, irr_frac_root, infiltration, irr_sim, gw_sim, eta, dperc
+        frac_new, et_irr, drainage_irr = update_irrigation_fraction_root(
+            root_water(awc, zr, depl_root),
+            irr_frac_root,
+            infiltration,
+            irr_sim,
+            gw_sim,
+            eta,
+            dperc,
         )
 
         assert np.all(frac_new >= 0.0)
         assert np.all(frac_new <= 1.0)
+        assert np.all(et_irr >= 0.0)
+        assert np.all(drainage_irr >= 0.0)
 
     def test_empty_pool(self):
         """Empty pool results in fraction 0."""
@@ -140,11 +205,19 @@ class TestUpdateIrrigationFractionRoot:
         eta = np.array([0.0])
         dperc = np.array([0.0])
 
-        frac_new, et_irr = update_irrigation_fraction_root(
-            awc, zr, depl_root, irr_frac_root, infiltration, irr_sim, gw_sim, eta, dperc
+        frac_new, et_irr, drainage_irr = update_irrigation_fraction_root(
+            root_water(awc, zr, depl_root),
+            irr_frac_root,
+            infiltration,
+            irr_sim,
+            gw_sim,
+            eta,
+            dperc,
         )
 
         assert_array_almost_equal(frac_new, 0.0)
+        assert_array_almost_equal(et_irr, 0.0)
+        assert_array_almost_equal(drainage_irr, 0.0)
 
     def test_gw_subsidy_dilutes_fraction(self):
         """Groundwater subsidy (natural water) dilutes irrigation fraction."""
@@ -159,8 +232,14 @@ class TestUpdateIrrigationFractionRoot:
         eta = np.array([0.0])
         dperc = np.array([0.0])
 
-        frac_new, et_irr = update_irrigation_fraction_root(
-            awc, zr, depl_root, irr_frac_root, infiltration, irr_sim, gw_sim, eta, dperc
+        frac_new, et_irr, _ = update_irrigation_fraction_root(
+            root_water(awc, zr, depl_root),
+            irr_frac_root,
+            infiltration,
+            irr_sim,
+            gw_sim,
+            eta,
+            dperc,
         )
 
         # 50 mm irr + 50 mm natural = 50% irrigation
@@ -176,11 +255,11 @@ class TestUpdateIrrigationFractionL3:
         daw3 = np.array([10.0])  # 10 mm in L3
         irr_frac_l3 = np.array([0.2])
         gross_dperc = np.array([5.0])  # 5 mm entering
-        irr_frac_inflow = np.array([0.8])  # 80% irrigation
+        irrigation_inflow = np.array([4.0])  # 4 of 5 mm is irrigation-source
         dperc_out = np.array([0.0])  # No overflow
 
         frac_new, dperc_irr = update_irrigation_fraction_l3(
-            daw3, irr_frac_l3, gross_dperc, irr_frac_inflow, dperc_out
+            daw3, irr_frac_l3, gross_dperc, irrigation_inflow, dperc_out
         )
 
         # Mixed: (10*0.2 + 5*0.8) / 15 = (2 + 4) / 15 = 0.4
@@ -193,11 +272,11 @@ class TestUpdateIrrigationFractionL3:
         daw3 = np.array([10.0])
         irr_frac_l3 = np.array([0.5])
         gross_dperc = np.array([10.0])
-        irr_frac_inflow = np.array([0.5])
+        irrigation_inflow = np.array([5.0])
         dperc_out = np.array([5.0])  # 5 mm overflow
 
         frac_new, dperc_irr = update_irrigation_fraction_l3(
-            daw3, irr_frac_l3, gross_dperc, irr_frac_inflow, dperc_out
+            daw3, irr_frac_l3, gross_dperc, irrigation_inflow, dperc_out
         )
 
         # All at 50%, so dperc_irr = 5 * 0.5 = 2.5
@@ -210,15 +289,87 @@ class TestUpdateIrrigationFractionL3:
         daw3 = np.random.uniform(0, 50, n)
         irr_frac_l3 = np.random.uniform(0, 1, n)
         gross_dperc = np.random.uniform(0, 30, n)
-        irr_frac_inflow = np.random.uniform(0, 1, n)
-        dperc_out = np.random.uniform(0, 20, n)
+        irrigation_inflow = gross_dperc * np.random.uniform(0, 1, n)
+        dperc_out = np.minimum(np.random.uniform(0, 20, n), daw3 + gross_dperc)
 
         frac_new, dperc_irr = update_irrigation_fraction_l3(
-            daw3, irr_frac_l3, gross_dperc, irr_frac_inflow, dperc_out
+            daw3, irr_frac_l3, gross_dperc, irrigation_inflow, dperc_out
         )
 
         assert np.all(frac_new >= 0.0)
         assert np.all(frac_new <= 1.0)
+
+
+class TestRedistributeIrrigationFractions:
+    """Tests for source transfer when the root-zone boundary moves."""
+
+    def test_tew_buffer_change_is_natural(self):
+        """Changing only the effective TEW buffer preserves irrigation mass."""
+        root_frac, l3_frac = redistribute_irrigation_fractions(
+            np.array([10.0]),
+            np.array([0.4]),
+            np.array([5.0]),
+            np.array([0.2]),
+            np.array([6.0]),
+            np.array([5.0]),
+        )
+
+        assert_array_almost_equal(root_frac, 2.0 / 3.0)
+        assert_array_almost_equal(l3_frac, 0.2)
+        irrigation_before = 10.0 * 0.4 + 5.0 * 0.2
+        irrigation_after = 6.0 * root_frac[0] + 5.0 * l3_frac[0]
+        assert_array_almost_equal(irrigation_after, irrigation_before)
+
+    def test_root_growth_moves_layer3_source(self):
+        """Actual layer-3 withdrawal carries the layer-3 source fraction."""
+        root_frac, l3_frac = redistribute_irrigation_fractions(
+            np.array([7.0]),
+            np.array([0.2]),
+            np.array([10.0]),
+            np.array([0.8]),
+            np.array([9.0]),
+            np.array([8.0]),
+        )
+
+        assert_array_almost_equal(root_frac, 1.0 / 3.0)
+        assert_array_almost_equal(l3_frac, 0.8)
+        irrigation_before = 7.0 * 0.2 + 10.0 * 0.8
+        irrigation_after = 9.0 * root_frac[0] + 8.0 * l3_frac[0]
+        assert_array_almost_equal(irrigation_after, irrigation_before)
+
+    def test_growth_into_empty_effective_root_pool_is_capacity_safe(self):
+        """Source mass stays represented when root growth only reduces deficit."""
+        root_frac, l3_frac = redistribute_irrigation_fractions(
+            np.array([0.0]),
+            np.array([0.0]),
+            np.array([10.0]),
+            np.array([0.65]),
+            np.array([0.0]),
+            np.array([9.0]),
+        )
+
+        assert_array_almost_equal(root_frac, 0.0)
+        assert_array_almost_equal(l3_frac, 6.5 / 9.0)
+        irrigation_before = 10.0 * 0.65
+        irrigation_after = 9.0 * l3_frac[0]
+        assert_array_almost_equal(irrigation_after, irrigation_before)
+
+    def test_root_recession_moves_root_source(self):
+        """Actual layer-3 addition carries the root-zone source fraction."""
+        root_frac, l3_frac = redistribute_irrigation_fractions(
+            np.array([9.0]),
+            np.array([2.0 / 3.0]),
+            np.array([8.0]),
+            np.array([0.25]),
+            np.array([10.0]),
+            np.array([10.0]),
+        )
+
+        assert_array_almost_equal(root_frac, 7.0 / 15.0)
+        assert_array_almost_equal(l3_frac, 1.0 / 3.0)
+        irrigation_before = 9.0 * (2.0 / 3.0) + 8.0 * 0.25
+        irrigation_after = 10.0 * root_frac[0] + 10.0 * l3_frac[0]
+        assert_array_almost_equal(irrigation_after, irrigation_before)
 
 
 class TestTransferFractionWithWater:
@@ -300,24 +451,22 @@ class TestConservation:
         water_before = awc * zr - depl_root
         irr_water_before = water_before * irr_frac_root
 
-        frac_new, et_irr = update_irrigation_fraction_root(
-            awc, zr, depl_root, irr_frac_root, infiltration, irr_sim, gw_sim, eta, dperc
+        frac_new, et_irr, dperc_irr_root = update_irrigation_fraction_root(
+            water_before,
+            irr_frac_root,
+            infiltration,
+            irr_sim,
+            gw_sim,
+            eta,
+            dperc,
         )
 
-        # Final water (approximate - ET and dperc removed, infiltration and irr added)
-        water_after = water_before - eta - dperc + infiltration + irr_sim
+        # Natural infiltration mixes before ET; irrigation mixes before drainage.
+        water_after = water_before + infiltration - eta + irr_sim - dperc
         irr_water_after = water_after * frac_new
 
-        # Irrigation balance:
-        # initial + added - et_irr - dperc_irr = final
-        # Note: dperc_irr from root zone uses pre-mix fraction
-        dperc_irr_root = dperc * irr_frac_root
-
         irr_balance = irr_water_before + irr_sim - et_irr - dperc_irr_root
-
-        # Should approximately equal final irrigation water
-        # (small differences due to timing of when fraction is applied)
-        assert np.abs(irr_balance - irr_water_after) < 1.0  # Within 1 mm
+        assert_array_almost_equal(irr_balance, irr_water_after, decimal=12)
 
     def test_limiting_case_no_irrigation(self):
         """With no irrigation, et_irr = 0 and fractions decay."""
@@ -335,8 +484,14 @@ class TestConservation:
             eta = np.array([3.0])
             dperc = np.array([0.0])
 
-            irr_frac_root, et_irr = update_irrigation_fraction_root(
-                awc, zr, depl_root, irr_frac_root, infiltration, irr_sim, gw_sim, eta, dperc
+            irr_frac_root, et_irr, _ = update_irrigation_fraction_root(
+                root_water(awc, zr, depl_root),
+                irr_frac_root,
+                infiltration,
+                irr_sim,
+                gw_sim,
+                eta,
+                dperc,
             )
 
         # Fraction should decrease toward 0
@@ -358,8 +513,14 @@ class TestConservation:
             eta = np.array([8.0])
             dperc = np.array([0.0])
 
-            irr_frac_root, et_irr = update_irrigation_fraction_root(
-                awc, zr, depl_root, irr_frac_root, infiltration, irr_sim, gw_sim, eta, dperc
+            irr_frac_root, et_irr, _ = update_irrigation_fraction_root(
+                root_water(awc, zr, depl_root),
+                irr_frac_root,
+                infiltration,
+                irr_sim,
+                gw_sim,
+                eta,
+                dperc,
             )
 
         # Fraction should increase toward 1
@@ -369,8 +530,8 @@ class TestConservation:
 class TestStateInitialization:
     """Tests for irrigation fraction state initialization."""
 
-    def test_from_spinup_with_irr_status_irrigated(self):
-        """Irrigated fields initialize to 0.5 when no spinup fractions."""
+    def test_from_spinup_without_source_state_starts_non_irrigation(self):
+        """Irrigation status does not imply an initial source composition."""
         from swimrs.process.state import WaterBalanceState
 
         n = 3
@@ -386,8 +547,8 @@ class TestStateInitialization:
             irr_status=irr_status,
         )
 
-        assert_array_almost_equal(state.irr_frac_root, [0.5, 0.5, 0.0])
-        assert_array_almost_equal(state.irr_frac_l3, [0.5, 0.5, 0.0])
+        assert_array_almost_equal(state.irr_frac_root, 0.0)
+        assert_array_almost_equal(state.irr_frac_l3, 0.0)
 
     def test_from_spinup_with_provided_fractions(self):
         """Provided spinup fractions override irr_status default."""

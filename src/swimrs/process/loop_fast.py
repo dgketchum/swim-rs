@@ -150,7 +150,7 @@ def _run_loop_jit(
     fresh_snow_threshold = 3.0
     snow_temp_threshold = 1.0
     melt_base_temp = 1.8
-    irr_bypass_frac = 0.1  # Fraction of irrigation bypassing root zone to dperc
+    irr_forced_drainage_frac = 0.1
 
     for day_idx in range(n_days):
         # Get daily inputs for all fields
@@ -528,11 +528,12 @@ def _run_loop_jit(
 
         # ================================================================
         # 15. APPLY IRRIGATION AND GW SUBSIDY
-        # Only (1 - irr_bypass_frac) of irrigation reaches root zone.
-        # The rest bypasses to deep percolation (step 17).
+        # The net root-zone addition is 90% of gross irrigation. This is
+        # algebraically equivalent to mixing the gross amount and then
+        # withdrawing 10% as irrigation-forced drainage in step 17.
         # ================================================================
-        irr_to_root = (1.0 - irr_bypass_frac) * irr_sim
-        depl_new = depl_after_et - irr_to_root - gw_sim
+        irr_net_to_root = (1.0 - irr_forced_drainage_frac) * irr_sim
+        depl_new = depl_after_et - irr_net_to_root - gw_sim
 
         # ================================================================
         # 16. DEEP PERCOLATION
@@ -545,12 +546,12 @@ def _run_loop_jit(
 
         # ================================================================
         # 17. LAYER 3 STORAGE
-        # irr_bypass_frac of irrigation bypasses root zone directly to dperc.
-        # Combined with irr_to_root: 90% + 10% = 100% (mass conserved).
+        # The fixed 10% irrigation-forced drainage plus the 90% net root-zone
+        # addition accounts for all gross irrigation.
         # Matches layer3_storage kernel behavior exactly.
         # ================================================================
-        irr_bypass = irr_bypass_frac * irr_sim
-        gross_dperc = dperc + irr_bypass
+        irr_forced_drainage = irr_forced_drainage_frac * irr_sim
+        gross_dperc = dperc + irr_forced_drainage
 
         # Match loop.py logic: only use layer3 storage if any field has taw3 > 0
         if np.any(taw3 > 0.0):
