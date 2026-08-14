@@ -22,6 +22,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
 import subprocess
 from datetime import UTC, datetime
@@ -79,30 +80,57 @@ def _family_columns(columns):
     return by_family
 
 
+def _site_from_column(col, fam):
+    """Extract the site token from ``pname:p_<family>_<site>_:0_...``."""
+    remainder = col[len(f"pname:p_{fam}_") :]
+    return remainder.split("_:")[0]
+
+
 def compute_cropland_medians(par_csv):
-    """Return (median_vector, site_count) from the Ex5 .par.csv.
+    """Return (median_vector, site_count, per_site_medians, n_realizations).
 
     For each family: per-site posterior median (median over realizations,
-    ``base`` excluded), then the median across sites.
+    ``base`` excluded), then the median across sites. ``per_site_medians`` is a
+    DataFrame (index=site, columns=families) of the per-site posterior medians.
     """
     df = pd.read_csv(par_csv, index_col=0)
+    n_base = sum(1 for i in df.index if str(i) == "base")
+    if n_base != 1:
+        raise ValueError(f"Expected exactly one 'base' realization, found {n_base} in {par_csv}")
     realizations = df.loc[[i for i in df.index if str(i) != "base"]]
     by_family = _family_columns(df.columns)
 
     vector = {}
-    site_counts = {}
+    per_site = {}
+    site_sets = {}
     for fam in PARAM_FAMILIES:
         cols = by_family[fam]
         if not cols:
             raise ValueError(f"No columns found for parameter family {fam!r} in {par_csv}")
+        sites = [_site_from_column(c, fam) for c in cols]
+        if len(set(sites)) != len(sites):
+            raise ValueError(f"Duplicate site columns for family {fam!r} in {par_csv}")
         per_site_median = realizations[cols].median()  # median realization per site
+        per_site_median.index = sites
+        if not per_site_median.map(lambda v: pd.notna(v) and abs(v) != float("inf")).all():
+            raise ValueError(f"Non-finite per-site median for family {fam!r} in {par_csv}")
         vector[fam] = float(per_site_median.median())  # median across sites
-        site_counts[fam] = len(cols)
+        per_site[fam] = per_site_median
+        site_sets[fam] = frozenset(sites)
 
-    counts = set(site_counts.values())
-    if len(counts) != 1:
-        raise ValueError(f"Inconsistent per-family site counts: {site_counts}")
-    return vector, counts.pop()
+    if len(set(site_sets.values())) != 1:
+        raise ValueError(f"Site sets differ across parameter families in {par_csv}")
+    medians_df = pd.DataFrame(per_site).sort_index()
+    medians_df.index.name = "site"
+    return vector, len(medians_df), medians_df, len(realizations)
+
+
+def _sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _git_sha():
@@ -118,18 +146,35 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--par-csv", default=DEFAULT_PAR_CSV, help="Ex5 publication .par.csv")
     parser.add_argument("--out-dir", default=str(HERE), help="Where to write the JSON artifacts")
+    parser.add_argument("--out-json", default=None, help="Explicit vector JSON path")
+    parser.add_argument("--out-meta", default=None, help="Explicit metadata JSON path")
+    parser.add_argument("--out-medians", default=None, help="Explicit per-site medians CSV path")
+    parser.add_argument(
+        "--source-run",
+        default=None,
+        help="Source-run label for the metadata (default: derived from the --par-csv path)",
+    )
     args = parser.parse_args()
 
     par_csv = Path(args.par_csv)
     if not par_csv.exists():
         raise FileNotFoundError(f"Ex5 parameter ensemble not found: {par_csv}")
 
-    vector, n_sites = compute_cropland_medians(par_csv)
+    vector, n_sites, medians_df, n_realizations = compute_cropland_medians(par_csv)
+    source_run = args.source_run or f"{par_csv.parent.name} (derived from --par-csv path)"
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    params_path = out_dir / "ex5_cropland_params.json"
-    meta_path = out_dir / "ex5_cropland_params_metadata.json"
+    params_path = Path(args.out_json) if args.out_json else out_dir / "ex5_cropland_params.json"
+    meta_path = (
+        Path(args.out_meta) if args.out_meta else out_dir / "ex5_cropland_params_metadata.json"
+    )
+    medians_path = (
+        Path(args.out_medians)
+        if args.out_medians
+        else params_path.with_name(params_path.stem + "_site_medians.csv")
+    )
+    medians_df.to_csv(medians_path)
 
     # Frozen transfer vector.
     with open(params_path, "w") as f:
@@ -153,7 +198,7 @@ def main():
 
     metadata = {
         "source_experiment": "Example 5 / Experiment 2 (CONUS cropland)",
-        "source_run": "Run 21 (publication; reproduces Run 20 bit-for-bit)",
+        "source_run": source_run,
         "calibration_target": "simple six-model OpenET ensemble mean (per-overpass nanmean)",
         "observation_weighting": "spread-based observation weights (per-overpass member std)",
         "aggregation": (
@@ -161,7 +206,14 @@ def main():
             "(median realization value; 'base' realization excluded)"
         ),
         "source_par_csv": str(par_csv),
+        "source_par_csv_sha256": _sha256(par_csv),
         "n_ex5_sites": n_sites,
+        "n_posterior_realizations": n_realizations,
+        "excluded_realization": "base",
+        "site_list": list(medians_df.index),
+        "per_site_medians_csv": str(medians_path),
+        "model_structure": "legacy single-mad coupling",
+        "stress_depletion_fraction": None,
         "date_generated_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "git_sha": _git_sha(),
         "param_names": PARAM_FAMILIES,
@@ -170,10 +222,11 @@ def main():
         "matches_legacy_vector": matches_legacy,
         "legacy_comparison": comparison,
         "notes": (
-            "Transfer vector frozen before any Example 6 flux evaluation. Not "
-            "derived or tuned from Ex6 flux ET. The legacy vector was the old "
-            "9-site Ex5 cropland median; the current vector is the 60-site "
-            "publication (Run 21) cropland median and supersedes it."
+            "Transfer vector frozen before any Example 6 flux or Example 7 meter "
+            "evaluation. Not derived or tuned from Ex6 flux ET or Ex7 metered "
+            "applied water. The legacy vector was the old 9-site Ex5 cropland "
+            f"median; the current vector is the {n_sites}-site cropland median "
+            f"from {source_run} and supersedes it."
         ),
     }
     with open(meta_path, "w") as f:
@@ -182,6 +235,7 @@ def main():
 
     print(f"Wrote {params_path}")
     print(f"Wrote {meta_path}")
+    print(f"Wrote {medians_path}")
     print(f"\nEx5 cropland median vector ({n_sites} sites):")
     print(f"  {'param':<11} {'current':>10} {'legacy':>10} {'delta':>10}")
     for fam in PARAM_FAMILIES:
