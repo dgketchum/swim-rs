@@ -1,4 +1,4 @@
-"""E1 transpiration-form experiment: six formulations, one cohort.
+"""E1 transpiration-form experiment: five formulations, one cohort.
 
 Archived replacement for the unreported eight-site fc comparison flagged in
 ``paper/notes/review_followup.md`` (item 6). Each arm is an independent PEST++
@@ -13,27 +13,32 @@ weight fc_t:
     ==============  ==========  ===========================================
     arm             Kcb curve   fc_t
     ==============  ==========  ===========================================
-    fao56           sigmoid     1
+    fao56_sig       sigmoid     1
     linear          sigmoid     ramp in NDVI over the logistic's 10-90% span
     sigmoid         sigmoid     logistic(NDVI) = Kcb / Kc_max
     current         sigmoid     (Kcb - Kc_min)/(Kc_max - Kc_min)   [default]
     fao56_std       linear      1
-    linear_fc       linear      (Kcb - Kc_min)/(Kc_max - Kc_min)
     ==============  ==========  ===========================================
 
 The first four arms (run 2026-07-31) hold the sigmoid Kcb fixed and vary only
 fc_t. That turned out to under-sample the question: because ``fc`` is derived
 from ``Kcb`` and then multiplies ``Kcb``, all three weighted arms are quadratic
-in the same logistic, and even the ``fao56`` arm keeps the sigmoid Kcb — so
+in the same logistic, and even the ``fao56_sig`` arm keeps the sigmoid Kcb — so
 none of them is the standard FAO-56 model found in the literature. See
 ``notes/cover_form_experiment_results.md``, section "What the arms actually
-sampled".
+sampled". (``fao56_sig`` was called ``fao56`` until 2026-08-07 — the old name
+read as standard FAO-56, which the arm is not.)
 
 ``fao56_std`` is that standard model: a linear NDVI-Kcb relation
 (``Kcb = ndvi_beta*NDVI + ndvi_alpha``, the SWIM predecessor's own formulation,
 calibrated under its historical priors) with no cover re-weighting.
-``linear_fc`` completes the 2x2 so the cover weight and the curve can be
-attributed separately rather than confounded.
+
+A sixth arm, ``linear_fc`` (the Eq. 76 cover weight on the linear Kcb),
+completed the 2x2 at 4 sites and tied ``current`` there; it was withdrawn from
+the reported study on 2026-08-07 as factorial filler — not a FAO-56 baseline,
+so irrelevant to the study's claim. Its n=4 archive is retained at
+``results/coverform/linear_fc/`` (see ARM_RENAME.txt at the tree root); its
+45-site run was stopped during spinup and its partial outputs deleted.
 
 Every arm carries two free NDVI-curve parameters — ``(ndvi_k, ndvi_0)`` under
 the sigmoid, ``(ndvi_alpha, ndvi_beta)`` under the linear relation — plus the
@@ -44,7 +49,7 @@ flux-tower ET (never a calibration target), not on phi.
 Usage:
     python cover_form_experiment.py --container /path/to/4_Flux_Network_julyphysics.swim
     python cover_form_experiment.py --container ... --forward-check   # no calibration
-    python cover_form_experiment.py --container ... --arms fao56_std,linear_fc
+    python cover_form_experiment.py --container ... --arms fao56_sig,fao56_std
     python cover_form_experiment.py --container ... --evaluate-only
 """
 
@@ -71,17 +76,26 @@ sys.path.insert(0, str(PROJECT_DIR))
 # swimrs.process.cover_modes name and `kcb` the swimrs.process.kcb_modes name,
 # both written into the arm's TOML.
 #
-# Arm names are load-bearing: they are the directory names under results/, so
-# the first four keep the names they were archived under on 2026-07-31 even
-# though `fao56` is a misnomer (it drops the cover weight but keeps the sigmoid
-# Kcb, a hybrid found in no literature). `fao56_std` is the actual standard
-# model. Do not rename the existing keys — that orphans the archive.
+# Arm names are load-bearing: they are the directory names under results/, so a
+# key here must match the archived directory name. On 2026-08-07 `fao56` was
+# renamed to `fao56_sig` — the old name read as standard FAO-56, which the arm
+# is not (it drops the cover weight but keeps the sigmoid Kcb, a hybrid found in
+# no literature; `fao56_std` is the actual standard model). Both results trees
+# were renamed in lockstep, so key and archive stay consistent; the mapping is
+# recorded in ARM_RENAME.txt at each tree root. Archives, logs and commits from
+# before 2026-08-07 still carry the old name `fao56`. Renaming a key again means
+# renaming its archived directories in the same commit.
+#
+# `linear_fc` (Eq. 76 cover weight on the linear Kcb) was withdrawn from the
+# study on 2026-08-07 and removed from this table; its n=4 archive remains at
+# results/coverform/linear_fc/. Re-evaluating that archive requires
+# reinstating the key.
 ARMS = {
-    "fao56": {
+    "fao56_sig": {
         "mode": "none",
         "kcb": "sigmoid",
         "equation": "kc_act = Ks*Kcb + Ke, Kcb = Kc_max*sigmoid(NDVI)",
-        "label": "Sigmoid Kcb, no cover weight (NOT standard FAO-56 — see fao56_std)",
+        "label": "Sigmoid Kcb, no cover weight (not standard FAO-56 — see fao56_std)",
     },
     "linear": {
         "mode": "linear",
@@ -106,12 +120,6 @@ ARMS = {
         "kcb": "linear",
         "equation": "kc_act = Ks*Kcb + Ke, Kcb = ndvi_beta*NDVI + ndvi_alpha",
         "label": "Standard FAO-56 dual crop coefficient (linear Kcb-NDVI, no cover weight)",
-    },
-    "linear_fc": {
-        "mode": "kcb",
-        "kcb": "linear",
-        "equation": "kc_act = fc*Ks*Kcb + Ke, Kcb = ndvi_beta*NDVI + ndvi_alpha",
-        "label": "Linear Kcb-NDVI with the Eq. 76 cover weight (2x2 completion)",
     },
 }
 
@@ -149,11 +157,14 @@ def load_arm_config(toml_path):
     return cfg
 
 
-def write_arm_toml(arm, spec, out_dir):
+def write_arm_toml(arm, spec, out_dir, pest_run_dir=None):
     """Write the arm's project TOML (base E1 config + the two physics-mode keys).
 
     This file is what `evaluate.py --config` needs to reproduce the arm, so it
     lives in the arm's results directory and is copied into the archive.
+
+    ``pest_run_dir`` overrides the base config's PEST working directory so an
+    experiment never shares (and never deletes) the canonical E1 working tree.
     """
     base = toml.load(PROJECT_DIR / "4_Flux_Network.toml")
     base.setdefault("misc", {})["transpiration_cover_mode"] = spec["mode"]
@@ -161,6 +172,11 @@ def write_arm_toml(arm, spec, out_dir):
     # transpiration_cover_scaling is derived from the mode by ProjectConfig;
     # writing it too would create a second source of truth.
     base["misc"].pop("transpiration_cover_scaling", None)
+    if pest_run_dir:
+        # calibrate.py rmtree's pest_run_dir at startup, so an experiment left on
+        # the shared default would wipe the canonical E1 working tree. Every
+        # dependent path interpolates from this one key.
+        base.setdefault("calibration", {})["pest_run_dir"] = pest_run_dir
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, f"4_Flux_Network_{arm}.toml")
     with open(path, "w") as f:
@@ -379,7 +395,16 @@ def run_arm(arm, spec, container_path, sites, results_root, workers=None, realiz
     results_dir = os.path.join(results_root, arm)
     os.makedirs(results_dir, exist_ok=True)
 
-    toml_path = write_arm_toml(arm, spec, results_dir)
+    # One isolated PEST tree per experiment tag. Arms run sequentially, so they
+    # can share it; what they must NOT share is the canonical E1 "pestrun".
+    # Must stay a {project_workspace} TEMPLATE, not an absolute path: config
+    # _resolve_paths only registers a key as an interpolation variable when its
+    # value contains braces, so an absolute pest_run_dir would silently leave
+    # calibration_dir/obs_folder/spinup as literal "{pest_run_dir}/..." strings.
+    tag = os.path.basename(os.path.normpath(results_root))
+    toml_path = write_arm_toml(
+        arm, spec, results_dir, pest_run_dir="{project_workspace}/pestrun_" + tag
+    )
     cfg = load_arm_config(toml_path)
     if workers:
         cfg.workers = workers
@@ -395,6 +420,12 @@ def run_arm(arm, spec, container_path, sites, results_root, workers=None, realiz
         raise RuntimeError(
             f"arm {arm}: config resolved kcb mode {cfg.kcb_ndvi_mode!r}, expected {spec['kcb']!r}"
         )
+    # An unresolved "{...}" here means PEST would build its tree at a literal
+    # brace path and the arm would fail hours in. Fail now instead.
+    for key in ("pest_run_dir", "calibration_dir", "obs_folder", "initial_values_csv", "spinup"):
+        val = getattr(cfg, key, None)
+        if isinstance(val, str) and ("{" in val or "}" in val):
+            raise RuntimeError(f"arm {arm}: {key} did not interpolate: {val!r}")
 
     print(f"\n{'=' * 80}")
     print(f"ARM {arm}: {spec['label']}")
