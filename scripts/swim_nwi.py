@@ -11,8 +11,9 @@
 #   {prefix}/{label}/properties/ssurgo_{label}.csv              SSURGO awc/ksat/clay/sand
 #
 # Irrigation masks come from IrrMapper in EE (irr = irrigated this year AND
-# >=5 of 37 years 1987-2023; inv_irr = not irrigated this year). Years past
-# 2023 reuse the 2023 classification.
+# >=5 years over the full IrrMapper record; inv_irr = not irrigated this
+# year). Years past the collection's latest classification reuse that year;
+# the latest year is detected from the collection at runtime.
 #
 # Run from a swim-rs checkout (uv sync first), e.g.:
 #   uv run python scripts/swim_nwi.py --shapefile fields.shp --project my-ee-project \
@@ -44,8 +45,8 @@ from swimrs.data_extraction.ee.ee_props import get_ssurgo
 from swimrs.data_extraction.ee.ee_utils import landsat_masked
 
 IRR = "projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp"
-IRR_MIN_YR_ASSET = "projects/ee-dgketchum/assets/swim/nv_irr_min_yr_mask"
-IRR_MAX_YEAR = 2023  # IrrMapper ends at 2023; later years reuse 2023
+IRR_MIN_YR_ASSET = "projects/ee-dgketchum/assets/swim/nv_irr_min_yr_mask_1985_2025"
+IRR_MAX_YEAR = None  # latest IrrMapper year, detected at runtime; later years reuse it
 
 # OpenET v2.1 source collections (6 members + ensemble), 2016+
 OPENET_SOURCES = {
@@ -125,9 +126,9 @@ def to_fc(df, feature_id):
 
 
 def load_min_yr_mask(asset):
-    """IrrMapper multi-year mask (irrigated >=5 of 37 years, 1987-2023).
+    """IrrMapper multi-year mask (irrigated >=5 years over the full record).
 
-    Prefers the pre-computed asset — the 37-image live graph can trigger
+    Prefers the pre-computed asset — the multi-image live graph can trigger
     'too many bands' errors in toBands() exports.
     """
     try:
@@ -137,12 +138,20 @@ def load_min_yr_mask(asset):
         return img
     except ee.ee_exception.EEException:
         print(f"WARNING: cannot read {asset}; computing min-yr mask live")
-        coll = ee.ImageCollection(IRR).filterDate("1987-01-01", "2024-12-31")
+        coll = ee.ImageCollection(IRR)
         return coll.select("classification").map(lambda i: i.lt(1)).sum().gte(5)
 
 
+def detect_irr_max_year():
+    """Set IRR_MAX_YEAR to the latest year present in the IrrMapper collection."""
+    global IRR_MAX_YEAR
+    idx = ee.ImageCollection(IRR).aggregate_array("system:index").getInfo()
+    IRR_MAX_YEAR = max(int(i[-4:]) for i in idx if i[-4:].isdigit())
+    print(f"IrrMapper classifications available through {IRR_MAX_YEAR}")
+
+
 def irr_images(year):
-    """Single-year IrrMapper classification mosaic (capped at IRR_MAX_YEAR)."""
+    """Single-year IrrMapper classification mosaic (capped at the latest year)."""
     irr_year = min(year, IRR_MAX_YEAR)
     return (
         ee.ImageCollection(IRR)
@@ -316,7 +325,7 @@ def run_soils(fc, label, args):
 
 def export_min_yr_mask(shapefile, asset):
     """One-time export of the IrrMapper min-yr mask over the shapefile bounds."""
-    coll = ee.ImageCollection(IRR).filterDate("1987-01-01", "2024-12-31")
+    coll = ee.ImageCollection(IRR)
     mask = coll.select("classification").map(lambda i: i.lt(1)).sum().gte(5).toByte()
     bounds = gpd.read_file(shapefile, engine="fiona").to_crs(4326).total_bounds
     task = ee.batch.Export.image.toAsset(
@@ -424,7 +433,10 @@ def main():
             print(f"  {lbl}: {len(fids)} fields")
         sys.exit(0)
 
-    min_yr_mask = load_min_yr_mask(args.min_yr_asset) if {"etf", "ndvi"} & set(targets) else None
+    min_yr_mask = None
+    if {"etf", "ndvi"} & set(targets):
+        detect_irr_max_year()
+        min_yr_mask = load_min_yr_mask(args.min_yr_asset)
 
     started = 0
     for label, fids in partitions:
