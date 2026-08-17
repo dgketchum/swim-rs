@@ -45,7 +45,7 @@ from swimrs.data_extraction.ee.ee_props import get_ssurgo
 from swimrs.data_extraction.ee.ee_utils import landsat_masked
 
 IRR = "projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp"
-IRR_MIN_YR_ASSET = "projects/ee-dgketchum/assets/swim/nv_irr_min_yr_mask_1985_2025"
+IRR_MIN_YR_ASSET = "projects/ee-dgketchum/assets/swim/nv_irr_min_yr_mask"
 IRR_MAX_YEAR = None  # latest IrrMapper year, detected at runtime; later years reuse it
 
 # OpenET v2.1 source collections (6 members + ensemble), 2016+
