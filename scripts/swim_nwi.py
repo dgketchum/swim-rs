@@ -6,6 +6,7 @@
 #
 #   {prefix}/{label}/etf/{mask}/{model}_etf_{mask}_{year}.csv   OpenET v2.1 ETf
 #   {prefix}/{label}/ndvi/{mask}/ndvi_{mask}_{year}.csv         harmonized Landsat NDVI
+#   {prefix}/{label}/ndvi/sentinel/{mask}/ndvi_sentinel_{mask}_{year}.csv  Sentinel-2 NDVI (2017+)
 #   {prefix}/{label}/met/eto/eto_{year}.csv                     OpenET bias-corrected GridMET ETo (mm)
 #   {prefix}/{label}/snow/snodas/extracts/swe_{year}.csv        SNODAS SWE (meters)
 #   {prefix}/{label}/properties/ssurgo_{label}.csv              SSURGO awc/ksat/clay/sand
@@ -42,13 +43,13 @@ except ImportError:  # running from a checkout without an installed package
 
 from swimrs.data_extraction.ee.common import export_table, load_shapefile
 from swimrs.data_extraction.ee.ee_props import get_ssurgo
-from swimrs.data_extraction.ee.ee_utils import landsat_masked
+from swimrs.data_extraction.ee.ee_utils import landsat_masked, sentinel2_masked
 
 IRR = "projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp"
 IRR_MIN_YR_ASSET = "projects/ee-dgketchum/assets/swim/nv_irr_min_yr_mask"
 IRR_MAX_YEAR = None  # latest IrrMapper year, detected at runtime; later years reuse it
 
-# OpenET v2.1 source collections (6 members + ensemble), 2016+
+# OpenET v2.1 source collections (6 members + ensemble), 1999+ (disalexi 2001+)
 OPENET_SOURCES = {
     "ssebop": "projects/openet/assets/ssebop/conus/gridmet/landsat/v2_1",
     "sims": "projects/openet/assets/sims/conus/gridmet/landsat/v2_1",
@@ -66,8 +67,9 @@ ENSEMBLE_MODELS = {"ensemble"}  # band et_ensemble_mad / 10000
 REFET = "projects/openet/assets/reference_et/conus/gridmet/daily/v1"
 SNODAS = "projects/earthengine-legacy/assets/projects/climate-engine/snodas/daily"
 
-ETF_START_YR = 2016  # OpenET v2.1 coverage
+ETF_START_YR = 1999  # OpenET v2.1 coverage (disalexi 2001+; empty years skip)
 SWE_START_YR = 2004  # SNODAS coverage
+SENTINEL_START_YR = 2017  # S2 SR archive (Ex5 convention)
 
 TARGETS = ["etf", "ndvi", "eto", "swe", "soils"]
 CHUNK_SIZE = 900  # fields per export partition (EE payload limit)
@@ -259,23 +261,30 @@ def run_etf(fc, label, args, min_yr_mask, years):
 
 def run_ndvi(fc, label, args, min_yr_mask, years):
     n = 0
-    for mask_type in args.mask_list:
-        for year in years:
-            coll = (
-                landsat_masked(year, fc)
-                .select(["NIR_H", "RED_H"])
-                .map(lambda img: img.normalizedDifference(["NIR_H", "RED_H"]))
-            )
-            coll = apply_mask(coll, mask_type, year, min_yr_mask)
-            stem = f"ndvi_{mask_type}_{year}"
-            n += export_wide(
-                coll,
-                fc,
-                args.feature_id,
-                desc=f"{label}_{stem}",
-                fn_prefix=f"{args.file_prefix}/{label}/ndvi/{mask_type}/{stem}",
-                bucket=args.bucket,
-            )
+    for instrument in args.instrument_list:
+        if instrument == "landsat":
+            source, subdir, tag, inst_years = landsat_masked, "ndvi", "ndvi", years
+        else:
+            source = sentinel2_masked
+            subdir, tag = "ndvi/sentinel", "ndvi_sentinel"
+            inst_years = [y for y in years if y >= SENTINEL_START_YR]
+        for mask_type in args.mask_list:
+            for year in inst_years:
+                coll = (
+                    source(year, fc)
+                    .select(["NIR_H", "RED_H"])
+                    .map(lambda img: img.normalizedDifference(["NIR_H", "RED_H"]))
+                )
+                coll = apply_mask(coll, mask_type, year, min_yr_mask)
+                stem = f"{tag}_{mask_type}_{year}"
+                n += export_wide(
+                    coll,
+                    fc,
+                    args.feature_id,
+                    desc=f"{label}_{stem}",
+                    fn_prefix=f"{args.file_prefix}/{label}/{subdir}/{mask_type}/{stem}",
+                    bucket=args.bucket,
+                )
     return n
 
 
@@ -361,6 +370,11 @@ def main():
         help="Comma-separated OpenET models for the etf target",
     )
     parser.add_argument("--mask-types", default="irr,inv_irr", help="irr, inv_irr, and/or no_mask")
+    parser.add_argument(
+        "--ndvi-instruments",
+        default="landsat,sentinel",
+        help="Comma-separated from landsat,sentinel (sentinel starts 2017)",
+    )
     parser.add_argument("--start-yr", type=int, default=1995, help="NDVI/ETo start year")
     parser.add_argument("--end-yr", type=int, default=2025)
     parser.add_argument("--years", default=None, help="Comma-separated years (overrides start/end)")
@@ -379,8 +393,13 @@ def main():
 
     args.mask_list = [m.strip() for m in args.mask_types.split(",")]
     args.model_list = [m.strip() for m in args.models.split(",")]
+    args.instrument_list = [i.strip() for i in args.ndvi_instruments.split(",")]
     targets = TARGETS if args.targets == "all" else [t.strip() for t in args.targets.split(",")]
-    unknown = set(targets) - set(TARGETS) | set(args.model_list) - set(OPENET_SOURCES)
+    unknown = (
+        set(targets) - set(TARGETS)
+        | set(args.model_list) - set(OPENET_SOURCES)
+        | set(args.instrument_list) - {"landsat", "sentinel"}
+    )
     if unknown:
         sys.exit(f"Unknown targets/models: {sorted(unknown)}")
 
@@ -417,9 +436,11 @@ def main():
         keep = {f.strip() for f in args.fips.split(",")}
         partitions = [(lbl, fids) for lbl, fids in partitions if lbl.rstrip(CHUNK_SUFFIXES) in keep]
 
+    sentinel_years = [y for y in years if y >= SENTINEL_START_YR]
     per_partition = {
         "etf": len(args.model_list) * len(args.mask_list) * len(etf_years),
-        "ndvi": len(args.mask_list) * len(years),
+        "ndvi": len(args.mask_list)
+        * sum(len(years) if i == "landsat" else len(sentinel_years) for i in args.instrument_list),
         "eto": len(years),
         "swe": len(swe_years),
         "soils": 1,
