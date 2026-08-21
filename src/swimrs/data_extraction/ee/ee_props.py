@@ -125,6 +125,8 @@ def get_irrigation(
     file_prefix: str = "swim",
     drive_categorize: bool = False,
     out_dir: str | None = None,
+    start_year: int = 1987,
+    end_year: int = 2024,
 ) -> None:
     """Export annual irrigation fraction per feature using IrrMapper (and LANID).
 
@@ -135,6 +137,8 @@ def get_irrigation(
     - selector: feature ID property to include.
     - select: optional list[str] of selector values to include.
     - lanid: bool; if True, mosaics LANID east of WEST/EAST boundary for years.
+    - start_year, end_year: inclusive year range (IrrMapper covers 1985+;
+      LANID coverage is narrower, keep the defaults when lanid=True).
 
     Side Effects
     - Starts ee.batch table export to `wudr` with mean of yearly `irr_<year>`.
@@ -157,7 +161,7 @@ def get_irrigation(
 
     area, irr_img = ee.Image.pixelArea(), None
 
-    for year in range(1987, 2025):
+    for year in range(start_year, end_year + 1):
         irr = (
             irr_coll.filterDate(f"{year}-01-01", f"{year}-12-31").select("classification").mosaic()
         )

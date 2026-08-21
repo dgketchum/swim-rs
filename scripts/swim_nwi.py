@@ -10,6 +10,8 @@
 #   {prefix}/{label}/met/eto/eto_{year}.csv                     OpenET bias-corrected GridMET ETo (mm)
 #   {prefix}/{label}/snow/snodas/extracts/swe_{year}.csv        SNODAS SWE (meters)
 #   {prefix}/{label}/properties/ssurgo_{label}.csv              SSURGO awc/ksat/clay/sand
+#   {prefix}/{label}/properties/landcover_{label}.csv           MODIS + FROM-GLC10 mode landcover
+#   {prefix}/{label}/properties/irr_{label}.csv                 IrrMapper irrigation fraction per year
 #
 # Irrigation masks come from IrrMapper in EE (irr = irrigated this year AND
 # >=5 years over the full IrrMapper record; inv_irr = not irrigated this
@@ -42,7 +44,7 @@ except ImportError:  # running from a checkout without an installed package
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from swimrs.data_extraction.ee.common import export_table, load_shapefile
-from swimrs.data_extraction.ee.ee_props import get_ssurgo
+from swimrs.data_extraction.ee.ee_props import get_irrigation, get_landcover, get_ssurgo
 from swimrs.data_extraction.ee.ee_utils import landsat_masked, sentinel2_masked
 
 IRR = "projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp"
@@ -70,8 +72,9 @@ SNODAS = "projects/earthengine-legacy/assets/projects/climate-engine/snodas/dail
 ETF_START_YR = 1999  # OpenET v2.1 coverage (disalexi 2001+; empty years skip)
 SWE_START_YR = 2004  # SNODAS coverage
 SENTINEL_START_YR = 2017  # S2 SR archive (Ex5 convention)
+IRR_START_YR = 1985  # IrrMapper record start (irrigation-fraction export)
 
-TARGETS = ["etf", "ndvi", "eto", "swe", "soils"]
+TARGETS = ["etf", "ndvi", "eto", "swe", "soils", "props"]
 CHUNK_SIZE = 900  # fields per export partition (EE payload limit)
 CHUNK_SUFFIXES = "abcdefghijklmnopqrstuvwxyz"
 WAIT_MINUTES = 10
@@ -332,6 +335,30 @@ def run_soils(fc, label, args):
     return 1
 
 
+def run_props(fc, label, args):
+    """Landcover (MODIS/GLC10 mode) and per-year IrrMapper irrigation fraction."""
+    get_landcover(
+        fc,
+        desc=f"landcover_{label}",
+        selector=args.feature_id,
+        dest="bucket",
+        bucket=args.bucket,
+        file_prefix=f"{args.file_prefix}/{label}",
+    )
+    get_irrigation(
+        fc,
+        desc=f"irr_{label}",
+        selector=args.feature_id,
+        lanid=False,
+        dest="bucket",
+        bucket=args.bucket,
+        file_prefix=f"{args.file_prefix}/{label}",
+        start_year=IRR_START_YR,
+        end_year=IRR_MAX_YEAR,
+    )
+    return 2
+
+
 def export_min_yr_mask(shapefile, asset):
     """One-time export of the IrrMapper min-yr mask over the shapefile bounds."""
     coll = ee.ImageCollection(IRR)
@@ -444,6 +471,7 @@ def main():
         "eto": len(years),
         "swe": len(swe_years),
         "soils": 1,
+        "props": 2,
     }
     plan = {t: len(partitions) * per_partition[t] for t in targets}
     print(f"{len(partitions)} partitions, {len(gdf)} fields -> {sum(plan.values())} export tasks")
@@ -455,8 +483,9 @@ def main():
         sys.exit(0)
 
     min_yr_mask = None
-    if {"etf", "ndvi"} & set(targets):
+    if {"etf", "ndvi", "props"} & set(targets):
         detect_irr_max_year()
+    if {"etf", "ndvi"} & set(targets):
         min_yr_mask = load_min_yr_mask(args.min_yr_asset)
 
     started = 0
@@ -473,6 +502,8 @@ def main():
             started += run_swe(fc, label, args, swe_years)
         if "soils" in targets:
             started += run_soils(fc, label, args)
+        if "props" in targets:
+            started += run_props(fc, label, args)
 
     print(f"\nStarted {started} export tasks to gs://{args.bucket}/{args.file_prefix}/")
 
