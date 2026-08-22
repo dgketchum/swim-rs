@@ -27,7 +27,7 @@ dependencies = [
   "matplotlib",
   "seaborn",
   "pyemu",
-  "pandas",
+  "pandas>=3.0,<4",
   "geopandas",
   "xarray",
   "toml",
