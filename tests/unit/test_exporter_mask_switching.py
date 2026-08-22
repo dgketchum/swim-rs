@@ -155,6 +155,55 @@ class TestBuildSwitchedEtf:
         )
         assert result is not None
 
+    def test_empty_irr_year_keeps_inv_irr_base(self, dates, time_index):
+        """An irrigated year with no irr-mask retrievals keeps the inv_irr base.
+
+        When IrrMapper maps no pixels for a field-year, the irr composite is
+        empty and the inv_irr composite covers the whole field. Switching onto
+        the empty series would blank the year — a field irrigated (or
+        gwsub-rescued) every year with zero irr-mask coverage would export an
+        all-NaN obs series and fail calibration with zero ETf weights.
+        """
+        exp = _make_exporter()
+        n = len(dates)
+        etf_data = {
+            "inv_irr": _make_etf_da(np.full((n, 1), 0.5), dates, ["A"]),
+            "irr": _make_etf_da(np.full((n, 1), np.nan), dates, ["A"]),
+        }
+        irr_data = {
+            "A": {
+                "2020": {"f_irr": 1.0, "irr_doys": [100, 200]},
+                "fallow_years": [],
+            }
+        }
+        result = exp._build_switched_etf(
+            "A", etf_data, irr_data, ("irr", "inv_irr"), 0.1, time_index
+        )
+        assert result is not None
+        assert np.allclose(result, 0.5)
+
+    def test_partial_irr_year_still_switches(self, dates, time_index):
+        """An irrigated year with any irr-mask retrieval switches normally."""
+        exp = _make_exporter()
+        n = len(dates)
+        irr_vals = np.full((n, 1), np.nan)
+        irr_vals[150, 0] = 0.9
+        etf_data = {
+            "inv_irr": _make_etf_da(np.full((n, 1), 0.5), dates, ["A"]),
+            "irr": _make_etf_da(irr_vals, dates, ["A"]),
+        }
+        irr_data = {
+            "A": {
+                "2020": {"f_irr": 1.0, "irr_doys": [100, 200]},
+                "fallow_years": [],
+            }
+        }
+        result = exp._build_switched_etf(
+            "A", etf_data, irr_data, ("irr", "inv_irr"), 0.1, time_index
+        )
+        assert result[150] == 0.9
+        assert np.isnan(result[151])
+
     def test_missing_field_returns_none(self, dates, time_index):
         """Field not in DataArray returns None."""
         exp = _make_exporter()

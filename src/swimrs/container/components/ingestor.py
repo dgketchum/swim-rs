@@ -213,10 +213,22 @@ def _parse_single_csv(
 
         values = row[data_cols].values
         series = pd.Series(values, index=dates, name=field_id)
+        # iterrows() rows take the frame's common dtype; with a string UID
+        # column, an all-NaN row becomes str dtype (pandas 3), which breaks
+        # the numeric duplicate collapse below. Data columns are numeric by
+        # contract, so astype raises on genuine junk instead of masking it.
+        series = series.astype("float64")
         series = series.sort_index()
 
         if series.index.duplicated().any():
-            series = series.groupby(series.index).max()
+            if instrument == "sentinel":
+                # S2 granules are cut with a ~10 km apron on the MGRS grid, so
+                # fields in the overlap strip appear in 2+ same-date columns
+                # from the same overpass — average them, they are not
+                # independent observations.
+                series = series.groupby(series.index).mean()
+            else:
+                series = series.groupby(series.index).max()
 
         series_list.append(series)
 
@@ -1255,7 +1267,9 @@ class Ingestor(Component):
                     try:
                         all_series.extend(future.result())
                     except Exception as e:
-                        self._log.debug("csv_parse_error", file=str(futures[future]), error=str(e))
+                        self._log.warning(
+                            "csv_parse_error", file=str(futures[future]), error=str(e)
+                        )
 
         if not all_series:
             self._log.warning(
@@ -1895,7 +1909,9 @@ class Ingestor(Component):
             if mean_path in self._state.root:
                 self._safe_delete_path(mean_path)
 
-            mean_irr = df[numeric_cols].mean(axis=1)
+            # Only irr_YYYY columns — irr CSVs may carry LAT/LON, which would
+            # poison a mean over all numeric columns.
+            mean_irr = df[year_cols if year_cols else numeric_cols].mean(axis=1)
             arr = self._state.create_property_array(mean_path)
 
             for uid in self._state.field_uids:

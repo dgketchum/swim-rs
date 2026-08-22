@@ -1152,7 +1152,13 @@ class Calculator(Component):
             # Check if field is cropped
             lulc_info = lulc_by_site.get(site_str)
             cropped = schema.is_cropland(*lulc_info) if lulc_info else False
-            if not use_lulc:
+            if not use_lulc and lulc_info is None:
+                # No LULC in the container: keep the legacy CONUS assumption
+                # that a gwsub-subsidized field is cropped so the fallback can
+                # rescue mask-missed irrigation. With LULC present, natural
+                # vegetation whose ET exceeds precipitation (phreatophyte
+                # shrubland, wet meadow) must stay non-irrigated — the
+                # subsidy is groundwater, not irrigation.
                 cropped = True
 
             # Get per-year irrigation properties for this site if using mask mode

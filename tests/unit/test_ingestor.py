@@ -65,6 +65,43 @@ class TestParseSingleCsvSentinel:
         assert pd.Timestamp("2021-01-18") in s.index
         assert pd.Timestamp("2021-03-07") in s.index
 
+    def test_sentinel_same_date_mean_collapse(self, tmp_path, known_uids):
+        """Same-date granule duplicates collapse to the mean of non-null values."""
+        csv = tmp_path / "ndvi_sentinel_irr_2021.csv"
+        csv.write_text(
+            "sid,20210118T100000_S2A_T11SND,20210118T100000_S2A_T11SNE,20210307T100000_S2A_T11SND\n"
+            "FR-Aur,0.3,0.5,0.6\n"
+        )
+        result = _parse_single_csv(csv, "sid", "sentinel", known_uids, None)
+        s = result[0]
+        assert len(s) == 2
+        assert s[pd.Timestamp("2021-01-18")] == pytest.approx(0.4)
+        assert s[pd.Timestamp("2021-03-07")] == pytest.approx(0.6)
+
+    def test_sentinel_all_nan_row_with_duplicate_dates(self, tmp_path, known_uids):
+        """An all-NaN row must not break the duplicate collapse.
+
+        pandas 3 iterrows() gives an all-NaN row str dtype (from the string
+        UID column), which used to raise TypeError in groupby().mean() and
+        silently drop the whole file in the threaded parser.
+        """
+        csv = tmp_path / "ndvi_sentinel_irr_2021.csv"
+        csv.write_text("sid,20210118T100000_S2A_T11SND,20210118T100000_S2A_T11SNE\nFR-Aur,,\n")
+        result = _parse_single_csv(csv, "sid", "sentinel", known_uids, None)
+        assert len(result) == 1
+        s = result[0]
+        assert s.dtype == "float64"
+        assert pd.isna(s[pd.Timestamp("2021-01-18")])
+
+    def test_sentinel_same_date_ignores_null(self, tmp_path, known_uids):
+        """A null granule value does not drag the same-date mean down."""
+        csv = tmp_path / "ndvi_sentinel_irr_2021.csv"
+        csv.write_text("sid,20210118T100000_S2A_T11SND,20210118T100000_S2A_T11SNE\nFR-Aur,,0.5\n")
+        result = _parse_single_csv(csv, "sid", "sentinel", known_uids, None)
+        s = result[0]
+        assert len(s) == 1
+        assert s[pd.Timestamp("2021-01-18")] == pytest.approx(0.5)
+
 
 class TestParseSingleCsvEcostress:
     """Date parsing for ECOSTRESS instrument (suffix YYYYMMDD after underscore)."""
@@ -149,6 +186,14 @@ class TestParseSingleCsvEcostress:
         s = result[0]
         assert len(s) == 1
         assert s.iloc[0] == pytest.approx(0.5)
+
+    def test_duplicate_max_is_numeric_not_lexicographic(self, tmp_path, known_uids):
+        """Duplicate collapse compares numbers, not strings ('10' < '2')."""
+        csv = tmp_path / "etf.csv"
+        csv.write_text("sid,ETF_20210115,PTJPL_20210115\nUS-FPe,10,2\n")
+        result = _parse_single_csv(csv, "sid", "ecostress", known_uids, None)
+        s = result[0]
+        assert s.iloc[0] == pytest.approx(10.0)
 
 
 class TestParseSingleCsvEdgeCases:

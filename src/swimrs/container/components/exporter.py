@@ -614,6 +614,13 @@ class Exporter(Component):
 
                     for yr in irr_years:
                         yr_mask = year_array == yr
+                        # A year with no irr-mask retrievals means IrrMapper
+                        # mapped no pixels for the field that year, so the
+                        # inv_irr composite covers the whole field — keep it
+                        # rather than blanking the year (mirrors the NDVI
+                        # switching guard in process/input.py).
+                        if not np.any(np.isfinite(irr_etf[yr_mask])):
+                            continue
                         etf_values[yr_mask] = irr_etf[yr_mask]
                 except (KeyError, IndexError):
                     pass
