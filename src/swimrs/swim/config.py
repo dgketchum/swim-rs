@@ -158,6 +158,7 @@ class ProjectConfig:
         self.obs_folder = None
         self.initial_values_csv = None
         self.spinup = None
+        self.archive_retention = None
         self.forecast_parameters_csv = None
 
         # Data sources (new normalized config)
@@ -487,6 +488,8 @@ class ProjectConfig:
         self.calibration_dir = calib_toml_conf.get("calibration_dir")
         self.initial_values_csv = calib_toml_conf.get("initial_values_csv")
         self.spinup = calib_toml_conf.get("spinup")
+        # PEST++ archive retention tier: full | reference | slim (RUN_POLICY Cat 4)
+        self.archive_retention = calib_toml_conf.get("archive_retention")
 
         # Regularization
         self.prior_regularization_fraction = calib_toml_conf.get(

@@ -556,6 +556,122 @@ class TestArchivePestOutputs:
 
 
 # ---------------------------------------------------------------------------
+# Archive retention tiers (RUN_POLICY Category 4)
+# ---------------------------------------------------------------------------
+
+
+class TestApplyArchiveRetention:
+    def _make_archive(self, tmp_path):
+        archive = tmp_path / "pest_archive" / "batch_000"
+        archive.mkdir(parents=True)
+        (archive / "project.pst").write_text("pst")
+        (archive / "project.rec").write_text("run record contents")
+        (archive / "project.phi.meas.csv").write_text("phi")
+        (archive / "project.phi.actual.csv").write_text("phi")
+        (archive / "project.pdc.csv").write_text("pdc")
+        (archive / "loc.mat").write_text("localizer")
+        (archive / "localizer_summary.json").write_text("{}")
+        (archive / "params.csv").write_text("params")
+        (archive / "weight_audit.csv").write_text("weights")
+        (archive / "project.obs_data.csv").write_text("obsdata")
+        (archive / "project.adjusted.obs_data.csv").write_text("adjusted")
+        (archive / "project.obs+noise.csv").write_text("noise")
+        (archive / "project.base.rei").write_text("rei")
+        for i in range(4):
+            (archive / f"project.{i}.par.csv").write_text(f"par{i}")
+            (archive / f"project.{i}.obs.csv").write_text(f"obs{i}")
+            (archive / f"project.{i}.base.rei").write_text(f"rei{i}")
+        return archive
+
+    def test_full_is_noop(self, tmp_path):
+        from swimrs.calibrate.batch_support import apply_archive_retention
+
+        archive = self._make_archive(tmp_path)
+        before = sorted(f.name for f in archive.iterdir())
+        assert apply_archive_retention(archive, "full") == []
+        assert sorted(f.name for f in archive.iterdir()) == before
+
+    def test_reference_keeps_prior_and_final_obs(self, tmp_path):
+        from swimrs.calibrate.batch_support import apply_archive_retention
+
+        archive = self._make_archive(tmp_path)
+        removed = apply_archive_retention(archive, "reference")
+
+        assert (archive / "project.0.obs.csv").exists()
+        assert (archive / "project.3.obs.csv").exists()
+        assert not (archive / "project.1.obs.csv").exists()
+        assert not (archive / "project.2.obs.csv").exists()
+        # only the final-iteration residuals survive
+        assert (archive / "project.3.base.rei").exists()
+        assert (archive / "project.base.rei").exists()
+        for i in range(3):
+            assert not (archive / f"project.{i}.base.rei").exists()
+        assert not (archive / "loc.mat").exists()
+        # observation-side tables and the run record are untouched
+        assert (archive / "project.obs+noise.csv").exists()
+        assert (archive / "project.obs_data.csv").exists()
+        assert (archive / "project.rec").exists()
+        for i in range(4):
+            assert (archive / f"project.{i}.par.csv").exists()
+        assert sorted(removed) == removed
+        assert len(removed) == 6
+
+    def test_slim_drops_obs_side_and_gzips_rec(self, tmp_path):
+        import gzip
+
+        from swimrs.calibrate.batch_support import apply_archive_retention
+
+        archive = self._make_archive(tmp_path)
+        removed = apply_archive_retention(archive, "slim")
+
+        for i in range(4):
+            assert not (archive / f"project.{i}.obs.csv").exists()
+            assert not (archive / f"project.{i}.base.rei").exists()
+            assert (archive / f"project.{i}.par.csv").exists()
+        assert not (archive / "project.base.rei").exists()
+        assert not (archive / "project.obs+noise.csv").exists()
+        assert not (archive / "project.obs_data.csv").exists()
+        assert not (archive / "project.adjusted.obs_data.csv").exists()
+        assert not (archive / "loc.mat").exists()
+        assert not (archive / "project.rec").exists()
+        with gzip.open(archive / "project.rec.gz", "rb") as fh:
+            assert fh.read() == b"run record contents"
+        # parameter trajectory, phi history, and metadata survive
+        assert (archive / "project.pst").exists()
+        assert (archive / "project.phi.meas.csv").exists()
+        assert (archive / "project.pdc.csv").exists()
+        assert (archive / "params.csv").exists()
+        assert (archive / "weight_audit.csv").exists()
+        assert (archive / "localizer_summary.json").exists()
+        assert "project.rec" in removed
+
+    def test_slim_archive_passes_verification(self, tmp_path):
+        from swimrs.calibrate.batch_support import apply_archive_retention, verify_pest_archive
+
+        archive = self._make_archive(tmp_path)
+        apply_archive_retention(archive, "slim")
+        ok, missing = verify_pest_archive(archive)
+        assert ok
+        assert missing == []
+
+    def test_invalid_tier_raises(self, tmp_path):
+        from swimrs.calibrate.batch_support import apply_archive_retention
+
+        archive = self._make_archive(tmp_path)
+        with pytest.raises(ValueError, match="archive_retention must be one of"):
+            apply_archive_retention(archive, "lean")
+
+    def test_missing_par_iterations_raises(self, tmp_path):
+        from swimrs.calibrate.batch_support import apply_archive_retention
+
+        archive = tmp_path / "empty_archive"
+        archive.mkdir()
+        (archive / "project.pst").write_text("pst")
+        with pytest.raises(RuntimeError, match="refusing to prune"):
+            apply_archive_retention(archive, "slim")
+
+
+# ---------------------------------------------------------------------------
 # Stale-calibration guard (C-2)
 # ---------------------------------------------------------------------------
 

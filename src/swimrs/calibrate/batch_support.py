@@ -4,6 +4,7 @@ Provides batch log I/O, FID coercion, config-driven coverage detection,
 manifest handling, run manifest creation, and resolved restart state persistence.
 """
 
+import gzip
 import hashlib
 import json
 import re
@@ -716,6 +717,78 @@ def archive_pest_outputs(batch_dir, archive_dir):
     return sorted(copied)
 
 
+ARCHIVE_RETENTION_TIERS = ("full", "reference", "slim")
+
+_OBS_ITER_RE = re.compile(r"\.(\d+)\.obs\.csv$")
+_REI_ITER_RE = re.compile(r"\.(\d+)\.base\.rei$")
+_PAR_ITER_RE = re.compile(r"\.(\d+)\.par\.csv$")
+
+
+def apply_archive_retention(archive_dir, tier):
+    """Prune a batch archive to its RUN_POLICY Category 4 retention tier.
+
+    Must run only on a batch that converged cleanly (the caller gates on
+    PestResults.is_successful) — a problem batch keeps its full archive for
+    debugging regardless of tier.
+
+    Tiers:
+      full      -- keep everything (publication runs); no-op.
+      reference -- drop intermediate-iteration obs ensembles, intermediate
+                   residuals, and loc.mat; keep the prior (.0) and final
+                   obs ensembles (Esmeralda/32009 demonstration archive).
+      slim      -- additionally drop ALL obs ensembles, obs+noise, obs_data
+                   tables, and residuals, and gzip the .rec run record.
+                   Everything dropped is regenerable from the container +
+                   archived config/SHA (NWI statewide default).
+
+    Returns the sorted list of removed (or gzipped) filenames.
+    """
+    if tier not in ARCHIVE_RETENTION_TIERS:
+        raise ValueError(
+            f"archive_retention must be one of {ARCHIVE_RETENTION_TIERS}, got {tier!r}"
+        )
+    archive_dir = Path(archive_dir)
+    if tier == "full":
+        return []
+
+    par_iters = [
+        int(m.group(1)) for f in archive_dir.iterdir() if (m := _PAR_ITER_RE.search(f.name))
+    ]
+    if not par_iters:
+        raise RuntimeError(
+            f"No iteration .par.csv files in {archive_dir}; refusing to prune an "
+            "archive whose iteration structure cannot be determined."
+        )
+    final_iter = max(par_iters)
+
+    removed = []
+    for f in sorted(archive_dir.iterdir()):
+        name = f.name
+        obs_m = _OBS_ITER_RE.search(name)
+        rei_m = _REI_ITER_RE.search(name)
+        drop = False
+        if name == "loc.mat":
+            drop = True
+        elif obs_m:
+            i = int(obs_m.group(1))
+            drop = (0 < i < final_iter) if tier == "reference" else True
+        elif rei_m:
+            drop = int(rei_m.group(1)) < final_iter if tier == "reference" else True
+        elif tier == "slim":
+            if name.endswith(("obs+noise.csv", "obs_data.csv")) or name.endswith(".base.rei"):
+                drop = True
+            elif name.endswith(".rec"):
+                with open(f, "rb") as src, gzip.open(f"{f}.gz", "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                f.unlink()
+                removed.append(name)
+                continue
+        if drop:
+            f.unlink()
+            removed.append(name)
+    return sorted(removed)
+
+
 def resolve_ingested_batches(container_ingested, batch_log, override, container_path, output_root):
     """Guard against stale-calibration contamination on resume (C-2).
 
@@ -752,8 +825,13 @@ def verify_pest_archive(archive_dir):
     missing = []
     if not archive_dir.exists():
         return False, ["archive directory"]
-    for kind, pattern in [("pst", "*.pst"), ("rec", "*.rec"), ("par.csv", "*.par.csv")]:
-        if not any(archive_dir.glob(pattern)):
+    # .rec may be gzipped by the slim retention tier
+    for kind, patterns in [
+        ("pst", ["*.pst"]),
+        ("rec", ["*.rec", "*.rec.gz"]),
+        ("par.csv", ["*.par.csv"]),
+    ]:
+        if not any(any(archive_dir.glob(p)) for p in patterns):
             missing.append(kind)
     return not missing, missing
 

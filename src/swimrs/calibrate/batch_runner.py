@@ -51,6 +51,7 @@ class BatchContext:
     batch_size: int
     toml_path: str
     prior_params_path: str | None = None
+    archive_retention: str = "full"
 
 
 def resolve_context(
@@ -80,10 +81,17 @@ def resolve_context(
     noptmax : int
         Max PEST++ iterations.
     """
+    from swimrs.calibrate.batch_support import ARCHIVE_RETENTION_TIERS
     from swimrs.swim.config import ProjectConfig
 
     config = ProjectConfig()
     config.read_config(str(toml_path), calibrate=True)
+
+    archive_retention = (getattr(config, "archive_retention", None) or "full").lower()
+    if archive_retention not in ARCHIVE_RETENTION_TIERS:
+        raise ValueError(
+            f"archive_retention must be one of {ARCHIVE_RETENTION_TIERS}, got {archive_retention!r}"
+        )
 
     container_path = container_override or config.container_path
     if not container_path:
@@ -130,6 +138,7 @@ def resolve_context(
         batch_size=batch_size,
         toml_path=str(os.path.abspath(toml_path)),
         prior_params_path=str(os.path.abspath(prior_params_path)) if prior_params_path else None,
+        archive_retention=archive_retention,
     )
 
 
@@ -412,6 +421,7 @@ def ingest_batch(ctx: BatchContext, batch_id, summary_stat="median", force=False
     PestResults.is_successful) unless force=True.
     """
     from swimrs.calibrate.batch_support import (
+        apply_archive_retention,
         archive_pest_outputs,
         find_par_csv,
         read_manifest,
@@ -487,6 +497,21 @@ def ingest_batch(ctx: BatchContext, batch_id, summary_stat="median", force=False
 
             report = results.cleanup(archive_dir=str(archive_dir))
             print(f"  Cleanup: {report['space_recovered_mb']:.1f} MB recovered")
+
+            # Prune the archive to the configured retention tier (RUN_POLICY
+            # Cat 4). Non-converged batches keep the full archive for debugging.
+            if ctx.archive_retention != "full":
+                if success:
+                    pruned = apply_archive_retention(archive_dir, ctx.archive_retention)
+                    print(
+                        f"  Retention '{ctx.archive_retention}': "
+                        f"pruned {len(pruned)} archive file(s)"
+                    )
+                else:
+                    print(
+                        f"  Retention '{ctx.archive_retention}' skipped: "
+                        "batch did not converge, keeping full archive"
+                    )
     finally:
         container.close()
 
