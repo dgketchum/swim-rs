@@ -105,6 +105,7 @@ def _scenario(*, refill_frac=1.1, min_irr_days=0.0, irr_depth=0.0):
 
 _OUT_NAMES = [
     "eta",
+    "evap",
     "etf",
     "kcb",
     "ke",

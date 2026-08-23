@@ -105,6 +105,7 @@ def _run_loop_jit(
     """
     # Output arrays
     out_eta = np.zeros((n_days, n_fields), dtype=np.float64)
+    out_evap = np.zeros((n_days, n_fields), dtype=np.float64)
     out_etf = np.zeros((n_days, n_fields), dtype=np.float64)
     out_kcb = np.zeros((n_days, n_fields), dtype=np.float64)
     out_ke = np.zeros((n_days, n_fields), dtype=np.float64)
@@ -634,6 +635,7 @@ def _run_loop_jit(
         # STORE OUTPUTS
         # ================================================================
         out_eta[day_idx, :] = eta
+        out_evap[day_idx, :] = evap
         out_etf[day_idx, :] = etf
         out_kcb[day_idx, :] = kcb
         out_ke[day_idx, :] = ke
@@ -653,6 +655,7 @@ def _run_loop_jit(
 
     return (
         out_eta,
+        out_evap,
         out_etf,
         out_kcb,
         out_ke,
@@ -879,6 +882,7 @@ def run_daily_loop_fast(
     # Run the JIT-compiled loop
     (
         out_eta,
+        out_evap,
         out_etf,
         out_kcb,
         out_ke,
@@ -965,6 +969,7 @@ def run_daily_loop_fast(
     # Package outputs into DailyOutput dataclass
     output = DailyOutput(n_days=n_days, n_fields=n_fields)
     output.eta = out_eta
+    output.evap = out_evap
     output.etf = out_etf
     output.kcb = out_kcb
     output.ke = out_ke

@@ -168,6 +168,8 @@ class DailyOutput:
         Number of fields
     eta : NDArray[np.float64]
         Actual ET (mm/day)
+    evap : NDArray[np.float64]
+        Soil evaporation component of ETa (mm/day); transpiration = eta - evap
     etf : NDArray[np.float64]
         ET fraction (ETa/ETr)
     kcb : NDArray[np.float64]
@@ -207,6 +209,7 @@ class DailyOutput:
     n_days: int
     n_fields: int
     eta: NDArray[np.float64] = field(default=None)
+    evap: NDArray[np.float64] = field(default=None)
     etf: NDArray[np.float64] = field(default=None)
     kcb: NDArray[np.float64] = field(default=None)
     ke: NDArray[np.float64] = field(default=None)
@@ -233,6 +236,8 @@ class DailyOutput:
         shape = (self.n_days, self.n_fields)
         if self.eta is None:
             self.eta = np.zeros(shape, dtype=np.float64)
+        if self.evap is None:
+            self.evap = np.zeros(shape, dtype=np.float64)
         if self.etf is None:
             self.etf = np.zeros(shape, dtype=np.float64)
         if self.kcb is None:
@@ -380,6 +385,7 @@ def run_daily_loop(
 
         # Store outputs
         output.eta[day_idx, :] = day_out["eta"]
+        output.evap[day_idx, :] = day_out["evap"]
         output.etf[day_idx, :] = day_out["etf"]
         output.kcb[day_idx, :] = day_out["kcb"]
         output.ke[day_idx, :] = day_out["ke"]
@@ -767,6 +773,7 @@ def step_day(
     # Return daily outputs
     return {
         "eta": eta,
+        "evap": evap,
         "etf": etf,
         "kcb": kcb,
         "ke": ke,

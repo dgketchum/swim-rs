@@ -167,6 +167,6 @@ class TestLoopFastYearSpecificFsub:
             depl_root_init=np.full(n_fields, 120.0),
         )
         result = _run_loop_jit(**inputs)
-        gw_sim = result[13]
+        gw_sim = result[14]
         assert gw_sim[:10].sum() > 0.0
         assert gw_sim[10:].sum() == 0.0

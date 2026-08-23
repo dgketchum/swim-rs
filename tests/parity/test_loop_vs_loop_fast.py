@@ -55,6 +55,7 @@ CASES = {
 # Output fields that both implementations produce
 COMMON_OUTPUT_FIELDS = [
     "eta",
+    "evap",
     "etf",
     "kcb",
     "ke",
@@ -213,6 +214,7 @@ _FIELD_RTOL = {
     "dperc": 0.002,
     # Moderate — downstream of ks/depletion via ET partitioning
     "eta": 5e-4,
+    "evap": 5e-4,
     "etf": 5e-4,
     "ke": 5e-4,
     "kr": 5e-4,
