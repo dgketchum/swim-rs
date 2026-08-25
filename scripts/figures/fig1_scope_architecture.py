@@ -1031,6 +1031,13 @@ fig1_final_300dpi.png, fig1_final_600dpi.tif, fig1_final_outlined_fonts.pdf
 # CLI
 # ═══════════════════════════════════════════════════════════════════════════════
 def main():
+    raise SystemExit(
+        "fig1_scope_architecture.py is RETIRED design provenance: the map-plus-framework "
+        "Figure 1 composition it renders was superseded on 2026-08-20. It must not write into "
+        "any current proof or final directory. See paper/notes/fig01_production_handoff.md "
+        "(sections 1 and 15.4) for the current Figure 1 authority."
+    )
+
     parser = argparse.ArgumentParser(description="Generate Figure 1 panels")
     parser.add_argument(
         "--panel",
