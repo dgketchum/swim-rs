@@ -50,20 +50,23 @@ def get_cdl(
     file_prefix: str = "swim",
     drive_categorize: bool = False,
     out_dir: str | None = None,
+    task_desc: str | None = None,
 ) -> None:
     """Export per-feature CDL crop class mode by year to GCS.
 
     Parameters
     - fields: ee.FeatureCollection asset path or object.
-    - desc: export description/prefix.
+    - desc: filename prefix for the export.
     - selector: property to include as ID in selectors (default 'FID').
+    - task_desc: EE task description (defaults to desc if not provided).
 
     Side Effects
-    - Starts ee.batch table export of yearly modes for 2008–2022 to `wudr`.
+    - Starts ee.batch table export of yearly modes for 2008–2024 to `wudr`.
     """
+    task_desc = task_desc or desc
     plots = as_ee_feature_collection(fields, feature_id=selector)
     crops, first = None, True
-    cdl_years = [x for x in range(2008, 2023)]
+    cdl_years = [x for x in range(2008, 2025)]
 
     _selectors = [selector]
 
@@ -80,18 +83,17 @@ def get_cdl(
 
     modes = crops.reduceRegions(collection=plots, reducer=ee.Reducer.mode(), scale=30)
 
-    out_ = f"{desc}"
     if dest == "local":
-        _write_local(modes, _selectors, out_dir, out_)
+        _write_local(modes, _selectors, out_dir, desc)
         return
     if dest == "bucket":
         if not bucket:
             raise ValueError('CDL export dest="bucket" requires a bucket name/url')
         task = ee.batch.Export.table.toCloudStorage(
             modes,
-            description=out_,
+            description=task_desc,
             bucket=bucket,
-            fileNamePrefix=f"{file_prefix}/properties/{out_}",
+            fileNamePrefix=f"{file_prefix}/properties/{desc}",
             fileFormat="CSV",
             selectors=_selectors,
         )
@@ -99,9 +101,9 @@ def get_cdl(
         drive_folder_name = f"{drive_folder}_properties" if drive_categorize else drive_folder
         task = ee.batch.Export.table.toDrive(
             collection=modes,
-            description=out_,
+            description=task_desc,
             folder=drive_folder_name,
-            fileNamePrefix=f"properties/{out_}",
+            fileNamePrefix=f"properties/{desc}",
             fileFormat="CSV",
             selectors=_selectors,
         )
@@ -109,7 +111,7 @@ def get_cdl(
         raise ValueError('dest must be one of {"drive","bucket"}')
 
     task.start()
-    print(desc)
+    print(task_desc)
 
 
 def get_irrigation(
@@ -126,23 +128,26 @@ def get_irrigation(
     drive_categorize: bool = False,
     out_dir: str | None = None,
     start_year: int = 1987,
-    end_year: int = 2024,
+    end_year: int = 2025,
+    task_desc: str | None = None,
 ) -> None:
     """Export annual irrigation fraction per feature using IrrMapper (and LANID).
 
     Parameters
     - fields: ee.FeatureCollection asset path or object.
-    - desc: export description/prefix.
+    - desc: filename prefix for the export.
     - debug: bool; if True, prints a sample feature.
     - selector: feature ID property to include.
     - select: optional list[str] of selector values to include.
     - lanid: bool; if True, mosaics LANID east of WEST/EAST boundary for years.
     - start_year, end_year: inclusive year range (IrrMapper covers 1985+;
       LANID coverage is narrower, keep the defaults when lanid=True).
+    - task_desc: EE task description (defaults to desc if not provided).
 
     Side Effects
     - Starts ee.batch table export to `wudr` with mean of yearly `irr_<year>`.
     """
+    task_desc = task_desc or desc
     east, west = None, None
     plots = as_ee_feature_collection(fields, feature_id=selector)
 
@@ -194,7 +199,7 @@ def get_irrigation(
             raise ValueError('Irrigation export dest="bucket" requires a bucket name/url')
         task = ee.batch.Export.table.toCloudStorage(
             means,
-            description=desc,
+            description=task_desc,
             bucket=bucket,
             fileNamePrefix=f"{file_prefix}/properties/{desc}",
             fileFormat="CSV",
@@ -204,7 +209,7 @@ def get_irrigation(
         drive_folder_name = f"{drive_folder}_properties" if drive_categorize else drive_folder
         task = ee.batch.Export.table.toDrive(
             collection=means,
-            description=desc,
+            description=task_desc,
             folder=drive_folder_name,
             fileNamePrefix=f"properties/{desc}",
             fileFormat="CSV",
@@ -214,7 +219,7 @@ def get_irrigation(
         raise ValueError('dest must be one of {"drive","bucket"}')
 
     task.start()
-    print(desc)
+    print(task_desc)
 
 
 def get_ssurgo(
@@ -229,19 +234,22 @@ def get_ssurgo(
     file_prefix: str = "swim",
     drive_categorize: bool = False,
     out_dir: str | None = None,
+    task_desc: str | None = None,
 ) -> None:
     """Export SSURGO-derived soil attributes averaged per feature.
 
     Parameters
     - fields: ee.FeatureCollection asset path or object.
-    - desc: export description/prefix.
+    - desc: filename prefix for the export.
     - debug: bool; if True, prints a sample feature.
     - selector: feature ID property to include.
     - select: optional list[str] of selector values to include.
+    - task_desc: EE task description (defaults to desc if not provided).
 
     Side Effects
     - Starts ee.batch table export (columns: awc, ksat, clay, sand) to `wudr`.
     """
+    task_desc = task_desc or desc
     # OpenET AWC is in cm/cm
     awc_asset = "projects/openet/soil/ssurgo_AWC_WTA_0to152cm_composite"
     # OpenET KSAT is in micrometers/sec
@@ -277,7 +285,7 @@ def get_ssurgo(
             raise ValueError('SSURGO export dest="bucket" requires a bucket name/url')
         task = ee.batch.Export.table.toCloudStorage(
             means,
-            description=desc,
+            description=task_desc,
             bucket=bucket,
             fileNamePrefix=f"{file_prefix}/properties/{desc}",
             fileFormat="CSV",
@@ -287,7 +295,7 @@ def get_ssurgo(
         drive_folder_name = f"{drive_folder}_properties" if drive_categorize else drive_folder
         task = ee.batch.Export.table.toDrive(
             collection=means,
-            description=desc,
+            description=task_desc,
             folder=drive_folder_name,
             fileNamePrefix=f"properties/{desc}",
             fileFormat="CSV",
@@ -297,7 +305,7 @@ def get_ssurgo(
         raise ValueError('dest must be one of {"drive","bucket"}')
 
     task.start()
-    print(desc)
+    print(task_desc)
 
 
 def get_hwsd(
@@ -386,18 +394,21 @@ def get_landcover(
     file_prefix: str = "swim",
     drive_categorize: bool = False,
     out_dir: str | None = None,
+    task_desc: str | None = None,
 ) -> None:
     """Export dominant landcover from MODIS and FROM-GLC10 per feature.
 
     Parameters
     - fields: ee.FeatureCollection asset path or object.
-    - desc: export description/prefix.
+    - desc: filename prefix for the export.
     - debug: bool; if True, prints a sample feature.
     - selector: feature ID property to include.
     - select: optional list[str] of selector values to include.
     - out_fmt: 'CSV' or other formats supported by EE table export.
     - local_file: if provided, writes a local CSV instead of GCS export.
+    - task_desc: EE task description (defaults to desc if not provided).
     """
+    task_desc = task_desc or desc
     plots = as_ee_feature_collection(fields, feature_id=selector)
 
     # Optionally filter to a subset of features by ID
@@ -429,7 +440,7 @@ def get_landcover(
             if not bucket:
                 raise ValueError('Landcover export dest="bucket" requires a bucket name/url')
             export_kwargs = dict(
-                description=desc,
+                description=task_desc,
                 bucket=bucket,
                 fileNamePrefix=f"{file_prefix}/properties/{desc}",
                 fileFormat=out_fmt,
@@ -440,7 +451,7 @@ def get_landcover(
         elif dest == "drive":
             drive_folder_name = f"{drive_folder}_properties" if drive_categorize else drive_folder
             export_kwargs = dict(
-                description=desc,
+                description=task_desc,
                 folder=drive_folder_name,
                 fileNamePrefix=f"properties/{desc}",
                 fileFormat=out_fmt,
@@ -451,7 +462,7 @@ def get_landcover(
         else:
             raise ValueError('dest must be one of {"drive","bucket"}')
         task.start()
-        print(desc)
+        print(task_desc)
 
 
 if __name__ == "__main__":

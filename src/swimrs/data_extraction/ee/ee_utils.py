@@ -394,7 +394,7 @@ def export_openet_correction_surfaces(local_check: str | None) -> None:
 
 
 def get_lanid() -> ee.Image:
-    """Build a multi-band LANID irrigation mask image for 1987–2024.
+    """Build a multi-band LANID irrigation mask image for 1987–2025.
 
     Returns
     - ee.Image with bands named `irr_<year>` where 1 indicates irrigated.
@@ -421,7 +421,7 @@ def get_lanid() -> ee.Image:
         else:
             bands = bands.addBands([image])
 
-    for yr in range(2018, 2025):
+    for yr in range(2018, 2026):
         if yr > 2020:
             year = 2020
         else:
