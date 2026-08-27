@@ -118,6 +118,9 @@ EXPECTED = {
     "E1_transfer_daily": 45,
     "E1_transfer_monthly": 31,
     "E1_split_common": 43,
+    "E1_pool_acquisition": 4751,
+    "E1_pool_between": 55584,
+    "E1_pool_total": 60335,
     "E2_configured": 66,
     "E2_daily": 63,
     "E2_monthly_support": 56,
@@ -1188,470 +1191,650 @@ def build_fig02() -> None:
 
 
 # --------------------------------------------------------------------------
-# Figure 3 -- temporal reconstruction
+# Figure 3 -- pooled daily ET agreement and temporal-support effects
 # --------------------------------------------------------------------------
+#
+# Contract: paper/notes/fig03_production_handoff.md (2026-08-27). Supersedes
+# the seasonal-example Figure 3 and the direct-ET-interpolation display
+# package. The daily OpenET benchmark is reconstructed through ETf, never by
+# interpolating ET directly: capture ETf = raw ensemble_mean_3x3 / same-day
+# bias-corrected ETo; ETf is linearly interpolated in time strictly inside the
+# first-to-last raw capture support; daily benchmark ET = interpolated ETf x
+# daily ETo. Temporal classes come only from raw OpenET availability -- the
+# archived is_overpass calibration-capture flag never classifies dates.
+#
+# The frozen fig03_example_* files are retained as Figure 1 provenance only
+# (build_fig01 consumes the example series); this builder re-registers their
+# manifest records but never regenerates them. Their generator was retired
+# with the seasonal design (git history at commit 782ca3c and earlier).
+
+E1_OPENET_DAILY = Path("/data/ssd1/swim/5_Flux_Ensemble/data/openet_flux/daily_data")
+
+FIG03_SUPPORTS = {"overpass": "acquisition", "non_overpass": "between_acquisitions"}
+FIG03_SUPPORT_ORDER = ["acquisition", "between_acquisitions", "all_dates"]
+FIG03_METHODS = [("openet", "OpenET"), ("swim", "SWIM-RS")]
+FIG03_EFFECT_METRICS = ["kge", "rmse", "mbe"]
+FIG03_IDENTITY_TOL = 1e-10
+FIG03_MIN_PAIRED = 10
+FIG03_BOOTSTRAP_SEED = 42
+FIG03_BOOTSTRAP_REPS = 10_000
+FIG03_AXIS_LO = -2.0
+FIG03_AXIS_HI = 16.0
+FIG03_AXIS_TICKS = [0, 4, 8, 12, 16]
+FIG03_DRAW_ORDER_SEED = 27082026  # panel (a) deterministic point-shuffle seed
+FIG03_COMPOSITION_ID = "fig03_rewrite_concept_v3 (2026-08-27)"
+
+# Section 5.3 audit anchors from the accepted v3 concept: (n_site_days,
+# pearson_r, bias, rmse, display_r, display_bias, display_rmse). The builder
+# hard-fails if the frozen package does not reproduce them.
+FIG03_ANCHORS = {
+    ("OpenET", "acquisition"): (
+        4751,
+        0.90491714,
+        -0.31883530,
+        1.09618034,
+        "0.90",
+        "−0.32",
+        "1.10",
+    ),
+    ("OpenET", "between_acquisitions"): (
+        55584,
+        0.86666289,
+        -0.23775368,
+        1.12664810,
+        "0.87",
+        "−0.24",
+        "1.13",
+    ),
+    ("SWIM-RS", "acquisition"): (
+        4751,
+        0.87677143,
+        -0.04587095,
+        1.18738151,
+        "0.88",
+        "−0.05",
+        "1.19",
+    ),
+    ("SWIM-RS", "between_acquisitions"): (
+        55584,
+        0.87015031,
+        -0.00953528,
+        1.09528709,
+        "0.87",
+        "−0.01",
+        "1.10",
+    ),
+}
 
 
-def build_fig03_deltas() -> pd.DataFrame:
-    src_metrics = E1_ARCHIVE / "6_evaluation" / "overpass_split_metrics.csv"
-    src_summary = FINAL / "e2_temporal_summary.csv"
-    src_deltas = FINAL / "e2_temporal_paired_deltas.csv"
-    src_audit = E1_ARCHIVE / "6_evaluation" / "overpass_date_audit.csv"
-    for p in (src_metrics, src_summary, src_deltas, src_audit):
+def _fig03_signed_display(value: float) -> str:
+    """Two-decimal display with an explicit sign and a true minus (U+2212)."""
+    if value >= 0:
+        return f"+{value:.2f}"
+    return f"−{abs(value):.2f}"
+
+
+def _fig03_metrics(obs: np.ndarray, mod: np.ndarray, label: str) -> dict[str, float]:
+    """Pearson r, KGE (Gupta 2009), RMSE, and signed MBE on paired vectors.
+
+    Same arithmetic as the archived evaluator (np.std with ddof=0); hard-fails
+    on degenerate support instead of returning NaN.
+    """
+    if len(obs) != len(mod) or len(obs) < FIG03_MIN_PAIRED:
+        raise BuildError(f"fig03 metrics {label}: n={len(obs)} below minimum {FIG03_MIN_PAIRED}")
+    if not (np.isfinite(obs).all() and np.isfinite(mod).all()):
+        raise BuildError(f"fig03 metrics {label}: nonfinite paired value")
+    if np.std(obs) <= 0 or np.mean(obs) <= 0:
+        raise BuildError(f"fig03 metrics {label}: degenerate flux vector")
+    r = float(np.corrcoef(obs, mod)[0, 1])
+    rmse = float(np.sqrt(np.mean((mod - obs) ** 2)))
+    mbe = float(np.mean(mod - obs))
+    alpha = float(np.std(mod) / np.std(obs))
+    beta = float(np.mean(mod) / np.mean(obs))
+    kge = float(1.0 - np.sqrt((r - 1.0) ** 2 + (alpha - 1.0) ** 2 + (beta - 1.0) ** 2))
+    return {"pearson_r": r, "kge": kge, "rmse": rmse, "mbe": mbe}
+
+
+def _fig03_bootstrap_ci(values: np.ndarray) -> tuple[float, float, float]:
+    """Median and whole-site bootstrap 95% CI (10,000 resamples, seed 42).
+
+    default_rng is re-seeded per call, so the resample index matrix is
+    identical for every metric and support at fixed n -- the same convention
+    as the archived run22 decomposition.
+    """
+    values = np.asarray(values, dtype=float)
+    if not np.isfinite(values).all():
+        raise BuildError("fig03 bootstrap: nonfinite site effect")
+    rng = np.random.default_rng(FIG03_BOOTSTRAP_SEED)
+    idx = rng.integers(0, len(values), size=(FIG03_BOOTSTRAP_REPS, len(values)))
+    medians = np.median(values[idx], axis=1)
+    return (
+        float(np.median(values)),
+        float(np.percentile(medians, 2.5)),
+        float(np.percentile(medians, 97.5)),
+    )
+
+
+def _fig03_reconstruct_site(fid: str) -> tuple[pd.DataFrame, float]:
+    """ETf-based daily benchmark reconstruction for one site.
+
+    Returns the paired daily frame (index=date; flux/swim/openet/eto/etf/raw
+    columns plus temporal_support) and the max acquisition-date absolute
+    difference between raw and reconstructed OpenET ET.
+    """
+    frozen_path = E1_ARCHIVE / "6_evaluation" / "site_daily_timeseries" / f"{fid}.csv"
+    raw_path = E1_OPENET_DAILY / f"{fid}.csv"
+    for p in (frozen_path, raw_path):
+        if not p.exists():
+            raise BuildError(f"fig03 source missing: {p}")
+    frozen = pd.read_csv(frozen_path, index_col="date", parse_dates=True)
+    raw = pd.read_csv(raw_path, index_col="DATE", parse_dates=True)
+    if frozen.index.duplicated().any() or raw.index.duplicated().any():
+        raise BuildError(f"fig03 {fid}: duplicate daily dates in a source series")
+    require_columns(frozen.reset_index(), ["flux_ET", "swim_ET", "eto"], f"fig03 frozen {fid}")
+    require_columns(raw.reset_index(), ["ensemble_mean_3x3"], f"fig03 raw benchmark {fid}")
+
+    raw_et = pd.to_numeric(raw["ensemble_mean_3x3"], errors="coerce").dropna()
+    if raw_et.empty:
+        raise BuildError(f"fig03 {fid}: no finite raw benchmark value")
+    eto = pd.to_numeric(frozen["eto"], errors="coerce")
+    capture_eto = eto.reindex(raw_et.index)
+    bad_eto = ~np.isfinite(capture_eto.values) | (capture_eto.values <= 0)
+    if bad_eto.any():
+        dates = ", ".join(d.date().isoformat() for d in capture_eto.index[bad_eto][:5])
+        raise BuildError(
+            f"fig03 {fid}: ETo missing or nonpositive on OpenET captures ({dates}); "
+            "investigate the frozen daily record -- do not fill"
+        )
+
+    capture_etf = raw_et / capture_eto
+    daily_index = pd.date_range(capture_etf.index.min(), capture_etf.index.max(), freq="D")
+    daily_etf = capture_etf.reindex(daily_index).interpolate(method="time", limit_area="inside")
+    daily_openet = daily_etf.reindex(frozen.index) * eto
+
+    site = pd.DataFrame(
+        {
+            "flux_et": pd.to_numeric(frozen["flux_ET"], errors="coerce"),
+            "swim_et": pd.to_numeric(frozen["swim_ET"], errors="coerce"),
+            "openet_et": daily_openet,
+            "eto": eto,
+            "openet_etf_daily": daily_etf.reindex(frozen.index),
+            "openet_et_raw": raw_et.reindex(frozen.index),
+        },
+        index=frozen.index,
+    )
+    paired = site[np.isfinite(site[["flux_et", "swim_et", "openet_et"]].values).all(axis=1)].copy()
+    paired["temporal_support"] = np.where(
+        paired.index.isin(capture_etf.index), "acquisition", "between_acquisitions"
+    )
+
+    # Gate: everything plotted is finite and inside raw benchmark support.
+    if not np.isfinite(paired[["eto", "openet_etf_daily"]].values).all():
+        raise BuildError(f"fig03 {fid}: nonfinite ETo or daily ETf on a paired row")
+    if (paired.index < capture_etf.index.min()).any() or (
+        paired.index > capture_etf.index.max()
+    ).any():
+        raise BuildError(f"fig03 {fid}: paired date outside raw benchmark support")
+
+    acq = paired[paired["temporal_support"] == "acquisition"]
+    btw = paired[paired["temporal_support"] == "between_acquisitions"]
+    if not np.isfinite(acq["openet_et_raw"].values).all():
+        raise BuildError(f"fig03 {fid}: acquisition row without a finite raw benchmark value")
+    if btw["openet_et_raw"].notna().any():
+        raise BuildError(f"fig03 {fid}: between-acquisition row carries a raw benchmark value")
+    if len(acq) + len(btw) != len(paired):
+        raise BuildError(f"fig03 {fid}: temporal classes do not partition the paired days")
+
+    identity_err = float(np.max(np.abs(acq["openet_et"].values - acq["openet_et_raw"].values)))
+    return paired, identity_err
+
+
+def build_fig03() -> None:
+    """Frozen Figure 3 display package: pooled agreement + temporal effects."""
+    src_cohort = E1_ARCHIVE / "6_evaluation" / "overpass_split_metrics.csv"
+    ts_dir = E1_ARCHIVE / "6_evaluation" / "site_daily_timeseries"
+    for p in (src_cohort, ts_dir, E1_OPENET_DAILY):
         if not p.exists():
             raise BuildError(f"fig03 source missing: {p}")
 
-    m = pd.read_csv(src_metrics)
-    require_columns(
-        m,
-        [
-            "fid",
-            "subset",
-            "n_paired",
-            "eligible",
-            "nse_swim",
-            "kge_swim",
-            "rmse_swim",
-            "mbe_swim",
-            "nse_openet",
-            "kge_openet",
-            "rmse_openet",
-            "mbe_openet",
-        ],
-        "overpass_split_metrics",
-    )
-    require_unique(m, ["fid", "subset"], "overpass_split_metrics")
-
-    wide = m.pivot_table(index="fid", columns="subset", values="eligible", aggfunc="first")
-    common = sorted(
-        wide.index[
-            wide.get("overpass", False).astype(bool) & wide.get("non_overpass", False).astype(bool)
+    # ---- cohort: 43 sites eligible (>=10 paired days) in BOTH classes ----
+    # The archived split-metrics file is used only for the cohort definition
+    # and per-site paired-count cross-checks (sanctioned audit inputs); its
+    # direct-ET-interpolation metric values are never read.
+    cohort_rec = pd.read_csv(src_cohort)
+    require_columns(cohort_rec, ["fid", "subset", "n_paired", "eligible"], "fig03 cohort record")
+    require_unique(cohort_rec, ["fid", "subset"], "fig03 cohort record")
+    elig = cohort_rec.pivot_table(index="fid", columns="subset", values="eligible", aggfunc="first")
+    sites = sorted(
+        elig.index[
+            elig.get("overpass", False).astype(bool) & elig.get("non_overpass", False).astype(bool)
         ]
     )
-    require_count(len(common), EXPECTED["E1_split_common"], "fig03 common-split cohort")
-
-    audit = pd.read_csv(src_audit).set_index("fid")
-
-    df = m[m["fid"].isin(common)].copy()
-    label = {
-        "overpass": "direct_benchmark",
-        "non_overpass": "benchmark_interpolated",
-        "all_days": "all_days",
-    }
-    df["subset_display"] = df["subset"].map(label)
-    if df["subset_display"].isna().any():
-        raise BuildError("fig03: unmapped legacy subset label")
-    df["experiment"] = "E1"
-    df["legacy_prefix"] = "e2_"
-    df["legacy_subset"] = df["subset"]
-    df["d_nse"] = df["nse_swim"] - df["nse_openet"]
-    df["d_kge"] = df["kge_swim"] - df["kge_openet"]
-    df["d_rmse"] = df["rmse_swim"] - df["rmse_openet"]
-    df["d_abs_mbe"] = df["mbe_swim"].abs() - df["mbe_openet"].abs()
-    df["n_calibration_captures"] = df["fid"].map(audit["n_calibration_captures"])
-    df["n_raw_benchmark_captures"] = df["fid"].map(audit["n_benchmark_captures"])
-
-    all_days = df[df["subset"] == "all_days"].set_index("fid")["n_paired"]
-    non = df[df["subset"] == "non_overpass"].set_index("fid")["n_paired"]
-    df["site_fraction_benchmark_interpolated"] = df["fid"].map(non / all_days)
-
-    cols = [
-        "experiment",
-        "legacy_prefix",
-        "site_id",
-        "subset_display",
-        "legacy_subset",
-        "n_paired",
-        "first_date",
-        "last_date",
-        "nse_swim",
-        "kge_swim",
-        "r_swim",
-        "rmse_swim",
-        "mbe_swim",
-        "nse_openet",
-        "kge_openet",
-        "r_openet",
-        "rmse_openet",
-        "mbe_openet",
-        "d_nse",
-        "d_kge",
-        "d_rmse",
-        "d_abs_mbe",
-        "n_calibration_captures",
-        "n_raw_benchmark_captures",
-        "site_fraction_benchmark_interpolated",
-    ]
-    df = df.rename(columns={"fid": "site_id"})[cols].sort_values(["site_id", "subset_display"])
-    n = write_table(df, "fig03_temporal_site_deltas.csv")
-    require_count(n, EXPECTED["E1_split_common"] * 3, "fig03 site-delta rows")
-
-    # cohort-level frozen effects + summary (companion table)
-    deltas = pd.read_csv(src_deltas)
-    deltas = deltas[deltas["cohort"] == "common_split"].copy()
-    deltas["subset_display"] = deltas["subset"].map(label)
-    summ = pd.read_csv(src_summary)
-    summ = summ[summ["cohort"] == "common_split"].copy()
-    summ["subset_display"] = summ["subset"].map(label)
-    eff = deltas.rename(
-        columns={
-            "median_delta_swim_minus_openet": "median_delta",
-            "ci95_low": "ci95_lo",
-            "ci95_high": "ci95_hi",
-        }
+    require_count(len(sites), EXPECTED["E1_split_common"], "fig03 common-cohort sites")
+    counts_rec = cohort_rec.pivot_table(
+        index="fid", columns="subset", values="n_paired", aggfunc="first"
     )
-    eff["experiment"] = "E1"
-    eff["legacy_prefix"] = "e2_"
-    eff = eff[
+
+    # ---- per-site ETf-based reconstruction ----
+    frames = []
+    max_identity_err = 0.0
+    src_hashes = {"overpass_split_metrics.csv": sha256(src_cohort)}
+    for fid in sites:
+        paired, err = _fig03_reconstruct_site(fid)
+        max_identity_err = max(max_identity_err, err)
+        for legacy, support in FIG03_SUPPORTS.items():
+            n_class = int((paired["temporal_support"] == support).sum())
+            n_want = int(counts_rec.loc[fid, legacy])
+            if n_class != n_want:
+                raise BuildError(
+                    f"fig03 {fid}: {support} count {n_class} != archived cohort record {n_want}"
+                )
+            if n_class < FIG03_MIN_PAIRED:
+                raise BuildError(f"fig03 {fid}: {support} support below {FIG03_MIN_PAIRED} days")
+        paired = paired.reset_index().rename(columns={"index": "date"})
+        paired.insert(0, "site_id", fid)
+        frames.append(paired)
+        src_hashes[f"site_daily_timeseries/{fid}.csv"] = sha256(ts_dir / f"{fid}.csv")
+        src_hashes[f"openet_daily/{fid}.csv"] = sha256(E1_OPENET_DAILY / f"{fid}.csv")
+    if max_identity_err > FIG03_IDENTITY_TOL:
+        raise BuildError(
+            f"fig03: acquisition-date raw/reconstructed identity {max_identity_err:.3e} "
+            f"exceeds {FIG03_IDENTITY_TOL:.0e}"
+        )
+
+    pooled = pd.concat(frames, ignore_index=True)
+    pooled.insert(0, "experiment", "E1")
+    pooled["date"] = pd.to_datetime(pooled["date"]).dt.strftime("%Y-%m-%d")
+    pooled["is_raw_openet_capture"] = pooled["temporal_support"] == "acquisition"
+    pooled = pooled[
         [
             "experiment",
-            "legacy_prefix",
-            "metric",
-            "subset_display",
-            "subset",
-            "n_sites",
-            "median_delta",
-            "ci95_lo",
-            "ci95_hi",
-            "seed",
-            "n_resamples",
+            "site_id",
+            "date",
+            "temporal_support",
+            "flux_et",
+            "swim_et",
+            "openet_et",
+            "eto",
+            "openet_etf_daily",
+            "openet_et_raw",
+            "is_raw_openet_capture",
         ]
-    ]
-    keep = [
-        "subset_display",
-        "subset",
-        "n_sites",
-        "total_paired_site_days",
-        "median_paired_days_per_site",
-        "iqr25_paired_days",
-        "iqr75_paired_days",
-        "median_nse_swim",
-        "median_kge_swim",
-        "median_rmse_swim",
-        "median_mbe_swim",
-        "median_nse_openet",
-        "median_kge_openet",
-        "median_rmse_openet",
-        "median_mbe_openet",
-        "site_median_non_overpass_fraction",
-        "pooled_non_overpass_fraction",
-    ]
-    summ_out = summ[keep].copy()
-    summ_out.insert(0, "experiment", "E1")
-    both = pd.concat(
-        [
-            eff.assign(record_type="paired_effect"),
-            summ_out.assign(record_type="cohort_summary", legacy_prefix="e2_"),
-        ],
-        ignore_index=True,
-    )
-    ne = write_table(both, "fig03_temporal_cohort_effects.csv")
+    ].sort_values(["site_id", "date"])
+    require_unique(pooled, ["site_id", "date"], "fig03 pooled daily agreement")
+    n_acq = int((pooled["temporal_support"] == "acquisition").sum())
+    n_btw = int((pooled["temporal_support"] == "between_acquisitions").sum())
+    require_count(n_acq, EXPECTED["E1_pool_acquisition"], "fig03 acquisition site-days")
+    require_count(n_btw, EXPECTED["E1_pool_between"], "fig03 between-acquisition site-days")
+    require_count(len(pooled), EXPECTED["E1_pool_total"], "fig03 total paired site-days")
 
-    meta = {
-        "sources": {
-            "overpass_split_metrics": {
-                "path": str(src_metrics),
-                "sha256": sha256(src_metrics),
-            },
-            "overpass_date_audit": {"path": str(src_audit), "sha256": sha256(src_audit)},
-            "e2_temporal_summary": {
-                "path": str(src_summary),
-                "sha256": sha256(src_summary),
-            },
-            "e2_temporal_paired_deltas": {
-                "path": str(src_deltas),
-                "sha256": sha256(src_deltas),
-            },
+    # ---- range gate: every plotted value inside the fixed -2..16 axes ----
+    plotted = pooled[["flux_et", "swim_et", "openet_et"]].values
+    v_lo, v_hi = float(np.min(plotted)), float(np.max(plotted))
+    if v_lo < FIG03_AXIS_LO or v_hi > FIG03_AXIS_HI:
+        raise BuildError(
+            f"fig03: plotted extrema [{v_lo:.3f}, {v_hi:.3f}] exceed fixed axes "
+            f"[{FIG03_AXIS_LO}, {FIG03_AXIS_HI}]"
+        )
+
+    # ---- panel (a) pooled scatter metrics: assert the Section 5.3 anchors ----
+    scatter_rows = []
+    for col, method in FIG03_METHODS:
+        for support in ["acquisition", "between_acquisitions"]:
+            sub = pooled[pooled["temporal_support"] == support]
+            obs = sub["flux_et"].to_numpy()
+            est = sub[f"{col}_et"].to_numpy()
+            resid = est - obs
+            r = float(np.corrcoef(obs, est)[0, 1])
+            bias = float(np.mean(resid))
+            rmse = float(np.sqrt(np.mean(resid**2)))
+            row = {
+                "temporal_support": support,
+                "method": method,
+                "n_sites": int(sub["site_id"].nunique()),
+                "n_site_days": len(sub),
+                "pearson_r": r,
+                "bias": bias,
+                "rmse": rmse,
+                "display_r": f"{r:.2f}",
+                "display_bias": _fig03_signed_display(bias),
+                "display_rmse": f"{rmse:.2f}",
+            }
+            want_n, want_r, want_b, want_rm, disp_r, disp_b, disp_rm = FIG03_ANCHORS[
+                (method, support)
+            ]
+            require_count(row["n_site_days"], want_n, f"fig03 scatter n {method}/{support}")
+            require_count(
+                row["n_sites"],
+                EXPECTED["E1_split_common"],
+                f"fig03 scatter sites {method}/{support}",
+            )
+            for got, want, name in (
+                (r, want_r, "r"),
+                (bias, want_b, "bias"),
+                (rmse, want_rm, "rmse"),
+            ):
+                if abs(got - want) > 1e-8:
+                    raise BuildError(
+                        f"fig03 scatter {method}/{support}: {name} {got:.8f} does not "
+                        f"reproduce the v3 audit anchor {want:.8f}"
+                    )
+            for got, want, name in (
+                (row["display_r"], disp_r, "display_r"),
+                (row["display_bias"], disp_b, "display_bias"),
+                (row["display_rmse"], disp_rm, "display_rmse"),
+            ):
+                if got != want:
+                    raise BuildError(
+                        f"fig03 scatter {method}/{support}: {name} {got!r} != frozen {want!r}"
+                    )
+            scatter_rows.append(row)
+    scatter = pd.DataFrame(scatter_rows)
+
+    # ---- per-site metrics on all three supports, both methods ----
+    metric_rows = []
+    pooled_dt = pooled.assign(date=pd.to_datetime(pooled["date"]))
+    for fid in sites:
+        sdf = pooled_dt[pooled_dt["site_id"] == fid]
+        for support in FIG03_SUPPORT_ORDER:
+            sub = sdf if support == "all_dates" else sdf[sdf["temporal_support"] == support]
+            obs = sub["flux_et"].to_numpy()
+            for col, method in FIG03_METHODS:
+                m = _fig03_metrics(obs, sub[f"{col}_et"].to_numpy(), f"{fid}/{support}/{method}")
+                metric_rows.append(
+                    {
+                        "experiment": "E1",
+                        "site_id": fid,
+                        "temporal_support": support,
+                        "method": method,
+                        "n_paired": len(sub),
+                        "first_date": sub["date"].min().date().isoformat(),
+                        "last_date": sub["date"].max().date().isoformat(),
+                        "kge": m["kge"],
+                        "rmse": m["rmse"],
+                        "mbe": m["mbe"],
+                        "pearson_r": m["pearson_r"],
+                    }
+                )
+    site_metrics = pd.DataFrame(metric_rows)
+    require_unique(site_metrics, ["site_id", "temporal_support", "method"], "fig03 site metrics")
+    require_count(len(site_metrics), EXPECTED["E1_split_common"] * 3 * 2, "fig03 site-metric rows")
+
+    # ---- per-site paired effects (SWIM-RS minus OpenET; signed MBE) ----
+    wide = site_metrics.pivot_table(
+        index=["site_id", "temporal_support"],
+        columns="method",
+        values=["kge", "rmse", "mbe", "n_paired"],
+        aggfunc="first",
+    )
+    if (wide[("n_paired", "SWIM-RS")] != wide[("n_paired", "OpenET")]).any():
+        raise BuildError("fig03 effects: methods disagree on paired support within a stratum")
+    eff = pd.DataFrame(
+        {
+            "n_paired": wide[("n_paired", "SWIM-RS")].astype(int),
+            "kge_swim": wide[("kge", "SWIM-RS")],
+            "kge_openet": wide[("kge", "OpenET")],
+            "rmse_swim": wide[("rmse", "SWIM-RS")],
+            "rmse_openet": wide[("rmse", "OpenET")],
+            "mbe_swim": wide[("mbe", "SWIM-RS")],
+            "mbe_openet": wide[("mbe", "OpenET")],
+        }
+    ).reset_index()
+    eff["d_kge"] = eff["kge_swim"] - eff["kge_openet"]
+    eff["d_rmse"] = eff["rmse_swim"] - eff["rmse_openet"]
+    eff["d_mbe"] = eff["mbe_swim"] - eff["mbe_openet"]
+    order = (
+        eff[eff["temporal_support"] == "between_acquisitions"]
+        .sort_values(["d_kge", "site_id"])
+        .reset_index(drop=True)
+    )
+    rank = {fid: i + 1 for i, fid in enumerate(order["site_id"])}
+    eff["site_order_between_kge"] = eff["site_id"].map(rank)
+    eff.insert(0, "experiment", "E1")
+    eff = eff.sort_values(["site_id", "temporal_support"])
+    require_count(len(eff), EXPECTED["E1_split_common"] * 3, "fig03 site-effect rows")
+    if eff["site_order_between_kge"].isna().any():
+        raise BuildError("fig03 effects: a site lacks the between-acquisition ordering key")
+
+    # ---- cohort effects: median of 43 site effects + frozen bootstrap CI ----
+    cohort_rows = []
+    for support in FIG03_SUPPORT_ORDER:
+        sub = eff[eff["temporal_support"] == support]
+        require_count(len(sub), EXPECTED["E1_split_common"], f"fig03 cohort effects {support}")
+        for metric in FIG03_EFFECT_METRICS:
+            med, lo, hi = _fig03_bootstrap_ci(sub[f"d_{metric}"].to_numpy())
+            cohort_rows.append(
+                {
+                    "experiment": "E1",
+                    "temporal_support": support,
+                    "metric": metric,
+                    "n_sites": len(sub),
+                    "total_paired_site_days": int(sub["n_paired"].sum()),
+                    "median_delta": med,
+                    "ci95_lo": lo,
+                    "ci95_hi": hi,
+                    "seed": FIG03_BOOTSTRAP_SEED,
+                    "n_resamples": FIG03_BOOTSTRAP_REPS,
+                }
+            )
+    cohort_eff = pd.DataFrame(cohort_rows)
+    day_totals = dict(
+        cohort_eff.drop_duplicates("temporal_support")[
+            ["temporal_support", "total_paired_site_days"]
+        ].values
+    )
+    if (
+        day_totals["acquisition"] != n_acq
+        or day_totals["between_acquisitions"] != n_btw
+        or day_totals["all_dates"] != len(pooled)
+    ):
+        raise BuildError("fig03 cohort effects: support day totals do not reconcile with pooled")
+
+    # ---- quarantine the superseded direct-ET-interpolation package ----
+    quarantined = []
+    qdir = OUT / "superseded_fig03_direct_interpolation"
+    old_deltas = OUT / "fig03_temporal_site_deltas.csv"
+    if old_deltas.exists():
+        qdir.mkdir(exist_ok=True)
+        old_deltas.rename(qdir / old_deltas.name)
+        quarantined.append(old_deltas.name)
+    old_cohort = OUT / "fig03_temporal_cohort_effects.csv"
+    if old_cohort.exists() and "record_type" in pd.read_csv(old_cohort, nrows=0).columns:
+        qdir.mkdir(exist_ok=True)
+        old_cohort.rename(qdir / old_cohort.name)
+        quarantined.append(old_cohort.name)
+
+    # ---- write tables ----
+    n_pool = write_table(pooled, "fig03_pooled_daily_agreement.csv")
+    n_scat = write_table(scatter, "fig03_scatter_metrics.csv")
+    n_sm = write_table(site_metrics, "fig03_temporal_site_metrics.csv")
+    n_eff = write_table(eff, "fig03_temporal_site_effects.csv")
+    n_ce = write_table(cohort_eff, "fig03_temporal_cohort_effects.csv")
+
+    meta_json = {
+        "figure": "Figure 3 -- daily ET agreement and temporal reconstruction",
+        "contract": "paper/notes/fig03_production_handoff.md (2026-08-27)",
+        "composition_id": FIG03_COMPOSITION_ID,
+        "experiment_mapping": {"E1": "legacy e2_* / examples/5_Flux_Ensemble"},
+        "cohort": {
+            "rule": (
+                "43-site common temporal-support cohort: canonical run22 45-site daily "
+                "cohort restricted to sites with >=10 paired days in BOTH temporal "
+                "classes (JPL1_Smith5 and US-OF1 excluded); cohort membership and "
+                "per-site paired counts cross-checked against the archived "
+                "overpass_split_metrics.csv record"
+            ),
+            "sites": sites,
+            "n_sites": len(sites),
+            "acquisition_site_days": n_acq,
+            "between_acquisition_site_days": n_btw,
+            "total_site_days": len(pooled),
         },
-        "experiment_mapping": {"E1": "legacy e2_*"},
-        "cohort_key": "site_id",
-        "inclusion_rule": (
-            "43-site common-split cohort: canonical run22 45-site daily cohort restricted "
-            "to sites with >=10 paired days in BOTH the direct-benchmark and "
-            "benchmark-interpolated subsets. JPL1_Smith5 (8 direct days) and US-OF1 (7) "
-            "are excluded from the split comparison."
-        ),
+        "benchmark_construction": {
+            "steps": [
+                "read raw finite OpenET v2.1 ensemble_mean_3x3 ET per site",
+                "read same-day bias-corrected GridMET ETo from the frozen E1 daily record",
+                "require finite, strictly positive ETo on every retained capture",
+                "capture ETf = raw ET / ETo",
+                "reindex ETf to a daily calendar spanning first-to-last finite capture",
+                "linear-in-time interpolation strictly inside that support (no extrapolation)",
+                "daily benchmark ET = interpolated ETf x daily ETo",
+                "pair flux ET, SWIM-RS ET, and reconstructed OpenET ET on identical dates",
+            ],
+            "never": "direct linear interpolation of ET",
+            "identity_tolerance_mm_day": FIG03_IDENTITY_TOL,
+            "max_acquisition_identity_error_mm_day": max_identity_err,
+        },
         "temporal_support_rule": (
-            "A date is direct_benchmark when the raw Volk v2.1 ensemble_mean_3x3 value is "
-            "finite BEFORE interpolation; benchmark_interpolated when it lacks a raw value "
-            "but falls inside the site's first-to-last raw benchmark support and receives a "
-            "finite linearly interpolated value. No extrapolation outside raw support. The "
-            "archived is_overpass column is a calibration-capture flag and was NOT used to "
-            "classify dates; it is retained as n_calibration_captures for cross-tabulation."
+            "acquisition = paired date with a finite raw ensemble_mean_3x3 value before "
+            "interpolation; between_acquisitions = paired date inside first-to-last raw "
+            "support without a raw value. Classes derive only from the separately "
+            "extracted benchmark; the archived is_overpass calibration-capture flag is "
+            "never used."
         ),
-        "display_transformations": [
-            "legacy subset label 'overpass' -> reader-facing 'direct_benchmark'",
-            "legacy subset label 'non_overpass' -> reader-facing 'benchmark_interpolated'",
-            "no numeric transformation applied",
-        ],
-        "units": {"rmse": "mm d-1", "mbe": "mm d-1"},
-        "deterministic_seed": 42,
-        "bootstrap": "site-level, 10,000 resamples, seed 42 (frozen upstream)",
-        "configured_counts": {"E1": 60},
-        "evaluated_counts": {
-            "daily_cohort": 45,
-            "common_split_cohort": 43,
-            "direct_benchmark_site_days": 4751,
-            "benchmark_interpolated_site_days": 55584,
+        "metrics": {
+            "pearson_r": "np.corrcoef on the exact plotted facet rows",
+            "bias": "mean(estimate - flux), mm d-1, sign retained",
+            "rmse": "sqrt(mean((estimate - flux)^2)), mm d-1",
+            "kge": "Gupta 2009, alpha = std ratio (ddof=0), beta = mean ratio",
+            "mbe": "mean(model - flux), mm d-1, signed; no absolute-value transform",
+            "effects": "SWIM-RS minus OpenET per site and support",
         },
-    }
-    MANIFEST.add("fig03_temporal_site_deltas.csv", rows=n, **meta)
-    MANIFEST.add(
-        "fig03_temporal_cohort_effects.csv",
-        rows=ne,
-        note=(
-            "Companion to fig03_temporal_site_deltas.csv holding the frozen cohort medians "
-            "and the 10,000-resample site-bootstrap 95% intervals used in panel (b). Added "
-            "beyond the recommended package file list so that panel (b) never recomputes an "
-            "interval."
+        "panel_a": {
+            "axes_mm_day": [FIG03_AXIS_LO, FIG03_AXIS_HI],
+            "ticks": FIG03_AXIS_TICKS,
+            "plotted_extrema_mm_day": [v_lo, v_hi],
+            "draw_order_seed": FIG03_DRAW_ORDER_SEED,
+            "display_rounding": "two decimals; explicit sign on Bias with true minus",
+        },
+        "bootstrap": {
+            "kind": "whole-site resampling with replacement",
+            "n_resamples": FIG03_BOOTSTRAP_REPS,
+            "seed": FIG03_BOOTSTRAP_SEED,
+            "note": (
+                "default_rng re-seeded per call, so the resample index matrix is shared "
+                "across metrics and supports at fixed n=43"
+            ),
+        },
+        "site_order_between_kge": (
+            "panel (c) frozen ordering: rank 1..43 by between-acquisition d_kge ascending, "
+            "ties broken by site_id; identical across all metric facets"
         ),
-        **meta,
-    )
-    print(f"  fig03: site deltas {n} rows (43 sites x 3 subsets), cohort effects {ne} rows")
-    return df
-
-
-def build_fig03_example(deltas: pd.DataFrame) -> None:
-    """Select the representative site/window by the frozen Section 7 rule."""
-    interp = deltas[deltas["subset_display"] == "benchmark_interpolated"].copy()
-    cohort_median = float(interp["d_kge"].median())
-    interp["rank_value"] = (interp["d_kge"] - cohort_median).abs()
-    interp = interp.sort_values(["rank_value", "site_id"]).reset_index(drop=True)
-
-    window_days = 120
-    rule = {
-        "step_1_cohort": "43-site common split cohort (both subsets eligible, >=10 paired days each)",
-        "step_2_support": (
-            "A window qualifies when it is a contiguous 120-day span whose start date "
-            "falls between 1 April and 31 July, in which (a) at least 90% of days have "
-            "finite flux ET, SWIM-RS ET and the interpolated benchmark, (b) at least 3 "
-            "direct-benchmark dates occur, (c) at least 50% of paired days are "
-            "benchmark-interpolated, and (d) at least 1 SWIM-RS calibration capture occurs."
+        "figure1_provenance_note": (
+            "fig03_example_timeseries.csv and fig03_example_selection.json are retained "
+            "as Figure 1 provenance only; they are not Figure 3 inputs and are no longer "
+            "regenerated (superseded seasonal design)"
         ),
-        "step_3_ranking": "abs(site d_kge on benchmark-interpolated dates - cohort median d_kge on benchmark-interpolated dates)",
-        "step_4_selection": "nearest qualifying site",
-        "step_5_tiebreak": "earliest qualifying window start date within the selected site; site ties broken by ascending site_id",
-        "step_6_freeze": "eligible list, ranking values, chosen site and dates frozen in this file",
-        "window_length_days": window_days,
-        "cohort_median_d_kge_benchmark_interpolated": cohort_median,
-    }
-
-    chosen = None
-    for _, row in interp.iterrows():
-        fid = row["site_id"]
-        series = _load_e1_site_series(fid)
-        if series is None:
-            continue
-        win = _first_qualifying_window(series, window_days)
-        if win is not None:
-            chosen = (fid, win, row)
-            break
-    if chosen is None:
-        raise BuildError("fig03 example: no site produced a qualifying window")
-
-    fid, win, row = chosen
-    start, end, diag = win
-    series = _load_e1_site_series(fid)
-    sub = series.loc[start:end].copy()
-
-    ndvi = _e1_raw_ndvi(fid)
-    sub = sub.join(ndvi, how="left")
-
-    om = pd.read_csv(E1_ARCHIVE / "3_problem_definition" / "observation_metadata.csv")
-    om = om[(om["site"] == fid) & (om["model"] == "ensemble")].copy()
-    om["date"] = pd.to_datetime(om["date"])
-    om = om.set_index("date")
-    sub["calibration_target_etf"] = om["target_etf"].reindex(sub.index)
-    sub["calibration_target_member_count"] = om["member_count"].reindex(sub.index)
-    sub["calibration_target_ensemble_std"] = om["ensemble_std"].reindex(sub.index)
-    sub["calibration_target_final_weight"] = om["final_weight"].reindex(sub.index)
-    sub["is_calibration_capture"] = sub["calibration_target_etf"].notna()
-
-    out = sub.reset_index().rename(columns={"index": "date"})
-    out.insert(0, "site_id", fid)
-    out.insert(0, "legacy_prefix", "e2_")
-    out.insert(0, "experiment", "E1")
-    n = write_table(out, "fig03_example_timeseries.csv")
-
-    payload = {
-        "figure": "fig03",
-        "panel": "a",
-        "experiment": "E1",
-        "legacy_prefix": "e2_",
-        "selection_rule": rule,
-        "eligible_sites": interp["site_id"].tolist(),
-        "ranking": interp[["site_id", "d_kge", "rank_value"]].to_dict("records"),
-        "selected_site": fid,
-        "selected_window_start": str(start.date()),
-        "selected_window_end": str(end.date()),
-        "selected_window_diagnostics": diag,
-        "selected_site_rank_value": float(row["rank_value"]),
-        "selected_site_d_kge_benchmark_interpolated": float(row["d_kge"]),
+        "superseded": {
+            "directory": str(qdir),
+            "files": quarantined,
+            "reason": (
+                "built from direct ET interpolation with d_abs_mbe; replaced by the "
+                "ETf x ETo reconstruction with signed MBE"
+            ),
+        },
         "sources": {
-            "site_daily_series": {
-                "path": str(E1_ARCHIVE / "6_evaluation" / "site_daily_timeseries" / f"{fid}.csv"),
-                "sha256": sha256(
-                    E1_ARCHIVE / "6_evaluation" / "site_daily_timeseries" / f"{fid}.csv"
-                ),
-            },
-            "raw_openet_benchmark": {
-                "path": str(
-                    Path("/data/ssd1/swim/5_Flux_Ensemble/data/openet_flux/daily_data")
-                    / f"{fid}.csv"
-                ),
-                "sha256": sha256(
-                    Path("/data/ssd1/swim/5_Flux_Ensemble/data/openet_flux/daily_data")
-                    / f"{fid}.csv"
-                ),
-            },
-            "observation_metadata": {
-                "path": str(E1_ARCHIVE / "3_problem_definition" / "observation_metadata.csv"),
-                "sha256": sha256(E1_ARCHIVE / "3_problem_definition" / "observation_metadata.csv"),
-            },
-            "container_raw_ndvi": {
-                "path": str(E1_CONTAINER),
-                "arrays": [
-                    "remote_sensing/ndvi/landsat/no_mask",
-                    "remote_sensing/ndvi/sentinel/no_mask",
-                ],
-                "note": "zarr store; per-array hash not computed (directory store)",
-            },
+            "site_daily_timeseries_dir": str(ts_dir),
+            "openet_daily_dir": str(E1_OPENET_DAILY),
+            "cohort_record": str(src_cohort),
+            "sha256": src_hashes,
         },
         "generator_script": "scripts/figures/build_figure_data.py",
         "generator_version": SCRIPT_VERSION,
+        "frozen_utc": datetime.now(UTC).isoformat(),
     }
-    (OUT / "fig03_example_selection.json").write_text(json.dumps(payload, indent=2))
+    (OUT / "fig03_metadata.json").write_text(json.dumps(meta_json, indent=2))
 
+    common_meta = {
+        "figure": "fig03",
+        "contract": "paper/notes/fig03_production_handoff.md (2026-08-27)",
+        "experiment_mapping": {"E1": "legacy e2_*"},
+        "cohort_key": "site_id",
+        "inclusion_rule": meta_json["cohort"]["rule"],
+        "temporal_support_rule": meta_json["temporal_support_rule"],
+        "units": {"et": "mm d-1", "eto": "mm d-1", "etf": "dimensionless"},
+        "deterministic_seed": FIG03_BOOTSTRAP_SEED,
+        "configured_counts": {"E1": EXPECTED["E1_configured"]},
+        "evaluated_counts": {
+            "sites": len(sites),
+            "acquisition_site_days": n_acq,
+            "between_acquisition_site_days": n_btw,
+            "total_site_days": len(pooled),
+        },
+    }
     MANIFEST.add(
-        "fig03_example_selection.json",
-        rows=None,
-        note="Frozen Section 7 six-step representative-window selection; no visual inspection entered the choice.",
-        selected_site=fid,
-        selected_window=[str(start.date()), str(end.date())],
-        cohort_key="site_id",
-        inclusion_rule=rule["step_1_cohort"],
-        deterministic_seed=None,
-    )
-    MANIFEST.add(
-        "fig03_example_timeseries.csv",
-        rows=n,
-        sources=payload["sources"],
-        experiment_mapping={"E1": "legacy e2_*"},
-        cohort_key="site_id + date",
-        inclusion_rule=f"single selected site {fid}, {start.date()} to {end.date()} inclusive",
-        temporal_support_rule=(
-            "daily; benchmark_raw is the pre-interpolation Volk v2.1 ensemble_mean_3x3, "
-            "benchmark_interpolated is that series linearly interpolated between its first "
-            "and last finite value with no extrapolation"
+        "fig03_pooled_daily_agreement.csv",
+        rows=n_pool,
+        note=(
+            "Panel (a) pooled paired site-days; OpenET reconstructed through interpolated "
+            "ETf x daily ETo (acquisition identity max "
+            f"{max_identity_err:.3e} mm/d vs tolerance {FIG03_IDENTITY_TOL:.0e})."
         ),
-        units={
-            "swim_ET": "mm d-1",
-            "flux_ET": "mm d-1",
-            "benchmark_raw": "mm d-1",
-            "benchmark_interpolated": "mm d-1",
-            "precip": "mm d-1",
-            "irr_applied": "mm d-1",
-            "rz_depletion": "mm",
-            "ndvi_kcb": "dimensionless",
-            "ndvi_landsat_raw": "dimensionless",
-            "ndvi_sentinel_raw": "dimensionless",
-        },
-        display_transformations=[
-            "raw Landsat and Sentinel-2 NDVI joined as separate observation columns; no filled/interpolated NDVI trace is frozen because the Section 4.1 NDVI-filling gate is unresolved",
-            "calibration-target ETf rows joined from archived observation metadata and flagged separately from benchmark support",
-        ],
-        deterministic_seed=None,
-        configured_counts={"E1": 60},
-        evaluated_counts={"days_in_window": n},
+        **common_meta,
     )
-    print(f"  fig03 example: site {fid}, {start.date()}..{end.date()}, {n} daily rows")
+    MANIFEST.add(
+        "fig03_scatter_metrics.csv",
+        rows=n_scat,
+        note=(
+            "Frozen panel (a) facet statistics with display strings; asserted to "
+            "reproduce the v3 audit anchors at 8 decimals and 2-decimal display."
+        ),
+        **common_meta,
+    )
+    MANIFEST.add(
+        "fig03_temporal_site_metrics.csv",
+        rows=n_sm,
+        note="Per-site KGE/RMSE/signed-MBE on identical paired support for both methods.",
+        **common_meta,
+    )
+    MANIFEST.add(
+        "fig03_temporal_site_effects.csv",
+        rows=n_eff,
+        note=(
+            "Paired site effects (SWIM-RS minus OpenET) with component metrics and the "
+            "frozen panel (c) ordering key; signed MBE only, no d_abs_mbe."
+        ),
+        **common_meta,
+    )
+    MANIFEST.add(
+        "fig03_temporal_cohort_effects.csv",
+        rows=n_ce,
+        note=(
+            "Panel (b) medians of 43 site effects with 10,000-resample whole-site "
+            "bootstrap 95% intervals (seed 42), rebuilt from the corrected benchmark."
+        ),
+        **common_meta,
+    )
+    MANIFEST.add(
+        "fig03_metadata.json",
+        rows=None,
+        note="Reader-facing rules, construction record, anchors context, and provenance.",
+        **common_meta,
+    )
 
+    # ---- re-register the retained Figure 1 provenance files ----
+    prior_manifest = OUT / Manifest.MANIFEST_NAME
+    if not prior_manifest.exists():
+        raise BuildError("fig03: fig_manifest.json missing; cannot re-register example provenance")
+    prior_tables = json.loads(prior_manifest.read_text()).get("tables", {})
+    for name in ("fig03_example_timeseries.csv", "fig03_example_selection.json"):
+        if not (OUT / name).exists():
+            raise BuildError(f"fig03: retained Figure 1 provenance file missing: {name}")
+        rec = dict(prior_tables.get(name) or MANIFEST.tables.get(name) or {})
+        if not rec:
+            raise BuildError(f"fig03: no prior manifest record for {name}")
+        rec.pop("output_sha256", None)
+        rec.pop("output_bytes", None)
+        rec["role"] = (
+            "retained as Figure 1 provenance only; frozen under the superseded seasonal "
+            "Figure 3 design and no longer regenerated; not an active Figure 3 input"
+        )
+        MANIFEST.add(name, **rec)
 
-def _load_e1_site_series(fid: str):
-    """Archived run22 daily series joined to the raw + interpolated benchmark."""
-    p = E1_ARCHIVE / "6_evaluation" / "site_daily_timeseries" / f"{fid}.csv"
-    b = Path("/data/ssd1/swim/5_Flux_Ensemble/data/openet_flux/daily_data") / f"{fid}.csv"
-    if not p.exists() or not b.exists():
-        return None
-    df = pd.read_csv(p, parse_dates=["date"]).set_index("date")
-    raw = pd.read_csv(b)
-    date_col = "DATE" if "DATE" in raw.columns else "date"
-    raw[date_col] = pd.to_datetime(raw[date_col])
-    raw = raw.set_index(date_col)
-    if "ensemble_mean_3x3" not in raw.columns:
-        return None
-    ens = pd.to_numeric(raw["ensemble_mean_3x3"], errors="coerce")
-    finite = ens.dropna()
-    if finite.empty:
-        return None
-    idx = pd.date_range(finite.index.min(), finite.index.max(), freq="D")
-    ens_daily = ens.reindex(idx).interpolate(method="linear", limit_area="inside")
-    df = df.rename(columns={"is_overpass": "is_calibration_capture_archived"})
-    df["benchmark_raw"] = ens.reindex(df.index)
-    df["benchmark_interpolated"] = ens_daily.reindex(df.index)
-    df["is_direct_benchmark"] = df["benchmark_raw"].notna()
-    return df
-
-
-def _first_qualifying_window(series: pd.DataFrame, window_days: int):
-    need = ["flux_ET", "swim_ET", "benchmark_interpolated"]
-    for c in need:
-        if c not in series.columns:
-            return None
-    years = sorted(set(series.index.year))
-    for yr in years:
-        for month, day in [(4, 1), (5, 1), (6, 1), (7, 1)]:
-            start = pd.Timestamp(year=yr, month=month, day=day)
-            end = start + pd.Timedelta(days=window_days - 1)
-            if end > series.index.max():
-                continue
-            w = series.loc[start:end]
-            if len(w) < window_days:
-                continue
-            complete = w[need].notna().all(axis=1)
-            frac = float(complete.mean())
-            n_direct = int((w["is_direct_benchmark"] & complete).sum())
-            n_paired = int(complete.sum())
-            n_interp = n_paired - n_direct
-            n_cal = int(w["is_calibration_capture_archived"].fillna(False).astype(bool).sum())
-            if (
-                frac >= 0.90
-                and n_direct >= 3
-                and n_paired > 0
-                and (n_interp / n_paired) >= 0.50
-                and n_cal >= 1
-            ):
-                return (
-                    start,
-                    end,
-                    {
-                        "complete_fraction": frac,
-                        "n_paired_days": n_paired,
-                        "n_direct_benchmark_days": n_direct,
-                        "n_benchmark_interpolated_days": n_interp,
-                        "n_calibration_captures": n_cal,
-                    },
-                )
-    return None
-
-
-def _e1_raw_ndvi(fid: str) -> pd.DataFrame:
-    import zarr
-
-    z = zarr.open(str(E1_CONTAINER), mode="r")
-    uid = [str(x) for x in z["geometry/uid"][:]]
-    j = uid.index(fid)
-    t = pd.to_datetime(z["time/daily"][:])
-    return pd.DataFrame(
-        {
-            "ndvi_landsat_raw": np.asarray(
-                z["remote_sensing/ndvi/landsat/no_mask"][:, j], dtype=float
-            ),
-            "ndvi_sentinel_raw": np.asarray(
-                z["remote_sensing/ndvi/sentinel/no_mask"][:, j], dtype=float
-            ),
-        },
-        index=t,
+    print(
+        f"  fig03: pooled {n_pool} rows ({n_acq} acquisition + {n_btw} between), "
+        f"scatter {n_scat}, site metrics {n_sm}, effects {n_eff}, cohort {n_ce}; "
+        f"identity {max_identity_err:.3e}; quarantined {quarantined or 'nothing'}"
     )
 
 
@@ -8071,7 +8254,7 @@ def _ne_states_version() -> str:
 BUILDERS = {
     "fig01": lambda: build_fig01(),
     "fig02": lambda: build_fig02(),
-    "fig03": lambda: build_fig03_example(build_fig03_deltas()),
+    "fig03": lambda: build_fig03(),
     "fig04": lambda: build_fig04(),
     "fig05_e1": lambda: build_fig05_e1(),
     "fig05_e2": lambda: build_fig05_e2(),
@@ -8080,8 +8263,9 @@ BUILDERS = {
     "obs_support": lambda: build_obs_support(),
 }
 
-# fig01 consumes the frozen fig03 example series and fig04 capture values, so a
-# --all run must build it last.  Every other builder is independent.
+# fig01 consumes the frozen fig03 example series (retained Figure 1 provenance,
+# re-registered but never regenerated by build_fig03) and fig04 capture values,
+# so a --all run must build it last.  Every other builder is independent.
 BUILD_ORDER = [
     "fig02",
     "fig03",
