@@ -32,6 +32,10 @@ ESPA_FIELDS = Path(
     "2015_Irrigated_Lands_for_the_Eastern_Snake_Plain_Aquifer.shp"
 )
 POU_POLY = WMIS_DIR / "pou_polygons.fgb"
+# IrrMapper (2000-2024) irrigated-fraction cache for the ESPA control candidate
+# pool, keyed by `fid2015`. Produced by espa_control_irrmapper.py. Controls are
+# gated STRICTLY never-irrigated (max annual irr fraction == 0) against this.
+ESPA_CONTROL_IRR = WMIS_DIR / "espa_control_irrmapper.csv"
 
 PROJECT_GIS = Path("/data/ssd1/swim/7_Applied_Water/data/gis")
 EXAMPLE_DIR = REPO / "examples" / "7_Applied_Water"
@@ -42,8 +46,17 @@ AEA = "EPSG:5070"  # CONUS Albers equal area for area/compactness
 SLV_CROPS = {"ALFALFA", "NEW_ALFALFA", "POTATOES", "BARLEY", "SMALL_GRAINS", "WHEAT_SPRING"}
 DEPTH_MIN, DEPTH_MAX = 200.0, 1200.0  # mm, plausible arid-basin applied band
 ACRE_MIN = 40.0
+# Controls must be field-sized, comparable to the metered irrigated cohort
+# (which tops out near 213 ac) — NOT whole rangeland tracts. A tract-scale
+# polygon both breaks the point of a per-field negative control and, at 30 m
+# over a multi-band annual stack, exceeds Earth Engine's reduceRegion pixel cap.
+CONTROL_ACRE_MAX = 220.0
 MIN_YEARS = 5
-AREA_ACRES_TOL = 0.15  # polygon area within +-15% of reported acres
+AREA_ACRES_TOL = 0.15  # polygon area within +-15% of reported acres (coarse prefilter)
+# The metered depth is volume/service-area; SWIM integrates over the polygon. For the
+# comparison to be apples-to-apples the implied service acreage (volume/depth) must match
+# the polygon area. Select only fields with high service-to-polygon agreement.
+SVC_POLY_TOL = 0.05  # |volume/depth acreage - polygon acreage| / polygon acreage
 AREA_CV_MAX = 0.15  # inter-year geometry stability (high confidence)
 PP_MIN = 0.60  # Polsby-Popper compactness floor
 N_PER_BASIN = 50
@@ -58,6 +71,32 @@ def _aea_area_acres(geom_series: gpd.GeoSeries) -> pd.Series:
 def _polsby_popper(geom_series: gpd.GeoSeries) -> pd.Series:
     g = geom_series.to_crs(AEA)
     return (4 * np.pi * g.area) / (g.length**2)
+
+
+def _pick_near_median(cand, size_col, label):
+    """Select the validation cohort for a basin: keep only fields whose metered
+    service acreage agrees with the polygon (``svc_agree`` <= SVC_POLY_TOL), then
+    take the N_PER_BASIN closest to the eligible pool's median size (tie-break:
+    more metered years). Prefers typical-size fields with clean attribution over
+    the largest/longest-record fields the prior sort favored.
+    """
+    elig = cand[cand.svc_agree <= SVC_POLY_TOL]
+    if "n_years" in elig:
+        elig = elig[elig.n_years >= MIN_YEARS]
+    if "area_cv" in elig:
+        elig = elig[elig.area_cv <= AREA_CV_MAX]
+    target = float(elig[size_col].median())
+    by = ["_d", "n_years"] if "n_years" in elig else ["_d"]
+    asc = [True, False] if "n_years" in elig else [True]
+    kept = elig.assign(_d=(elig[size_col] - target).abs()).sort_values(by, ascending=asc)
+    kept = kept.head(N_PER_BASIN).drop(columns="_d")
+    print(
+        f"  {label}: {len(elig)}/{len(cand)} fields pass svc_agree<={SVC_POLY_TOL:.2f}; "
+        f"target {target:.0f} ac, kept {len(kept)} "
+        f"({kept[size_col].min():.0f}-{kept[size_col].max():.0f} ac, "
+        f"svc_agree med {kept.svc_agree.median():.3f})"
+    )
+    return kept
 
 
 # --------------------------------------------------------------------------- SLV
@@ -97,17 +136,20 @@ def select_slv() -> tuple[gpd.GeoDataFrame, pd.DataFrame]:
     fy["poly_acres"] = _aea_area_acres(fy.geometry).values
     fy["pp"] = _polsby_popper(fy.geometry).values
     fy = fy[(fy.pp >= PP_MIN) & ((fy.poly_acres - fy.acres).abs() / fy.acres <= AREA_ACRES_TOL)]
+    # service acreage implied by the metered volume and allocated depth
+    fy["alloc_acres"] = fy.pumped_af / (fy.applied_depth_mm_alloc / 304.8)
 
     # field-level: >=MIN_YEARS qualifying years and stable geometry
     grp = fy.groupby("master_id")
     stats = grp.agg(
         n_years=("cal_year", "nunique"),
         acres=("poly_acres", "median"),
+        alloc_acres=("alloc_acres", "median"),
         area_cv=("poly_acres", lambda s: s.std() / s.mean() if len(s) > 1 else 0.0),
         crop=("crop_type", lambda s: s.mode().iat[0]),
     )
-    keep = stats[(stats.n_years >= MIN_YEARS) & (stats.area_cv <= AREA_CV_MAX)]
-    keep = keep.sort_values(["n_years", "acres"], ascending=False).head(N_PER_BASIN)
+    stats["svc_agree"] = (stats.alloc_acres - stats.acres).abs() / stats.acres
+    keep = _pick_near_median(stats, "acres", "SLV")
 
     fields, truth = [], []
     for i, (mid, row) in enumerate(keep.iterrows()):
@@ -163,6 +205,8 @@ def select_espa() -> tuple[gpd.GeoDataFrame, pd.DataFrame]:
         & (pods.irr_acres_max >= ACRE_MIN)
         & (pods.applied_depth_mm.between(DEPTH_MIN, DEPTH_MAX))
     ].copy()
+    # service acreage implied by the metered volume and reported depth
+    pods["alloc_acres"] = pods.volume_af / (pods.applied_depth_mm / 304.8)
 
     # field identity = wmis_number across FM years; require >=MIN_YEARS
     yc = pods.groupby("wmis_number")["year"].nunique()
@@ -217,10 +261,12 @@ def select_espa() -> tuple[gpd.GeoDataFrame, pd.DataFrame]:
 
     matched = gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
     matched = matched.drop_duplicates("fid2015")  # one geometry per digitized field
-    # rank by metered-year count then size
     ycount = pods.groupby("wmis_number")["year"].nunique()
+    alloc = pods.groupby("wmis_number")["alloc_acres"].median()
     matched["n_years"] = matched.wmis_number.map(ycount)
-    matched = matched.sort_values(["n_years", "f_acres"], ascending=False).head(N_PER_BASIN)
+    matched["alloc_acres"] = matched.wmis_number.map(alloc)
+    matched["svc_agree"] = (matched.alloc_acres - matched.f_acres).abs() / matched.f_acres
+    matched = _pick_near_median(matched, "f_acres", "ESPA")
 
     fields, truth = [], []
     for i, (_, m) in enumerate(matched.iterrows()):
@@ -252,16 +298,62 @@ def select_espa() -> tuple[gpd.GeoDataFrame, pd.DataFrame]:
     return gpd.GeoDataFrame(fields, geometry="geometry", crs="EPSG:4326"), pd.DataFrame(truth)
 
 
-def select_espa_controls() -> gpd.GeoDataFrame:
-    """Ground-truth rainfed negative controls: large compact ESPA 'non-irrigated' fields."""
+def espa_control_candidates() -> gpd.GeoDataFrame:
+    """Field-sized, compact ESPA 2015 non-irrigated polygons — the pool from which
+    rainfed controls are drawn. `fid2015` (the source shapefile index) is the stable
+    key both the IrrMapper cache (espa_control_irrmapper.py) and select_espa_controls
+    join on, so the candidate set must be built identically in both places.
+
+    A control must be a single non-irrigated *field* comparable to the metered
+    irrigated cohort — not a rangeland tract (the largest "non-irrigated" polygons
+    here are 3.5k-52k ac) — so it is bounded to ACRE_MIN..CONTROL_ACRE_MAX and PP_MIN.
+    """
     fields2015 = gpd.read_file(ESPA_FIELDS, engine="fiona").to_crs("EPSG:4326")
     nonirr = fields2015[fields2015.Status_201 == "non-irrigated"].copy()
+    nonirr["fid2015"] = nonirr.index
     nonirr["f_acres"] = _aea_area_acres(nonirr.geometry).values
     nonirr["f_pp"] = _polsby_popper(nonirr.geometry).values
-    nonirr = nonirr[(nonirr.f_acres >= ACRE_MIN) & (nonirr.f_pp >= PP_MIN)]
-    nonirr = nonirr.sort_values("f_acres", ascending=False).head(N_CONTROLS)
+    return nonirr[
+        (nonirr.f_acres >= ACRE_MIN)
+        & (nonirr.f_acres <= CONTROL_ACRE_MAX)
+        & (nonirr.f_pp >= PP_MIN)
+    ]
+
+
+def select_espa_controls(target_acres: float) -> gpd.GeoDataFrame:
+    """Ground-truth rainfed negative controls, gated on IrrMapper.
+
+    The 2015 non-irrigated flag alone is a single-year snapshot; a genuine rainfed
+    control must be rainfed *every* year SWIM simulates. IrrMapper (2000-2024, cached
+    by espa_control_irrmapper.py) is the authority: only fields it never classified
+    irrigated in any year (`max_irr == 0`) are eligible. Among those, the N_CONTROLS
+    nearest the irrigated median (``target_acres``) are kept so controls sit at
+    typical field size. Pumping truth exists only for irrigated fields, so controls
+    carry no metered volume — IrrMapper is their sole rainfed provenance.
+    """
+    if not ESPA_CONTROL_IRR.exists():
+        raise SystemExit(
+            f"{ESPA_CONTROL_IRR} missing — run "
+            "examples/7_Applied_Water/espa_control_irrmapper.py first "
+            "to build the IrrMapper rainfed cache."
+        )
+    cand = espa_control_candidates()
+    irr = pd.read_csv(ESPA_CONTROL_IRR)
+    cand = cand.merge(irr[["fid2015", "mean_irr", "max_irr"]], on="fid2015", how="inner")
+    rainfed = cand[cand.max_irr == 0.0]  # strictly never irrigated, 2000-2024
+    print(
+        f"  ESPA controls: {len(rainfed)}/{len(cand)} candidates strictly never "
+        f"irrigated (IrrMapper 2000-2024); target {target_acres:.0f} ac"
+    )
+    if len(rainfed) < N_CONTROLS:
+        raise SystemExit(
+            f"only {len(rainfed)} strictly-rainfed controls available, need {N_CONTROLS}"
+        )
+    rainfed = rainfed.reindex((rainfed.f_acres - target_acres).abs().sort_values().index).head(
+        N_CONTROLS
+    )
     rows = []
-    for i, (idx, m) in enumerate(nonirr.iterrows()):
+    for i, (_, m) in enumerate(rainfed.iterrows()):
         rows.append(
             {
                 "site_id": f"ESPActl_{i:03d}",
@@ -269,7 +361,7 @@ def select_espa_controls() -> gpd.GeoDataFrame:
                 "crop": "RAINFED_CONTROL",
                 "acres": round(float(m.f_acres), 1),
                 "state": "ID",
-                "src_id": str(int(idx)),
+                "src_id": str(int(m.fid2015)),
                 "geometry": m.geometry,
             }
         )
@@ -314,8 +406,12 @@ def main() -> None:
         print(f"ESPA: {len(g)} fields, {len(t)} field-years")
         gdfs.append(g)
         truths.append(t)
-        ctl = select_espa_controls()
-        print(f"ESPA rainfed controls: {len(ctl)}")
+        target_acres = float(pd.concat([x.acres for x in gdfs]).median())
+        ctl = select_espa_controls(target_acres)
+        print(
+            f"ESPA rainfed controls: {len(ctl)} "
+            f"(target {target_acres:.0f} ac, range {ctl.acres.min():.0f}-{ctl.acres.max():.0f})"
+        )
         gdfs.append(ctl)
         truths.append(
             pd.DataFrame(
@@ -340,11 +436,15 @@ def main() -> None:
     PROJECT_GIS.mkdir(parents=True, exist_ok=True)
     shp = PROJECT_GIS / "applied_water_fields.shp"
     gdf.to_file(shp, engine="fiona")
+    # FlatGeobuf of the exact geometries SWIM extracts over, for QGIS inspection.
+    fgb = PROJECT_GIS / "applied_water_fields.fgb"
+    gdf.to_file(fgb, driver="FlatGeobuf", engine="fiona")
     (EXAMPLE_DIR / "data").mkdir(parents=True, exist_ok=True)
     truth.to_csv(EXAMPLE_DIR / "data" / "metered_truth.csv", index=False)
     truth.to_csv(PROJECT_GIS.parent / "metered_truth.csv", index=False)
     _write_qc(gdf, truth, EXAMPLE_DIR / "notes" / "selection_qc.md")
     print(f"\nwrote {shp}")
+    print(f"wrote {fgb}")
     print(f"wrote {EXAMPLE_DIR / 'data' / 'metered_truth.csv'}")
     print(f"wrote {EXAMPLE_DIR / 'notes' / 'selection_qc.md'}")
 
