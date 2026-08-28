@@ -33,6 +33,43 @@ def _fid_from_parnme(parnme, pargp):
     return m.group(1).upper() if m else None
 
 
+def _build_boundary_hit_rates(site_df, run_name):
+    """Summarize boundary hits using each site's own parameter bounds."""
+    hit_rows = []
+    for parameter, sub in site_df.groupby("parameter", sort=True):
+        groups = [("ALL", sub), *list(sub.groupby("lc_class", sort=True))]
+        for lulc_group, group_df in groups:
+            medians = group_df["median"].to_numpy(dtype=float)
+            lower = group_df["parlbnd"].to_numpy(dtype=float)
+            upper = group_df["parubnd"].to_numpy(dtype=float)
+            tolerances = 0.01 * (upper - lower)
+            lower_hits = medians <= lower + tolerances
+            upper_hits = medians >= upper - tolerances
+            bound_sets = group_df[["parlbnd", "parubnd"]].drop_duplicates()
+            common_tolerance = (
+                float(tolerances[0])
+                if len(tolerances) and np.allclose(tolerances, tolerances[0])
+                else np.nan
+            )
+            hit_rows.append(
+                {
+                    "run_name": run_name,
+                    "parameter": parameter,
+                    "lulc_group": lulc_group,
+                    "n_sites": len(group_df),
+                    "lower_hit_count": int(lower_hits.sum()),
+                    "upper_hit_count": int(upper_hits.sum()),
+                    "lower_hit_rate": float(lower_hits.mean()),
+                    "upper_hit_rate": float(upper_hits.mean()),
+                    "n_bound_sets": len(bound_sets),
+                    "bound_tolerance": common_tolerance,
+                    "bound_tolerance_min": float(tolerances.min()),
+                    "bound_tolerance_max": float(tolerances.max()),
+                }
+            )
+    return pd.DataFrame(hit_rows)
+
+
 def build_posterior_summary(par_csv, par_data_csv, fields, archive_root, run_name):
     out = Path(archive_root) / "5_posterior_summaries"
     out.mkdir(parents=True, exist_ok=True)
@@ -50,7 +87,6 @@ def build_posterior_summary(par_csv, par_data_csv, fields, archive_root, run_nam
 
     # Per-site, per-parameter posterior statistics across realizations.
     site_rows = []
-    per_site_median = {}  # (pargp, fid) -> median
     for col in par.columns:
         if col not in bounds.index:
             continue
@@ -62,12 +98,13 @@ def build_posterior_summary(par_csv, par_data_csv, fields, archive_root, run_nam
         med, mean, std = np.median(v), np.mean(v), np.std(v)
         q25, q75 = np.percentile(v, [25, 75])
         cv = std / abs(mean) if mean != 0 else np.nan
-        per_site_median[(pargp, fid)] = med
         site_rows.append(
             {
                 "site": fid,
                 "parameter": pargp,
                 "lc_class": lc.get(fid, ""),
+                "parlbnd": float(bounds.at[col, "parlbnd"]),
+                "parubnd": float(bounds.at[col, "parubnd"]),
                 "median": med,
                 "mean": mean,
                 "std": std,
@@ -78,7 +115,19 @@ def build_posterior_summary(par_csv, par_data_csv, fields, archive_root, run_nam
             }
         )
     site_df = pd.DataFrame(site_rows)
-    site_df.to_csv(out / "posterior_site_summary.csv", index=False)
+    site_output_columns = [
+        "site",
+        "parameter",
+        "lc_class",
+        "median",
+        "mean",
+        "std",
+        "q25",
+        "q75",
+        "iqr",
+        "cv",
+    ]
+    site_df[site_output_columns].to_csv(out / "posterior_site_summary.csv", index=False)
 
     # LULC-grouped summary across per-site posterior medians.
     lulc_df = (
@@ -90,27 +139,7 @@ def build_posterior_summary(par_csv, par_data_csv, fields, archive_root, run_nam
 
     # Boundary-hit rates per parameter, per LULC group (+ ALL), from per-site medians.
     params = sorted(site_df["parameter"].unique())
-    bnd = pd_meta.groupby("pargp")[["parlbnd", "parubnd"]].first()
-    hit_rows = []
-    for p in params:
-        lo, hi = float(bnd.at[p, "parlbnd"]), float(bnd.at[p, "parubnd"])
-        tol = 0.01 * (hi - lo)  # within 1% of the bound range
-        sub = site_df[site_df["parameter"] == p]
-        for grp, gdf in [("ALL", sub)] + list(sub.groupby("lc_class")):
-            meds = gdf["median"].to_numpy(dtype=float)
-            n = len(meds)
-            hit_rows.append(
-                {
-                    "run_name": run_name,
-                    "parameter": p,
-                    "lulc_group": grp,
-                    "n_sites": n,
-                    "lower_hit_rate": float(np.mean(meds <= lo + tol)) if n else np.nan,
-                    "upper_hit_rate": float(np.mean(meds >= hi - tol)) if n else np.nan,
-                    "bound_tolerance": tol,
-                }
-            )
-    hit_df = pd.DataFrame(hit_rows)
+    hit_df = _build_boundary_hit_rates(site_df, run_name)
     hit_df.to_csv(out / "boundary_hit_rates.csv", index=False)
 
     # irrigated_grouped_summary.csv: E1 is a multi-LULC ET-validity experiment,
