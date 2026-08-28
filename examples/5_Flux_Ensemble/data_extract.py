@@ -287,7 +287,9 @@ def _extract_fraction_model(coll_path, geometry, year):
         return img.select("et_fraction").divide(10000).rename(ee.String("etf_").cat(d))
 
     stacked = coll.map(_tag).toBands()
-    result = stacked.reduceRegion(reducer=ee.Reducer.mean(), geometry=geometry, scale=30).getInfo()
+    result = stacked.reduceRegion(
+        reducer=ee.Reducer.mean(), geometry=geometry, scale=30, maxPixels=1e11
+    ).getInfo()
 
     if not result:
         return {}
@@ -322,7 +324,9 @@ def _extract_et_model(coll_path, geometry, year):
         return et_mm.divide(eto).rename(ee.String("etf_").cat(d.format("yyyyMMdd")))
 
     stacked = coll.map(_compute_etf).toBands()
-    result = stacked.reduceRegion(reducer=ee.Reducer.mean(), geometry=geometry, scale=30).getInfo()
+    result = stacked.reduceRegion(
+        reducer=ee.Reducer.mean(), geometry=geometry, scale=30, maxPixels=1e11
+    ).getInfo()
 
     if not result:
         return {}
@@ -629,7 +633,9 @@ def _extract_ndvi_site_year(geometry, year, instrument):
         return img.normalizedDifference(["NIR_H", "RED_H"]).rename(short)
 
     stacked = coll.map(_tag).toBands()
-    result = stacked.reduceRegion(reducer=ee.Reducer.mean(), geometry=geometry, scale=30).getInfo()
+    result = stacked.reduceRegion(
+        reducer=ee.Reducer.mean(), geometry=geometry, scale=30, maxPixels=1e11
+    ).getInfo()
 
     if not result:
         return {}
