@@ -17,8 +17,9 @@ CRS_TRANSFORM = [
 # Spectral Bandpass Adjustment Factors (SBAF) for harmonization to Landsat 8 OLI
 # References:
 #   Roy, D.P., et al. (2016). Characterization of Landsat-7 to Landsat-8
-#   reflectance and NDVI differences. Remote Sensing of Environment, 176, 163-180.
-#   https://www.sciencedirect.com/science/article/pii/S0034425716300220
+#   reflective wavelength and normalized difference vegetation index continuity.
+#   Remote Sensing of Environment, 185, 57-70.
+#   https://doi.org/10.1016/j.rse.2015.12.024
 #
 #   Claverie, M., et al. (2018). The Harmonized Landsat and Sentinel-2 (HLS)
 #   product. Remote Sensing of Environment, 219, 145-161.
