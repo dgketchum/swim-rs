@@ -1,22 +1,24 @@
 """Figure 3 -- daily ET agreement and temporal reconstruction (production).
 
-Scatter-first composition per paper/notes/fig03_production_handoff.md
-(2026-08-27), concept v3. Despite the legacy filename, this script renders
-the pooled-agreement design, not the superseded seasonal example.
+Pooled-agreement composition per paper/notes/fig03_production_handoff.md
+(2026-08-27), concept v3, with panel (a) rendered as hexbin density
+(FIGURE_STYLE_GUIDE sec. 10). Despite the legacy filename, this script
+renders the pooled-agreement design, not the superseded seasonal example.
 
 Reads ONLY the frozen Figure 3 display package under
 paper/data/final/figures/ (hash-verified against fig_manifest.json):
 
-- fig03_pooled_daily_agreement.csv  -- panel (a) point clouds
+- fig03_pooled_daily_agreement.csv  -- panel (a) paired daily values
 - fig03_scatter_metrics.csv         -- frozen facet statistics + display strings
 - fig03_temporal_site_effects.csv   -- panel (c) paired site shifts + order key
 - fig03_temporal_cohort_effects.csv -- panel (b) medians + bootstrap intervals
 - fig03_metadata.json               -- construction record
 
 The only transformations applied here are declared presentation steps:
-deterministic point draw-order shuffle (seed frozen in the metadata) and
-rasterization of the point-cloud layers. All aggregation, interpolation,
-metric, and bootstrap arithmetic lives in scripts/figures/build_figure_data.py.
+hexbin count binning on a shared log scale (FIGURE_STYLE_GUIDE sec. 10
+density threshold) and rasterization of the hexbin layers. All aggregation,
+interpolation, metric, and bootstrap arithmetic lives in
+scripts/figures/build_figure_data.py.
 
 Usage::
 
@@ -49,26 +51,29 @@ PAGE_W, PAGE_H = 190.0, 125.0  # mm
 RASTER_DPI = 600
 
 # package palette
-C_BLUE = "#0072B2"  # SWIM-RS
-C_ORANGE = "#E69F00"  # OpenET
-C_TEXT = "#202124"
+C_BLUE = "#0072B2"  # SWIM-RS (panel c cohort markers)
+C_TEXT = "#000000"
 C_CHARCOAL = "#50545A"
 C_MID = "#7A7F85"
 C_LIGHT = "#C9CDD1"
-C_GRID = "#E5E7E9"
 
 AX_LO, AX_HI = -2.0, 16.0
 AX_TICKS = [0, 4, 8, 12, 16]
 
 SUPPORT_HEADS = {
-    "acquisition": ("ETf Acquisition Dates", "4,751 site-days"),
-    "between_acquisitions": ("Between Acquisitions", "55,584 site-days"),
+    "acquisition": ("ETf acquisition dates", "4,751 site-days"),
+    "between_acquisitions": ("Between acquisitions", "55,584 site-days"),
 }
-METHODS = [("openet_et", "OpenET", C_ORANGE), ("swim_et", "SWIM-RS", C_BLUE)]
+METHODS = [("openet_et", "OpenET"), ("swim_et", "SWIM-RS")]
+
+# panel (a) hexbin density (FIGURE_STYLE_GUIDE sec. 10: > ~5,000 points per
+# panel is hexbin territory) -- one shared log count scale for all facets
+HEX_GRIDSIZE = 40
+CBAR_TICKS = [1, 10, 100, 1000]
 B_ROWS = [
     ("acquisition", "Acquisition"),
     ("between_acquisitions", "Between"),
-    ("all_dates", "All Dates"),
+    ("all_dates", "All dates"),
 ]
 EFFECT_FACETS = [
     ("kge", "ΔKGE", ""),
@@ -104,7 +109,7 @@ FORBIDDEN_STRINGS = [
     "p<",
 ]
 
-MIN_PT = 7.0
+MIN_PT = 6.5  # Elsevier floor is 6 pt; hold 6.5 as the working floor
 
 
 class ProofError(RuntimeError):
@@ -115,21 +120,26 @@ class ProofError(RuntimeError):
 
 
 def register_fonts() -> None:
+    # Arial, the guide-named family (FIGURE_STYLE_GUIDE.md section 3);
+    # Microsoft core-fonts faces installed under ~/.fonts/arial
     candidates = [
-        Path.home() / ".fonts" / "source-sans",
-        Path("/usr/share/fonts/opentype/source-sans"),
-        Path("/usr/share/fonts/truetype/source-sans-pro"),
+        Path.home() / ".fonts" / "arial",
+        Path("/usr/share/fonts/truetype/msttcorefonts"),
     ]
     for d in candidates:
         if d.exists():
-            for p in sorted(d.glob("*.[ot]tf")):
+            for p in sorted(d.glob("[Aa]rial*.[TtOo][Tt][Ff]")):
                 fm.fontManager.addfont(str(p))
     names = {f.name for f in fm.fontManager.ttflist}
-    if "Source Sans 3" not in names:
-        raise ProofError("Source Sans 3 is not registered; no fallback is allowed")
+    if "Arial" not in names:
+        raise ProofError("Arial is not registered; no fallback is allowed")
+    style = Path.home() / "code" / "style" / "journal_figures.mplstyle"
+    if style.exists():
+        plt.style.use(str(style))
     plt.rcParams.update(
         {
-            "font.family": "Source Sans 3",
+            "savefig.bbox": "standard",  # the mm layout is absolute; never tight-crop
+            "font.family": "Arial",
             "font.size": 7.2,
             "text.color": C_TEXT,
             "axes.edgecolor": C_CHARCOAL,
@@ -137,10 +147,10 @@ def register_fonts() -> None:
             "xtick.color": C_TEXT,
             "ytick.color": C_TEXT,
             "mathtext.fontset": "custom",
-            "mathtext.rm": "Source Sans 3",
-            "mathtext.it": "Source Sans 3:italic",
-            "mathtext.bf": "Source Sans 3:bold",
-            "mathtext.cal": "Source Sans 3",
+            "mathtext.rm": "Arial",
+            "mathtext.it": "Arial:italic",
+            "mathtext.bf": "Arial:bold",
+            "mathtext.cal": "Arial",
             "pdf.fonttype": 42,
             "svg.fonttype": "none",
         }
@@ -279,8 +289,10 @@ B_LABEL_X = 129.0
 B_FACET_X = [130.5, 150.5, 170.5]
 B_Y0, B_H = 90.5, 21.5
 C_FACET_W = 21.4
-C_FACET_X = [118.0, 141.9, 165.8]
-C_Y0, C_H = 15.0, 56.0
+# facets start 1 mm right of panel (b)'s column so the panel (a) colorbar
+# tick labels clear their frames (facet row ends at 188.2, matching b's 188.1)
+C_FACET_X = [119.0, 142.9, 166.8]
+C_Y0, C_H = 11.5, 59.5
 
 TITLE_Y = 120.6
 
@@ -288,88 +300,90 @@ TITLE_Y = 120.6
 def strip_axis(ax, lo, hi, ticks, n_rows):
     ax.set_xlim(lo, hi)
     ax.set_ylim(-0.6, n_rows - 0.4)
-    ax.axvline(0, color=C_CHARCOAL, lw=0.6, zorder=1)
+    ax.axvline(0, color=C_MID, lw=0.5, zorder=1)
     ax.set_yticks([])
     ax.set_xticks(ticks)
-    ax.set_xticklabels([f"{t:g}" for t in ticks], fontsize=7.0)
-    ax.tick_params(axis="x", length=1.6, width=0.5, pad=1.2)
-    for side in ("top", "left", "right"):
-        ax.spines[side].set_visible(False)
-    ax.spines["bottom"].set_color(C_CHARCOAL)
-    ax.spines["bottom"].set_linewidth(0.55)
+    ax.set_xticklabels([f"{t:g}".replace("-", "−") for t in ticks], fontsize=6.5)
+    ax.tick_params(axis="x", length=2.2, width=0.55, pad=1.2)
+    for side in ax.spines.values():
+        side.set_visible(True)
+        side.set_color(C_CHARCOAL)
+        side.set_linewidth(0.55)
     ax.set_facecolor("white")
 
 
-def draw_panel_a(fig, pooled, scatter, draw_seed: int):
-    rng = np.random.default_rng(draw_seed)
+def draw_panel_a(fig, pooled, scatter):
     disp = scatter.set_index(["method", "temporal_support"])
-    for irow, (col, method, color) in enumerate(METHODS):
+    hexes = []
+    for irow, (col, method) in enumerate(METHODS):
         for icol, support in enumerate(["acquisition", "between_acquisitions"]):
             ax = ax_mm(fig, A_X[icol], A_Y[irow], A_S, A_S)
             sub = pooled[pooled["temporal_support"] == support]
             x = sub["flux_et"].to_numpy()
             y = sub[col].to_numpy()
-            order = rng.permutation(len(sub))
-            size = 2.3 if support == "acquisition" else 1.15
-            alpha = 0.16 if support == "acquisition" else 0.045
             ax.set_xlim(AX_LO, AX_HI)
             ax.set_ylim(AX_LO, AX_HI)
             ax.set_aspect("equal", adjustable="box")
-            for t in AX_TICKS:
-                ax.axvline(t, color=C_GRID, lw=0.4, zorder=0)
-                ax.axhline(t, color=C_GRID, lw=0.4, zorder=0)
-            ax.plot([AX_LO, AX_HI], [AX_LO, AX_HI], color=C_CHARCOAL, lw=0.7, zorder=1)
-            ax.scatter(
-                x[order],
-                y[order],
-                s=size,
-                color=color,
-                alpha=alpha,
-                edgecolors="none",
+            hb = ax.hexbin(
+                x,
+                y,
+                gridsize=HEX_GRIDSIZE,
+                extent=(AX_LO, AX_HI, AX_LO, AX_HI),
+                cmap="viridis",
+                mincnt=1,
+                linewidths=0.0,
                 rasterized=True,
                 zorder=2,
             )
+            hexes.append(hb)
+            # 1:1 guide drawn over the density so it stays readable
+            ax.plot(
+                [AX_LO, AX_HI],
+                [AX_LO, AX_HI],
+                color=C_CHARCOAL,
+                lw=0.7,
+                ls=(0, (4, 2)),
+                zorder=3,
+            )
             ax.set_xticks(AX_TICKS)
             ax.set_yticks(AX_TICKS)
-            ax.tick_params(axis="both", labelsize=7.0, length=1.8, width=0.5, pad=1.4)
+            ax.tick_params(axis="both", labelsize=6.5, length=2.2, width=0.55, pad=1.4)
             if icol != 0:
                 ax.tick_params(axis="y", labelleft=False)
             if irow != 1:
                 ax.tick_params(axis="x", labelbottom=False)
-            for side in ("top", "right"):
-                ax.spines[side].set_visible(False)
-            for side in ("left", "bottom"):
-                ax.spines[side].set_color(C_CHARCOAL)
-                ax.spines[side].set_linewidth(0.55)
+            for side in ax.spines.values():
+                side.set_visible(True)
+                side.set_color(C_CHARCOAL)
+                side.set_linewidth(0.55)
+            # plain-weight facet identifier (FIGURE_STYLE_GUIDE §4/§8: identity
+            # is never carried by colored text; each facet holds one series)
             ax.text(
                 0.045,
-                0.955,
+                0.965,
                 method,
                 transform=ax.transAxes,
-                fontsize=7.6,
-                fontweight="semibold",
-                color=color,
+                fontsize=7.0,
+                color=C_TEXT,
                 ha="left",
                 va="top",
-                bbox=dict(facecolor="white", edgecolor="none", alpha=0.82, pad=0.8),
                 zorder=5,
             )
             row = disp.loc[(method, support)]
             ax.text(
-                0.965,
-                0.955,
+                0.045,
+                0.885,
                 (
-                    f"r = {row['display_r']}\n"
+                    f"$r$ = {row['display_r']}\n"
                     f"Bias = {row['display_bias']}\n"
                     f"RMSE = {row['display_rmse']}"
                 ),
                 transform=ax.transAxes,
-                fontsize=7.0,
+                fontsize=6.5,
                 color=C_TEXT,
                 linespacing=1.15,
-                ha="right",
+                ha="left",
                 va="top",
-                bbox=dict(facecolor="white", edgecolor="none", alpha=0.84, pad=0.9),
                 zorder=5,
             )
     for icol, support in enumerate(["acquisition", "between_acquisitions"]):
@@ -380,18 +394,18 @@ def draw_panel_a(fig, pooled, scatter, draw_seed: int):
             cx,
             A_HEAD_Y + 3.1,
             head,
-            fontsize=8.2,
+            fontsize=7.0,
             fontweight="semibold",
             ha="center",
             va="bottom",
         )
-        fig_text(fig, cx, A_HEAD_Y, count, fontsize=7.0, color=C_TEXT, ha="center", va="bottom")
+        fig_text(fig, cx, A_HEAD_Y, count, fontsize=6.5, color=C_TEXT, ha="center", va="bottom")
     fig_text(
         fig,
         A_X[0] + A_S + 1.75,
         6.0,
         "Flux ET (mm d$^{-1}$)",
-        fontsize=8.0,
+        fontsize=7.0,
         ha="center",
         va="bottom",
     )
@@ -400,20 +414,40 @@ def draw_panel_a(fig, pooled, scatter, draw_seed: int):
         6.0,
         A_Y[1] + A_S + 1.75,
         "Estimated ET (mm d$^{-1}$)",
-        fontsize=8.0,
+        fontsize=7.0,
         ha="center",
         va="center",
         rotation=90,
     )
+    # One shared log count scale across all four facets, keyed by one thin
+    # vertical colorbar in the dead strip between panels (a) and (b)/(c).
+    gmax = max(int(hb.get_array().max()) for hb in hexes)
+    norm = matplotlib.colors.LogNorm(vmin=1, vmax=gmax)
+    for hb in hexes:
+        hb.set_norm(norm)
+    # the bar hugs panel (a); tick labels fill the strip to the right, ending
+    # short of the panel (c) facets (x = 119); the title clears the facet
+    # tops (y = 71) and panel (a)'s right column (x = 108)
+    cax = ax_mm(fig, 108.8, 30.0, 2.6, 40.0)
+    cb = fig.colorbar(hexes[0], cax=cax)
+    cb.outline.set_linewidth(0.55)
+    cb.outline.set_edgecolor(C_CHARCOAL)
+    ticks = [t for t in CBAR_TICKS if t <= gmax]
+    cb.set_ticks(ticks)
+    cb.set_ticklabels([f"{t:,}" for t in ticks])
+    cb.minorticks_off()
+    cax.tick_params(labelsize=6.5, length=2.2, width=0.55, pad=1.2)
+    fig_text(fig, 108.8, 71.8, "Site-days", fontsize=7.0, ha="left", va="bottom")
 
 
 def facet_heading(fig, x_center: float, y_top: float, head: str, unit: str):
-    """Two-line facet heading: metric name plus optional 7 pt unit line."""
+    """Two-line facet heading: metric name plus optional 6.5 pt unit line."""
     fig_text(
-        fig, x_center, y_top, head, fontsize=8.0, fontweight="semibold", ha="center", va="bottom"
+        fig, x_center, y_top, head, fontsize=7.0, fontweight="semibold", ha="center", va="bottom"
     )
     if unit:
-        fig_text(fig, x_center, y_top - 2.7, f"({unit})", fontsize=7.0, ha="center", va="bottom")
+        # 3.4 mm keeps the mathtext superscript clear of the head above
+        fig_text(fig, x_center, y_top - 3.4, f"({unit})", fontsize=6.5, ha="center", va="bottom")
 
 
 def draw_panel_b(fig, cohort):
@@ -437,27 +471,17 @@ def draw_panel_b(fig, cohort):
                 mew=0,
                 zorder=3,
             )
-        facet_heading(fig, B_FACET_X[j] + B_FACET_W / 2, B_Y0 + B_H + 4.2, head, unit)
+        facet_heading(fig, B_FACET_X[j] + B_FACET_W / 2, B_Y0 + B_H + 4.9, head, unit)
     for sup, label in B_ROWS:
         fig_text(
             fig,
             B_LABEL_X,
             B_Y0 + (ypos[sup] + 0.6) / (len(B_ROWS) + 0.2) * B_H,
             label,
-            fontsize=7.2,
+            fontsize=6.5,
             ha="right",
             va="center",
         )
-    fig_text(
-        fig,
-        (B_FACET_X[0] + B_FACET_X[-1] + B_FACET_W) / 2,
-        B_Y0 - 4.6,
-        "Δ = SWIM-RS − OpenET; whole-site bootstrap 95% intervals",
-        fontsize=7.0,
-        color=C_TEXT,
-        ha="center",
-        va="top",
-    )
 
 
 def draw_panel_c(fig, effects):
@@ -476,24 +500,29 @@ def draw_panel_c(fig, effects):
             ax.plot([a, b], [yi, yi], color=C_LIGHT, lw=0.45, zorder=2)
             ax.plot(a, yi, marker="o", ms=1.9, mfc="white", mec=C_MID, mew=0.5, ls="none", zorder=3)
             ax.plot(b, yi, marker="D", ms=1.7, mfc=C_MID, mec=C_MID, mew=0.3, ls="none", zorder=4)
-        facet_heading(fig, C_FACET_X[j] + C_FACET_W / 2, C_Y0 + C_H + 3.6, head, unit)
-    # shared two-item legend
-    lx = (C_FACET_X[0] + C_FACET_X[-1] + C_FACET_W) / 2
-    ly = C_Y0 - 7.6
-    fig_text(fig, lx - 24.0, ly, "○", fontsize=7.2, color=C_MID, ha="center", va="center")
-    fig_text(fig, lx - 22.0, ly, "Acquisition dates", fontsize=7.2, ha="left", va="center")
-    fig_text(fig, lx + 4.0, ly, "◆", fontsize=7.2, color=C_MID, ha="center", va="center")
-    fig_text(fig, lx + 6.0, ly, "Between acquisitions", fontsize=7.2, ha="left", va="center")
+        facet_heading(fig, C_FACET_X[j] + C_FACET_W / 2, C_Y0 + C_H + 4.3, head, unit)
+    # frameless two-entry marker key below the facets (FIGURE_STYLE_GUIDE §8:
+    # every distinguishing symbol is defined inside the figure)
+    kx0 = C_FACET_X[0]
+    kw = C_FACET_X[2] + C_FACET_W - kx0
+    axk = ax_mm(fig, kx0, 3.6, kw, 3.0)
+    axk.set_xlim(0, kw)
+    axk.set_ylim(0, 1)
+    axk.set_axis_off()
+    entries = [
+        ("o", dict(mfc="white", mec=C_MID, mew=0.5, ms=1.9), "Acquisition dates"),
+        ("D", dict(mfc=C_MID, mec=C_MID, mew=0.3, ms=1.7), "Between acquisitions"),
+    ]
+    xk = [kw * 0.16, kw * 0.52]
+    for (marker, mkw, label), x in zip(entries, xk, strict=True):
+        axk.plot([x], [0.5], marker=marker, ls="none", **mkw)
+        axk.text(x + 1.7, 0.5, label, fontsize=6.5, color=C_TEXT, ha="left", va="center")
 
 
-def add_panel_title(fig, x_mm: float, label: str, title: str):
-    t = fig_text(
-        fig, x_mm, TITLE_Y, label, fontsize=10.5, fontweight="bold", ha="left", va="bottom"
-    )
-    fig_text(
-        fig, x_mm + 7.2, TITLE_Y, title, fontsize=8.8, fontweight="semibold", ha="left", va="bottom"
-    )
-    return t
+def add_panel_title(fig, x_mm: float, y_mm: float, label: str):
+    """Elsevier panel label: plain-weight '(a)' fused with a sentence-case
+    identifier, one text object on one baseline (FIGURE_STYLE_GUIDE §4-5)."""
+    return fig_text(fig, x_mm, y_mm, label, fontsize=7.0, ha="left", va="bottom")
 
 
 # ---------------------------------------------------------------- audit
@@ -521,34 +550,14 @@ def audit(fig) -> list[dict]:
 def main() -> None:
     register_fonts()
     pkg = load_package()
-    draw_seed = int(pkg["meta"]["panel_a"]["draw_order_seed"])
 
     fig = plt.figure(figsize=(PAGE_W / 25.4, PAGE_H / 25.4), dpi=300, facecolor="white")
-    draw_panel_a(fig, pkg["pooled"], pkg["scatter"], draw_seed)
+    draw_panel_a(fig, pkg["pooled"], pkg["scatter"])
     draw_panel_b(fig, pkg["cohort"])
     draw_panel_c(fig, pkg["effects"])
-    add_panel_title(fig, 4.5, "(a)", "Pooled Daily ET Agreement (43 Sites)")
-    add_panel_title(fig, R_X0 - 3.5, "(b)", "Accuracy Effects by Temporal Support")
-    fig_text(
-        fig,
-        R_X0 - 3.5,
-        C_Y0 + C_H + 8.0,
-        "(c)",
-        fontsize=10.5,
-        fontweight="bold",
-        ha="left",
-        va="bottom",
-    )
-    fig_text(
-        fig,
-        R_X0 + 3.7,
-        C_Y0 + C_H + 8.0,
-        "Site-Level Temporal Contrast",
-        fontsize=8.8,
-        fontweight="semibold",
-        ha="left",
-        va="bottom",
-    )
+    add_panel_title(fig, 4.5, TITLE_Y, "(a) Pooled daily ET agreement")
+    add_panel_title(fig, R_X0 - 3.5, TITLE_Y, "(b) Cohort effects of temporal support")
+    add_panel_title(fig, R_X0 - 3.5, C_Y0 + C_H + 8.0, "(c) Site-level effects")
 
     items = audit(fig)
 
@@ -568,16 +577,19 @@ def main() -> None:
     meta = {
         "figure": "Figure 3 -- daily ET agreement and temporal reconstruction",
         "contract": "paper/notes/fig03_production_handoff.md (2026-08-27)",
+        "style": (
+            "~/code/style/FIGURE_STYLE_GUIDE.md + journal_figures.mplstyle; "
+            "Arial family (the guide-named face)"
+        ),
         "composition_id": pkg["meta"]["composition_id"],
         "canvas_mm": [PAGE_W, PAGE_H],
         "raster_dpi": RASTER_DPI,
         "panel_a": {
             "axes_mm_day": [AX_LO, AX_HI],
             "ticks": AX_TICKS,
-            "point_area_pt2": {"acquisition": 2.3, "between_acquisitions": 1.15},
-            "alpha": {"acquisition": 0.16, "between_acquisitions": 0.045},
-            "draw_order_seed": draw_seed,
-            "rasterized": "point clouds only; axes, text, and 1:1 lines are vector",
+            "encoding": "hexbin density, viridis, shared log count scale",
+            "hex_gridsize": HEX_GRIDSIZE,
+            "rasterized": "hexbin layers only; axes, text, and 1:1 lines are vector",
         },
         "panel_b_limits": B_LIMS,
         "panel_c_limits": C_LIMS,
