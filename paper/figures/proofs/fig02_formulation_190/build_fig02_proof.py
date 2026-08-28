@@ -10,11 +10,12 @@ display package under paper/data/final/figures/:
     fig02_site_rmse_effects.csv      panel (c) paired site RMSE effects
     fig02_metadata.json              labels, rules, provenance
 
-Reads nothing else.  Follows the shared visual system (plan section 3):
-Source Sans 3, 10 pt bold panel letters, 8.5 pt semibold facet headings,
-8 pt axis titles, 7-7.5 pt ticks/legends, sentence case, SWIM blue
-#0072B2 = cover-scaled sigmoid, dark gray square = unscaled linear,
-medium gray triangle = unscaled sigmoid; identities survive grayscale via
+Reads nothing else.  Follows the shared visual system (plan section 3) as
+restyled to ~/code/style/FIGURE_STYLE_GUIDE.md (2026-08-27 revision):
+Arial, plain-weight fused sentence-case panel labels, 8 pt semibold
+facet headings, 8 pt axis titles, 7-7.5 pt ticks/legends, SWIM blue
+#0072B2 = cover-scaled sigmoid, black square = unscaled linear,
+vermillion triangle = unscaled sigmoid; identities survive grayscale via
 marker shape and line pattern.  Machine checks assert the frozen-package
 hashes, the manuscript-precision pooled values, the 43/45 and 27/31
 isolated-cover win counts, the absence of internal run labels, and the
@@ -40,6 +41,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from matplotlib import font_manager as fm  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[3]
@@ -53,60 +55,64 @@ MM = 1.0 / 25.4
 # shared visual system
 # ---------------------------------------------------------------------------
 
-C_TEXT = "#202124"
-C_MUTED = "#5F6368"
+C_TEXT = "#000000"
 C_RULE = "#B9BDC4"
 C_SUPPORT = "#C7CCD4"
 
 FORMS = ["cover_scaled_sigmoid", "unscaled_linear", "unscaled_sigmoid"]
+# Okabe-Ito blue for the retained form, black + vermillion for the two
+# rejected arms (guide sec. 7: data is saturated or black, never grey;
+# orange #E69F00 stays reserved for OpenET in Figs 1 and 3).
 STYLE = {
     "cover_scaled_sigmoid": dict(color="#0072B2", marker="o", ls="-"),
-    "unscaled_linear": dict(color="#3A3A3A", marker="s", ls=(0, (4, 2))),
-    "unscaled_sigmoid": dict(color="#8C8C8C", marker="^", ls=(0, (1.4, 1.6))),
+    "unscaled_linear": dict(color="#000000", marker="s", ls=(0, (4, 2))),
+    "unscaled_sigmoid": dict(color="#D55E00", marker="^", ls=(0, (1.4, 1.6))),
 }
 
-FS_PANEL = 10.0
-FS_HEAD = 8.5
-FS_AXIS = 8.0
-FS_TICK = 7.0
-FS_ANNO = 7.2
-FS_MIN = 7.0
+# guide sec. 3 (2026-08-27 16:27 revision) cross-venue working ladder:
+# titles and axis labels 7 pt, ticks/legend/annotations 6-7 pt
+FS_PANEL = 7.0  # fused panel labels "(a) ...", plain weight, sentence case
+FS_HEAD = 7.0
+FS_AXIS = 7.0
+FS_TICK = 6.5
+FS_ANNO = 6.5
+FS_MIN = 6.5
 
 FORBIDDEN_STRINGS = ("run22", "RunFAO56", "fao56_sig", "NSE", "|MBE|")
 
 FONT_DIRS = [
-    Path.home() / ".fonts" / "source-sans",
-    Path("/usr/share/fonts/opentype/source-sans"),
-    Path("/usr/share/fonts/truetype/source-sans"),
+    Path.home() / ".fonts" / "arial",
+    Path("/usr/share/fonts/truetype/msttcorefonts"),
 ]
 
 
 def register_typeface() -> None:
+    # Arial, the guide-named family (FIGURE_STYLE_GUIDE.md section 3)
     for d in FONT_DIRS:
         if d.is_dir():
-            for f in sorted(d.glob("SourceSans3-*.[ot]tf")):
+            for f in sorted(d.glob("[Aa]rial*.[TtOo][Tt][Ff]")):
                 fm.fontManager.addfont(str(f))
     names = {e.name for e in fm.fontManager.ttflist}
-    assert "Source Sans 3" in names, "Source Sans 3 did not register; refusing fallback"
+    assert "Arial" in names, "Arial did not register; refusing fallback"
     plt.rcParams.update(
         {
             "font.family": "sans-serif",
-            "font.sans-serif": ["Source Sans 3", "Arial", "DejaVu Sans"],
+            "font.sans-serif": ["Arial", "DejaVu Sans"],
             "mathtext.fontset": "custom",
-            "mathtext.rm": "Source Sans 3",
-            "mathtext.it": "Source Sans 3:italic",
-            "mathtext.bf": "Source Sans 3:bold",
-            "mathtext.cal": "Source Sans 3",
+            "mathtext.rm": "Arial",
+            "mathtext.it": "Arial:italic",
+            "mathtext.bf": "Arial:bold",
+            "mathtext.cal": "Arial",
             "pdf.fonttype": 42,
             "ps.fonttype": 42,
             "svg.fonttype": "none",
             "svg.hashsalt": STEM,
             "text.color": C_TEXT,
-            "axes.edgecolor": C_RULE,
+            "axes.edgecolor": "#50545A",
             "axes.labelcolor": C_TEXT,
             "xtick.color": C_TEXT,
             "ytick.color": C_TEXT,
-            "axes.unicode_minus": False,
+            "axes.unicode_minus": True,
         }
     )
 
@@ -208,7 +214,7 @@ C_SUBS = {
     "isolated_cover": "cover-scaled sigmoid − unscaled sigmoid",
     "whole_formulation": "cover-scaled sigmoid − unscaled linear",
 }
-C_UNIT = {"daily": "mm d⁻¹", "monthly": "mm month⁻¹"}
+C_UNIT = {"daily": "mm d$^{-1}$", "monthly": "mm month$^{-1}$"}
 C_ROW_NAME = {"daily": "Daily", "monthly": "Monthly"}
 
 
@@ -216,7 +222,7 @@ def draw_panel_a(fig, resp, supp, meta):
     ax = ax_mm(fig, A_X0, A_RESP_Y0, A_X1, A_RESP_Y1)
     grid = np.sort(resp["ndvi"].unique())
     band_max = 0.0
-    med_at_right = {}
+    end_val = {}
     for form in FORMS:
         sub = resp[resp["formulation"] == form].pivot(index="ndvi", columns="site_id", values="k_t")
         assert sub.shape == (101, 60), f"pivot shape for {form}"
@@ -227,7 +233,7 @@ def draw_panel_a(fig, resp, supp, meta):
         ax.fill_between(grid, q25, q75, color=st["color"], alpha=0.16, lw=0)
         ax.plot(grid, q50, color=st["color"], ls=st["ls"], lw=1.1)
         band_max = max(band_max, float(q75.max()))
-        med_at_right[form] = float(q50[-1])
+        end_val[form] = float(q50[-1])
     ymax = np.ceil(band_max * 10.0 + 0.5) / 10.0
     ax.set_xlim(0.0, 1.0)
     ax.set_ylim(0.0, ymax)
@@ -235,35 +241,44 @@ def draw_panel_a(fig, resp, supp, meta):
     ax.set_xticklabels([])
     ax.set_yticks(np.arange(0.0, ymax + 1e-9, 0.3))
     ax.set_ylabel("$K_T$ (dimensionless)", fontsize=FS_AXIS, labelpad=2.0)
-    ax.spines[["top", "right"]].set_visible(False)
 
-    # Direct labels at the right edge, nudged apart to a minimum separation.
-    mm_per_unit = (A_RESP_Y1 - A_RESP_Y0) / ymax
-    min_sep = 3.2 / mm_per_unit
-    order = sorted(FORMS, key=lambda f: med_at_right[f])
-    ys = [med_at_right[f] for f in order]
-    for i in range(1, len(ys)):
-        if ys[i] - ys[i - 1] < min_sep:
-            ys[i] = ys[i - 1] + min_sep
-    overshoot = ys[-1] + 0.5 * min_sep - ymax
-    if overshoot > 0:
-        ys = [y - overshoot for y in ys]
-    label_texts = []
-    for form, y in zip(order, ys):
-        t = ax.text(
-            0.985,
-            y,
-            LABELS[form],
-            fontsize=FS_ANNO,
-            color=STYLE[form]["color"],
-            ha="right",
-            va="bottom",
-            transform=ax.get_yaxis_transform(),
+    # One figure legend (FIGURE_STYLE_GUIDE §8): framed — square corners,
+    # 0.5 pt black rule, opaque white fill — because it sits inside the axes.
+    # The line + marker samples key the panel (a) curves and the panel (b)
+    # point markers together, in the empty interior upper-left, entered in
+    # the curves' stacking order at their right edge.
+    order = sorted(FORMS, key=lambda f: end_val[f], reverse=True)
+    handles = [
+        Line2D(
+            [],
+            [],
+            color=STYLE[f]["color"],
+            ls=STYLE[f]["ls"],
+            lw=1.1,
+            marker=STYLE[f]["marker"],
+            ms=3.4,
+            mew=0,
         )
-        label_texts.append((form, y))
-    for i in range(1, len(label_texts)):
-        gap_mm = (label_texts[i][1] - label_texts[i - 1][1]) * mm_per_unit
-        assert gap_mm >= 3.0, f"panel-a label collision: {gap_mm:.2f} mm"
+        for f in order
+    ]
+    leg = ax.legend(
+        handles,
+        [LABELS[f] for f in order],
+        loc="upper left",
+        frameon=True,
+        fancybox=False,
+        framealpha=1.0,
+        edgecolor="#000000",
+        facecolor="white",
+        fontsize=FS_TICK,
+        handlelength=2.4,
+        handletextpad=0.6,
+        labelspacing=0.55,
+        borderaxespad=0.35,
+    )
+    leg.get_frame().set_linewidth(0.5)
+    for t in leg.get_texts():
+        t.set_color(C_TEXT)
 
     # Site-equal observed-NDVI support strip on the shared axis.
     axs = ax_mm(fig, A_X0, A_SUPP_Y0, A_X1, A_SUPP_Y1)
@@ -280,15 +295,16 @@ def draw_panel_a(fig, resp, supp, meta):
     axs.set_yticks([])
     axs.set_xticks([0.0, 0.25, 0.5, 0.75, 1.0])
     axs.set_xlabel("NDVI", fontsize=FS_AXIS, labelpad=1.6)
-    axs.spines[["top", "right", "left"]].set_visible(False)
     n_obs = int(supp["n_obs"].sum())
     assert n_obs == meta["ndvi_support"]["n_obs_total"]
+    # the weighting scheme and observation counts are caption material
+    # (FIGURE_STYLE_GUIDE.md section 9: no methods text in figures)
     axs.text(
         0.015,
         0.86,
-        f"Observed NDVI, site-equal weight ({n_obs:,} obs, 60 sites)",
+        "Observed NDVI",
         fontsize=FS_ANNO,
-        color=C_MUTED,
+        color=C_TEXT,
         ha="left",
         va="top",
         transform=axs.transAxes,
@@ -314,7 +330,6 @@ def draw_panel_b(fig, pooled):
             ax.set_xlim(0.45, 3.95)
             ax.set_xticks([])
             ax.yaxis.set_major_locator(matplotlib.ticker.MaxNLocator(4))
-            ax.spines[["top", "right", "bottom"]].set_visible(False)
             for f in FORMS:
                 st = STYLE[f]
                 v = vals[f]["value"]
@@ -346,7 +361,7 @@ def draw_panel_b(fig, pooled):
                     1.015,
                     unit,
                     fontsize=FS_TICK,
-                    color=C_MUTED,
+                    color=C_TEXT,
                     ha="left",
                     va="bottom",
                     transform=ax.transAxes,
@@ -413,7 +428,6 @@ def draw_panel_c(fig, eff):
             ax.set_xlim(-span, span)
             ax.set_ylim(0.0, 1.0)
             ax.set_yticks([])
-            ax.spines[["top", "right", "left"]].set_visible(False)
             ax.text(
                 0.985,
                 0.94,
@@ -424,17 +438,12 @@ def draw_panel_c(fig, eff):
                 va="top",
                 transform=ax.transAxes,
             )
-            ax.set_xlabel(
-                f"ΔRMSE ({C_UNIT[scale]})",
-                fontsize=FS_AXIS,
-                labelpad=1.6,
-            )
             ax.text(
                 0.015,
                 0.94,
                 C_ROW_NAME[scale],
                 fontsize=FS_ANNO,
-                color=C_MUTED,
+                color=C_TEXT,
                 ha="left",
                 va="top",
                 transform=ax.transAxes,
@@ -454,38 +463,47 @@ def draw_panel_c(fig, eff):
                     49.9 / PAGE_H,
                     C_SUBS[comp],
                     fontsize=FS_ANNO,
-                    color=C_MUTED,
+                    color=C_TEXT,
                     ha="center",
                     va="bottom",
                 )
+        # One shared x title per row (§6/§16: identical axis titles are never
+        # repeated across a grid), centered on the two contrast columns.
+        fig.text(
+            (C_COL_X[0][0] + C_COL_X[1][1]) / 2.0 / PAGE_W,
+            (y0 - 3.5) / PAGE_H,
+            f"ΔRMSE ({C_UNIT[scale]})",
+            fontsize=FS_AXIS,
+            color=C_TEXT,
+            ha="center",
+            va="top",
+        )
 
 
 def draw_headers(fig, meta):
-    fig.text(0.5 / PAGE_W, 121.2 / PAGE_H, "(a)", fontsize=FS_PANEL, fontweight="bold")
-    fig.text(71.0 / PAGE_W, 121.2 / PAGE_H, "(b)", fontsize=FS_PANEL, fontweight="bold")
-    fig.text(0.5 / PAGE_W, 57.8 / PAGE_H, "(c)", fontsize=FS_PANEL, fontweight="bold")
+    # Elsevier panel labels: plain-weight "(a)" fused with a sentence-case
+    # identifier, one text object each (FIGURE_STYLE_GUIDE.md sections 4-5).
+    # The cohort counts and the reading direction of the RMSE effects are
+    # caption material, not in-figure text.
     fig.text(
-        6.5 / PAGE_W,
+        0.5 / PAGE_W,
         122.0 / PAGE_H,
-        "Fitted vegetation response",
-        fontsize=FS_HEAD,
-        fontweight="semibold",
+        "(a) Fitted vegetation response",
+        fontsize=FS_PANEL,
         va="bottom",
     )
     fig.text(
-        77.0 / PAGE_W,
+        71.0 / PAGE_W,
         122.0 / PAGE_H,
-        "Held-out ET agreement  ·  45 sites, 63,681 site-days, 1,435 monthly totals",
-        fontsize=FS_HEAD,
-        fontweight="semibold",
+        "(b) Held-out ET agreement",
+        fontsize=FS_PANEL,
         va="bottom",
     )
     fig.text(
-        6.5 / PAGE_W,
-        58.6 / PAGE_H,
-        "Paired site RMSE effects  ·  negative favours cover scaling",
-        fontsize=FS_HEAD,
-        fontweight="semibold",
+        0.5 / PAGE_W,
+        57.8 / PAGE_H,  # clears the NDVI xlabel above at Arial's wider set
+        "(c) Paired site RMSE effects",
+        fontsize=FS_PANEL,
         va="bottom",
     )
     mask = meta["evaluation_mask"]
@@ -507,6 +525,9 @@ def collect_texts(fig):
         items.append(ax.yaxis.label)
         for tick in ax.get_xticklabels() + ax.get_yticklabels():
             items.append(tick)
+        leg = ax.get_legend()
+        if leg is not None:
+            items.extend(leg.get_texts())
     return [t for t in items if t.get_text().strip()]
 
 
