@@ -7,8 +7,8 @@
 """Convert extracted per-scene ETF observations into ingest-ready annual CSVs.
 
 Reads the per-site-year ETF JSON files and writes annual CSVs matching the
-format expected by the container ingestor.  Output goes into the Landsat
-extracts tree so ``container_prep.py`` finds it when
+format expected by the container ingestor. Output goes into the Landsat
+extracts tree so the legacy SSEBop container builder finds it when
 ``etf_target_model = "ssebop"``.
 
 Output format:
