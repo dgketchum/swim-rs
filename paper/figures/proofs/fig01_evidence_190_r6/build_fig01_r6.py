@@ -1,7 +1,17 @@
 """Revision-6 recomposition of the r5 selected synthesis.
 
-Three structural changes against the byte-identical frozen data; every mark,
-colour, and datum otherwise inherits from `build_fig01_r5_selected.py`:
+2026-08-27 data swap: the frozen package moved to architecture 3.3.0 — the
+example record is now S2 (2018), Harney Basin irrigated alfalfa, under the
+user-directed override recorded in `fig03_example_selection.json` (8
+calibration captures; member ETf to 1.665). Render-level consequences here:
+the ETf, NDVI and forcing display domains re-derive from the new extrema,
+the NDVI and forcing marker keys move to stretches of the S2 record that are
+actually clear, and the E1 map gains a caption-keyed callout ring at the
+example site. Text rulings the same day: bare "(a)" panel label, one
+equal-weight "E0–E1 · CONUS" heading (both in `fig01_r6_common.py`).
+
+Three structural changes against the frozen data; every mark, colour, and
+datum otherwise inherits from `build_fig01_r5_selected.py`:
 
 1.  CYCLE DIAGRAM MOVED TO THE SUPPLEMENT. The circular Run/Compare/Update
     inverse-estimation ring, its ETf + SWE constraint box, and the two
@@ -51,11 +61,9 @@ from fig01_r6_common import (
     C_TARGET,
     C_TEXT,
     FS_PANEL,
-    FS_PANEL_HEAD,
     FS_ROW,
     FS_TICK,
     H_MM,
-    HALO,
     LW_AXIS,
     LW_DATA,
     LW_DATUM,
@@ -68,6 +76,7 @@ from fig01_r6_common import (
     ticktext,
 )
 from matplotlib.lines import Line2D
+from matplotlib.patches import Rectangle
 
 STUDY = "fig01_r6"
 
@@ -97,31 +106,36 @@ ROWS: dict[str, tuple[float, float]] = {  # r5 bands shifted down 40.8 mm
     "et_comparison": (10.2, 18.0),
 }
 ROW_LABEL = {
-    "etf_ensemble": ("ETf", "Ensemble"),
-    "ndvi_captures": ("NDVI", "Captures"),
-    "daily_forcing": ("Daily", "Forcing"),
-    "rz_depletion": ("Root-Zone", "Depletion"),
+    "etf_ensemble": ("ETf", "ensemble"),
+    "ndvi_captures": ("NDVI", "captures"),
+    "daily_forcing": ("Daily", "forcing"),
+    "rz_depletion": ("Root-zone", "depletion"),
     "irrigation": ("Irrigation",),
     "et_comparison": ("Daily ET",),
 }
 UNITS = {
-    "daily_forcing": "mm d⁻¹",
-    "rz_depletion": "mm",
-    "irrigation": "mm",
-    "et_comparison": "mm d⁻¹",
+    "daily_forcing": "(mm d$^{-1}$)",
+    "rz_depletion": "(mm)",
+    "irrigation": "(mm)",
+    "et_comparison": "(mm d$^{-1}$)",
 }
+# Render domains re-derived 2026-08-27 for the S2 record (member ETf max
+# 1.665, NDVI max 0.94, forcing max 8.1): the ETf and forcing rows follow the
+# recorded contract domains (0-1.8 / 0-10) widened only where the Sec. 5.2
+# headroom guard (>= 5% and >= 0.55 mm) requires it; the NDVI ceiling carries
+# render headroom above 1.0 (unlabelled -- ticks stop at 1.0).
 DOMAIN = {
-    "etf_ensemble": (0.0, 1.6),
-    "ndvi_captures": (0.2, 1.0),
-    "daily_forcing": (0.0, 18.0),
+    "etf_ensemble": (0.0, 2.0),
+    "ndvi_captures": (0.2, 1.1),
+    "daily_forcing": (0.0, 10.0),
     "rz_depletion": (0.0, 18.0),
     "irrigation": (0.0, 25.0),
     "et_comparison": (0.0, 12.0),
 }
 TICKS = {
-    "etf_ensemble": [(0.0, "0.0"), (1.6, "1.6")],
+    "etf_ensemble": [(0.0, "0.0"), (2.0, "2.0")],
     "ndvi_captures": [(0.2, "0.2"), (1.0, "1.0")],
-    "daily_forcing": [(0.0, "0"), (18.0, "18")],
+    "daily_forcing": [(0.0, "0"), (10.0, "10")],
     "rz_depletion": [(0.0, "0"), (9.0, "9"), (18.0, "18")],
     "irrigation": [(0.0, "0"), (25.0, "25")],
     "et_comparison": [(0.0, "0"), (6.0, "6"), (12.0, "12")],
@@ -164,25 +178,16 @@ def main() -> None:
     ts, cap, day, cap_day = F.ts, F.cap, F.day, F.cap_day
     AXIS: dict[str, dict] = {}
 
+    # Elsevier panel label: plain-weight "(b)" fused with a sentence-case
+    # identifier, one text object (FIGURE_STYLE_GUIDE.md sections 4-5)
     mmtext(
         ov,
         MARGIN_MM,
         B_TS_HEAD_Y,
-        "(b)",
+        "(b) Sparse satellite constraints to daily state",
         cls="title",
         pt=FS_PANEL,
-        weight="bold",
-        gid="label-panel-b-letter",
-    )
-    mmtext(
-        ov,
-        MARGIN_MM + 5.8,
-        B_TS_HEAD_Y,
-        "Sparse Satellite Constraints to Daily State",
-        cls="title",
-        pt=FS_PANEL_HEAD,
-        weight="semibold",
-        gid="label-panel-b-heading",
+        gid="label-panel-b-title",
     )
     mmtext(
         ov,
@@ -266,6 +271,22 @@ def main() -> None:
             )
         )
 
+    def key_frame(x0, y0, x1, y1, gid):
+        # guide sec. 8 framed key: 0.5 pt black rule, square corners, opaque
+        # white fill; the fill knocks out data, guides, and datums beneath it
+        r = Rectangle(
+            (x0, y0),
+            x1 - x0,
+            y1 - y0,
+            facecolor="white",
+            edgecolor="#000000",
+            linewidth=0.5,
+            joinstyle="miter",
+            zorder=5,
+        )
+        ov.add_patch(tag(r, gid))
+        return r
+
     def record_axis(rid, arrays, n_traces=1, shares=False):
         flat = np.concatenate([np.asarray(a, float).ravel() for a in arrays])
         flat = flat[np.isfinite(flat)]
@@ -321,10 +342,15 @@ def main() -> None:
     record_axis(rid, [mem])
     assert int(ok.sum()) == int(cap["etf_member_count"].sum())
 
-    # unboxed marker key (RSE convention: glyph + near-black definitional label,
-    # no box) in the empty pre-capture corner — first capture is day 26. The
+    # framed marker key (guide sec. 8: framed by default inside the axes —
+    # 0.5 pt black rule, square corners, opaque white fill) in the empty
+    # pre-capture corner — S2's first capture is day 22 (x 54.0). The
     # whisker-with-dots glyph defines members and their min-max span together.
     kgx, klx = 24.6, 26.4
+    etf_key_right = (
+        klx + max(text_w_mm("Ensemble mean", FS_ROW), text_w_mm("Members", FS_ROW)) + 1.2
+    )
+    key_frame(23.2, 60.0, etf_key_right, 66.0, "key-frame-etf")
     tag(
         ov.plot(
             [kgx],
@@ -349,19 +375,18 @@ def main() -> None:
         color=C_TEXT,
         ha="left",
         va="center",
-        bbox=HALO,
         gid="label-key-etf-mean",
     )
     ov.add_line(
         tag(
-            Line2D([kgx, kgx], [60.5, 62.7], color=C_MINMAX, lw=0.9, zorder=5),
+            Line2D([kgx, kgx], [60.8, 63.0], color=C_MINMAX, lw=0.9, zorder=6),
             "key-etf-range-glyph",
         )
     )
     tag(
         ov.plot(
             [kgx, kgx],
-            [61.0, 62.2],
+            [61.3, 62.5],
             ls="none",
             marker="o",
             ms=MEMBER_MS,
@@ -375,23 +400,21 @@ def main() -> None:
     mmtext(
         ov,
         klx,
-        61.6,
+        61.9,
         "Members",
         cls="direct_label",
         pt=FS_ROW,
         color=C_TEXT,
         ha="left",
         va="center",
-        bbox=HALO,
         gid="label-key-etf-members",
     )
-    etf_key_right = klx + max(text_w_mm("Ensemble mean", FS_ROW), text_w_mm("Members", FS_ROW))
     first_cap_x = float(xmm(cap_day.min()))
-    assert etf_key_right + 2.0 <= first_cap_x, (
+    assert etf_key_right + 1.5 <= first_cap_x, (
         f"the ETf marker key ({etf_key_right:.2f} mm) crowds the first capture ({first_cap_x:.2f} mm)"
     )
     y0, y1 = ROWS[rid]
-    assert y0 <= 60.5 and 64.6 + 1.1 <= y1, "the ETf marker key leaves its row band"
+    assert y0 <= 60.0 and 66.0 <= y1, "the ETf key frame leaves its row band"
 
     rid = "ndvi_captures"
     ax = row_axes(rid)
@@ -430,11 +453,16 @@ def main() -> None:
         rid, [ts["ndvi_landsat_raw"].to_numpy()[mL], ts["ndvi_sentinel_raw"].to_numpy()[mS]]
     )
 
-    # unboxed marker key in the clear lower-left corner (the day-19 Sentinel-2
-    # capture sits at the top of the band; nearest low mark is day 26).
+    # framed marker key, shifted right of r5's corner slot: S2 opens with a
+    # day-1 Sentinel-2 capture at x 25.7 (NDVI 0.335, low in the band), so the
+    # frame starts at x 27.0 and the next mark is day 16 (x 45.9).
+    nkgx, nklx = kgx + 3.8, klx + 3.8
+    ndvi_key_right = nklx + max(text_w_mm("Landsat", FS_ROW), text_w_mm("Sentinel-2", FS_ROW)) + 1.2
+    ndvi_frame = (27.0, 50.6, ndvi_key_right, 56.0)
+    key_frame(*ndvi_frame, "key-frame-ndvi")
     tag(
         ov.plot(
-            [kgx],
+            [nkgx],
             [54.6],
             ls="none",
             marker="o",
@@ -448,7 +476,7 @@ def main() -> None:
     )
     mmtext(
         ov,
-        klx,
+        nklx,
         54.6,
         "Landsat",
         cls="direct_label",
@@ -456,12 +484,11 @@ def main() -> None:
         color=C_TEXT,
         ha="left",
         va="center",
-        bbox=HALO,
         gid="label-key-ndvi-landsat",
     )
     tag(
         ov.plot(
-            [kgx],
+            [nkgx],
             [52.0],
             ls="none",
             marker="s",
@@ -475,7 +502,7 @@ def main() -> None:
     )
     mmtext(
         ov,
-        klx,
+        nklx,
         52.0,
         "Sentinel-2",
         cls="direct_label",
@@ -483,17 +510,25 @@ def main() -> None:
         color=C_TEXT,
         ha="left",
         va="center",
-        bbox=HALO,
         gid="label-key-ndvi-sentinel",
     )
-    ndvi_key_right = klx + max(text_w_mm("Landsat", FS_ROW), text_w_mm("Sentinel-2", FS_ROW))
-    first_low_ndvi_x = float(xmm(day[mL].min()))
-    assert ndvi_key_right + 2.0 <= first_low_ndvi_x, (
-        f"the NDVI marker key ({ndvi_key_right:.2f} mm) crowds the first low capture "
-        f"({first_low_ndvi_x:.2f} mm)"
-    )
+    # the opaque frame must not knock out any NDVI mark: check every capture
+    # of both sensors against the frame rectangle plus a 0.5 mm mark radius
+    d0, d1 = DOMAIN[rid]
     y0, y1 = ROWS[rid]
-    assert y0 <= 52.0 - 1.1 and 54.6 + 1.1 <= y1, "the NDVI marker key leaves its row band"
+    for msk, col in ((mL, "ndvi_landsat_raw"), (mS, "ndvi_sentinel_raw")):
+        for dx, v in zip(day[msk], ts[col].to_numpy()[msk], strict=True):
+            px = float(xmm(dx))
+            py = y0 + (v - d0) / (d1 - d0) * (y1 - y0)
+            inside = (
+                ndvi_frame[0] - 0.5 <= px <= ndvi_frame[2] + 0.5
+                and ndvi_frame[1] - 0.5 <= py <= ndvi_frame[3] + 0.5
+            )
+            assert not inside, (
+                f"the NDVI key frame knocks out a {col} mark at day {dx:.0f} "
+                f"({px:.1f}, {py:.1f} mm)"
+            )
+    assert y0 <= 50.6 and 56.0 <= y1, "the NDVI key frame leaves its row band"
 
     rid = "daily_forcing"
     ax = row_axes(rid)
@@ -506,32 +541,66 @@ def main() -> None:
     tag(ax.plot(day, eto, color=C_ETO, lw=0.8, zorder=4)[0], "marks-forcing-eto")
     row_frame(rid)
     record_axis(rid, [pr, eto])
-    mmtext(
-        ov,
-        xmm(12.0),
-        ROWS[rid][1] - 1.2,
-        "precipitation",
-        cls="direct_label",
-        pt=FS_ROW,
-        color="#46545F",
-        ha="left",
-        va="center",
-        bbox=HALO,
-        gid="label-precipitation",
+    # one framed key for both forcing series (guide sec. 8): identity is
+    # never carried by colored text; the opaque frame fill replaces the old
+    # white knockout underlays. S2's clear stretch in the upper band (no
+    # series reaches the key bottom, value 5.0 mm/d) runs x 24.3-56.7, so
+    # the key moves left from r5's x 51.0 slot.
+    fk_y = 45.6
+    fk_x0 = 25.0
+    pgx = fk_x0 + 1.6
+    ov.add_line(
+        tag(
+            Line2D([pgx, pgx], [fk_y - 0.85, fk_y + 0.85], color=C_PRECIP, lw=1.5, zorder=6),
+            "key-forcing-precip-glyph",
+        )
     )
     mmtext(
         ov,
-        xmm(96.0),
-        ROWS[rid][0] + 3.6,
+        pgx + 1.4,
+        fk_y,
+        "Precipitation",
+        cls="direct_label",
+        pt=FS_ROW,
+        color=C_TEXT,
+        ha="left",
+        va="center",
+        gid="label-precipitation",
+    )
+    egx = pgx + 1.4 + text_w_mm("Precipitation", FS_ROW) + 3.5
+    ov.add_line(
+        tag(
+            Line2D([egx, egx + 2.4], [fk_y, fk_y], color=C_ETO, lw=0.8, zorder=6),
+            "key-forcing-eto-glyph",
+        )
+    )
+    mmtext(
+        ov,
+        egx + 3.6,
+        fk_y,
         "ETo",
         cls="direct_label",
         pt=FS_ROW,
-        color=C_ETO,
+        color=C_TEXT,
         ha="left",
         va="center",
-        bbox=HALO,
         gid="label-eto",
     )
+    fk_x1 = egx + 3.6 + text_w_mm("ETo", FS_ROW) + 1.4
+    key_frame(fk_x0, 44.1, fk_x1, 47.1, "key-frame-forcing")
+    y0, y1 = ROWS[rid]
+    assert y0 <= 44.1 and 47.1 <= y1, "the forcing key frame leaves its row band"
+    # no forcing ink may reach the opaque frame: the key bottom (y 44.1) maps
+    # to 5.0 mm/d, so any day whose precip or ETo reaches that value must sit
+    # clear of the frame's x-extent
+    d0f, d1f = DOMAIN[rid]
+    key_bottom_val = d0f + (44.1 - y0) / (y1 - y0) * (d1f - d0f)
+    tall = np.maximum(pr, eto) >= key_bottom_val
+    for dx in day[tall]:
+        px = float(xmm(dx))
+        assert not (fk_x0 - 0.8 <= px <= fk_x1 + 0.8), (
+            f"the forcing key frame knocks out ink at day {dx:.0f} (x {px:.1f} mm)"
+        )
 
     rid = "rz_depletion"
     ax = row_axes(rid)
@@ -562,39 +631,63 @@ def main() -> None:
     tag(ax.plot(day, swim, color=C_SWIM, lw=1.1, zorder=5, clip_on=False)[0], "marks-daily-et")
     row_frame(rid)
     record_axis(rid, [swim, flux], n_traces=2, shares=True)
+    # one framed key for both ET series (guide sec. 8), in the low-ET
+    # early-season corner at the top of the band
+    sk_y = 16.5
+    sk_x0 = 23.5
+    sgx = sk_x0 + 1.4
+    ov.add_line(
+        tag(
+            Line2D([sgx, sgx + 2.4], [sk_y, sk_y], color=C_SWIM, lw=1.1, zorder=6),
+            "key-et-simulated-glyph",
+        )
+    )
     mmtext(
         ov,
-        xmm(20.0),
-        ROWS[rid][1] - 1.2,
+        sgx + 3.6,
+        sk_y,
         "Simulated",
         cls="direct_label",
         pt=FS_ROW,
-        color=C_SWIM,
+        color=C_TEXT,
         ha="left",
         va="center",
-        bbox=HALO,
         gid="label-lane-daily-et",
     )
-    flux_x = xmm(60.0)
+    fgx = sgx + 3.6 + text_w_mm("Simulated", FS_ROW) + 3.5
+    ov.add_line(
+        tag(
+            Line2D([fgx, fgx + 2.4], [sk_y, sk_y], color=C_HELD, lw=0.6, zorder=6),
+            "key-et-flux-glyph",
+        )
+    )
     mmtext(
         ov,
-        flux_x,
-        ROWS[rid][0] + 1.3,
-        "Flux ET (Held Out)",
+        fgx + 3.6,
+        sk_y,
+        "Flux ET (held out)",
         cls="direct_label",
         pt=FS_ROW,
-        color=C_HELD,
+        color=C_TEXT,
         ha="left",
         va="center",
-        bbox=HALO,
         gid="label-lane-flux-et",
     )
-    FLUX_INK = (
-        flux_x,
-        ROWS[rid][0] + 1.3 - 1.3,
-        flux_x + text_w_mm("Flux ET (Held Out)", FS_ROW),
-        ROWS[rid][0] + 1.3 + 1.3,
-    )
+    sk_x1 = fgx + 3.6 + text_w_mm("Flux ET (held out)", FS_ROW) + 1.4
+    key_frame(sk_x0, 15.05, sk_x1, 17.95, "key-frame-et")
+    y0, y1 = ROWS[rid]
+    assert y0 <= 15.05 and 17.95 <= y1, "the ET key frame leaves its row band"
+    # same no-knockout guard as the forcing key: the key bottom (y 15.05)
+    # maps to 7.46 mm/d on the shared ET scale
+    d0e, d1e = DOMAIN[rid]
+    et_bottom_val = d0e + (15.05 - y0) / (y1 - y0) * (d1e - d0e)
+    tall_et = np.maximum(swim, flux) >= et_bottom_val
+    for dx in day[tall_et]:
+        px = float(xmm(dx))
+        assert not (sk_x0 - 0.8 <= px <= sk_x1 + 0.8), (
+            f"the ET key frame knocks out ink at day {dx:.0f} (x {px:.1f} mm)"
+        )
+    FLUX_INK = (sk_x0, 15.05, sk_x1, 17.95)
 
     # ---- shared date axis ----
     ln = Line2D([PA_X0, PA_X1], [DATE_SPINE_Y, DATE_SPINE_Y], color=C_AXIS, lw=LW_AXIS, zorder=6)
@@ -654,6 +747,9 @@ def main() -> None:
     assert "e3_route_vertices_mm" in pb, "the orthogonal E1->E3 route was not drawn"
     assert "e3_basemap" in pb, "the E3 basemap was not drawn"
     assert "e1_e3_locator_epsg5070" in pb, "the E3 locator was not drawn on the E1 map"
+    assert pb["e1_example_callout"]["site_id"] == F.arch["example_record"]["site_id"], (
+        "the E1 example callout does not ring the frozen example site"
+    )
 
     # the cycle-architecture contract now lives with the supplement figure
     # (build_figS_inverse_cycle.py); this page carries the axis contract only
@@ -680,11 +776,25 @@ def main() -> None:
         "e3_key_x_mm": K.E3_KEY_X,
         "e3_key_baselines_mm": list(K.E3_KEY_LINES),
         "panel_b_marker_keys": {
-            "style": "unboxed glyph + near-black label (RSE convention)",
-            "glyph_x_mm": 24.6,
-            "label_x_mm": 26.4,
-            "etf_ensemble": {"Ensemble mean": 64.6, "Members": 61.6},
-            "ndvi_captures": {"Landsat": 54.6, "Sentinel-2": 52.0},
+            "style": "framed key per row: 0.5 pt black rule, square corners, opaque white fill",
+            "etf_ensemble": {
+                "glyph_x_mm": 24.6,
+                "label_x_mm": 26.4,
+                "Ensemble mean": 64.6,
+                "Members": 61.9,
+            },
+            "ndvi_captures": {
+                "glyph_x_mm": round(nkgx, 2),
+                "label_x_mm": round(nklx, 2),
+                "Landsat": 54.6,
+                "Sentinel-2": 52.0,
+                "note": "shifted right of r5's slot to clear S2's day-1 Sentinel-2 capture",
+            },
+            "daily_forcing": (
+                f"one framed Precipitation / ETo key at y 44.1-47.1, x {fk_x0}-"
+                f"{round(fk_x1, 1)} (S2's clear stretch; moved from r5's x 51.0)"
+            ),
+            "et_comparison": "one framed Simulated / Flux ET (held out) key at y 15.05-17.95, x from 23.5",
         },
     }
     meas = {

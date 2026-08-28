@@ -49,7 +49,7 @@ clipping and semantic edges -- they cannot certify composition):
 * the E3 key carries no data-like meter mark;
 * the E3 transfer path branches at the irrigated E1 token, not at E2;
 * no metric, member name, run label or `Held-Out Evaluation` heading is drawn;
-* Source Sans 3 resolves (a DejaVu fallback aborts) and nothing is below 7.5 pt.
+* Arial resolves (a DejaVu fallback aborts) and nothing is below 7.5 pt.
 
 Dropped deliberately for revision 5: exact string parity, region-count, and
 tick-count assertions. Gate A is a human visual decision.
@@ -85,21 +85,22 @@ MM = 1.0 / 25.4
 W_MM, H_MM = 190.0, 120.0
 MARGIN_MM = 3.0
 
-FS_PANEL = 10.5  # panel labels (a) / (b), bold
-FS_PANEL_HEAD = 9.0  # panel headings, semibold title case
-FS_STRUCT = 8.5  # map headings and structural labels, semibold
-FS_LABEL = 8.0  # direct labels on data
-FS_ROW = 7.5  # row labels, units, stage labels
-FS_TICK = 7.5  # tick numerals -- hard floor
-FS_MIN = 7.5
+# guide sec. 3 (2026-08-27 16:27 revision) cross-venue working ladder:
+# titles 7 pt, ticks/keys/labels 6-7 pt (Elsevier floor 6 pt)
+FS_PANEL = 7.0  # fused panel labels "(a) ...", plain weight, sentence case
+FS_STRUCT = 7.0  # map headings and structural labels
+FS_LABEL = 7.0  # direct labels on data
+FS_ROW = 6.5  # row labels, units, stage labels, key entries
+FS_TICK = 6.5  # tick numerals -- hard floor
+FS_MIN = 6.5
 
 C_TARGET = "#E69F00"  # satellite ET target
 C_SWIM = "#0072B2"  # SWIM-RS state and output
 C_INV = "#7B3294"  # inverse-estimation cycle
-C_HELD = "#202124"  # held-out observations
+C_HELD = "#000000"  # held-out observations
 C_E1, C_E2, C_E3 = "#4477AA", "#228833", "#AA3377"
 
-C_TEXT = "#202124"  # near-black: ALL reader-facing text
+C_TEXT = "#000000"  # full black: ALL reader-facing text (guide sec. 7)
 C_AXIS = "#9A9DA1"  # y-spines, tick stubs, date spine
 C_DATUM = "#C9CBCD"  # per-row lower-bound datum
 C_GUIDE = "#E2E4E6"  # shared April-July month guides
@@ -297,35 +298,40 @@ def glyphtext(
 
 
 FONT_DIRS = [
-    Path.home() / ".fonts" / "source-sans",
-    Path("/usr/share/fonts/opentype/source-sans"),
-    Path("/usr/share/fonts/truetype/source-sans"),
+    Path.home() / ".fonts" / "arial",
+    Path("/usr/share/fonts/truetype/msttcorefonts"),
 ]
 
 
 def register_typeface(salt: str) -> tuple[str, list[str]]:
+    # Arial, the guide-named family (FIGURE_STYLE_GUIDE.md section 3)
     faces: list[str] = []
     for d in FONT_DIRS:
         if d.is_dir():
-            for f in sorted(d.glob("SourceSans3-*.[ot]tf")):
+            for f in sorted(d.glob("[Aa]rial*.[TtOo][Tt][Ff]")):
                 fm.fontManager.addfont(str(f))
                 faces.append(f.name)
     names = {e.name for e in fm.fontManager.ttflist}
-    family = "Source Sans 3" if "Source Sans 3" in names else "DejaVu Sans"
+    family = "Arial" if "Arial" in names else "DejaVu Sans"
     plt.rcParams.update(
         {
             "font.family": "sans-serif",
-            "font.sans-serif": [family, "Arial", "Helvetica", "DejaVu Sans"],
+            "font.sans-serif": [family, "DejaVu Sans"],
+            "mathtext.fontset": "custom",  # real superscripts in the unit
+            "mathtext.rm": "Arial",  # lines; Arial has no U+207B glyph
+            "mathtext.it": "Arial:italic",
+            "mathtext.bf": "Arial:bold",
+            "mathtext.cal": "Arial",
             "pdf.fonttype": 42,
             "ps.fonttype": 42,
             "svg.fonttype": "none",  # Sec. 15.2: the SVG must stay editable
             "svg.hashsalt": salt,
             "text.color": C_TEXT,
-            "axes.unicode_minus": False,
+            "axes.unicode_minus": True,
         }
     )
-    assert family == "Source Sans 3", (
-        f"Source Sans 3 did not register (resolved {family!r}); refusing to "
+    assert family == "Arial", (
+        f"Arial did not register (resolved {family!r}); refusing to "
         "render Figure 1 in a fallback face"
     )
     return family, faces
@@ -443,19 +449,24 @@ class Frozen:
         self.arch_sha = hashlib.sha256(ARCH_PATH.read_bytes()).hexdigest()
         self.csv_sha = hashlib.sha256(TS_PATH.read_bytes()).hexdigest()
         assert self.csv_sha == (
-            "7e8307c2c43b3991651660adaf60f0bbba7179a4f6e5a0a694fc8de9beb2f3da"
-        ), "the frozen example record changed; revision 5 is presentation-only"
+            "ace787f1d7f41a688dcfacb58d65650af12309a245d5335211f63690ef48e251"
+        ), (
+            "the frozen example record changed; this build pins the 2026-08-27 "
+            "S2 record (architecture 3.3.0 directed-site override)"
+        )
 
         rec = self.arch["example_record"]
-        self.record_label = "US-Bi1 (2017)"
+        self.record_label = "S2 (2018)"
         assert rec["record_label"] == self.record_label
+        # architecture 3.3.0 records the identification in full black, per the
+        # 2026-08-27 style guide (strictly satisfies the never-muted-gray intent)
         assert rec["record_label_color"] == C_TEXT
         assert rec["record_label_rendered_as_muted_gray"] is False
 
         ts = pd.read_csv(TS_PATH, parse_dates=["date"])
         assert len(ts) == 120, f"expected 120 daily rows, found {len(ts)}"
         cap = ts[ts["is_calibration_capture"]].copy()
-        assert len(cap) == 15, f"expected 15 calibration captures, found {len(cap)}"
+        assert len(cap) == 8, f"expected 8 calibration captures, found {len(cap)}"
         assert ts["site_id"].nunique() == 1 and ts["site_id"].iloc[0] == rec["site_id"]
         win = rec["window"]
         assert str(ts["date"].min().date()) == win[0]
@@ -643,6 +654,8 @@ def draw_panel_b(
         lat_half = lat_span / 2.0
         e2f = E2_FRAME
 
+    # Bare "(a)" panel label (user ruling 2026-08-27): the three map headings
+    # carry the identification, so a descriptive title here duplicated them
     mmtext(
         ov,
         MARGIN_MM,
@@ -650,18 +663,7 @@ def draw_panel_b(
         "(a)",
         cls="title",
         pt=FS_PANEL,
-        weight="bold",
-        gid="label-panel-a-letter",
-    )
-    mmtext(
-        ov,
-        MARGIN_MM + 5.8,
-        B_HEAD_Y,
-        "E1 Source Cohort and Parallel Transfer",
-        cls="title",
-        pt=FS_PANEL_HEAD,
-        weight="semibold",
-        gid="label-panel-a-heading",
+        gid="label-panel-a-title",
     )
 
     def mapax(fr, gid):
@@ -677,7 +679,7 @@ def draw_panel_b(
         return ax
 
     def maphead(fr, heading, count):
-        mmtext(ov, fr[0], MAP_HEAD_Y, heading, cls="title", pt=FS_STRUCT, weight="semibold")
+        mmtext(ov, fr[0], MAP_HEAD_Y, heading, cls="title", pt=FS_STRUCT)
         mmtext(ov, fr[0], MAP_COUNT_Y, count, cls="direct_label", pt=FS_ROW)
 
     def halo_pass(ax, x, y, size, marker, gid):
@@ -741,6 +743,31 @@ def draw_panel_b(
     e1_a = e1_a.assign(_x=e1_a.geometry.x, _y=e1_a.geometry.y)
     n1t, n1c = sites(ax_e1, e1_a, C_E1, "_x", "_y", "e1-sites")
     assert (n1t, n1c) == (39, 21), (n1t, n1c)
+
+    # Callout ring around the panel (b) example site (user ruling 2026-08-27):
+    # an open black ring over the site's own class marker, keyed to the record
+    # label by the caption. No text is added to the map.
+    ex_id = F.arch["example_record"]["site_id"]
+    ex = e1_a[e1_a["display_id"] == ex_id]
+    assert len(ex) == 1, f"example site {ex_id!r} not uniquely in the E1 scope layer"
+    tag(
+        ax_e1.scatter(
+            ex["_x"],
+            ex["_y"],
+            s=42,
+            marker="o",
+            facecolor="none",
+            edgecolor=C_TEXT,
+            linewidths=0.7,
+            zorder=6,
+        ),
+        "e1-example-callout",
+    )
+    out["e1_example_callout"] = {
+        "site_id": ex_id,
+        "irrigation_class": str(ex["irrigation_class"].iloc[0]),
+        "treatment": "open ring over the class marker; caption-defined, no map text",
+    }
     if e1_e3_locator:
         slv_ext = fit_extent(
             F.slv.to_crs(CRS_ALBERS).total_bounds, E3_FRAME[2], E3_FRAME[3], pad_frac=0.05
@@ -757,11 +784,10 @@ def draw_panel_b(
         ax_e1.add_patch(loc)
         tag(loc, "locator-e3-in-e1")
         out["e1_e3_locator_epsg5070"] = [round(v, 1) for v in slv_ext]
-    maphead(E1_FRAME, "E1 · CONUS", "60 Cropland Sites")
-
-    e0_x = E1_FRAME[0] + text_w_mm("E1 · CONUS", FS_STRUCT, "semibold") + 3.0
-    mmtext(ov, e0_x, MAP_HEAD_Y, "E0 · Model-Form Selection", cls="direct_label", pt=FS_ROW)
-    assert e0_x + text_w_mm("E0 · Model-Form Selection", FS_ROW) < e2f[0] - 2.0
+    # One heading at equal weight, E0 first (user ruling 2026-08-27): E0 and
+    # E1 share this cohort and map, so neither gets a smaller side label
+    maphead(E1_FRAME, "E0–E1 · CONUS", "60 cropland sites")
+    assert E1_FRAME[0] + text_w_mm("E0–E1 · CONUS", FS_STRUCT) < e2f[0] - 2.0
 
     # ------------------------------ E2 ------------------------------
     ax_e2 = mapax(e2f, "map-e2-axes")
@@ -778,7 +804,7 @@ def draw_panel_b(
     n2t, n2c = sites(ax_e2, e2, C_E2, "_x", "_y", "e2-sites")
     assert (n2t, n2c) == (13, 53), (n2t, n2c)
     assert e2["country"].nunique() == 10 and e2["continent"].nunique() == 4
-    maphead(e2f, "E2 · 10 Countries", "66 Cropland Sites")
+    maphead(e2f, "E2 · 10 countries", "66 cropland sites")
 
     # ------------------------------ E3 ------------------------------
     ax_e3 = mapax(E3_FRAME, "map-e3-axes")
@@ -829,14 +855,14 @@ def draw_panel_b(
     ax_e3.set_ylim(ext3[1], ext3[3])
     halo_pass(ax_e3, e3_a.geometry.x, e3_a.geometry.y, MS_TRI, "^", "halo-e3-fields")
     fill_pass(ax_e3, e3_a.geometry.x, e3_a.geometry.y, MS_TRI, "^", C_E3, "marks-e3-fields")
-    maphead(E3_FRAME, "E3 · San Luis Valley", "50 Metered Fields")
+    maphead(E3_FRAME, "E3 · San Luis Valley", "50 metered fields")
 
     # ------------------- E3 aggregation key, ADJACENT to E3 -------------------
     # Sec. 5.4.2 wording, without the '· E3' suffix now that it sits at E3.
     # Typographic and schematic: no data-like meter mark, and nothing from the
-    # US-Bi1 applied-water series reaches it.
+    # example-site applied-water series reaches it.
     ky = E3_KEY_LINES
-    mmtext(ov, E3_KEY_X, ky[0], "Daily Gross Applied Water", cls="direct_label", pt=FS_ROW)
+    mmtext(ov, E3_KEY_X, ky[0], "Daily gross applied water", cls="direct_label", pt=FS_ROW)
     ind = 2.6
     polyline(
         ov,
@@ -847,23 +873,23 @@ def draw_panel_b(
         zorder=7,
         rid="e3-key-aggregation",
     )
-    mmtext(ov, E3_KEY_X + ind + 1.2, ky[1], "Annual Total", cls="direct_label", pt=FS_ROW)
+    mmtext(ov, E3_KEY_X + ind + 1.2, ky[1], "Annual total", cls="direct_label", pt=FS_ROW)
     glyphtext(ov, E3_KEY_X + 0.2, ky[2], "—", pt=FS_ROW, gid="glyph-e3-key-relation")
     mmtext(
         ov,
         E3_KEY_X + ind + 1.2,
         ky[2],
-        "Metered Water",
+        "Metered water",
         cls="direct_label",
         pt=FS_ROW,
         color=C_HELD,
     )
-    kw_max = max(text_w_mm(s, FS_ROW) for s in ("Daily Gross Applied Water",))
+    kw_max = max(text_w_mm(s, FS_ROW) for s in ("Daily gross applied water",))
     assert E3_KEY_X + kw_max < W_MM - MARGIN_MM + 0.5, (
         f"the E3 key overruns the right margin ({E3_KEY_X + kw_max:.2f} mm)"
     )
     assert E3_KEY_LINES[-1] - 0.6 >= MARGIN_MM - 0.7, "the E3 key drops below the margin"
-    meter_w = text_w_mm("Metered Water", FS_ROW)
+    meter_w = text_w_mm("Metered water", FS_ROW)
     out["meter_ink"] = (
         E3_KEY_X + ind + 1.2,
         ky[2] - 0.6,
@@ -873,8 +899,8 @@ def draw_panel_b(
 
     # --------------------- class-specific parameter relay ---------------------
     for y, label, marker, rid in (
-        (PATH_IRRIG_Y, "Irrigated Parameters", "^", "irrigated-params-to-e2"),
-        (PATH_RAINFED_Y, "Rainfed Parameters", "o", "rainfed-params-to-e2"),
+        (PATH_IRRIG_Y, "Irrigated parameters", "^", "irrigated-params-to-e2"),
+        (PATH_RAINFED_Y, "Rainfed parameters", "o", "rainfed-params-to-e2"),
     ):
         ov.add_line(Line2D([TOKEN_X0, FORK_X - 1.6], [y, y], color=C_E1, lw=0.7, zorder=5))
         tag(
@@ -895,10 +921,22 @@ def draw_panel_b(
         polyline(
             ov, [(FORK_X + 1.6, y), (e2f[0] - 0.5, y)], C_E1, 0.7, head=1.35, zorder=5, rid=rid
         )
+        # near-black label (FIGURE_STYLE_GUIDE section 8: identity is never
+        # carried by colored text); the class glyph and rail stay in C_E1.
+        # Arial sets these labels ~0.7 mm wider than the Source Sans face
+        # did, so the right anchor tucks to 0.3 mm off the fork glyph to
+        # keep the left edge clear of the E1 frame (TOKEN_X0).
         mmtext(
-            ov, FORK_X - 1.7, y + 1.4, label, cls="direct_label", pt=FS_ROW, color=C_E1, ha="right"
+            ov,
+            FORK_X - 1.45,
+            y + 1.4,
+            label,
+            cls="direct_label",
+            pt=FS_ROW,
+            color=C_TEXT,
+            ha="right",
         )
-        assert FORK_X - 1.7 - text_w_mm(label, FS_ROW) > TOKEN_X0 + 0.6, (
+        assert FORK_X - 1.45 - text_w_mm(label, FS_ROW) > TOKEN_X0, (
             f"the {label!r} token label overruns the E1 frame"
         )
 
@@ -1025,7 +1063,7 @@ def audit_scientific(F: Frozen, axis_audit: dict | None, obs_ink: list, cycle: d
     # --- record identification + plotted rows (the main figure only) ---
     if axis_audit is not None:
         rec = [d for d in DRAWN if d["string"] == F.record_label]
-        assert len(rec) == 1, "US-Bi1 (2017) must appear exactly once"
+        assert len(rec) == 1, f"{F.record_label} must appear exactly once"
         assert rec[0]["color"] == C_TEXT, "the record identification is not near-black"
         assert "·" not in F.record_label
 
@@ -1137,7 +1175,7 @@ def export(fig, stem: str, extra: dict, w_mm: float = W_MM, h_mm: float = H_MM) 
     assert not missing, f"stable ids absent from the SVG: {missing[:10]}"
     n_text = svg.count("<text")
     assert n_text >= len(DRAWN), f"{n_text} <text> nodes for {len(DRAWN)} strings"
-    assert "Source Sans 3" in svg, "the SVG does not name the typeface"
+    assert "Arial" in svg, "the SVG does not name the typeface"
 
     led = {
         "study": stem,
