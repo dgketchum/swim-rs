@@ -882,6 +882,7 @@ class Ingestor(Component):
         soils_csv: str | Path | None = None,
         irr_csv: str | Path | None = None,
         location_csv: str | Path | None = None,
+        cdl_csv: str | Path | None = None,
         uid_column: str = "FID",
         lulc_column: str = "modis_lc",
         extra_lulc_column: str | None = "glc10_lc",
@@ -899,6 +900,8 @@ class Ingestor(Component):
             soils_csv: CSV with soil properties (AWC, clay, sand, ksat)
             irr_csv: CSV with irrigation fraction data
             location_csv: CSV with location data (lat, lon, elevation)
+            cdl_csv: CSV with multi-year CDL crop modes (crop_{year} columns);
+                also derives the cdl_cultivated flag
             uid_column: Column name for field UID in CSVs
             lulc_column: Column name for LULC code (default: modis_lc)
             extra_lulc_column: Column for secondary LULC (default: glc10_lc)
@@ -949,6 +952,13 @@ class Ingestor(Component):
                 sources.append(str(location_csv))
                 self._ingest_location(location_csv, uid_column, overwrite)
                 properties_ingested.append("location")
+
+            # Process CDL crop history (+ derived cultivated flag)
+            if cdl_csv:
+                cdl_csv = Path(cdl_csv)
+                sources.append(str(cdl_csv))
+                self._ingest_cdl(cdl_csv, uid_column, overwrite)
+                properties_ingested.append("cdl")
 
             ctx["fields_processed"] = self._state.n_fields
 
@@ -1830,6 +1840,64 @@ class Ingestor(Component):
             if uid in df.index:
                 idx = self._state.get_field_index(uid)
                 arr[idx] = int(df.loc[uid, lulc_column])
+
+    def _ingest_cdl(self, cdl_csv: Path, uid_column: str, overwrite: bool) -> None:
+        """Ingest multi-year CDL crop-mode history and derive the cultivated flag.
+
+        Stores a site x year int16 array at properties/land_cover/cdl (years in
+        the array attrs) and an int8 flag (1/0, -1 fill) at
+        properties/land_cover/cdl_cultivated. Does NOT mutate glc10/modis_lc —
+        the measured label keeps meaning what the source said; cultivated is a
+        separate derived fact.
+        """
+        from swimrs.container.schema import is_cdl_cultivated
+
+        cdl_path = "properties/land_cover/cdl"
+        cult_path = "properties/land_cover/cdl_cultivated"
+
+        if cdl_path in self._state.root and not overwrite:
+            return
+        for path in (cdl_path, cult_path):
+            if path in self._state.root:
+                self._safe_delete_path(path)
+
+        df = pd.read_csv(cdl_csv)
+        df = df.set_index(uid_column)
+        df.index = df.index.astype(str)
+
+        year_cols = sorted(
+            (c for c in df.columns if c.startswith("crop_") and c[5:].isdigit()),
+            key=lambda c: int(c[5:]),
+        )
+        if not year_cols:
+            raise ValueError(f"No crop_{{year}} columns found in {cdl_csv}")
+        years = [int(c[5:]) for c in year_cols]
+
+        parent = self._state.ensure_group("properties/land_cover")
+        n_fields = self._state.n_fields
+        cdl_arr = parent.create_array(
+            "cdl",
+            shape=(n_fields, len(years)),
+            chunks=(min(100, n_fields), len(years)),
+            dtype="int16",
+            fill_value=-1,
+            overwrite=True,
+        )
+        cdl_arr.attrs["years"] = years
+
+        cult_arr = self._state.create_property_array(
+            cult_path, dtype="int8", fill_value=-1, overwrite=True
+        )
+
+        for uid in self._state.field_uids:
+            if uid not in df.index:
+                continue
+            idx = self._state.get_field_index(uid)
+            # Reducer.mode() emits floats like 61.0000000001 — round before casting
+            row = pd.to_numeric(df.loc[uid, year_cols], errors="coerce").round()
+            codes = row.fillna(-1).astype("int16").values
+            cdl_arr[idx, :] = codes
+            cult_arr[idx] = int(is_cdl_cultivated(codes))
 
     def _ingest_soils(
         self,

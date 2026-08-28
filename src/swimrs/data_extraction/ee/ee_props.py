@@ -61,12 +61,18 @@ def get_cdl(
     - task_desc: EE task description (defaults to desc if not provided).
 
     Side Effects
-    - Starts ee.batch table export of yearly modes for 2008–2024 to `wudr`.
+    - Starts ee.batch table export of yearly modes (2008 through the latest
+      published CDL year) to `wudr`.
     """
     task_desc = task_desc or desc
     plots = as_ee_feature_collection(fields, feature_id=selector)
     crops, first = None, True
-    cdl_years = [x for x in range(2008, 2025)]
+    # Read available years from the collection (full-CONUS CDL starts 2008)
+    cdl_years = sorted(
+        int(y)
+        for y in ee.ImageCollection("USDA/NASS/CDL").aggregate_array("system:index").getInfo()
+        if str(y).isdigit() and int(y) >= 2008
+    )
 
     _selectors = [selector]
 

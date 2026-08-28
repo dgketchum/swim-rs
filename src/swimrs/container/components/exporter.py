@@ -13,7 +13,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from swimrs.container.schema import find_swe_path, get_rooting_code, get_rooting_depth
+from swimrs.container.schema import (
+    find_swe_path,
+    get_rooting_code,
+    get_rooting_depth,
+    is_cropland,
+)
 
 from .base import Component
 
@@ -708,10 +713,25 @@ class Exporter(Component):
                 except (KeyError, TypeError):
                     pass
 
+            # CDL-cultivated override: asymmetric — can only rescue a unit
+            # from perennial mechanics, never push one into them.
+            cultivated = False
+            if "cdl_cultivated" in props_ds:
+                try:
+                    val = props_ds["cdl_cultivated"].sel(site=field_uid).values
+                    cultivated = int(val) == 1
+                except (KeyError, TypeError, ValueError):
+                    pass
+            field_props["cultivated"] = cultivated
+
             if lulc_class is not None:
                 field_props["lulc_class"] = lulc_class
                 field_props["lulc_source"] = lulc_source
-                rooting_code = get_rooting_code(lulc_class, lulc_source)
+                if cultivated and not is_cropland(lulc_class, lulc_source):
+                    # Cultivated history: cropland rooting, not desert/grassland
+                    rooting_code = 12
+                else:
+                    rooting_code = get_rooting_code(lulc_class, lulc_source)
                 field_props["root_depth"] = get_rooting_depth(rooting_code)
 
             if field_props:

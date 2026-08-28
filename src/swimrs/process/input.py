@@ -998,16 +998,18 @@ def _write_properties_from_container(
     # Units: mm/day (see `src/swimrs/units.py` PROCESS_CANONICAL_UNITS['ksat']).
     ksat = np.array([props.get(fid, {}).get("ksat", 10.0) for fid in fids])
 
-    # Perennial status from LULC class (GLC10-primary, MODIS-fallback)
-    from swimrs.container.schema import is_cropland
+    # Perennial status from LULC class (GLC10-primary, MODIS-fallback), with
+    # the asymmetric CDL-cultivated override: cultivated history can only
+    # rescue a unit from perennial mode, never push one into it.
+    from swimrs.container.schema import is_perennial
 
     perennial = np.array(
         [
-            not is_cropland(
+            is_perennial(
                 props.get(fid, {}).get("lulc_class", -1),
                 props.get(fid, {}).get("lulc_source", "glc10"),
+                props.get(fid, {}).get("cultivated", False),
             )
-            and props.get(fid, {}).get("lulc_class", -1) > 0
             for fid in fids
         ]
     )

@@ -305,6 +305,20 @@ GLC10_TO_MODIS_ROOTING = {
 # Default for unknown LULC: Grasslands, NOT cropland.
 UNKNOWN_ROOTING_DEFAULT = 10
 
+# ---------------------------------------------------------------------------
+# CDL (USDA/NASS, 30m, yearly) — cultivated-history override
+# The USDA cultivated-layer class set: row/close-grown crops (1–61; 61
+# Fallow/Idle Cropland is the load-bearing member — it keeps a chemfallow
+# strip legible as cropland in its bare years), fruit/nut/tree crops (66–77),
+# and specialty/double crops (204–254). Excludes 176 Grass/Pasture,
+# 152 Shrubland, 131 Barren, and forest/water/developed classes.
+# ---------------------------------------------------------------------------
+CDL_CULTIVATED = frozenset(range(1, 62)) | frozenset(range(66, 78)) | frozenset(range(204, 255))
+
+# Either arm suffices; thresholds shrug off single-year CDL noise.
+CDL_CULTIVATED_MIN_YEARS = 3
+CDL_CULTIVATED_MIN_FRACTION = 0.3
+
 
 def is_cropland(code: int, source: str = "glc10") -> bool:
     """Check if a LULC code indicates cropland.
@@ -316,6 +330,40 @@ def is_cropland(code: int, source: str = "glc10") -> bool:
     if source == "glc10":
         return code in GLC10_CROPLAND
     return code in MODIS_CROPLAND
+
+
+def is_cdl_cultivated(codes) -> bool:
+    """True when a CDL history shows a cultivated cropping signal.
+
+    Cultivated classes must appear in >= CDL_CULTIVATED_MIN_YEARS years or
+    >= CDL_CULTIVATED_MIN_FRACTION of non-null years (codes <= 0 are fill).
+    Static classification correction only — no per-year cropping state
+    enters the model.
+    """
+    valid = []
+    for c in codes:
+        try:
+            f = float(c)
+        except (TypeError, ValueError):
+            continue
+        if f != f or f <= 0:  # NaN or fill
+            continue
+        valid.append(int(round(f)))
+    if not valid:
+        return False
+    n_cult = sum(1 for c in valid if c in CDL_CULTIVATED)
+    return n_cult >= CDL_CULTIVATED_MIN_YEARS or n_cult / len(valid) >= CDL_CULTIVATED_MIN_FRACTION
+
+
+def is_perennial(code: int, source: str = "glc10", cultivated: bool = False) -> bool:
+    """Perennial routing decision, with the asymmetric CDL override.
+
+    A cultivated CDL history can only rescue a unit FROM perennial mode
+    (e.g. GLC10 Barren over a wheat–fallow strip), never push one into it:
+    cropland stays annual regardless of CDL, and natural vegetation with no
+    cultivated history is untouched.
+    """
+    return not is_cropland(code, source) and not cultivated and code > 0
 
 
 def get_rooting_code(code: int, source: str = "glc10") -> int:
@@ -511,7 +559,7 @@ class SwimSchema:
 
     PROPERTIES_STRUCTURE = {
         "soils": ["awc", "clay", "sand", "ksat", "rock_ite", "rew", "source"],
-        "land_cover": ["glc10", "modis_lc", "cdl"],
+        "land_cover": ["glc10", "modis_lc", "cdl", "cdl_cultivated"],
         "vegetation": ["rooting_depth"],
         "irrigation": ["lanid", "irrmapper", "irr"],
         "location": ["lat", "lon", "elevation", "state", "area_m2"],

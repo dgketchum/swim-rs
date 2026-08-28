@@ -418,6 +418,7 @@ class ContainerHealthCheck:
         "properties/soils/ksat": {"fill": float("nan"), "dtype": "float"},
         "properties/land_cover/glc10": {"fill": -1, "dtype": "int"},
         "properties/land_cover/modis_lc": {"fill": -1, "dtype": "int"},
+        "properties/land_cover/cdl_cultivated": {"fill": -1, "dtype": "int"},
         "properties/irrigation/irr": {"fill": float("nan"), "dtype": "float"},
         "properties/location/lat": {"fill": float("nan"), "dtype": "float"},
         "properties/location/lon": {"fill": float("nan"), "dtype": "float"},
@@ -434,6 +435,7 @@ class ContainerHealthCheck:
         """Execute all health checks and return a report."""
         self._checks = []
         self._check_properties()
+        self._check_cdl_override()
         self._check_time_series()
         self._check_dynamics()
         self._check_policy()
@@ -556,6 +558,61 @@ class ContainerHealthCheck:
                         detail,
                     )
                 )
+
+    def _check_cdl_override(self):
+        """Report where the CDL-cultivated override rescues units from perennial mode."""
+        from swimrs.container.schema import is_cropland
+
+        try:
+            cult = np.asarray(self._root["properties/land_cover/cdl_cultivated"][:])
+        except KeyError:
+            return
+
+        lulc, source = None, None
+        for path, src in (
+            ("properties/land_cover/glc10", "glc10"),
+            ("properties/land_cover/modis_lc", "modis"),
+        ):
+            try:
+                lulc = np.asarray(self._root[path][:])
+                source = src
+                break
+            except KeyError:
+                continue
+        if lulc is None:
+            return
+
+        crop = np.array([is_cropland(int(c), source) for c in lulc])
+        fired = ~crop & (lulc > 0) & (cult == 1)
+        reverse = crop & (cult == 0)
+
+        uids = np.asarray(self._field_uids)
+        self._checks.append(
+            CheckResult(
+                "properties",
+                "properties/land_cover/cdl_cultivated",
+                "PASS",
+                f"CDL-cultivated override fired for {int(fired.sum())}/{len(uids)} units",
+                {
+                    "override_fired": int(fired.sum()),
+                    "override_uids": uids[fired].tolist()[:50],
+                },
+            )
+        )
+        if reverse.any():
+            self._checks.append(
+                CheckResult(
+                    "properties",
+                    "properties/land_cover/cdl_cultivated",
+                    "WARN",
+                    f"{int(reverse.sum())} {source} cropland units have no cultivated "
+                    "CDL history (no action taken)",
+                    {
+                        "reverse_disagreement": int(reverse.sum()),
+                        "reverse_uids": uids[reverse].tolist()[:50],
+                    },
+                )
+            )
 
     def _check_time_series(self):
         """Check 2D time series arrays for observation coverage."""

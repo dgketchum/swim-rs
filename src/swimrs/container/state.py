@@ -387,6 +387,7 @@ class ContainerState:
             "glc10": "properties/land_cover/glc10",
             "modis_lc": "properties/land_cover/modis_lc",
             "cdl": "properties/land_cover/cdl",
+            "cdl_cultivated": "properties/land_cover/cdl_cultivated",
             "irr": "properties/irrigation/irr",
             "lanid": "properties/irrigation/lanid",
             "lat": "properties/location/lat",
@@ -401,6 +402,9 @@ class ContainerState:
         data_vars = {}
         for var_name, path in property_paths.items():
             if path in self.root:
+                if len(self.root[path].shape) != 1:
+                    # site x year arrays (e.g. cdl) are not 1-D properties
+                    continue
                 try:
                     data_vars[var_name] = self.get_xarray(path, fields=fields)
                 except Exception:
