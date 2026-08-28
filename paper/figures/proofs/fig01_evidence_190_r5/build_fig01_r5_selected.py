@@ -381,6 +381,78 @@ def main() -> None:
     record_axis(rid, [mem])
     assert int(ok.sum()) == int(cap["etf_member_count"].sum())
 
+    # unboxed marker key (RSE convention: glyph + near-black definitional label,
+    # no box) in the empty pre-capture corner — first capture is day 26. The
+    # whisker-with-dots glyph defines members and their min-max span together.
+    kgx, klx = 24.6, 26.4
+    tag(
+        ov.plot(
+            [kgx],
+            [105.4],
+            ls="none",
+            marker="D",
+            ms=DIAMOND_MS,
+            mfc="none",
+            mec=C_TARGET,
+            mew=0.9,
+            zorder=6,
+        )[0],
+        "key-etf-mean-glyph",
+    )
+    mmtext(
+        ov,
+        klx,
+        105.4,
+        "Ensemble mean",
+        cls="direct_label",
+        pt=FS_ROW,
+        color=C_TEXT,
+        ha="left",
+        va="center",
+        bbox=HALO,
+        gid="label-key-etf-mean",
+    )
+    ov.add_line(
+        tag(
+            Line2D([kgx, kgx], [101.3, 103.5], color=C_MINMAX, lw=0.9, zorder=5),
+            "key-etf-range-glyph",
+        )
+    )
+    tag(
+        ov.plot(
+            [kgx, kgx],
+            [101.8, 103.0],
+            ls="none",
+            marker="o",
+            ms=MEMBER_MS,
+            mfc=C_MEMBER,
+            mec="white",
+            mew=0.35,
+            zorder=6,
+        )[0],
+        "key-etf-members-glyph",
+    )
+    mmtext(
+        ov,
+        klx,
+        102.4,
+        "Members",
+        cls="direct_label",
+        pt=FS_ROW,
+        color=C_TEXT,
+        ha="left",
+        va="center",
+        bbox=HALO,
+        gid="label-key-etf-members",
+    )
+    etf_key_right = klx + max(text_w_mm("Ensemble mean", FS_ROW), text_w_mm("Members", FS_ROW))
+    first_cap_x = float(xmm(cap_day.min()))
+    assert etf_key_right + 2.0 <= first_cap_x, (
+        f"the ETf marker key ({etf_key_right:.2f} mm) crowds the first capture ({first_cap_x:.2f} mm)"
+    )
+    y0, y1 = ROWS[rid]
+    assert y0 <= 101.3 and 105.4 + 1.1 <= y1, "the ETf marker key leaves its row band"
+
     rid = "ndvi_captures"
     ax = row_axes(rid)
     mL = ts["ndvi_landsat_raw"].notna().to_numpy()
@@ -417,6 +489,71 @@ def main() -> None:
     record_axis(
         rid, [ts["ndvi_landsat_raw"].to_numpy()[mL], ts["ndvi_sentinel_raw"].to_numpy()[mS]]
     )
+
+    # unboxed marker key in the clear lower-left corner (the day-19 Sentinel-2
+    # capture sits at the top of the band; nearest low mark is day 26).
+    tag(
+        ov.plot(
+            [kgx],
+            [95.4],
+            ls="none",
+            marker="o",
+            ms=2.8,
+            mfc=C_SENSOR,
+            mec="white",
+            mew=0.4,
+            zorder=6,
+        )[0],
+        "key-ndvi-landsat-glyph",
+    )
+    mmtext(
+        ov,
+        klx,
+        95.4,
+        "Landsat",
+        cls="direct_label",
+        pt=FS_ROW,
+        color=C_TEXT,
+        ha="left",
+        va="center",
+        bbox=HALO,
+        gid="label-key-ndvi-landsat",
+    )
+    tag(
+        ov.plot(
+            [kgx],
+            [92.8],
+            ls="none",
+            marker="s",
+            ms=2.8,
+            mfc="none",
+            mec=C_SENSOR,
+            mew=0.7,
+            zorder=6,
+        )[0],
+        "key-ndvi-sentinel-glyph",
+    )
+    mmtext(
+        ov,
+        klx,
+        92.8,
+        "Sentinel-2",
+        cls="direct_label",
+        pt=FS_ROW,
+        color=C_TEXT,
+        ha="left",
+        va="center",
+        bbox=HALO,
+        gid="label-key-ndvi-sentinel",
+    )
+    ndvi_key_right = klx + max(text_w_mm("Landsat", FS_ROW), text_w_mm("Sentinel-2", FS_ROW))
+    first_low_ndvi_x = float(xmm(day[mL].min()))
+    assert ndvi_key_right + 2.0 <= first_low_ndvi_x, (
+        f"the NDVI marker key ({ndvi_key_right:.2f} mm) crowds the first low capture "
+        f"({first_low_ndvi_x:.2f} mm)"
+    )
+    y0, y1 = ROWS[rid]
+    assert y0 <= 92.8 - 1.1 and 95.4 + 1.1 <= y1, "the NDVI marker key leaves its row band"
 
     rid = "daily_forcing"
     ax = row_axes(rid)
@@ -822,6 +959,13 @@ def main() -> None:
         },
         "e3_key_x_mm": K.E3_KEY_X,
         "e3_key_baselines_mm": list(K.E3_KEY_LINES),
+        "panel_a_marker_keys": {
+            "style": "unboxed glyph + near-black label (RSE convention)",
+            "glyph_x_mm": 24.6,
+            "label_x_mm": 26.4,
+            "etf_ensemble": {"Ensemble mean": 105.4, "Members": 102.4},
+            "ndvi_captures": {"Landsat": 95.4, "Sentinel-2": 92.8},
+        },
     }
     meas = {
         **m,
