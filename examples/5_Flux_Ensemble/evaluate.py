@@ -274,14 +274,34 @@ def load_flux_et(fid, flux_dir):
     return pd.Series(dtype=float)
 
 
+# Volk v2.1 (closure-corrected) is the only sanctioned flux source; the
+# pre-v2.1 "daily_flux_files" archive is rejected on source-version grounds,
+# mirroring assert_may_source on the OpenET-ETf side.
+MAY_FLUX_SOURCE_DIRNAME = "daily_flux_files_2pt1"
+JANUARY_FLUX_SOURCE_DIRNAME = "daily_flux_files"
+
+
+def assert_may_flux_source(path):
+    """Hard-fail if a resolved flux data path is not the Volk v2.1 (May) delivery."""
+    parts = os.path.normpath(path).split(os.sep)
+    if JANUARY_FLUX_SOURCE_DIRNAME in parts:
+        raise BenchmarkConstructionError(
+            f"Pre-v2.1 flux source rejected: {path} — use {MAY_FLUX_SOURCE_DIRNAME}"
+        )
+    if MAY_FLUX_SOURCE_DIRNAME not in parts:
+        raise BenchmarkConstructionError(f"Flux data path is not the Volk v2.1 source: {path}")
+    return path
+
+
 def resolve_flux_dir(cfg):
-    """Resolve the flux directory from config, with a shipped-data fallback."""
-    if cfg.flux_dir and os.path.isdir(cfg.flux_dir):
-        return cfg.flux_dir
-    fallback = os.path.join(cfg.data_dir, "flux")
-    if os.path.isdir(fallback):
-        return fallback
-    return cfg.flux_dir or os.path.join(cfg.data_dir, "daily_flux_files")
+    """Resolve the flux directory from config. No fallback: an unconfigured or
+    missing flux_dir is a hard error, not a silent substitution of a
+    different-vintage dataset (see assert_may_flux_source).
+    """
+    flux_dir = cfg.flux_dir or os.path.join(cfg.data_dir, MAY_FLUX_SOURCE_DIRNAME)
+    if not os.path.isdir(flux_dir):
+        raise FileNotFoundError(f"Configured flux_dir does not exist: {flux_dir}")
+    return assert_may_flux_source(flux_dir)
 
 
 def load_openet_etf_nomask(container, fid):
