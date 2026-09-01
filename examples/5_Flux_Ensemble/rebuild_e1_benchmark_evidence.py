@@ -42,6 +42,7 @@ import gzip
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -108,6 +109,16 @@ UNAFFECTED_E1_FILES = [
     "e2_within_transfer_monthly_site_metrics.csv",
     "e2_within_transfer_paired_deltas.csv",
 ]
+# Corrected temporal products frozen alongside the primary evidence, copied
+# from the canonical overpass_decomposition output dir under the established
+# e2_temporal_* names (plan §freeze; manuscript claims ledger)
+TEMPORAL_FREEZE_FILES = {
+    "overpass_split_summary.csv": "e2_temporal_summary.csv",
+    "overpass_split_paired_deltas.csv": "e2_temporal_paired_deltas.csv",
+    "e2_temporal_support_contrast.csv": "e2_temporal_support_contrast.csv",
+    "e2_temporal_support_contrast_persite.csv": "e2_temporal_support_contrast_persite.csv",
+}
+SUPERSEDED_SUBDIR = "superseded_e2_direct_interpolation"
 
 BENCHMARK_DESIGN = (
     "OpenET-method temporal benchmark using a common OpenET bias-corrected gridMET ETo basis"
@@ -864,7 +875,10 @@ def build_metadata(
 ):
     superseded = {}
     for name in SUPERSEDED_FILES:
+        # after the freeze move the originals live in the superseded subdir
         p = SUPERSEDED_FINAL_DIR / name
+        if not p.exists():
+            p = SUPERSEDED_FINAL_DIR / SUPERSEDED_SUBDIR / name
         if p.exists():
             superseded[name] = sha256_file(p)
     unaffected = {}
@@ -1027,6 +1041,7 @@ def build_metadata(
         "superseded": {
             "reason": "direct-ET interpolation (construction) AND January capture "
             "source (source-version) — both defects; see benchmark_construction",
+            "relocated_to": SUPERSEDED_SUBDIR,
             "files_sha256_at_supersession": superseded,
         },
         "unaffected_artifacts": {
@@ -1055,6 +1070,17 @@ def write_outputs(out_dir, outputs, metadata):
         index = name in ("e2_primary_daily_site_metrics.csv", "e2_primary_monthly_site_metrics.csv")
         df.to_csv(path, index=index)
         frozen[name] = sha256_file(path)
+    temporal = metadata.get("temporal_artifacts")
+    if temporal is not None:
+        # freeze the corrected temporal products under the established
+        # e2_temporal_* names alongside the primary evidence
+        tdir = Path(temporal["canonical_dir"])
+        for src_name, frozen_name in TEMPORAL_FREEZE_FILES.items():
+            src = tdir / src_name
+            if not src.exists():
+                raise BenchmarkConstructionError(f"temporal freeze: {src} missing")
+            shutil.copy2(src, out_dir / frozen_name)
+            frozen[frozen_name] = sha256_file(out_dir / frozen_name)
     metadata["frozen_artifacts"] = frozen
     with open(out_dir / "e2_evidence_metadata.json", "w") as f:
         json.dump(metadata, f, indent=2, default=_json_default)
@@ -1134,6 +1160,17 @@ def compare_to_pinned(pinned, metadata, out_dir):
                 failures.append(f"temporal_artifacts: {name} missing from {tdir}")
             elif sha256_file(p) != sha:
                 failures.append(f"temporal_artifacts: {name} hash differs from pinned")
+        mj_sha = temporal.get("metadata_json_sha256")
+        if mj_sha:
+            mj = tdir / "overpass_split_metadata.json"
+            if not mj.exists():
+                failures.append(
+                    f"temporal_artifacts: overpass_split_metadata.json missing from {tdir}"
+                )
+            elif sha256_file(mj) != mj_sha:
+                failures.append(
+                    "temporal_artifacts: overpass_split_metadata.json hash differs from pinned"
+                )
     return failures
 
 

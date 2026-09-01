@@ -90,6 +90,8 @@ def pinned_state(tmp_path):
     tdir.mkdir()
     tfile = tdir / "overpass_split_paired_deltas.csv"
     tfile.write_text("cohort,delta\ncommon_split,0.004\n")
+    tmeta = tdir / "overpass_split_metadata.json"
+    tmeta.write_text('{"git": {"sha": "c9f15d0"}}\n')
     pinned = {
         "headline": {
             "daily_swim": {"nse": 0.699145, "n_sites": 45},
@@ -110,6 +112,7 @@ def pinned_state(tmp_path):
         "temporal_artifacts": {
             "canonical_dir": str(tdir),
             "files_sha256": {tfile.name: _sha(tfile)},
+            "metadata_json_sha256": _sha(tmeta),
         },
     }
     return pinned, out_dir, artifact, tfile
@@ -195,3 +198,61 @@ def test_compare_temporal_artifact_drift_fails(reb, pinned_state):
     tfile.write_text("cohort,delta\ncommon_split,0.999\n")
     failures = reb.compare_to_pinned(pinned, copy.deepcopy(pinned), out_dir)
     assert any("temporal_artifacts" in f and "hash differs" in f for f in failures)
+
+
+def test_compare_temporal_metadata_json_drift_fails(reb, pinned_state):
+    pinned, out_dir, _, tfile = pinned_state
+    tmeta = tfile.parent / "overpass_split_metadata.json"
+    tmeta.write_text('{"git": {"sha": "deadbeef"}}\n')
+    failures = reb.compare_to_pinned(pinned, copy.deepcopy(pinned), out_dir)
+    assert any("overpass_split_metadata.json hash differs" in f for f in failures)
+
+
+def test_compare_temporal_metadata_json_missing_fails(reb, pinned_state):
+    pinned, out_dir, _, tfile = pinned_state
+    (tfile.parent / "overpass_split_metadata.json").unlink()
+    failures = reb.compare_to_pinned(pinned, copy.deepcopy(pinned), out_dir)
+    assert any("overpass_split_metadata.json missing" in f for f in failures)
+
+
+# ------------------------------------------------------ temporal freeze copies
+
+
+def _temporal_canonical_dir(tmp_path):
+    tdir = tmp_path / "canonical_temporal"
+    tdir.mkdir()
+    for name in [
+        "overpass_split_summary.csv",
+        "overpass_split_paired_deltas.csv",
+        "e2_temporal_support_contrast.csv",
+        "e2_temporal_support_contrast_persite.csv",
+    ]:
+        (tdir / name).write_text(f"{name}\n1\n")
+    return tdir
+
+
+def test_write_outputs_freezes_temporal_copies(reb, tmp_path):
+    import pandas as pd
+
+    tdir = _temporal_canonical_dir(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    metadata = {"temporal_artifacts": {"canonical_dir": str(tdir)}}
+    outputs = {"e2_primary_performance_summary.csv": pd.DataFrame({"a": [1]})}
+    reb.write_outputs(out_dir, outputs, metadata)
+    frozen = metadata["frozen_artifacts"]
+    for src_name, frozen_name in reb.TEMPORAL_FREEZE_FILES.items():
+        p = out_dir / frozen_name
+        assert p.exists(), frozen_name
+        assert frozen[frozen_name] == _sha(tdir / src_name)
+    assert "e2_primary_performance_summary.csv" in frozen
+
+
+def test_write_outputs_missing_temporal_source_raises(reb, tmp_path):
+    tdir = _temporal_canonical_dir(tmp_path)
+    (tdir / "overpass_split_summary.csv").unlink()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    metadata = {"temporal_artifacts": {"canonical_dir": str(tdir)}}
+    with pytest.raises(reb.BenchmarkConstructionError, match="temporal freeze"):
+        reb.write_outputs(out_dir, {}, metadata)
