@@ -1,12 +1,11 @@
 """True concatenated-pool SWIM vs RS metrics for Example 6.
 
-Borrows the Volk (2024) replication logic from
-``examples/5_Flux_Ensemble/volk_replication.py``:
+Implements the Volk et al. (2024) pooled-comparison conventions directly:
   - Pooled Pearson r2 + linregress slope over the concatenated obs/mod arrays
     (one regression across all site-days / site-months, not a per-site mean).
   - sqrt(n)-weighted per-station MBE / MAE / RMSE.
-  - A pooled KGE computed on the full concatenated pool (the headline metric
-    tracked for E3), reusing evaluate.calc_metrics for an exact definition match.
+  - A pooled KGE computed on the full concatenated pool (a diagnostic for paper
+    Experiment 2), reusing evaluate.calc_metrics for an exact definition match.
 
 Reads the per-site combined CSVs already written by ``evaluate.py`` (``et_act``
 = SWIM daily ETa, ``et_rs`` = RS-derived daily ETa) and pairs them against the

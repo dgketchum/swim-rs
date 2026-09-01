@@ -190,9 +190,6 @@ cython_debug/
 /examples/5_Flux_Ensemble/data/*
 !/examples/5_Flux_Ensemble/data/gis/
 /examples/5_Flux_Ensemble/setup_shapefile.py
-# Legacy generated artifacts (large, regenerable)
-/examples/5_Flux_Ensemble/legacy/generated/
-/examples/5_Flux_Ensemble/legacy/openet_etf_assets.txt
 
 /examples/6_Flux_International/data/*
 !/examples/6_Flux_International/data/gis/
@@ -208,12 +205,11 @@ cython_debug/
 # One-off diagnostic/exploration scripts
 /examples/*/scripts/
 
-# Untracked plan/notes markdown in examples
+# Per-example working notes and plans are local, never repository artifacts.
+/examples/*/notes/
 /examples/*.md
 /examples/*/*.md
 !/examples/*/README.md
-!/examples/5_Flux_Ensemble/VALIDATION_POLICY.md
-!/examples/5_Flux_Ensemble/RUN11_REFERENCE.md
 
 # Root project notes/plans
 /notes/
