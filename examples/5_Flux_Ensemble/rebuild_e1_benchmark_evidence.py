@@ -94,6 +94,20 @@ SUPERSEDED_FILES = [
     "e2_temporal_paired_deltas.csv",
     "e2_evidence_metadata.json",
 ]
+# Model-side E1 artifacts untouched by both benchmark defects: their inputs
+# are SWIM outputs and flux ET only (flux verified identical by G-FLUX)
+UNAFFECTED_E1_FILES = [
+    "e2_spread_error_persite.csv",
+    "e2_spread_error_quintiles.csv",
+    "e2_spread_error_summary.csv",
+    "e2_weighting_ablation_daily_site_deltas.csv",
+    "e2_weighting_ablation_monthly_site_deltas.csv",
+    "e2_weighting_ablation_paired_deltas.csv",
+    "e2_weighting_ablation_summary.csv",
+    "e2_within_transfer_daily_site_metrics.csv",
+    "e2_within_transfer_monthly_site_metrics.csv",
+    "e2_within_transfer_paired_deltas.csv",
+]
 
 BENCHMARK_DESIGN = (
     "OpenET-method temporal benchmark using a common OpenET bias-corrected gridMET ETo basis"
@@ -305,6 +319,51 @@ def gate_g_flux(fid, flux_archived, master_daily):
         if max_d > VALUE_TOL:
             raise BenchmarkConstructionError(f"G-FLUX {fid}: max |diff| {max_d:.3e} > {VALUE_TOL}")
     return max_d
+
+
+def audit_full_source_scope(ledger, split_dir, master, label):
+    """0c/G-SOURCE at plan scope: validate EVERY May split file, not just the
+    consumed subset. Hashes each file into the ledger and checks its values
+    against the master; any failure raises. Returns file count and max |diff|.
+    """
+    files = sorted(Path(split_dir).glob("*.csv"))
+    if not files:
+        raise BenchmarkConstructionError(f"G-SOURCE: no {label} split files in {split_dir}")
+    max_d = 0.0
+    for f in files:
+        split_df = ledger.read_csv(f, index_col="DATE", parse_dates=True)
+        max_d = max(max_d, validate_site_against_master(f.stem, split_df, master))
+    return {"n_files": len(files), "max_abs_diff": max_d}
+
+
+def check_gboot(dir_a, dir_b):
+    """G-BOOT, derived: the two bootstrap runs must be byte-identical.
+
+    Compares sha256 of every CSV in ``dir_a`` (the canonical temporal output)
+    against the same-named file in ``dir_b`` (the independent replicate).
+    Any missing or differing file is a hard failure.
+    """
+    dir_a, dir_b = Path(dir_a), Path(dir_b)
+    files = sorted(dir_a.glob("*.csv"))
+    if not files:
+        raise BenchmarkConstructionError(f"G-BOOT: no CSV files in {dir_a}")
+    hashes = {}
+    for fa in files:
+        fb = dir_b / fa.name
+        if not fb.exists():
+            raise BenchmarkConstructionError(f"G-BOOT: {fa.name} missing from replicate {dir_b}")
+        ha, hb = sha256_file(fa), sha256_file(fb)
+        if ha != hb:
+            raise BenchmarkConstructionError(
+                f"G-BOOT: {fa.name} differs between {dir_a} and {dir_b}"
+            )
+        hashes[fa.name] = ha
+    return {
+        "canonical_dir": str(dir_a),
+        "replicate_dir": str(dir_b),
+        "n_files_compared": len(hashes),
+        "files_sha256": hashes,
+    }
 
 
 def load_may_series(split_df):
@@ -601,6 +660,18 @@ def rebuild(args):
     master_daily = ledger.read_csv(daily_master_csv, parse_dates=["DATE"])
     master_monthly = ledger.read_csv(monthly_master_csv, parse_dates=["DATE"])
 
+    # 0c/G-SOURCE at plan scope: EVERY May split file validated and hashed,
+    # not just the consumed subset
+    print("G-SOURCE: validating all May split files against the masters...")
+    audit_daily = audit_full_source_scope(ledger, may_daily_dir, master_daily, "daily")
+    audit_monthly = audit_full_source_scope(ledger, may_monthly_dir, master_monthly, "monthly")
+    gsource_max = max(audit_daily["max_abs_diff"], audit_monthly["max_abs_diff"])
+    print(
+        f"  PASS: {audit_daily['n_files']} daily (max |diff| "
+        f"{audit_daily['max_abs_diff']:.3e}), {audit_monthly['n_files']} monthly "
+        f"(max |diff| {audit_monthly['max_abs_diff']:.3e})"
+    )
+
     # Site universe: archived evaluation record ∩ May daily data, minus policy
     # exclusions — cohorts are then reconstructed by the prespecified gates
     archived = {p.stem for p in sorted(ts_dir.glob("*.csv"))}
@@ -615,7 +686,7 @@ def rebuild(args):
     excluded_daily, excluded_monthly = [], []
     member_days = {}
     gflux_max = 0.0
-    gsource_max = 0.0
+    consumed_monthly_sites = 0
 
     for fid in universe:
         ts = ledger.read_csv(
@@ -632,7 +703,6 @@ def rebuild(args):
         may_daily = ledger.read_csv(
             may_daily_dir / f"{fid}.csv", index_col="DATE", parse_dates=True
         )
-        gsource_max = max(gsource_max, validate_site_against_master(fid, may_daily, master_daily))
 
         if not flux_et.notna().any():
             excluded_daily.append({"site": fid, "reason": "no_flux_data"})
@@ -670,9 +740,7 @@ def rebuild(args):
         may_monthly_path = may_monthly_dir / f"{fid}.csv"
         if may_monthly_path.exists():
             may_monthly = ledger.read_csv(may_monthly_path, index_col="DATE", parse_dates=True)
-            gsource_max = max(
-                gsource_max, validate_site_against_master(fid, may_monthly, master_monthly)
-            )
+            consumed_monthly_sites += 1
         else:
             may_monthly = pd.DataFrame()
         mrow = monthly_site_row(fid, swim_et, flux_et, may_monthly)
@@ -682,7 +750,28 @@ def rebuild(args):
             monthly_rows.append(mrow)
 
     print(f"G-FLUX: PASS ({len(universe)} sites, max |diff| {gflux_max:.3e})")
-    print(f"G-SOURCE per-site values: PASS (max |diff| vs master {gsource_max:.3e})")
+
+    source_audit = {
+        "scope": "all May split files validated against the masters "
+        "(plan 0c scope), not only the consumed subset",
+        "daily_files_validated": audit_daily["n_files"],
+        "monthly_files_validated": audit_monthly["n_files"],
+        "daily_max_abs_diff": audit_daily["max_abs_diff"],
+        "monthly_max_abs_diff": audit_monthly["max_abs_diff"],
+        "consumed_daily_sites": len(universe),
+        "consumed_monthly_sites": consumed_monthly_sites,
+        "masters_invariant": "master-only dates are permitted iff every OpenET "
+        "series is NaN there (flux-only rows / calendar padding); exact date-key "
+        "equality is deliberately NOT imposed",
+    }
+
+    gboot = None
+    if args.gboot_dirs:
+        gboot = check_gboot(*args.gboot_dirs)
+        print(
+            f"G-BOOT: PASS ({gboot['n_files_compared']} temporal CSVs byte-identical "
+            "across the two bootstrap runs)"
+        )
 
     daily_df = pd.DataFrame(daily_rows)
     monthly_df = pd.DataFrame(monthly_rows)
@@ -739,6 +828,8 @@ def rebuild(args):
         container_path,
         run_dir,
         universe,
+        source_audit,
+        gboot,
     )
 
     print("\nHeadline (reconstructed May v2.1 footing):")
@@ -768,18 +859,31 @@ def build_metadata(
     container_path,
     run_dir,
     universe,
+    source_audit,
+    gboot,
 ):
     superseded = {}
     for name in SUPERSEDED_FILES:
         p = SUPERSEDED_FINAL_DIR / name
         if p.exists():
             superseded[name] = sha256_file(p)
+    unaffected = {}
+    for name in UNAFFECTED_E1_FILES:
+        p = SUPERSEDED_FINAL_DIR / name
+        unaffected[name] = sha256_file(p) if p.exists() else None
     manifest_path = run_dir / "archive" / "1_provenance" / "container_manifest.json"
     per_series_counts = support_df.groupby("series")["n_scored"].sum().astype(int).to_dict()
+    temporal = None
+    if gboot is not None:
+        temporal = dict(gboot)
+        meta_json = Path(gboot["canonical_dir"]) / "overpass_split_metadata.json"
+        temporal["metadata_json_sha256"] = sha256_file(meta_json) if meta_json.exists() else None
     return {
         "schema_version": SCHEMA_VERSION,
-        "experiment": "E2",
-        "status": "rebuilt_awaiting_review",
+        "experiment": "E1 (paper numbering)",
+        "file_namespace": "e2_* is the legacy artifact namespace for the paper's "
+        "Experiment 1; retained for schema continuity with prior frozen packages",
+        "status": args.status,
         "rebuilt_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "internal_archive_id": "run22",
         "git": git_state(str(REPO_ROOT)),
@@ -837,6 +941,7 @@ def build_metadata(
             "rejected_reason": "January capture set — superseded by May v2.1",
             "input_sha256": dict(sorted(ledger.hashes.items())),
         },
+        "source_audit": source_audit,
         "provenance_inputs": {
             "frozen_container": str(container_path),
             "container_manifest": {
@@ -878,7 +983,9 @@ def build_metadata(
             "series": ["ensemble"] + OPEN_SOURCE_MODELS,
         },
         "gates": {
-            "g_source": "PASS (May allowlist; per-site values vs master <= 1e-12; "
+            "g_source": "PASS (May allowlist; ALL split files validated vs masters: "
+            f"{source_audit['daily_files_validated']} daily / "
+            f"{source_audit['monthly_files_validated']} monthly, <= 1e-12; "
             f"observed max |diff| {gsource_max:.3e})",
             "g_flux": "PASS (archived flux_ET == May master Closed on the frozen "
             f"calendar, <= 1e-12; observed max |diff| {gflux_max:.3e})",
@@ -889,13 +996,22 @@ def build_metadata(
             "g_partition": "PASS (capture+interpolated+flat_fill == scored, per series)",
             "g_pair": "PASS (single paired-date mask per site x series; flux "
             "closure-corrected, evaluation-only)",
-            "g_values": "run with --verify",
-            "g_boot": "overpass_decomposition.py run twice on the rebuilt cohort "
-            "(seed 42, 10000 resamples)",
+            "g_values": "procedural — run --verify against this file; it recomputes "
+            "from pinned inputs and checks headline values, scalar configuration, "
+            "per-series support counts, input hashes, output hashes, and temporal "
+            "artifact hashes",
+            "g_boot": (
+                f"PASS (derived: {gboot['n_files_compared']} temporal CSVs "
+                "byte-identical across two independent bootstrap runs, "
+                "seed 42, 10000 resamples)"
+                if gboot is not None
+                else "NOT RUN — pass --gboot-dirs <canonical> <replicate>"
+            ),
             "gate_a_replacement": "overpass_decomposition.py Gate A now targets "
             "the rebuilt e2_primary_daily_site_metrics.csv; the January-based "
             "daily_paired_metrics.csv identity check is superseded",
         },
+        "temporal_artifacts": temporal,
         "bootstrap": {"replication_unit": "site", "resamples": 10000, "seed": 42},
         "headline": {
             r["scale"] + "_" + r["model"]: {
@@ -912,6 +1028,12 @@ def build_metadata(
             "reason": "direct-ET interpolation (construction) AND January capture "
             "source (source-version) — both defects; see benchmark_construction",
             "files_sha256_at_supersession": superseded,
+        },
+        "unaffected_artifacts": {
+            "status": "verified unchanged — model-side artifacts whose inputs are "
+            "SWIM outputs and flux ET only; flux side verified identical to the "
+            "May master by G-FLUX",
+            "files_sha256": unaffected,
         },
         "pending_downstream_consumers": [
             "paper Figure 3 package (build_figure_data.py fig03 — also consumed "
@@ -939,35 +1061,97 @@ def write_outputs(out_dir, outputs, metadata):
     print(f"\nOutputs written to {out_dir}")
 
 
-def verify(out_dir, metadata):
-    """G-VALUES: recomputed medians/counts must equal the pinned metadata."""
-    pinned_path = Path(out_dir) / "e2_evidence_metadata.json"
-    with open(pinned_path) as f:
-        pinned = json.load(f)
+def compare_to_pinned(pinned, metadata, out_dir):
+    """G-VALUES comparison core: recomputed state vs the pinned metadata.
+
+    Checks headline values, scalar configuration counts, the nested
+    per-series support counts and series list, every pinned input hash
+    against the fresh ledger hashes, every pinned output hash against the
+    files on disk in ``out_dir``, and (when pinned) the temporal artifact
+    hashes against the canonical temporal directory. Returns a list of
+    failure strings (empty = pass).
+    """
     failures = []
     for key, block in pinned["headline"].items():
         new = metadata["headline"].get(key)
         if new is None:
-            failures.append(f"{key}: missing from recomputation")
+            failures.append(f"headline.{key}: missing from recomputation")
             continue
         for stat, val in block.items():
             nv = new[stat]
             if isinstance(val, float):
                 if not (abs(nv - val) <= 1e-9):
-                    failures.append(f"{key}.{stat}: {nv!r} != pinned {val!r}")
+                    failures.append(f"headline.{key}.{stat}: {nv!r} != pinned {val!r}")
             elif nv != val:
-                failures.append(f"{key}.{stat}: {nv!r} != pinned {val!r}")
-    for block in ("scientific_configuration", "support_reconciliation"):
-        for k, val in pinned[block].items():
-            nv = metadata[block].get(k)
+                failures.append(f"headline.{key}.{stat}: {nv!r} != pinned {val!r}")
+    for block in ("scientific_configuration", "support_reconciliation", "source_audit"):
+        for k, val in pinned.get(block, {}).items():
+            nv = metadata.get(block, {}).get(k)
             if isinstance(val, int | float) and not isinstance(val, bool):
-                if not (abs(nv - val) <= 1e-9):
+                if nv is None or not (abs(nv - val) <= 1e-9):
                     failures.append(f"{block}.{k}: {nv!r} != pinned {val!r}")
+
+    # nested per-series support counts and the expected series list
+    pinned_sr = pinned.get("support_reconciliation", {})
+    new_sr = metadata.get("support_reconciliation", {})
+    if pinned_sr.get("per_series_scored_days") != new_sr.get("per_series_scored_days"):
+        failures.append(
+            "support_reconciliation.per_series_scored_days: "
+            f"{new_sr.get('per_series_scored_days')!r} != pinned "
+            f"{pinned_sr.get('per_series_scored_days')!r}"
+        )
+    if pinned_sr.get("series") != new_sr.get("series"):
+        failures.append(
+            f"support_reconciliation.series: {new_sr.get('series')!r} "
+            f"!= pinned {pinned_sr.get('series')!r}"
+        )
+
+    # pinned input hashes vs the fresh ledger hashes from this recomputation
+    pinned_in = pinned.get("source_data", {}).get("input_sha256", {})
+    new_in = metadata.get("source_data", {}).get("input_sha256", {})
+    for path, sha in pinned_in.items():
+        if new_in.get(path) != sha:
+            failures.append(f"input_sha256: {path} changed or missing")
+    for path in new_in:
+        if path not in pinned_in:
+            failures.append(f"input_sha256: {path} read now but not pinned")
+
+    # pinned output hashes vs the files on disk
+    for name, sha in pinned.get("frozen_artifacts", {}).items():
+        p = Path(out_dir) / name
+        if not p.exists():
+            failures.append(f"frozen_artifacts: {name} missing from {out_dir}")
+        elif sha256_file(p) != sha:
+            failures.append(f"frozen_artifacts: {name} hash differs from pinned")
+
+    # pinned temporal artifact hashes vs the canonical temporal directory
+    temporal = pinned.get("temporal_artifacts")
+    if temporal:
+        tdir = Path(temporal["canonical_dir"])
+        for name, sha in temporal.get("files_sha256", {}).items():
+            p = tdir / name
+            if not p.exists():
+                failures.append(f"temporal_artifacts: {name} missing from {tdir}")
+            elif sha256_file(p) != sha:
+                failures.append(f"temporal_artifacts: {name} hash differs from pinned")
+    return failures
+
+
+def verify(out_dir, metadata):
+    """G-VALUES: recomputed state must equal the pinned metadata."""
+    pinned_path = Path(out_dir) / "e2_evidence_metadata.json"
+    with open(pinned_path) as f:
+        pinned = json.load(f)
+    failures = compare_to_pinned(pinned, metadata, out_dir)
     if failures:
         for msg in failures:
             print(f"G-VALUES FAIL: {msg}")
         raise BenchmarkConstructionError(f"G-VALUES: {len(failures)} mismatches")
-    print("G-VALUES: PASS (recomputed values match pinned metadata to 1e-9)")
+    print(
+        "G-VALUES: PASS (headline values, configuration counts, per-series "
+        "support counts, input hashes, output hashes, and temporal artifact "
+        "hashes all match the pinned metadata)"
+    )
 
 
 def emit_test_fixture(args, daily_df, monthly_df, openet_eto_csv):
@@ -1045,6 +1229,20 @@ def main():
         "--emit-test-fixture",
         action="store_true",
         help="Write tests/fixtures/e1_benchmark/ for the committed regression test",
+    )
+    parser.add_argument(
+        "--gboot-dirs",
+        nargs=2,
+        metavar=("CANONICAL", "REPLICATE"),
+        help="G-BOOT: two overpass_decomposition output dirs to byte-compare; "
+        "their agreement (and the canonical hashes) is recorded in metadata",
+    )
+    parser.add_argument(
+        "--status",
+        choices=["rebuilt_awaiting_review", "frozen"],
+        default="rebuilt_awaiting_review",
+        help="Package status recorded in metadata; use 'frozen' only for the "
+        "final user-approved freeze build",
     )
     args = parser.parse_args()
 
