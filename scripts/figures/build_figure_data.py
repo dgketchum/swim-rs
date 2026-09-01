@@ -1190,6 +1190,319 @@ def build_fig02() -> None:
     )
 
 
+# ---- fig02 whole-site bootstrap (panel b interval rules) -------------------
+
+# Per-arm calibrated containers, exactly the ones pooled_arm_compare ran the
+# forecast-mode arms from.  Zarr directories cannot be single-file hashed; their
+# content is pinned instead by the Table 3 reproduction assert below.
+E0_ARM_CONTAINERS = {
+    "cover_scaled_sigmoid": Path("/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run22.swim"),
+    "unscaled_linear": Path("/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_RunFAO56.swim"),
+    "unscaled_sigmoid": Path("/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_fao56_sig.swim"),
+}
+
+E0_BOOT_N = 10_000
+E0_BOOT_SEED = 42
+
+
+def _e0_suff(obs: np.ndarray, sim: np.ndarray) -> np.ndarray:
+    """Per-site sufficient statistics [n, So, Sm, Soo, Smm, Som]."""
+    return np.array(
+        [
+            float(len(obs)),
+            obs.sum(),
+            sim.sum(),
+            (obs * obs).sum(),
+            (sim * sim).sum(),
+            (obs * sim).sum(),
+        ]
+    )
+
+
+def _e0_pooled_from_suff(s: np.ndarray) -> dict[str, np.ndarray]:
+    """Pooled KGE / RMSE / signed MBE from summed sufficient statistics.
+
+    Matches evaluate.py::calc_metrics arithmetic: population moments (ddof 0),
+    KGE-2009 with alpha = sd(model)/sd(obs) and beta = mean(model)/mean(obs),
+    MBE = model - obs.  Vectorized over any leading dimensions of ``s``.
+    """
+    n, so, sm, soo, smm, som = (s[..., i] for i in range(6))
+    mo, mm = so / n, sm / n
+    var_o = soo / n - mo * mo
+    var_m = smm / n - mm * mm
+    r = (som / n - mo * mm) / np.sqrt(var_o * var_m)
+    alpha = np.sqrt(var_m / var_o)
+    beta = mm / mo
+    return {
+        "kge": 1.0 - np.sqrt((r - 1.0) ** 2 + (alpha - 1.0) ** 2 + (beta - 1.0) ** 2),
+        "rmse": np.sqrt((soo - 2.0 * som + smm) / n),
+        "mbe": mm - mo,
+    }
+
+
+def build_fig02_bootstrap() -> None:
+    """95% whole-site bootstrap intervals for the Figure 2 panel (b) pooled metrics.
+
+    Re-runs the three E0 arms in forecast mode (the pooled_arm_compare recipe),
+    rebuilds the arm-paired flux mask requiring all three arms jointly finite,
+    asserts exact reproduction of the frozen pooled point values and Table 3
+    strings, then resamples the 45 evaluation sites with replacement.  A drawn
+    site contributes all of its paired days and monthly totals; daily and
+    monthly statistics share the same site draw.  Design frozen before any
+    interval was inspected.
+    """
+    sys.path.insert(0, str(REPO / "examples" / "5_Flux_Ensemble"))
+    from evaluate import (
+        apply_exclusions,
+        calc_metrics,
+        load_flux_et,
+        parse_pest_params,
+        resolve_flux_dir,
+        run_calibrated_model,
+    )
+
+    from swimrs.calibrate.flux_utils import full_month_paired_sums, passes_site_minimum
+    from swimrs.container import SwimContainer
+    from swimrs.swim.config import ProjectConfig
+
+    frozen_path = OUT / "fig02_pooled_metrics.csv"
+    srcs: dict[str, Path] = {"frozen_pooled": frozen_path}
+    for key, arm in E0_ARMS.items():
+        srcs[f"par:{key}"] = arm["par_csv"]
+        srcs[f"config:{key}"] = REPO / arm["config"]
+        srcs[f"container:{key}"] = E0_ARM_CONTAINERS[key]
+    for key, comp in E0_COMPARISONS.items():
+        srcs[f"gate:{key}"] = comp["dir"] / "pooled_gate.json"
+    for k, p in srcs.items():
+        if not p.exists():
+            raise BuildError(f"fig02 bootstrap source missing: {k} -> {p}")
+
+    # round_trip: the frozen point values must re-serialize byte-identically.
+    frozen = pd.read_csv(frozen_path, float_precision="round_trip")
+    require_count(len(frozen), 18, "fig02 bootstrap frozen pooled rows")
+    frozen_vals = {
+        (r["formulation"], r["scale"], r["metric"]): float(r["value"]) for _, r in frozen.iterrows()
+    }
+
+    # ---- forward re-runs, exactly as pooled_arm_compare ran each arm ----
+    container = SwimContainer.open(str(E0_ARM_CONTAINERS["cover_scaled_sigmoid"]), mode="r")
+    try:
+        fids = sorted(container.field_uids)
+    finally:
+        container.close()
+    require_count(len(fids), EXPECTED["E0_configured"], "fig02 bootstrap configured cohort")
+    fids = apply_exclusions(fids)
+
+    forms = list(E0_ARMS)
+    cfgs: dict[str, object] = {}
+    series: dict[str, dict] = {}
+    for key, arm in E0_ARMS.items():
+        cfg = ProjectConfig()
+        cfg.read_config(str(REPO / arm["config"]), calibrate=True)
+        cfgs[key] = cfg
+        params = parse_pest_params(str(arm["par_csv"]), fids)
+        container = SwimContainer.open(str(E0_ARM_CONTAINERS[key]), mode="r")
+        try:
+            results = run_calibrated_model(cfg, container, fids, params)
+        finally:
+            container.close()
+        series[key] = {fid: df["et_act"] for fid, df in results.items()}
+        print(f"  fig02 bootstrap: {key} forward run done ({len(results)} sites)")
+
+    flux_dir = resolve_flux_dir(cfgs["cover_scaled_sigmoid"])
+
+    # ---- arm-paired mask: flux and all three arms finite on the same day ----
+    site_ids: list[str] = []
+    d_obs: list[np.ndarray] = []
+    m_obs: list[np.ndarray] = []
+    d_sim: dict[str, list] = {k: [] for k in forms}
+    m_sim: dict[str, list] = {k: [] for k in forms}
+    d_suff: dict[str, list] = {k: [] for k in forms}
+    m_suff: dict[str, list] = {k: [] for k in forms}
+    for fid in fids:
+        flux_et = load_flux_et(fid, flux_dir)
+        if flux_et.empty or not passes_site_minimum(flux_et):
+            continue
+        if any(fid not in series[k] for k in forms):
+            continue
+        common = flux_et.index
+        for k in forms:
+            common = common.intersection(series[k][fid].index)
+        if len(common) < 10:
+            continue
+        obs = flux_et.loc[common].values
+        sims = {k: series[k][fid].loc[common].values for k in forms}
+        mask = np.isfinite(obs)
+        for k in forms:
+            mask &= np.isfinite(sims[k])
+        if mask.sum() < 10:
+            continue
+        site_ids.append(fid)
+        d_obs.append(obs[mask])
+        for k in forms:
+            d_sim[k].append(sims[k][mask])
+            d_suff[k].append(_e0_suff(obs[mask], sims[k][mask]))
+
+        flux_daily = flux_et.loc[common]
+        flux_mo = None
+        mo_sums = {}
+        for k in forms:
+            s_mo, f_mo = full_month_paired_sums(series[k][fid], flux_daily)
+            mo_sums[k] = s_mo
+            if flux_mo is None:
+                flux_mo = f_mo
+        months = flux_mo.index
+        for k in forms:
+            months = months.intersection(mo_sums[k].index)
+        o_mo = flux_mo.reindex(months).values
+        sm_mo = {k: mo_sums[k].reindex(months).values for k in forms}
+        mmask = np.isfinite(o_mo)
+        for k in forms:
+            mmask &= np.isfinite(sm_mo[k])
+        if mmask.sum() >= 6:
+            m_obs.append(o_mo[mmask])
+            for k in forms:
+                m_sim[k].append(sm_mo[k][mmask])
+                m_suff[k].append(_e0_suff(o_mo[mmask], sm_mo[k][mmask]))
+        else:
+            for k in forms:
+                m_suff[k].append(np.zeros(6))
+
+    require_count(len(site_ids), EXPECTED["E0_pooled_sites"], "fig02 bootstrap sites")
+    n_daily = int(sum(len(v) for v in d_obs))
+    require_count(n_daily, EXPECTED["E0_pooled_daily"], "fig02 bootstrap site-days")
+    n_monthly = int(sum(len(v) for v in m_obs))
+    require_count(n_monthly, EXPECTED["E0_pooled_monthly"], "fig02 bootstrap monthly totals")
+
+    # ---- point values must reproduce the frozen package and Table 3 ----
+    cat = {
+        "daily": (np.concatenate(d_obs), {k: np.concatenate(d_sim[k]) for k in forms}),
+        "monthly": (np.concatenate(m_obs), {k: np.concatenate(m_sim[k]) for k in forms}),
+    }
+    suff_arr = {("daily", k): np.vstack(d_suff[k]) for k in forms} | {
+        ("monthly", k): np.vstack(m_suff[k]) for k in forms
+    }
+
+    point: dict[tuple[str, str, str], float] = {}
+    for scale, (obs_v, sims_v) in cat.items():
+        for k in forms:
+            m = calc_metrics(obs_v, sims_v[k])
+            direct = {"kge": m["kge"], "rmse": m["rmse"], "mbe": m["bias"]}
+            via_suff = _e0_pooled_from_suff(suff_arr[(scale, k)].sum(axis=0))
+            for metric in ("kge", "rmse", "mbe"):
+                v = float(direct[metric])
+                got = _e0_table3_format(scale, metric, v)
+                want = E0_TABLE3[(k, scale, metric)]
+                if got != want:
+                    raise BuildError(
+                        f"fig02 bootstrap: {k}/{scale}/{metric} = {v!r} formats to {got}, "
+                        f"Table 3 says {want}"
+                    )
+                fv = frozen_vals[(k, scale, metric)]
+                if abs(v - fv) > 1e-9:
+                    raise BuildError(
+                        f"fig02 bootstrap: {k}/{scale}/{metric} recomputed {v!r} != frozen {fv!r}"
+                    )
+                if abs(float(via_suff[metric]) - v) > 1e-7:
+                    raise BuildError(
+                        f"fig02 bootstrap: sufficient-statistic {metric} disagrees with "
+                        f"calc_metrics for {k}/{scale}"
+                    )
+                point[(k, scale, metric)] = fv
+
+    # ---- whole-site resampling; one draw shared by every arm and scale ----
+    rng = np.random.default_rng(E0_BOOT_SEED)
+    draws = rng.integers(0, len(site_ids), size=(E0_BOOT_N, len(site_ids)))
+    reps: dict[tuple[str, str, str], np.ndarray] = {}
+    for scale in ("daily", "monthly"):
+        for k in forms:
+            sums = suff_arr[(scale, k)][draws].sum(axis=1)
+            if scale == "monthly" and float(sums[:, 0].min()) < 60.0:
+                raise BuildError("fig02 bootstrap: a monthly resample has < 60 totals")
+            met = _e0_pooled_from_suff(sums)
+            for metric in ("kge", "rmse", "mbe"):
+                r = met[metric]
+                if not np.isfinite(r).all():
+                    raise BuildError(f"fig02 bootstrap: nonfinite {k}/{scale}/{metric} resample")
+                reps[(k, scale, metric)] = r
+
+    rows = []
+    for k in forms:
+        for scale in ("daily", "monthly"):
+            for metric in ("kge", "rmse", "mbe"):
+                r = reps[(k, scale, metric)]
+                rows.append(
+                    {
+                        "formulation": k,
+                        "scale": scale,
+                        "metric": metric,
+                        "value": point[(k, scale, metric)],
+                        "ci95_lo": float(np.percentile(r, 2.5)),
+                        "ci95_hi": float(np.percentile(r, 97.5)),
+                        "n_resamples": E0_BOOT_N,
+                        "seed": E0_BOOT_SEED,
+                        "resample_unit": (
+                            "whole site (all paired days and monthly totals retained "
+                            "per sampled site)"
+                        ),
+                        "n_sites": len(site_ids),
+                        "n_paired": n_daily if scale == "daily" else n_monthly,
+                        "evaluation_mask_id": E0_MASK_ID,
+                        "unit": (
+                            "dimensionless"
+                            if metric == "kge"
+                            else ("mm d-1" if scale == "daily" else "mm month-1")
+                        ),
+                    }
+                )
+    out = pd.DataFrame(rows)
+    n = write_table(out, "fig02_pooled_bootstrap.csv")
+
+    MANIFEST.add(
+        "fig02_pooled_bootstrap.csv",
+        rows=n,
+        experiment=(
+            "E0 (vegetation-formulation model development on the E1 cohort; "
+            "legacy e2_ / examples/5_Flux_Ensemble)"
+        ),
+        evaluation_mask_id=E0_MASK_ID,
+        sources={k: str(p) for k, p in srcs.items()},
+        source_hashes={
+            "frozen_pooled": sha256(frozen_path),
+            **{f"par:{k}": sha256(E0_ARMS[k]["par_csv"]) for k in forms},
+            **{
+                f"gate:{k}": sha256(c["dir"] / "pooled_gate.json")
+                for k, c in E0_COMPARISONS.items()
+            },
+        },
+        inclusion_rule=(
+            "Arm-paired flux mask rebuilt with all three formulations required jointly "
+            "finite; asserted identical to the frozen Table 3 mask (45 sites, 63,681 "
+            "site-days, 1,435 monthly totals) and every pooled point value asserted to "
+            "reproduce fig02_pooled_metrics.csv and Table 3 at manuscript precision."
+        ),
+        bootstrap=(
+            "Whole-site resampling with replacement, all paired days and monthly totals "
+            "retained for each sampled site, 10,000 resamples, numpy default_rng(42); "
+            "daily and monthly statistics share the same site draw. Design frozen before "
+            "any interval was inspected."
+        ),
+        interval_caveat=(
+            "Intervals describe pooled-magnitude uncertainty per formulation and are NOT "
+            "paired formulation contrasts; paired site-level evidence lives in "
+            "fig02_site_rmse_effects.csv."
+        ),
+        deterministic_seed=E0_BOOT_SEED,
+        independent_unit="site",
+    )
+    print(f"  fig02 bootstrap: {n} rows, {E0_BOOT_N} whole-site resamples, seed {E0_BOOT_SEED}")
+    for _, r in out.iterrows():
+        print(
+            f"    {r['formulation']:<22s} {r['scale']:<7s} {r['metric']:<4s} "
+            f"{r['value']:>8.3f}  [{r['ci95_lo']:.3f}, {r['ci95_hi']:.3f}]"
+        )
+
+
 # --------------------------------------------------------------------------
 # Figure 3 -- pooled daily ET agreement and temporal-support effects
 # --------------------------------------------------------------------------
@@ -8671,6 +8984,7 @@ def _ne_states_version() -> str:
 BUILDERS = {
     "fig01": lambda: build_fig01(),
     "fig02": lambda: build_fig02(),
+    "fig02_bootstrap": lambda: build_fig02_bootstrap(),
     "fig03": lambda: build_fig03(),
     "fig04": lambda: build_fig04(),
     "fig05_e1": lambda: build_fig05_e1(),
@@ -8685,6 +8999,7 @@ BUILDERS = {
 # so a --all run must build it last.  Every other builder is independent.
 BUILD_ORDER = [
     "fig02",
+    "fig02_bootstrap",
     "fig03",
     "fig04",
     "fig05_e1",
