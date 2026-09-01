@@ -17,8 +17,7 @@ This script fills in everything else and rounds out Category 1:
   Cat 5  post:     posterior_site_summary.csv, boundary_hit_rates.csv (per-LULC),
                    lulc_grouped_summary.csv, irrigated_grouped_summary.csv
   Cat 6  eval:     daily_paired_metrics.csv, monthly_paired_metrics.csv,
-                   volk_replication_*.csv (copied), site_daily_timeseries/,
-                   evaluation_metadata.json
+                   site_daily_timeseries/, evaluation_metadata.json
 
 Category 7 (figure audit) is deferred until manuscript figures are defined; the
 gap is recorded in archive/GAPS.md.
@@ -734,37 +733,29 @@ def active_refet_arrays(root, met_source="gridmet", refet_type="eto"):
     return np.asarray(root[raw_path][:]), None
 
 
-def cat6_evaluation(cfg, container, cat6_dir, par_csv, results_dir, cat3_dir, gaps):
+def cat6_evaluation(cfg, container, cat6_dir, par_csv, cat3_dir, gaps):
     os.makedirs(cat6_dir, exist_ok=True)
     flux_dir = ev.resolve_flux_dir(cfg)
     fids = ev.apply_exclusions(list(container.field_uids))
 
-    # paired metrics (reuse evaluate.py's authoritative logic)
+    # paired metrics (reuse evaluate.py's authoritative logic); the grouped
+    # bundle comes from the same single forward run as the per-site table
     try:
-        daily = ev.evaluate(cfg, container, par_csv, list(container.field_uids), flux_dir, "volk")
-        daily.to_csv(os.path.join(cat6_dir, "daily_paired_metrics.csv"))
+        daily_bundle = ev.evaluate_benchmark_daily(
+            cfg, container, par_csv, list(container.field_uids), flux_dir, openet_source="volk"
+        )
+        daily_bundle.site_metrics.to_csv(os.path.join(cat6_dir, "daily_paired_metrics.csv"))
+        ev.write_grouped_outputs(daily_bundle, cat6_dir, "daily", openet_source="volk")
     except Exception as exc:  # noqa: BLE001
         gaps.append(f"Cat6: daily_paired_metrics failed ({exc})")
     try:
-        monthly = ev.evaluate_monthly(cfg, container, par_csv, list(container.field_uids), flux_dir)
-        monthly.to_csv(os.path.join(cat6_dir, "monthly_paired_metrics.csv"))
+        monthly_bundle = ev.evaluate_benchmark_monthly(
+            cfg, container, par_csv, list(container.field_uids), flux_dir
+        )
+        monthly_bundle.site_metrics.to_csv(os.path.join(cat6_dir, "monthly_paired_metrics.csv"))
+        ev.write_grouped_outputs(monthly_bundle, cat6_dir, "monthly", openet_source="volk")
     except Exception as exc:  # noqa: BLE001
         gaps.append(f"Cat6: monthly_paired_metrics failed ({exc})")
-
-    # copy pooled Volk replication CSVs produced by volk_replication.py
-    copied = []
-    for name in (
-        "volk_replication_daily.csv",
-        "volk_replication_alldays.csv",
-        "volk_replication_monthly.csv",
-        "volk_replication_monthly_diy.csv",
-    ):
-        src = os.path.join(results_dir, name)
-        if os.path.exists(src):
-            shutil.copyfile(src, os.path.join(cat6_dir, name))
-            copied.append(name)
-    if len(copied) < 4:
-        gaps.append(f"Cat6: only {len(copied)}/4 volk_replication CSVs found in {results_dir}")
 
     # site_daily_timeseries/
     ts_dir = os.path.join(cat6_dir, "site_daily_timeseries")
@@ -949,7 +940,6 @@ def main():
                     container,
                     os.path.join(archive, "6_evaluation"),
                     par_csv,
-                    results_dir,
                     os.path.join(archive, "3_problem_definition"),
                     gaps,
                 )
