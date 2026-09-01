@@ -36,13 +36,33 @@ def ev():
     return module
 
 
-def _record(ev, fid, n, seed, bias=0.0, noise=0.4, scale_mod=1.0, start="2020-01-01"):
+def _support(n):
+    """Deterministic support-class mix: captures every 8th day, flat-fill tail."""
+    out = []
+    for i in range(n):
+        if i % 8 == 0:
+            out.append("capture")
+        elif i >= n - 3:
+            out.append("flat_fill")
+        else:
+            out.append("interpolated")
+    return tuple(out)
+
+
+def _record(ev, fid, n, seed, bias=0.0, noise=0.4, scale_mod=1.0, start="2020-01-01", support=True):
     rng = np.random.default_rng(seed)
     idx = pd.date_range(start, periods=n, freq="D")
     obs = np.abs(rng.normal(3.5, 1.2, size=n)) + 0.5
     swim = obs * scale_mod + bias + rng.normal(0.0, noise, size=n)
     openet = obs + rng.normal(0.0, noise, size=n) - 0.3
-    return ev.PairedSiteSeries(fid=fid, index=idx, observed=obs, swim=swim, openet=openet)
+    return ev.PairedSiteSeries(
+        fid=fid,
+        index=idx,
+        observed=obs,
+        swim=swim,
+        openet=openet,
+        support_class=_support(n) if support else None,
+    )
 
 
 @pytest.fixture(scope="module")
@@ -547,6 +567,120 @@ def test_full_precision_csv_roundtrip(ev, two_site_cohort, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Paired-record emission (e1_openet_paired_daily/v1) from the evaluator
+# ---------------------------------------------------------------------------
+
+
+def test_daily_volk_record_emitted_by_default(ev, two_site_cohort, tmp_path):
+    bundle = _bundle(ev, two_site_cohort, reps=0)
+    written = ev.write_grouped_outputs(bundle, str(tmp_path), "daily", openet_source="volk")
+    record_path = tmp_path / ev.PAIRED_RECORD_FILENAME
+    assert record_path.exists()
+    assert written["paired_records"] == str(record_path)
+    frame = ev.read_paired_record_frame(record_path)
+    assert list(frame.columns) == list(ev.PAIRED_RECORD_COLUMNS)
+    assert len(frame) == sum(r.n for r in two_site_cohort)
+    # deterministically sorted by fid then date
+    assert frame.equals(frame.sort_values(["fid", "date"], kind="mergesort"))
+
+
+def test_record_roundtrip_recovers_exact_values(ev, two_site_cohort, tmp_path):
+    bundle = _bundle(ev, two_site_cohort, reps=0)
+    ev.write_grouped_outputs(bundle, str(tmp_path), "daily", openet_source="volk")
+    frame = ev.read_paired_record_frame(tmp_path / ev.PAIRED_RECORD_FILENAME)
+    rebuilt = {r.fid: r for r in ev.paired_records_from_frame(frame)}
+    for rec in two_site_cohort:
+        got = rebuilt[rec.fid]
+        np.testing.assert_array_equal(got.observed, rec.observed)
+        np.testing.assert_array_equal(got.swim, rec.swim)
+        np.testing.assert_array_equal(got.openet, rec.openet)
+        assert got.support_class == rec.support_class
+        assert got.index.equals(rec.index)
+
+
+def test_missing_support_metadata_blocks_canonical_daily_write(ev, tmp_path):
+    bare = (
+        _record(ev, "US-Aaa", 40, seed=31, support=False),
+        _record(ev, "US-Bbb", 40, seed=32, support=False),
+    )
+    bundle = _bundle(ev, bare, reps=0)
+    with pytest.raises(ev.GroupedEstimationError, match="support metadata"):
+        ev.write_grouped_outputs(bundle, str(tmp_path), "daily", openet_source="volk")
+
+
+def test_diy_and_monthly_never_write_canonical_record(ev, two_site_cohort, tmp_path):
+    d_diy, d_mon = tmp_path / "diy", tmp_path / "monthly"
+    d_diy.mkdir()
+    d_mon.mkdir()
+    ev.write_grouped_outputs(
+        _bundle(ev, two_site_cohort, reps=0), str(d_diy), "daily", openet_source="diy"
+    )
+    monthly = _bundle(ev, two_site_cohort, scale="monthly", reps=0)
+    ev.write_grouped_outputs(monthly, str(d_mon), "monthly", openet_source="volk")
+    assert not (d_diy / ev.PAIRED_RECORD_FILENAME).exists()
+    assert not (d_mon / ev.PAIRED_RECORD_FILENAME).exists()
+
+
+def test_record_hash_and_contract_in_metadata(ev, two_site_cohort, tmp_path):
+    bundle = _bundle(ev, two_site_cohort, reps=0)
+    ev.write_grouped_outputs(bundle, str(tmp_path), "daily", openet_source="volk")
+    with open(tmp_path / "evaluation_grouped_daily_metadata.json") as f:
+        meta = json.load(f)
+    contract = meta["paired_record_contract"]
+    assert contract["schema_version"] == ev.PAIRED_RECORD_SCHEMA_VERSION
+    assert contract["filename"] == ev.PAIRED_RECORD_FILENAME
+    assert contract["sha256"] == meta["output_hashes"][ev.PAIRED_RECORD_FILENAME]
+    assert contract["n_sites"] == 2
+    assert contract["n_rows"] == sum(r.n for r in two_site_cohort)
+    n_ret = sum(r.support_class.count("capture") for r in two_site_cohort)
+    assert contract["n_retrieval"] == n_ret
+    assert contract["n_between_retrieval"] == contract["n_rows"] - n_ret
+    assert sum(contract["support_class_counts"].values()) == contract["n_rows"]
+    assert contract["ordered_columns"] == list(ev.PAIRED_RECORD_COLUMNS)
+    assert contract["minimum_all_days_count"] == ev.MIN_OBS_FOR_METRICS
+    assert "unsupported" not in contract["allowed_support_classes"]
+
+
+def test_roundtrip_gate_rejects_tampered_grouped_metrics(ev, two_site_cohort, tmp_path):
+    bundle = _bundle(ev, two_site_cohort, reps=0)
+    tampered = bundle.grouped_metrics.copy()
+    tampered.loc[0, "estimate"] += 1e-6
+    broken = ev.BenchmarkEvaluation(
+        site_metrics=bundle.site_metrics,
+        grouped_metrics=tampered,
+        grouped_contrasts=bundle.grouped_contrasts,
+        paired_records=bundle.paired_records,
+        site_effect_summary=None,
+        metadata=bundle.metadata,
+    )
+    with pytest.raises(ev.GroupedEstimationError, match="round-trip"):
+        ev.write_grouped_outputs(broken, str(tmp_path), "daily", openet_source="volk")
+
+
+def test_shared_module_reexports(ev):
+    import swimrs.evaluation.benchmark as shared
+
+    for name in (
+        "PairedSiteSeries",
+        "GroupedEstimationError",
+        "grouped_point_estimates",
+        "bootstrap_grouped",
+        "bootstrap_grouped_from_counts",
+        "paired_records_to_frame",
+        "paired_records_from_frame",
+        "read_paired_record_frame",
+        "write_paired_record_frame",
+        "validate_paired_record_frame",
+        "site_secondary_metrics",
+        "PAIRED_RECORD_SCHEMA_VERSION",
+        "PAIRED_RECORD_FILENAME",
+        "SUPPORT_CLASSES",
+        "TEMPORAL_CLASSES",
+    ):
+        assert getattr(ev, name) is getattr(shared, name), name
+
+
+# ---------------------------------------------------------------------------
 # Default-output hygiene: no legacy aggregate, no NSE headline
 # ---------------------------------------------------------------------------
 
@@ -643,6 +777,11 @@ def test_archive_run_uses_bundle_functions():
     assert "evaluate_benchmark_daily" in src
     assert "evaluate_benchmark_monthly" in src
     assert "write_grouped_outputs" in src
+    # the paired daily record is part of the canonical category-6 bundle;
+    # its absence must be treated as an archive gap (no second evaluator call)
+    assert "paired_records" in src
+    assert "evaluation_paired_daily_records.csv" in src
+    assert src.count("evaluate_benchmark_daily(") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -730,3 +869,38 @@ def test_frozen_grouped_point_targets(scale):
     got = df.set_index(["aggregation", "model", "metric"])["estimate"]
     for key, want in targets.items():
         assert got[key] == pytest.approx(want, abs=5e-9), key
+
+
+# Canonical paired-record counts (plan §5.4): support-class rows must sum
+# exactly to the all-days total on the Run 22 footing.
+FROZEN_RECORD_COUNTS = {
+    "n_sites": 45,
+    "n_rows": 59516,
+    "n_retrieval": 4987,
+    "n_interpolated": 42048,
+    "n_flat_fill": 12481,
+    "n_between_retrieval": 54529,
+}
+
+
+@pytest.mark.regression
+def test_frozen_paired_record_counts(ev):
+    import os as _os
+
+    base = _os.environ.get(GROUPED_DIR_ENV)
+    if not base:
+        pytest.skip(f"{GROUPED_DIR_ENV} not set (frozen-support regression is data-gated)")
+    path = Path(base) / ev.PAIRED_RECORD_FILENAME
+    if not path.exists():
+        pytest.skip(f"{path} not found")
+    frame = ev.read_paired_record_frame(path)
+    counts = ev.validate_paired_record_frame(frame)
+    assert counts["n_sites"] == FROZEN_RECORD_COUNTS["n_sites"]
+    assert counts["n_rows"] == FROZEN_RECORD_COUNTS["n_rows"]
+    assert counts["n_retrieval"] == FROZEN_RECORD_COUNTS["n_retrieval"]
+    assert counts["n_between_retrieval"] == FROZEN_RECORD_COUNTS["n_between_retrieval"]
+    sc = counts["support_class_counts"]
+    assert sc["capture"] == FROZEN_RECORD_COUNTS["n_retrieval"]
+    assert sc["interpolated"] == FROZEN_RECORD_COUNTS["n_interpolated"]
+    assert sc["flat_fill"] == FROZEN_RECORD_COUNTS["n_flat_fill"]
+    assert sum(sc.values()) == FROZEN_RECORD_COUNTS["n_rows"]

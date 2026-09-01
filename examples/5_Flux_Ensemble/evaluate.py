@@ -29,8 +29,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy import stats
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import r2_score
 
 from swimrs.calibrate.benchmark import (
     BenchmarkConstructionError,
@@ -42,6 +41,61 @@ from swimrs.calibrate.flux_utils import (
     write_excluded_sites,
 )
 from swimrs.container import SwimContainer
+
+# The grouped-benchmark estimators, contract constants, and the paired-record
+# contract live in the pure shared module (swimrs.evaluation.benchmark); they
+# are re-exported here so path-importing callers and tests keep working.
+from swimrs.evaluation.benchmark import (
+    AGG_POOLED,
+    AGG_WEIGHTED,
+    BENCHMARK_LABELS,  # noqa: F401  (re-export)
+    BENCHMARK_SOURCE_MACHINE_TOKENS,  # noqa: F401  (re-export)
+    BOOTSTRAP_REPS_DEFAULT,
+    BOOTSTRAP_SEED_DEFAULT,
+    CONSTRUCTION_TOKENS,  # noqa: F401  (re-export)
+    ERROR_METRIC_UNITS,
+    FAVORABLE_DIRECTION,  # noqa: F401  (re-export)
+    GROUPED_CONTRAST_COLUMNS,  # noqa: F401  (re-export)
+    GROUPED_FORMULAS,  # noqa: F401  (re-export)
+    GROUPED_MASK_DEFINITION,  # noqa: F401  (re-export)
+    GROUPED_METRIC_COLUMNS,  # noqa: F401  (re-export)
+    GROUPED_MODEL_ORDER,
+    MIN_OBS_FOR_METRICS,
+    MODEL_DISPLAY,
+    MOMENT_IDENTITY_ATOL,  # noqa: F401  (re-export)
+    PAIRED_RECORD_COLUMNS,
+    PAIRED_RECORD_FILENAME,
+    PAIRED_RECORD_SCHEMA_VERSION,
+    PAIRED_RECORD_SORT_ORDER,
+    POOLED_METRICS,
+    PRIMARY_METRICS,  # noqa: F401  (re-export)
+    SUPPORT_CLASSES,
+    TEMPORAL_CLASS_DEFINITION,
+    TEMPORAL_CLASSES,
+    WEIGHTED_METRICS,
+    GroupedEstimationError,
+    PairedSiteSeries,
+    _bootstrap_multiplicities,  # noqa: F401  (re-export)
+    bootstrap_grouped,  # noqa: F401  (re-export)
+    bootstrap_grouped_from_counts,  # noqa: F401  (re-export)
+    build_paired_site_series,  # noqa: F401  (re-export)
+    grouped_metadata,
+    grouped_metric_tables,
+    grouped_point_estimates,
+    paired_records_from_frame,  # noqa: F401  (re-export)
+    paired_records_to_frame,
+    pooled_metrics,  # noqa: F401  (re-export)
+    pooled_metrics_direct,  # noqa: F401  (re-export)
+    pooled_metrics_from_moments,  # noqa: F401  (re-export)
+    read_paired_record_frame,
+    site_effect_summary,
+    site_metric_triads,  # noqa: F401  (re-export)
+    site_secondary_metrics,
+    site_sufficient_stats,  # noqa: F401  (re-export)
+    sqrt_n_weighted_metrics,  # noqa: F401  (re-export)
+    validate_paired_record_frame,
+    write_paired_record_frame,
+)
 from swimrs.process.input import build_swim_input
 from swimrs.process.loop_fast import run_daily_loop_fast
 from swimrs.swim.config import ProjectConfig
@@ -49,101 +103,6 @@ from swimrs.swim.config import ProjectConfig
 OPEN_SOURCE_MODELS = ["geesebal", "ptjpl", "ssebop", "sims", "eemetric", "disalexi"]
 
 EXCLUDED_SITES = {"MB_Pch"}
-
-# --- Grouped-benchmark contract (VALIDATION_POLICY: SWIM-OpenET Benchmark
-# Aggregation). One constant per threshold/label so gates cannot drift apart.
-MIN_OBS_FOR_METRICS = 10
-BOOTSTRAP_REPS_DEFAULT = 10_000
-BOOTSTRAP_SEED_DEFAULT = 42
-PRIMARY_METRICS = ("kge", "rmse", "mbe")
-POOLED_METRICS = ("kge", "rmse", "mbe", "r", "r2", "slope0")
-WEIGHTED_METRICS = ("kge", "rmse", "mbe")
-GROUPED_MODEL_ORDER = ("swim", "openet_ensemble")
-MODEL_DISPLAY = {"swim": "SWIM-RS", "openet_ensemble": "OpenET ensemble"}
-AGG_POOLED = "pooled_observations"
-AGG_WEIGHTED = "sqrt_n_weighted_site_metric"
-MOMENT_IDENTITY_ATOL = 1e-12
-
-# Reader-facing benchmark label and stable machine tokens (development
-# chronology stays out of scientific display labels; tokens carry provenance).
-BENCHMARK_LABELS = {
-    "volk": "OpenET ensemble v2.1 3x3",
-    "diy": "Container ETf reconstruction (diagnostic)",
-}
-BENCHMARK_SOURCE_MACHINE_TOKENS = {
-    "volk": "openet_flux_2pt1",
-    "diy": "container_etf_diy_diagnostic",
-}
-CONSTRUCTION_TOKENS = {
-    "daily": "etf_first_volk_window",
-    "monthly": "independent_full_month_openet_totals_v2pt1",
-}
-FAVORABLE_DIRECTION = {
-    "kge": "positive",
-    "r": "positive",
-    "r2": "positive",
-    "rmse": "negative",
-    "mbe": "directional_only",
-    "slope0": "directional_only",
-}
-ERROR_METRIC_UNITS = {"daily": "mm d-1", "monthly": "mm month-1"}
-
-GROUPED_METRIC_COLUMNS = (
-    "scale",
-    "model",
-    "metric",
-    "estimate",
-    "ci95_low",
-    "ci95_high",
-    "unit",
-    "aggregation",
-    "n_sites",
-    "n_pairs",
-    "weight_rule",
-    "bootstrap_unit",
-    "bootstrap_reps",
-    "bootstrap_seed",
-    "benchmark",
-    "benchmark_source",
-    "benchmark_construction",
-    "kge_variant",
-    "r2_definition",
-    "slope_constraint",
-)
-GROUPED_CONTRAST_COLUMNS = (
-    "scale",
-    "aggregation",
-    "metric",
-    "contrast",
-    "estimate",
-    "ci95_low",
-    "ci95_high",
-    "unit",
-    "n_sites",
-    "n_pairs",
-    "bootstrap_unit",
-    "bootstrap_reps",
-    "bootstrap_seed",
-    "favorable_direction",
-)
-
-GROUPED_FORMULAS = {
-    "kge": (
-        "1 - sqrt((r-1)^2 + (alpha-1)^2 + (beta-1)^2); "
-        "alpha = std(mod, ddof=0)/std(obs, ddof=0); beta = mean(mod)/mean(obs); "
-        "KGE 2009 with population standard deviation"
-    ),
-    "rmse": "sqrt(mean((mod - obs)^2))",
-    "mbe": "mean(mod - obs), signed, modeled minus observed",
-    "r": "Pearson correlation(obs, mod)",
-    "r2": "squared Pearson correlation (never NSE / sklearn r2_score)",
-    "slope0": "sum(obs*mod)/sum(obs^2), least-squares slope forced through the origin",
-    "weighted": "sum_i(sqrt(n_i)*Q_i)/sum_i(sqrt(n_i)) for Q in {kge, rmse, mbe}",
-}
-GROUPED_MASK_DEFINITION = (
-    "per site: finite(flux) & finite(swim) & finite(openet_ensemble) on the "
-    "exact same dates/months; both models scored on identical support"
-)
 
 
 def apply_exclusions(fids):
@@ -365,464 +324,21 @@ def load_volk_openet_et(fid, openet_daily_dir):
 
 
 def calc_metrics(obs, mod):
-    """Calculate R2, Pearson r, RMSE, bias, KGE between obs and mod arrays."""
-    mask = np.isfinite(obs) & np.isfinite(mod)
-    obs, mod = obs[mask], mod[mask]
-    if len(obs) < MIN_OBS_FOR_METRICS:
-        return {
-            "n": len(obs),
-            "r2": np.nan,
-            "r": np.nan,
-            "rmse": np.nan,
-            "bias": np.nan,
-            "kge": np.nan,
-        }
-    r, _ = stats.pearsonr(obs, mod)
-    r2 = r2_score(obs, mod)
-    rmse = np.sqrt(mean_squared_error(obs, mod))
-    bias = float((mod - obs).mean())
-    alpha = np.std(mod) / np.std(obs) if np.std(obs) > 0 else np.nan
-    beta = np.mean(mod) / np.mean(obs) if np.mean(obs) > 0 else np.nan
-    kge = 1.0 - np.sqrt((r - 1.0) ** 2 + (alpha - 1.0) ** 2 + (beta - 1.0) ** 2)
-    return {"n": len(obs), "r2": r2, "r": r, "rmse": rmse, "bias": bias, "kge": kge}
+    """Legacy per-site metric row: R2/r/RMSE/bias/KGE via the shared helper.
 
-
-# ---------------------------------------------------------------------------
-# Grouped SWIM-OpenET benchmark estimators (pure: no file I/O, no printing)
-# ---------------------------------------------------------------------------
-
-
-class GroupedEstimationError(ValueError):
-    """A grouped estimand could not be computed; names the degenerate condition."""
-
-
-@dataclass(frozen=True)
-class PairedSiteSeries:
-    """Exactly paired flux/SWIM/OpenET-ensemble series for one retained site.
-
-    All three arrays share the ensemble-headline common-support mask
-    ``finite(flux) & finite(swim) & finite(openet_ensemble)``; values must be
-    finite, one-dimensional, equal length, and at least MIN_OBS_FOR_METRICS.
+    Delegates to ``swimrs.evaluation.benchmark.site_secondary_metrics`` and
+    maps its unambiguous keys onto the legacy per-site column labels:
+    ``r2`` <- ``nse`` (1 - SSE/SST) and ``bias`` <- signed ``mbe``.
     """
-
-    fid: str
-    index: pd.DatetimeIndex
-    observed: np.ndarray
-    swim: np.ndarray
-    openet: np.ndarray
-
-    def __post_init__(self):
-        for name in ("observed", "swim", "openet"):
-            arr = np.asarray(getattr(self, name), dtype=np.float64)
-            if arr.ndim != 1:
-                raise GroupedEstimationError(f"{self.fid}: {name} must be one-dimensional")
-            object.__setattr__(self, name, arr)
-        idx = self.index
-        if not isinstance(idx, pd.DatetimeIndex):
-            idx = pd.DatetimeIndex(idx)
-            object.__setattr__(self, "index", idx)
-        n = len(self.observed)
-        if not (len(self.swim) == len(self.openet) == len(idx) == n):
-            raise GroupedEstimationError(f"{self.fid}: unequal paired array lengths")
-        if n < MIN_OBS_FOR_METRICS:
-            raise GroupedEstimationError(
-                f"{self.fid}: {n} paired observations < MIN_OBS_FOR_METRICS={MIN_OBS_FOR_METRICS}"
-            )
-        for name in ("observed", "swim", "openet"):
-            if not np.isfinite(getattr(self, name)).all():
-                raise GroupedEstimationError(
-                    f"{self.fid}: non-finite values remain in {name} after masking"
-                )
-        if idx.has_duplicates:
-            raise GroupedEstimationError(f"{self.fid}: duplicate timestamps in paired index")
-        if not idx.is_monotonic_increasing:
-            raise GroupedEstimationError(f"{self.fid}: paired index is not monotonic")
-
-    @property
-    def n(self):
-        return len(self.observed)
-
-    def model_series(self, model):
-        if model == "swim":
-            return self.swim
-        if model == "openet_ensemble":
-            return self.openet
-        raise GroupedEstimationError(f"unknown model token {model!r}")
-
-
-def build_paired_site_series(fid, index, flux, swim, openet):
-    """Apply the ensemble-headline three-way mask and build a PairedSiteSeries."""
-    flux = np.asarray(flux, dtype=np.float64)
-    swim = np.asarray(swim, dtype=np.float64)
-    openet = np.asarray(openet, dtype=np.float64)
-    mask = np.isfinite(flux) & np.isfinite(swim) & np.isfinite(openet)
-    idx = pd.DatetimeIndex(index)[mask]
-    return PairedSiteSeries(
-        fid=fid, index=idx, observed=flux[mask], swim=swim[mask], openet=openet[mask]
-    )
-
-
-def _check_cohort(records):
-    if len(records) == 0:
-        raise GroupedEstimationError("empty cohort: no retained paired sites")
-    fids = [r.fid for r in records]
-    if len(set(fids)) != len(fids):
-        dupes = sorted({f for f in fids if fids.count(f) > 1})
-        raise GroupedEstimationError(f"duplicate site IDs in cohort: {dupes}")
-
-
-def site_sufficient_stats(observed, modeled):
-    """Per-site pooled-metric sufficient statistics.
-
-    Returns ``[n, sum_o, sum_x, sum_o2, sum_x2, sum_ox]`` (float64), from
-    which every pooled metric is derivable without re-concatenating arrays.
-    """
-    o = np.asarray(observed, dtype=np.float64)
-    x = np.asarray(modeled, dtype=np.float64)
-    return np.array(
-        [o.size, o.sum(), x.sum(), (o * o).sum(), (x * x).sum(), (o * x).sum()],
-        dtype=np.float64,
-    )
-
-
-def _moment_matrix(records, model):
-    return np.vstack([site_sufficient_stats(r.observed, r.model_series(model)) for r in records])
-
-
-def pooled_metrics_from_moments(moments, context=""):
-    """All six pooled metrics from summed sufficient statistics.
-
-    ``moments`` is a 6-vector or an ``(reps, 6)`` array of summed site
-    statistics. Degenerate variance/mean conditions raise instead of being
-    silently discarded. Returns scalars for a 6-vector input.
-    """
-    m = np.asarray(moments, dtype=np.float64)
-    squeeze = m.ndim == 1
-    if squeeze:
-        m = m[None, :]
-    n = m[:, 0]
-    if np.any(n <= 0):
-        raise GroupedEstimationError(f"{context}: empty pooled sample (n <= 0)")
-    mean_o = m[:, 1] / n
-    mean_x = m[:, 2] / n
-    var_o = m[:, 3] / n - mean_o**2
-    var_x = m[:, 4] / n - mean_x**2
-    cov_ox = m[:, 5] / n - mean_o * mean_x
-    if np.any(var_o <= 0):
-        raise GroupedEstimationError(
-            f"{context}: degenerate observed variance (constant observations)"
-        )
-    if np.any(var_x <= 0):
-        raise GroupedEstimationError(f"{context}: degenerate modeled variance (constant model)")
-    if np.any(mean_o == 0):
-        raise GroupedEstimationError(f"{context}: zero observed mean (KGE beta undefined)")
-    if np.any(m[:, 3] == 0):
-        raise GroupedEstimationError(f"{context}: zero observed sum of squares (slope0 undefined)")
-    r = cov_ox / np.sqrt(var_o * var_x)
-    alpha = np.sqrt(var_x / var_o)
-    beta = mean_x / mean_o
-    out = {
-        "kge": 1.0 - np.sqrt((r - 1.0) ** 2 + (alpha - 1.0) ** 2 + (beta - 1.0) ** 2),
-        "rmse": np.sqrt((m[:, 4] - 2.0 * m[:, 5] + m[:, 3]) / n),
-        "mbe": (m[:, 2] - m[:, 1]) / n,
-        "r": r,
-        "r2": r * r,
-        "slope0": m[:, 5] / m[:, 3],
-    }
-    for k, v in out.items():
-        if not np.isfinite(v).all():
-            raise GroupedEstimationError(f"{context}: non-finite pooled {k}")
-    if squeeze:
-        return {k: float(v[0]) for k, v in out.items()}
-    return out
-
-
-def pooled_metrics_direct(observed, modeled):
-    """All six pooled metrics by direct computation on concatenated arrays.
-
-    Same conventions as ``calc_metrics``: population standard deviation
-    (ddof=0) inside KGE 2009; ``r2`` is squared Pearson correlation; the slope
-    is least-squares with the intercept forced to zero.
-    """
-    o = np.asarray(observed, dtype=np.float64)
-    x = np.asarray(modeled, dtype=np.float64)
-    if o.size == 0 or o.size != x.size:
-        raise GroupedEstimationError("empty or mismatched pooled arrays")
-    mean_o, mean_x = o.mean(), x.mean()
-    std_o, std_x = o.std(), x.std()
-    if std_o <= 0:
-        raise GroupedEstimationError("degenerate observed variance (constant observations)")
-    if std_x <= 0:
-        raise GroupedEstimationError("degenerate modeled variance (constant model)")
-    if mean_o == 0:
-        raise GroupedEstimationError("zero observed mean (KGE beta undefined)")
-    r = float(((o - mean_o) * (x - mean_x)).mean() / (std_o * std_x))
-    alpha = std_x / std_o
-    beta = mean_x / mean_o
+    m = site_secondary_metrics(obs, mod, min_n=MIN_OBS_FOR_METRICS)
     return {
-        "kge": float(1.0 - np.sqrt((r - 1.0) ** 2 + (alpha - 1.0) ** 2 + (beta - 1.0) ** 2)),
-        "rmse": float(np.sqrt(np.mean((x - o) ** 2))),
-        "mbe": float(np.mean(x - o)),
-        "r": r,
-        "r2": r * r,
-        "slope0": float(np.sum(o * x) / np.sum(o * o)),
+        "n": m["n"],
+        "r2": m["nse"],
+        "r": m["r"],
+        "rmse": m["rmse"],
+        "bias": m["mbe"],
+        "kge": m["kge"],
     }
-
-
-def pooled_metrics(records, model):
-    """Pooled metrics for one model, moment-based with a direct-identity gate.
-
-    The moment-derived values must reproduce direct concatenation to
-    MOMENT_IDENTITY_ATOL; a mismatch is a formula defect, not noise.
-    """
-    _check_cohort(records)
-    moments = _moment_matrix(records, model).sum(axis=0)
-    from_moments = pooled_metrics_from_moments(moments, context=f"pooled {model}")
-    obs = np.concatenate([r.observed for r in records])
-    mod = np.concatenate([r.model_series(model) for r in records])
-    direct = pooled_metrics_direct(obs, mod)
-    for k in POOLED_METRICS:
-        if abs(from_moments[k] - direct[k]) > MOMENT_IDENTITY_ATOL:
-            raise GroupedEstimationError(
-                f"pooled {model} {k}: moment-based {from_moments[k]!r} vs direct "
-                f"{direct[k]!r} disagree beyond {MOMENT_IDENTITY_ATOL}"
-            )
-    return direct
-
-
-def site_metric_triads(records, model):
-    """Per-site KGE/RMSE/MBE arrays (record order) for one model."""
-    _check_cohort(records)
-    out = {q: np.empty(len(records), dtype=np.float64) for q in WEIGHTED_METRICS}
-    for i, rec in enumerate(records):
-        m = pooled_metrics_direct(rec.observed, rec.model_series(model))
-        for q in WEIGHTED_METRICS:
-            out[q][i] = m[q]
-    return out
-
-
-def sqrt_n_weighted_metrics(site_triads, n_obs):
-    """sqrt(n)-weighted site KGE/RMSE/MBE: sum(sqrt(n_i)*Q_i)/sum(sqrt(n_i))."""
-    w = np.sqrt(np.asarray(n_obs, dtype=np.float64))
-    return {q: float(np.sum(w * site_triads[q]) / np.sum(w)) for q in WEIGHTED_METRICS}
-
-
-def grouped_point_estimates(records):
-    """{(aggregation, model, metric): value} on the original cohort."""
-    _check_cohort(records)
-    n_obs = np.array([r.n for r in records], dtype=np.float64)
-    est = {}
-    for model in GROUPED_MODEL_ORDER:
-        pm = pooled_metrics(records, model)
-        for k in POOLED_METRICS:
-            est[(AGG_POOLED, model, k)] = pm[k]
-        wm = sqrt_n_weighted_metrics(site_metric_triads(records, model), n_obs)
-        for k in WEIGHTED_METRICS:
-            est[(AGG_WEIGHTED, model, k)] = wm[k]
-    return est
-
-
-def _bootstrap_multiplicities(n_sites, reps, seed):
-    """Whole-site draws: index matrix (reps, n_sites) and multiplicity counts."""
-    rng = np.random.default_rng(seed)
-    idx = rng.integers(0, n_sites, size=(reps, n_sites))
-    counts = np.zeros((reps, n_sites), dtype=np.float64)
-    np.add.at(counts, (np.repeat(np.arange(reps), n_sites), idx.ravel()), 1.0)
-    return idx, counts
-
-
-def _require_finite(arr, context):
-    if not np.isfinite(arr).all():
-        raise GroupedEstimationError(f"{context}: non-finite bootstrap replicate")
-
-
-def bootstrap_grouped(records, reps, seed, context=""):
-    """Whole-site bootstrap replicates for every grouped estimand and contrast.
-
-    Sites are resampled with replacement (draws per replicate = number of
-    retained sites); a duplicated site contributes its full observation block
-    and its sqrt(n) weight with the same multiplicity, and SWIM/OpenET share
-    the identical site draws. Returns
-    ``{(aggregation, model_or_'swim_minus_openet', metric): (reps,) array}``.
-    """
-    _check_cohort(records)
-    _, counts = _bootstrap_multiplicities(len(records), reps, seed)
-    n_obs = np.array([r.n for r in records], dtype=np.float64)
-    w = np.sqrt(n_obs)
-    out = {}
-    for model in GROUPED_MODEL_ORDER:
-        rep_moments = counts @ _moment_matrix(records, model)
-        pm = pooled_metrics_from_moments(
-            rep_moments, context=f"{context} bootstrap pooled {model}".strip()
-        )
-        for k in POOLED_METRICS:
-            arr = np.asarray(pm[k], dtype=np.float64)
-            _require_finite(arr, f"{context} bootstrap pooled {model} {k}".strip())
-            out[(AGG_POOLED, model, k)] = arr
-        triads = site_metric_triads(records, model)
-        den = counts @ w
-        for k in WEIGHTED_METRICS:
-            arr = (counts @ (w * triads[k])) / den
-            _require_finite(arr, f"{context} bootstrap weighted {model} {k}".strip())
-            out[(AGG_WEIGHTED, model, k)] = arr
-    for agg, metrics in ((AGG_POOLED, POOLED_METRICS), (AGG_WEIGHTED, WEIGHTED_METRICS)):
-        for k in metrics:
-            out[(agg, "swim_minus_openet", k)] = (
-                out[(agg, "swim", k)] - out[(agg, "openet_ensemble", k)]
-            )
-    return out
-
-
-def site_effect_summary(records, reps, seed, scale):
-    """Secondary diagnostic: median across sites of per-site SWIM - OpenET.
-
-    Labeled ``median_paired_site_effect``; never the cohort headline. Uses the
-    same whole-site paired bootstrap draws as the grouped estimates (same seed,
-    same draw shape).
-    """
-    _check_cohort(records)
-    unit_error = ERROR_METRIC_UNITS[scale]
-    deltas = {
-        q: site_metric_triads(records, "swim")[q]
-        - site_metric_triads(records, "openet_ensemble")[q]
-        for q in WEIGHTED_METRICS
-    }
-    idx = None
-    if reps and reps > 0:
-        idx, _ = _bootstrap_multiplicities(len(records), reps, seed)
-    rows = []
-    for q in WEIGHTED_METRICS:
-        lo = hi = np.nan
-        if idx is not None:
-            rep_medians = np.median(deltas[q][idx], axis=1)
-            _require_finite(rep_medians, f"{scale} site-effect {q}")
-            lo, hi = np.percentile(rep_medians, [2.5, 97.5])
-        rows.append(
-            {
-                "scale": scale,
-                "aggregation": "median_paired_site_effect",
-                "metric": q,
-                "contrast": "swim_minus_openet",
-                "estimate": float(np.median(deltas[q])),
-                "ci95_low": lo,
-                "ci95_high": hi,
-                "unit": "dimensionless" if q == "kge" else unit_error,
-                "n_sites": len(records),
-                "bootstrap_unit": "site",
-                "bootstrap_reps": int(reps or 0),
-                "bootstrap_seed": int(seed),
-            }
-        )
-    return pd.DataFrame(rows)
-
-
-def grouped_metric_tables(records, scale, reps, seed, openet_source="volk"):
-    """Long-form grouped estimate and contrast tables (artifact contract).
-
-    18 metric rows per scale (6 pooled x 2 models + 3 weighted x 2 models) and
-    9 contrast rows, deterministically ordered by aggregation (pooled first),
-    model (swim first), and declared metric order. CI fields are null when
-    ``reps == 0`` (development runs only).
-    """
-    _check_cohort(records)
-    unit_error = ERROR_METRIC_UNITS[scale]
-    est = grouped_point_estimates(records)
-    boot = bootstrap_grouped(records, reps, seed, context=scale) if reps > 0 else None
-    n_sites = len(records)
-    n_pairs = int(sum(r.n for r in records))
-    benchmark = BENCHMARK_LABELS[openet_source]
-    source_token = BENCHMARK_SOURCE_MACHINE_TOKENS[openet_source]
-    construction = CONSTRUCTION_TOKENS[scale]
-
-    def _ci(key):
-        if boot is None:
-            return np.nan, np.nan
-        lo, hi = np.percentile(boot[key], [2.5, 97.5])
-        return float(lo), float(hi)
-
-    def _unit(metric):
-        return unit_error if metric in ("rmse", "mbe") else "dimensionless"
-
-    metric_rows, contrast_rows = [], []
-    for agg, metrics in ((AGG_POOLED, POOLED_METRICS), (AGG_WEIGHTED, WEIGHTED_METRICS)):
-        for model in GROUPED_MODEL_ORDER:
-            for k in metrics:
-                lo, hi = _ci((agg, model, k))
-                metric_rows.append(
-                    {
-                        "scale": scale,
-                        "model": model,
-                        "metric": k,
-                        "estimate": est[(agg, model, k)],
-                        "ci95_low": lo,
-                        "ci95_high": hi,
-                        "unit": _unit(k),
-                        "aggregation": agg,
-                        "n_sites": n_sites,
-                        "n_pairs": n_pairs,
-                        "weight_rule": "none" if agg == AGG_POOLED else "sqrt(n_site)",
-                        "bootstrap_unit": "site",
-                        "bootstrap_reps": int(reps),
-                        "bootstrap_seed": int(seed),
-                        "benchmark": benchmark,
-                        "benchmark_source": source_token,
-                        "benchmark_construction": construction,
-                        "kge_variant": "2009" if k == "kge" else "",
-                        "r2_definition": "pearson_r_squared" if k == "r2" else "",
-                        "slope_constraint": "intercept_forced_zero" if k == "slope0" else "",
-                    }
-                )
-        for k in metrics:
-            lo, hi = _ci((agg, "swim_minus_openet", k))
-            contrast_rows.append(
-                {
-                    "scale": scale,
-                    "aggregation": agg,
-                    "metric": k,
-                    "contrast": "swim_minus_openet",
-                    "estimate": est[(agg, "swim", k)] - est[(agg, "openet_ensemble", k)],
-                    "ci95_low": lo,
-                    "ci95_high": hi,
-                    "unit": _unit(k),
-                    "n_sites": n_sites,
-                    "n_pairs": n_pairs,
-                    "bootstrap_unit": "site",
-                    "bootstrap_reps": int(reps),
-                    "bootstrap_seed": int(seed),
-                    "favorable_direction": FAVORABLE_DIRECTION[k],
-                }
-            )
-    metrics_df = pd.DataFrame(metric_rows, columns=list(GROUPED_METRIC_COLUMNS))
-    contrasts_df = pd.DataFrame(contrast_rows, columns=list(GROUPED_CONTRAST_COLUMNS))
-    return metrics_df, contrasts_df
-
-
-def grouped_metadata(records, scale, reps, seed, openet_source, collect_meta):
-    """Provenance sidecar content for one grouped evaluation scale."""
-    _check_cohort(records)
-    meta = {
-        "scale": scale,
-        "benchmark": BENCHMARK_LABELS[openet_source],
-        "benchmark_source": BENCHMARK_SOURCE_MACHINE_TOKENS[openet_source],
-        "benchmark_construction": CONSTRUCTION_TOKENS[scale],
-        "kge_variant": "2009",
-        "formulas": dict(GROUPED_FORMULAS),
-        "weight_formula": GROUPED_FORMULAS["weighted"],
-        "mask_definition": GROUPED_MASK_DEFINITION,
-        "min_obs_for_metrics": MIN_OBS_FOR_METRICS,
-        "site_minimum_gate": "90 valid flux days and 3 months with >= 20 valid days",
-        "sites": [{"fid": r.fid, "n": int(r.n)} for r in records],
-        "n_sites": len(records),
-        "n_pairs": int(sum(r.n for r in records)),
-        "bootstrap": {
-            "unit": "site",
-            "reps": int(reps),
-            "seed": int(seed),
-            "interval": "percentile_2.5_97.5",
-        },
-    }
-    meta.update(collect_meta or {})
-    return meta
 
 
 @dataclass
@@ -868,6 +384,113 @@ def _get_volk_openet(fid, openet_daily_dir):
     temporal-support behavior, and daily ET is recovered with the same ETo.
     """
     return load_volk_openet_et(fid, openet_daily_dir)
+
+
+def _retained_support_classes(fid, retained_dates, ensemble_recon):
+    """Per-date OpenET support classes for the retained paired dates.
+
+    Derives strictly from the retained ensemble BenchmarkReconstruction, whose
+    classification comes from the raw May v2.1 ensemble_mean_3x3 capture
+    availability BEFORE temporal reconstruction — calibration-target capture
+    flags never participate. Any inconsistency hard-fails.
+    """
+    if ensemble_recon is None:
+        raise GroupedEstimationError(
+            f"{fid}: retained paired record without an ensemble BenchmarkReconstruction"
+        )
+    support_series = ensemble_recon.support_class.reindex(retained_dates)
+    if support_series.isna().any():
+        missing = retained_dates[support_series.isna().to_numpy()]
+        raise GroupedEstimationError(
+            f"{fid}: {len(missing)} retained dates missing from the ensemble "
+            f"support classification (first: {missing[0].date()})"
+        )
+    support = tuple(str(s) for s in support_series)
+    if "unsupported" in support:
+        raise GroupedEstimationError(
+            f"{fid}: {support.count('unsupported')} retained dates classified "
+            "'unsupported' — an unsupported date cannot carry a finite "
+            "reconstructed ensemble value"
+        )
+    capture_set = set(pd.DatetimeIndex(ensemble_recon.capture_dates))
+    for date, cls in zip(retained_dates, support, strict=True):
+        if (cls == "capture") != (date in capture_set):
+            raise GroupedEstimationError(
+                f"{fid}: support class {cls!r} on {date.date()} is inconsistent "
+                "with the raw ensemble capture dates"
+            )
+    return support
+
+
+def _hash_entry(path, reason_if_unresolved=None):
+    """sha256 provenance entry for one consumed input file.
+
+    A canonical input that cannot be found hard-fails; a legitimately
+    non-file identifier records an explicit not-hashed reason — a requested
+    hash is never silently omitted.
+    """
+    if path is None:
+        if reason_if_unresolved is None:
+            raise FileNotFoundError("input hash requested for an unresolved path")
+        return {"path": None, "not_hashed_reason": reason_if_unresolved}
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"cannot hash missing input file: {path}")
+    return {"path": str(path), "sha256": _sha256(path)}
+
+
+def _container_manifest_sha256(container_path):
+    """Stable hash of the container's zarr metadata documents.
+
+    Hashes relative path + content of every zarr metadata file (group/array
+    structure and attributes) in sorted order; chunk data is deliberately not
+    hashed (the container is multi-GB and append-only under the run policy).
+    """
+    root = Path(container_path)
+    meta_names = {"zarr.json", ".zarray", ".zattrs", ".zgroup", ".zmetadata"}
+    files = sorted(p for p in root.rglob("*") if p.is_file() and p.name in meta_names)
+    if not files:
+        raise FileNotFoundError(f"no zarr metadata documents under {container_path}")
+    h = hashlib.sha256()
+    for p in files:
+        h.update(str(p.relative_to(root)).encode())
+        h.update(b"\0")
+        h.update(p.read_bytes())
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def _volk_input_hashes(cfg, container, par_csv, flux_dir, openet_daily_dir, openet_eto_path, fids):
+    """Hash manifest of the scientifically decisive inputs (canonical volk daily)."""
+    container_path = str(getattr(container, "path", "")) or None
+    if container_path is not None and os.path.isdir(container_path):
+        container_entry = {
+            "path": container_path,
+            "sha256": _container_manifest_sha256(container_path),
+            "scope": (
+                "zarr metadata documents only (group/array structure and "
+                "attributes); chunk data not hashed"
+            ),
+        }
+    else:
+        container_entry = {
+            "path": container_path,
+            "not_hashed_reason": "container path not exposed as a local zarr directory",
+        }
+    return {
+        "par_csv": _hash_entry(par_csv),
+        "config_toml": _hash_entry(
+            getattr(cfg, "config_path", None),
+            reason_if_unresolved="config path not exposed by ProjectConfig",
+        ),
+        "openet_eto_csv": _hash_entry(openet_eto_path),
+        "container_manifest": container_entry,
+        "flux_files": {
+            fid: _hash_entry(os.path.join(flux_dir, f"{fid}_daily_data.csv")) for fid in fids
+        },
+        "openet_daily_files": {
+            fid: _hash_entry(os.path.join(openet_daily_dir, f"{fid}.csv")) for fid in fids
+        },
+    }
 
 
 def _collect_daily(
@@ -954,6 +577,7 @@ def _collect_daily(
         swim_vals = swim_et.loc[common].values
 
         # Load all OpenET model daily ET on common dates
+        ensemble_recon = None
         if openet_source == "diy":
             et_daily_by_model = _get_diy_openet(container, fid, irr_data, etref)
         else:
@@ -979,6 +603,11 @@ def _collect_daily(
                     label=f"{fid}:{mn}",
                 )
                 et_daily_by_model[mn] = recon.daily_et
+                if mn == "ensemble":
+                    # retained explicitly: its support_class series (derived
+                    # from the raw ensemble_mean_3x3 capture availability,
+                    # never calibration flags) annotates the paired record
+                    ensemble_recon = recon
 
         # Ensemble ET on common dates
         ens_vals = np.full(len(common), np.nan)
@@ -1029,12 +658,17 @@ def _collect_daily(
             for k in ["r2", "r", "rmse", "bias", "kge"]:
                 row[f"{k}_ensemble"] = m[k]
 
+            retained_dates = pd.DatetimeIndex(common)[paired_mask]
+            support = None
+            if openet_source == "volk":
+                support = _retained_support_classes(fid, retained_dates, ensemble_recon)
             record = PairedSiteSeries(
                 fid=fid,
-                index=pd.DatetimeIndex(common)[paired_mask],
+                index=retained_dates,
                 observed=obs[paired_mask],
                 swim=swim_vals[paired_mask],
                 openet=ens_vals[paired_mask],
+                support_class=support,
             )
             if record.n != row["n"]:
                 raise GroupedEstimationError(
@@ -1090,6 +724,17 @@ def _collect_daily(
         "excluded_sites": excluded,
         "static_exclusions": sorted(EXCLUDED_SITES),
     }
+
+    if openet_source == "volk":
+        collect_meta["input_hashes"] = _volk_input_hashes(
+            cfg,
+            container,
+            par_csv,
+            flux_dir,
+            openet_daily_dir,
+            openet_eto_path,
+            [r.fid for r in records],
+        )
 
     if not rows:
         print("No fields with sufficient data for evaluation.")
@@ -1570,6 +1215,51 @@ def grouped_output_paths(output_dir, scale, openet_source="volk"):
     }
 
 
+def paired_record_output_path(output_dir):
+    """Canonical daily paired-record artifact path (volk daily runs only)."""
+    return os.path.join(output_dir, PAIRED_RECORD_FILENAME)
+
+
+RECORD_ROUNDTRIP_ATOL = 1e-12
+
+
+def _paired_record_roundtrip_gate(records, rebuilt, grouped_metrics):
+    """Write/read identity gate for the paired-record artifact.
+
+    The reloaded records must be exactly identical (site IDs, counts, dates,
+    values, support classes) and must reproduce every grouped point estimate
+    within RECORD_ROUNDTRIP_ATOL. Bootstrap replicates are deliberately not
+    recomputed here (determinism has separate tests).
+    """
+    orig = {r.fid: r for r in records}
+    if [r.fid for r in rebuilt] != sorted(orig):
+        raise GroupedEstimationError(
+            f"record round-trip: site IDs differ ({sorted(orig)} vs {[r.fid for r in rebuilt]})"
+        )
+    for r in rebuilt:
+        o = orig[r.fid]
+        if r.n != o.n:
+            raise GroupedEstimationError(f"record round-trip: {r.fid} count {r.n} != {o.n}")
+        if not r.index.equals(o.index):
+            raise GroupedEstimationError(f"record round-trip: {r.fid} dates differ")
+        if r.support_class != o.support_class:
+            raise GroupedEstimationError(f"record round-trip: {r.fid} support classes differ")
+        for name in ("observed", "swim", "openet"):
+            if not np.array_equal(getattr(r, name), getattr(o, name)):
+                raise GroupedEstimationError(
+                    f"record round-trip: {r.fid} {name} values not bit-identical"
+                )
+    est = grouped_point_estimates(rebuilt)
+    ref = grouped_metrics.set_index(["aggregation", "model", "metric"])["estimate"]
+    for key, val in est.items():
+        diff = abs(val - float(ref[key]))
+        if diff > RECORD_ROUNDTRIP_ATOL:
+            raise GroupedEstimationError(
+                f"record round-trip: grouped point {key} differs by {diff!r} "
+                f"(> {RECORD_ROUNDTRIP_ATOL})"
+            )
+
+
 def _sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -1625,6 +1315,39 @@ def write_grouped_outputs(bundle, output_dir, scale, openet_source="volk", cli_a
         written["site_effect"] = paths["site_effect"]
 
     metadata = dict(bundle.metadata)
+
+    if scale == "daily" and openet_source == "volk":
+        # Mandatory canonical parent artifact: the paired daily record
+        # (e1_openet_paired_daily/v1). No opt-out — a citable evaluator bundle
+        # must always carry its record. Serialized, reloaded, and gated on
+        # grouped point-estimate identity before the metadata is finalized.
+        record_path = paired_record_output_path(output_dir)
+        frame = paired_records_to_frame(bundle.paired_records)
+        counts = validate_paired_record_frame(frame)
+        write_paired_record_frame(frame, record_path)
+        rebuilt = paired_records_from_frame(read_paired_record_frame(record_path))
+        _paired_record_roundtrip_gate(bundle.paired_records, rebuilt, bundle.grouped_metrics)
+        written["paired_records"] = record_path
+        metadata["paired_record_contract"] = {
+            "schema_version": PAIRED_RECORD_SCHEMA_VERSION,
+            "filename": os.path.basename(record_path),
+            "sha256": _sha256(record_path),
+            "byte_size": os.path.getsize(record_path),
+            **counts,
+            "ordered_columns": list(PAIRED_RECORD_COLUMNS),
+            "sort_order": PAIRED_RECORD_SORT_ORDER,
+            "units": {
+                "flux_et_mm_d": "mm d-1",
+                "swim_et_mm_d": "mm d-1",
+                "openet_et_mm_d": "mm d-1",
+            },
+            "allowed_support_classes": list(SUPPORT_CLASSES),
+            "allowed_temporal_classes": list(TEMPORAL_CLASSES),
+            "temporal_class_definition": TEMPORAL_CLASS_DEFINITION,
+            "mask_definition": GROUPED_MASK_DEFINITION,
+            "minimum_all_days_count": MIN_OBS_FOR_METRICS,
+        }
+
     metadata["git"] = _git_info()
     metadata["cli_args"] = cli_args
     metadata["output_hashes"] = {os.path.basename(p): _sha256(p) for p in written.values()}
@@ -1835,6 +1558,18 @@ if __name__ == "__main__":
             bundle.site_metrics.to_csv(per_site_csv)
             print(f"\nGrouped estimates: {written['metrics']}")
             print(f"Grouped contrasts: {written['contrasts']}")
+            if "paired_records" in written:
+                n_rows = sum(r.n for r in bundle.paired_records)
+                n_ret = sum(r.support_class.count("capture") for r in bundle.paired_records)
+                print(
+                    f"Paired daily records ({PAIRED_RECORD_SCHEMA_VERSION}): "
+                    f"{written['paired_records']}"
+                )
+                print(
+                    f"  {len(bundle.paired_records)} sites, {n_rows:,} rows; "
+                    f"retrieval {n_ret:,}, between_retrieval {n_rows - n_ret:,}; "
+                    "record sha256 in the provenance sidecar"
+                )
             print(f"Provenance sidecar: {written['metadata']}")
             if "site_effect" in written:
                 print(f"Site-effect summary (secondary): {written['site_effect']}")
