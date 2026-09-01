@@ -15,7 +15,7 @@ verify the consumer contract:
   before any temporal output is written;
 - legacy site products appear only with ``--legacy-site-products``;
 - outputs are deterministic (byte-identical across reruns) and the metadata
-  sidecar, written last, hash-covers every CSV.
+  sidecar, written last, hash-covers every emitted artifact except itself.
 
 The old reconstruction/classification behavior is covered by
 ``tests/unit/test_benchmark_reconstruction.py`` — none of it lives in this
@@ -105,13 +105,26 @@ def _cohort(ev):
 
 
 def _write_bundle(ev, out_dir, records, scale="daily", openet_source="volk", reps=25):
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    eto_path = out_dir / "synthetic_openet_eto.csv"
+    eto_path.write_text("date,eto_mm\n2020-01-01,1.0\n")
     metrics, contrasts = ev.grouped_metric_tables(records, scale, reps=reps, seed=42)
     site_metrics = pd.DataFrame(
         {"n": [r.n for r in records]}, index=pd.Index([r.fid for r in records], name="fid")
     )
     # production evaluate.py carries openet_source in via collect_meta
     meta = ev.grouped_metadata(
-        records, scale, reps, 42, openet_source, {"openet_source": openet_source}
+        records,
+        scale,
+        reps,
+        42,
+        openet_source,
+        {
+            "openet_source": openet_source,
+            "paths": {"openet_eto_csv": str(eto_path)},
+            "input_hashes": {"openet_eto_csv": {"path": str(eto_path), "sha256": _sha(eto_path)}},
+        },
     )
     bundle = ev.BenchmarkEvaluation(
         site_metrics=site_metrics,
@@ -192,6 +205,27 @@ def test_removed_raw_input_args_rejected(od, monkeypatch, capsys, tmp_path, remo
     assert "unrecognized arguments" in capsys.readouterr().err
 
 
+def test_negative_bootstrap_reps_rejected(od, monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "overpass_decomposition.py",
+            "--evaluator-output-dir",
+            str(tmp_path),
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--bootstrap-reps",
+            "-1",
+        ],
+    )
+    with pytest.raises(SystemExit) as exc:
+        od.main()
+    assert exc.value.code == 2
+    assert "--bootstrap-reps must be a non-negative integer" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()
+
+
 def test_no_reconstruction_code_in_consumer(od):
     src = (EXAMPLE_DIR / "overpass_decomposition.py").read_text()
     for banned in (
@@ -227,6 +261,19 @@ def test_canonical_bundle_succeeds(od, monkeypatch, canonical_bundle_dir, tmp_pa
     assert meta["parent_bundle"]["grouped_point_identity_max_abs_diff"] <= 1e-12
     assert meta["legacy_site_products"] == {"emitted": False}
     assert meta["estimands"]["primary_conclusion_estimand"] == "cross_model_support_interaction"
+    assert meta["cli_args"] == {
+        "evaluator_output_dir": str(canonical_bundle_dir),
+        "output_dir": str(tmp_path),
+        "bootstrap_reps": 25,
+        "seed": 42,
+        "legacy_site_products": False,
+    }
+    parent = meta["parent_evaluator_metadata"]
+    assert parent["openet_eto"] == meta["parent_bundle"]["openet_eto"]
+    assert parent["formulas"] == od.GROUPED_FORMULAS
+    assert parent["mask_definition"] == od.GROUPED_MASK_DEFINITION
+    assert parent["metric_conventions"]["primary_metrics"] == ["kge", "rmse", "mbe"]
+    assert parent["metric_conventions"]["r2"] == "squared Pearson correlation, never NSE"
 
 
 def test_metadata_written_last_and_hash_covers_csvs(
@@ -260,8 +307,7 @@ def test_legacy_products_only_on_request(od, monkeypatch, canonical_bundle_dir, 
     meta = json.loads((tmp_path / "evaluation_temporal_metadata.json").read_text())
     assert meta["legacy_site_products"]["emitted"] is True
     for name in LEGACY_FILES:
-        if name.endswith(".csv"):
-            assert meta["output_hashes"][name] == _sha(tmp_path / name)
+        assert meta["output_hashes"][name] == _sha(tmp_path / name)
     legacy_meta = json.loads((tmp_path / "overpass_split_metadata.json").read_text())
     assert "LEGACY/SECONDARY" in legacy_meta["role"]
     assert legacy_meta["subset_labels"] == {
@@ -402,3 +448,15 @@ def test_malformed_metadata_scale_rejected(ev, od, monkeypatch, tmp_path):
     meta["scale"] = "monthly"
     meta_path.write_text(json.dumps(meta, indent=2))
     _assert_fails_before_output(od, monkeypatch, bundle, tmp_path / "out", "not daily")
+
+
+def test_missing_openet_eto_provenance_rejected(ev, od, monkeypatch, tmp_path):
+    bundle = tmp_path / "bundle"
+    _write_bundle(ev, bundle, _cohort(ev))
+    meta_path = bundle / "evaluation_grouped_daily_metadata.json"
+    meta = json.loads(meta_path.read_text())
+    del meta["input_hashes"]["openet_eto_csv"]
+    meta_path.write_text(json.dumps(meta, indent=2))
+    _assert_fails_before_output(
+        od, monkeypatch, bundle, tmp_path / "out", "lacks the OpenET ETo input-hash record"
+    )

@@ -1,11 +1,14 @@
-"""Evaluate calibrated SWIM against flux tower ET and OpenET models.
+"""Evaluate calibrated SWIM against flux-tower ET and the OpenET benchmark.
 
-Runs the calibrated model in forecast mode and compares SWIM ET against
-energy-balance-corrected flux tower ET (ET_corr) alongside 4 open-source
-OpenET models (geeSEBAL, PT-JPL, SSEBop, SIMS) plus their ensemble mean.
+Runs the calibrated model in forecast mode and compares SWIM ET with
+closure-corrected flux-tower ET alongside the six OpenET v2.1 member models
+and the MAD-filtered ensemble supplied in the Volk extraction.
 
-OpenET model ET is computed directly from per-model ETf stored in the
-container (ETf × ETo), not from external CSV files.
+For the canonical benchmark, sparse 3 x 3 capture ET is divided by same-day
+OpenET bias-corrected GridMET grass-reference ETo, ETf is reconstructed with
+the shared openet-core temporal-support semantics, and daily ET is recovered
+with the same ETo. Container ETf is available only through the explicitly
+diagnostic DIY source.
 
 The default scientific output is the grouped SWIM-OpenET benchmark defined in
 ``examples/VALIDATION_POLICY.md`` ("SWIM-OpenET Benchmark Aggregation"):
@@ -1469,6 +1472,8 @@ if __name__ == "__main__":
         help="Suppress per-site progress lines",
     )
     args = parser.parse_args()
+    if args.bootstrap_reps < 0:
+        parser.error("--bootstrap-reps must be a non-negative integer")
 
     cfg = load_config(args.config)
     flux_dir = resolve_flux_dir(cfg)

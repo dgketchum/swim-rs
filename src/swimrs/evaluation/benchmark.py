@@ -221,6 +221,16 @@ class GroupedEstimationError(ValueError):
     """A grouped estimand could not be computed; names the degenerate condition."""
 
 
+def _validate_bootstrap_reps(reps):
+    """Return an integer bootstrap count, rejecting ambiguous or negative values."""
+    if isinstance(reps, bool | np.bool_) or not isinstance(reps, int | np.integer):
+        raise GroupedEstimationError("bootstrap repetitions must be a non-negative integer")
+    reps = int(reps)
+    if reps < 0:
+        raise GroupedEstimationError("bootstrap repetitions must be a non-negative integer")
+    return reps
+
+
 @dataclass(frozen=True)
 class PairedSiteSeries:
     """Exactly paired flux/SWIM/OpenET-ensemble series for one retained site.
@@ -533,6 +543,7 @@ def grouped_point_estimates(records):
 
 def _bootstrap_multiplicities(n_sites, reps, seed):
     """Whole-site draws: index matrix (reps, n_sites) and multiplicity counts."""
+    reps = _validate_bootstrap_reps(reps)
     rng = np.random.default_rng(seed)
     idx = rng.integers(0, n_sites, size=(reps, n_sites))
     counts = np.zeros((reps, n_sites), dtype=np.float64)
@@ -608,6 +619,7 @@ def site_effect_summary(records, reps, seed, scale):
     same draw shape).
     """
     _check_cohort(records)
+    reps = _validate_bootstrap_reps(reps)
     unit_error = ERROR_METRIC_UNITS[scale]
     deltas = {
         q: site_metric_triads(records, "swim")[q]
@@ -615,7 +627,7 @@ def site_effect_summary(records, reps, seed, scale):
         for q in WEIGHTED_METRICS
     }
     idx = None
-    if reps and reps > 0:
+    if reps > 0:
         idx, _ = _bootstrap_multiplicities(len(records), reps, seed)
     rows = []
     for q in WEIGHTED_METRICS:
@@ -636,7 +648,7 @@ def site_effect_summary(records, reps, seed, scale):
                 "unit": "dimensionless" if q == "kge" else unit_error,
                 "n_sites": len(records),
                 "bootstrap_unit": "site",
-                "bootstrap_reps": int(reps or 0),
+                "bootstrap_reps": reps,
                 "bootstrap_seed": int(seed),
             }
         )
@@ -652,6 +664,7 @@ def grouped_metric_tables(records, scale, reps, seed, openet_source="volk"):
     ``reps == 0`` (development runs only).
     """
     _check_cohort(records)
+    reps = _validate_bootstrap_reps(reps)
     unit_error = ERROR_METRIC_UNITS[scale]
     est = grouped_point_estimates(records)
     boot = bootstrap_grouped(records, reps, seed, context=scale) if reps > 0 else None
@@ -727,6 +740,7 @@ def grouped_metric_tables(records, scale, reps, seed, openet_source="volk"):
 def grouped_metadata(records, scale, reps, seed, openet_source, collect_meta):
     """Provenance sidecar content for one grouped evaluation scale."""
     _check_cohort(records)
+    reps = _validate_bootstrap_reps(reps)
     meta = {
         "scale": scale,
         "benchmark": BENCHMARK_LABELS[openet_source],
@@ -1052,6 +1066,7 @@ def temporal_decomposition(frame, reps, seed, openet_source="volk", min_obs=MIN_
     are paired at the site-draw level. CI fields are null only when ``reps``
     is explicitly zero.
     """
+    reps = _validate_bootstrap_reps(reps)
     eligibility, common = temporal_cohort_from_frame(frame, min_obs=min_obs)
     parts = temporal_class_records(frame, common)
     unit_error = ERROR_METRIC_UNITS["daily"]

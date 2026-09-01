@@ -51,11 +51,14 @@ from swimrs.evaluation.benchmark import (
     AGG_WEIGHTED,
     BENCHMARK_SOURCE_MACHINE_TOKENS,
     CONSTRUCTION_TOKENS,
+    GROUPED_FORMULAS,
+    GROUPED_MASK_DEFINITION,
     GROUPED_MODEL_ORDER,
     MIN_OBS_FOR_METRICS,
     PAIRED_RECORD_FILENAME,
     PAIRED_RECORD_SCHEMA_VERSION,
     POOLED_METRICS,
+    PRIMARY_METRICS,
     TEMPORAL_CLASS_BETWEEN,
     TEMPORAL_CLASS_DEFINITION,
     TEMPORAL_CLASS_RETRIEVAL,
@@ -172,8 +175,35 @@ def validate_parent_bundle(evaluator_output_dir):
         meta.get("bootstrap", {}).get("unit") == "site",
         "parent bootstrap unit is not whole-site",
     )
-    for k in ("kge", "rmse", "mbe"):
+    for k in PRIMARY_METRICS:
         _require(k in meta.get("formulas", {}), f"parent metadata lacks the {k} formula")
+    _require(
+        meta.get("formulas") == dict(GROUPED_FORMULAS),
+        "parent grouped-metric formulas do not match the shared evaluator contract",
+    )
+    _require(
+        meta.get("mask_definition") == GROUPED_MASK_DEFINITION,
+        "parent common-support mask does not match the shared evaluator contract",
+    )
+
+    eto_path = meta.get("paths", {}).get("openet_eto_csv")
+    eto_hash_entry = meta.get("input_hashes", {}).get("openet_eto_csv")
+    _require(bool(eto_path), "parent metadata lacks the OpenET ETo source path")
+    _require(
+        isinstance(eto_hash_entry, dict),
+        "parent metadata lacks the OpenET ETo input-hash record",
+    )
+    _require(
+        eto_hash_entry.get("path") == eto_path,
+        "parent OpenET ETo path disagrees with its input-hash record",
+    )
+    eto_sha256 = eto_hash_entry.get("sha256")
+    _require(
+        isinstance(eto_sha256, str)
+        and len(eto_sha256) == 64
+        and all(c in "0123456789abcdef" for c in eto_sha256.lower()),
+        "parent OpenET ETo input hash is not a SHA-256 digest",
+    )
 
     contract = meta.get("paired_record_contract")
     _require(contract is not None, "parent metadata has no paired_record_contract")
@@ -259,6 +289,14 @@ def validate_parent_bundle(evaluator_output_dir):
         "grouped_point_identity_max_abs_diff": max(point_diffs.values()),
         "contrast_identity_max_abs_diff": max(contrast_diffs.values()),
         "identity_tolerance": IDENTITY_TOL,
+        "openet_eto": {
+            "role": (
+                "OpenET bias-corrected GridMET grass-reference ETo used to form "
+                "capture ETf and recover reconstructed daily ET"
+            ),
+            "path": eto_path,
+            "sha256": eto_sha256,
+        },
     }
     return frame, meta, gate_report
 
@@ -568,6 +606,8 @@ def main():
         "transition/compatibility only",
     )
     args = parser.parse_args()
+    if args.bootstrap_reps < 0:
+        parser.error("--bootstrap-reps must be a non-negative integer")
 
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -608,6 +648,7 @@ def main():
     metadata = {
         "run_name": "e1_temporal_decomposition",
         "analysis_date": datetime.now(UTC).isoformat(timespec="seconds"),
+        "cli_args": vars(args).copy(),
         "git": git_state(str(Path(__file__).resolve().parents[2])),
         "parent_bundle": gate_report,
         "record_schema": PAIRED_RECORD_SCHEMA_VERSION,
@@ -652,6 +693,17 @@ def main():
         "parent_evaluator_metadata": {
             "benchmark_source": parent_meta.get("benchmark_source"),
             "benchmark_construction": parent_meta.get("benchmark_construction"),
+            "openet_eto": gate_report["openet_eto"],
+            "formulas": parent_meta.get("formulas"),
+            "mask_definition": parent_meta.get("mask_definition"),
+            "metric_conventions": {
+                "primary_metrics": list(PRIMARY_METRICS),
+                "kge_variant": parent_meta.get("kge_variant"),
+                "mbe": "signed modeled minus observed",
+                "r": "Pearson correlation",
+                "r2": "squared Pearson correlation, never NSE",
+                "slope0": "least-squares slope with intercept forced to zero",
+            },
             "bootstrap": parent_meta.get("bootstrap"),
         },
         "legacy_site_products": (
@@ -660,9 +712,7 @@ def main():
             else {"emitted": False}
         ),
         "output_hashes": {
-            name: sha256_file(path)
-            for name, path in {**written, **(legacy_written or {})}.items()
-            if path.endswith(".csv")
+            name: sha256_file(path) for name, path in {**written, **(legacy_written or {})}.items()
         },
     }
     meta_path = os.path.join(out_dir, OUT_METADATA)

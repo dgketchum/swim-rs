@@ -418,6 +418,11 @@ def test_zero_reps_null_ci_only_when_explicit(frame, decomp):
     assert decomp.interactions["ci95_low"].notna().all()
 
 
+def test_negative_reps_rejected(frame):
+    with pytest.raises(GroupedEstimationError, match="non-negative integer"):
+        temporal_decomposition(frame, reps=-1, seed=42)
+
+
 def test_seed_determinism():
     # enough eligible sites that different seeds cannot coincide on every CI
     records = tuple(

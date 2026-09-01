@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import runpy
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -382,6 +384,19 @@ def test_zero_reps_yields_null_ci(ev, two_site_cohort):
     assert metrics["ci95_high"].isna().all()
     assert (metrics["bootstrap_reps"] == 0).all()
     assert contrasts["ci95_low"].isna().all()
+
+
+def test_negative_reps_rejected_by_shared_estimator(ev, two_site_cohort):
+    with pytest.raises(ev.GroupedEstimationError, match="non-negative integer"):
+        ev.grouped_metric_tables(two_site_cohort, "daily", reps=-1, seed=42)
+
+
+def test_evaluator_cli_rejects_negative_reps(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["evaluate.py", "--bootstrap-reps", "-1"])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_path(str(SCRIPT), run_name="__main__")
+    assert exc.value.code == 2
+    assert "--bootstrap-reps must be a non-negative integer" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------
