@@ -17,6 +17,8 @@ This script fills in everything else and rounds out Category 1:
   Cat 5  post:     posterior_site_summary.csv, boundary_hit_rates.csv (per-LULC),
                    lulc_grouped_summary.csv, irrigated_grouped_summary.csv
   Cat 6  eval:     daily_paired_metrics.csv, monthly_paired_metrics.csv,
+                   evaluation_grouped_* bundles, evaluation_paired_daily_records.csv
+                   (e1_openet_paired_daily/v1 parent record — absence is a gap),
                    site_daily_timeseries/, evaluation_metadata.json
 
 Category 7 (figure audit) is deferred until manuscript figures are defined; the
@@ -745,7 +747,16 @@ def cat6_evaluation(cfg, container, cat6_dir, par_csv, cat3_dir, gaps):
             cfg, container, par_csv, list(container.field_uids), flux_dir, openet_source="volk"
         )
         daily_bundle.site_metrics.to_csv(os.path.join(cat6_dir, "daily_paired_metrics.csv"))
-        ev.write_grouped_outputs(daily_bundle, cat6_dir, "daily", openet_source="volk")
+        written = ev.write_grouped_outputs(daily_bundle, cat6_dir, "daily", openet_source="volk")
+        # the paired daily record (e1_openet_paired_daily/v1) is the parent
+        # artifact for the temporal decomposition; write_grouped_outputs emits
+        # it (and hashes it into the metadata) before the metadata sidecar
+        record_path = written.get("paired_records")
+        if not record_path or not os.path.exists(record_path):
+            gaps.append(
+                "Cat6: paired daily record (evaluation_paired_daily_records.csv) "
+                "not written for the canonical daily benchmark"
+            )
     except Exception as exc:  # noqa: BLE001
         gaps.append(f"Cat6: daily_paired_metrics failed ({exc})")
     try:

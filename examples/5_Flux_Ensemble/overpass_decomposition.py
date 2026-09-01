@@ -1,204 +1,101 @@
-"""Run 22 overpass/non-overpass ET decomposition (evaluation-only).
+"""E1 temporal decomposition — strict consumer of the evaluator's paired record.
 
-Decomposes the canonical Run 22 daily flux evaluation into direct-benchmark
-overpass days (dates with a finite raw May v2.1 ensemble_mean_3x3 capture
-before interpolation) and non-overpass days (paired dates whose OpenET value
-exists only through the ETf-first temporal reconstruction). Consumes frozen
-Run 22 archive CSVs, the raw May v2.1 daily extractions, and the pinned
-OpenET bias-corrected gridMET ETo — it does not open the container, rerun
-SWIM-RS, or touch any calibration artifact.
+Decomposes the canonical daily flux evaluation into retrieval days (dates with
+a finite raw May v2.1 ensemble_mean_3x3 capture before interpolation) and
+between-retrieval days (paired dates whose OpenET value exists only through
+the ETf-first temporal reconstruction). All observations, support classes, and
+temporal classes come from the evaluator-owned paired-record artifact
+(``evaluation_paired_daily_records.csv``, schema ``e1_openet_paired_daily/v1``)
+written by ``evaluate.py``. This script performs no raw-source I/O, no ETo
+loading, no benchmark reconstruction, and no cohort import from separate CSVs;
+a missing, stale, malformed, or hash-mismatched parent bundle is a hard error
+(rerun ``evaluate.py``), never a fallback.
 
-The daily benchmark is reconstructed ETf-first with the shared helper
-(``swimrs.calibrate.benchmark.reconstruct_daily_benchmark``): capture-date ET
-is divided by the common ETo, ETf is interpolated under the Volk et al.
-(2024) ±32-day temporal-support rule (openet-core semantics: linear when
-both anchors are inside the window, one-sided flat fill otherwise, NaN when
-neither), then multiplied by the same daily ETo. The archived
-``site_daily_timeseries`` ``eto`` column is raw gridMET (ancillary only) and
-is FORBIDDEN here; the sole benchmark ETo basis is
-``data/openet_refet/openet_eto.csv``.
+Before any analysis, the parent-artifact identity gate proves the child starts
+from the exact observations underlying the evaluator headline: every parent
+artifact named in the evaluator's ``output_hashes`` is re-hashed, the record
+counts are checked against the metadata contract, the all-days grouped point
+estimates are recomputed from the records and required to match
+``evaluation_grouped_daily_metrics.csv`` within 1e-12, and the evaluator
+contrast rows are required to equal SWIM minus OpenET.
 
-The archived site timeseries carry an ``is_overpass`` column derived from
-the PEST calibration target (non-null observed_etf). That is a
-calibration-capture flag, not a benchmark-retrieval flag, and it is
-preserved in the audit output as ``is_calibration_capture`` counts. The
-overpass/non-overpass split here is defined exclusively by the raw May v2.1
-benchmark series.
+The primary temporal estimand is the cross-model support interaction
 
-The scoring cohort is supplied by the May v2.1 evidence rebuild
-(``rebuild_e1_benchmark_evidence.py``) via ``--cohort-csv``; the
-January-based archived ``daily_paired_metrics.csv`` is a superseded source
-and is no longer read.
+    (SWIM - OpenET | between_retrieval) - (SWIM - OpenET | retrieval)
+
+computed on the common temporal cohort (sites with >= 10 paired dates in BOTH
+temporal classes) from ONE shared whole-site bootstrap multiplicity matrix
+across both models, every metric, and all three temporal partitions, so the
+interaction is paired at the site-draw level.
 
 Usage:
     uv run python overpass_decomposition.py \
-        --run-dir /data/ssd1/swim/5_Flux_Ensemble/results/run22 \
-        --openet-daily-dir /data/ssd1/swim/5_Flux_Ensemble/data/openet_flux_2pt1/daily_data \
-        --cohort-csv <rebuild output>/e2_primary_daily_site_metrics.csv \
-        --output-dir /data/ssd1/swim/5_Flux_Ensemble/results/run22/archive/6_evaluation/overpass_split_etf_first_2pt1 \
-        --support-contrast
+        --evaluator-output-dir <dir with the evaluate.py daily volk bundle> \
+        --output-dir <staging dir> \
+        [--bootstrap-reps 10000] [--seed 42] [--legacy-site-products]
 """
 
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy import stats
-from sklearn.metrics import mean_squared_error, r2_score
 
-from swimrs.calibrate.benchmark import (
-    VOLK_WINDOW_DAYS,
-    assert_inside_support,
-    reconstruct_daily_benchmark,
+from swimrs.evaluation.benchmark import (
+    AGG_POOLED,
+    AGG_WEIGHTED,
+    BENCHMARK_SOURCE_MACHINE_TOKENS,
+    CONSTRUCTION_TOKENS,
+    GROUPED_MODEL_ORDER,
+    MIN_OBS_FOR_METRICS,
+    PAIRED_RECORD_FILENAME,
+    PAIRED_RECORD_SCHEMA_VERSION,
+    POOLED_METRICS,
+    TEMPORAL_CLASS_BETWEEN,
+    TEMPORAL_CLASS_DEFINITION,
+    TEMPORAL_CLASS_RETRIEVAL,
+    TEMPORAL_INTERACTION_FORMULA,
+    WEIGHTED_METRICS,
+    GroupedEstimationError,
+    grouped_point_estimates,
+    paired_records_from_frame,
+    read_paired_record_frame,
+    site_secondary_metrics,
+    temporal_decomposition,
+    validate_paired_record_frame,
 )
 
-MIN_PAIRED = 10
-SUBSETS = ["all_days", "overpass", "non_overpass"]
+IDENTITY_TOL = 1e-12
+MIN_PAIRED = MIN_OBS_FOR_METRICS
+
+# Fixed canonical parent-bundle filenames (never the DIY-suffixed variants)
+PARENT_METRICS = "evaluation_grouped_daily_metrics.csv"
+PARENT_CONTRASTS = "evaluation_grouped_daily_contrasts.csv"
+PARENT_METADATA = "evaluation_grouped_daily_metadata.json"
+
+# Default temporal outputs
+OUT_METRICS = "evaluation_temporal_grouped_metrics.csv"
+OUT_CONTRASTS = "evaluation_temporal_grouped_contrasts.csv"
+OUT_INTERACTIONS = "evaluation_temporal_interactions.csv"
+OUT_ELIGIBILITY = "evaluation_temporal_site_eligibility.csv"
+OUT_METADATA = "evaluation_temporal_metadata.json"
+
+# Legacy compatibility products (transition-only, from the record, never
+# from raw-source reconstruction). Subset names keep the historical labels:
+# overpass == retrieval, non_overpass == between_retrieval.
+LEGACY_SUBSETS = ["all_days", "overpass", "non_overpass"]
+LEGACY_SUBSET_CLASS = {
+    "all_days": None,
+    "overpass": TEMPORAL_CLASS_RETRIEVAL,
+    "non_overpass": TEMPORAL_CLASS_BETWEEN,
+}
 METRIC_KEYS = ["nse", "kge", "r", "rmse", "mbe"]
 DELTA_METRICS = ["nse", "kge", "rmse", "abs_mbe"]
-IDENTITY_TOL = 1e-12
-ETO_SOURCE = "openet_refet/openet_eto.csv"
-INTERPOLATION_RULE = (
-    "ETf-first: capture ETf = raw May v2.1 ensemble_mean_3x3 / OpenET bias-corrected "
-    "gridMET ETo on capture dates; ETf interpolated in time under the Volk et al. "
-    f"(2024) ±{VOLK_WINDOW_DAYS}-day temporal-support rule with openet-core semantics "
-    "(linear when both anchors are within the window, one-sided flat fill otherwise "
-    f"— including ≤{VOLK_WINDOW_DAYS}-day extension beyond the first/last capture — "
-    "NaN when neither); then multiplied by the same daily ETo "
-    "(swimrs.calibrate.benchmark.reconstruct_daily_benchmark; matches evaluate.py "
-    "openet_source='volk'). Direct interpolation of sparse ET is invalid and must "
-    "never be reintroduced here."
-)
-
-
-def calc_metrics(obs, mod, min_n=MIN_PAIRED):
-    """NSE, KGE (Gupta 2009), Pearson r, RMSE, MBE — same math as evaluate.py.
-
-    evaluate.py names NSE 'r2' (sklearn r2_score = 1 - SSE/SST); publication
-    outputs here use 'nse'. MBE = mean(mod - obs), evaluate.py's 'bias'.
-    """
-    mask = np.isfinite(obs) & np.isfinite(mod)
-    obs, mod = obs[mask], mod[mask]
-    if len(obs) < min_n:
-        return {"n": len(obs), **{k: np.nan for k in METRIC_KEYS}}
-    r, _ = stats.pearsonr(obs, mod)
-    nse = r2_score(obs, mod)
-    rmse = np.sqrt(mean_squared_error(obs, mod))
-    mbe = float((mod - obs).mean())
-    alpha = np.std(mod) / np.std(obs) if np.std(obs) > 0 else np.nan
-    beta = np.mean(mod) / np.mean(obs) if np.mean(obs) > 0 else np.nan
-    kge = 1.0 - np.sqrt((r - 1.0) ** 2 + (alpha - 1.0) ** 2 + (beta - 1.0) ** 2)
-    return {"n": len(obs), "nse": nse, "kge": kge, "r": r, "rmse": rmse, "mbe": mbe}
-
-
-def assert_may_source(path):
-    """Reject the superseded January capture set; require the May v2.1 dirs."""
-    parts = Path(path).resolve().parts
-    if "openet_flux" in parts or "openet_flux_2pt1" not in parts:
-        raise ValueError(
-            f"OpenET daily source must come from openet_flux_2pt1 (May v2.1); "
-            f"got {path} — the January openet_flux/ set is superseded"
-        )
-    return Path(path)
-
-
-def load_openet_eto(path):
-    """Load the pinned OpenET bias-corrected gridMET ETo (dates × sites).
-
-    This is the ONLY valid ETo basis for benchmark reconstruction. The
-    archived site_daily_timeseries ``eto`` column is raw gridMET (ancillary
-    only) and is forbidden here.
-    """
-    wide = pd.read_csv(path, index_col="site_id")
-    wide.columns = pd.to_datetime(wide.columns, format="%Y%m%d")
-    return wide.T.sort_index()
-
-
-def reconstruct_benchmark(raw_ensemble, eto, label=""):
-    """Return (daily benchmark ET, direct benchmark dates, reconstruction).
-
-    Delegates to the shared ETf-first helper: capture-date ET is divided by
-    the common ETo, ETf is interpolated under the Volk ±32-day window
-    (openet-core semantics), and the result is multiplied by the same daily
-    ETo. direct_dates are the finite raw captures BEFORE interpolation —
-    these define is_benchmark_overpass. A capture date without ETo coverage
-    (e.g. pre-1999) is a hard failure in the helper, never a silent fill.
-    """
-    s = pd.to_numeric(raw_ensemble, errors="coerce")
-    recon = reconstruct_daily_benchmark(
-        capture_series=s,
-        capture_space="et",
-        eto=eto,
-        eto_name=ETO_SOURCE,
-        label=label,
-    )
-    return recon.daily_et, recon.capture_dates, recon
-
-
-def classify_paired(frozen, bench_daily, direct_dates):
-    """Pair flux/SWIM/benchmark by date and flag benchmark overpasses.
-
-    Returns a DataFrame (index=date) with flux, swim, openet columns on dates
-    where all three are finite, plus is_benchmark_overpass.
-    """
-    bench = bench_daily.reindex(frozen.index)
-    df = pd.DataFrame(
-        {
-            "flux": frozen["flux_ET"].astype(float),
-            "swim": frozen["swim_ET"].astype(float),
-            "openet": bench.astype(float),
-        },
-        index=frozen.index,
-    )
-    paired = df[np.isfinite(df.values).all(axis=1)].copy()
-    paired["is_benchmark_overpass"] = paired.index.isin(direct_dates)
-    return paired
-
-
-def subset_frames(paired):
-    return {
-        "all_days": paired,
-        "overpass": paired[paired["is_benchmark_overpass"]],
-        "non_overpass": paired[~paired["is_benchmark_overpass"]],
-    }
-
-
-def check_date_semantics(paired, recon, fid):
-    """Gate B/C invariants for one site; raises on violation."""
-    direct_dates = recon.capture_dates
-    over = paired[paired["is_benchmark_overpass"]]
-    non = paired[~paired["is_benchmark_overpass"]]
-    if not over.index.isin(direct_dates).all():
-        raise AssertionError(f"{fid}: overpass date without finite raw benchmark value")
-    if non.index.isin(direct_dates).any():
-        raise AssertionError(f"{fid}: non_overpass date has a raw benchmark value")
-    if not np.isfinite(non["openet"].values).all():
-        raise AssertionError(f"{fid}: non_overpass date lacks finite interpolated value")
-    assert_inside_support(paired.index, recon, label=fid)
-    support = recon.support_class.reindex(paired.index)
-    if support.isna().any() or (support == "unsupported").any():
-        raise AssertionError(f"{fid}: paired date outside benchmark temporal support")
-    if len(over) + len(non) != len(paired):
-        raise AssertionError(f"{fid}: overpass + non_overpass != all_days")
-
-
-def bootstrap_median_ci(deltas, reps, seed):
-    """95% site-bootstrap CI of the median paired delta. Resamples sites."""
-    deltas = np.asarray(deltas, dtype=float)
-    n = len(deltas)
-    rng = np.random.default_rng(seed)
-    idx = rng.integers(0, n, size=(reps, n))
-    medians = np.median(deltas[idx], axis=1)
-    return (
-        float(np.median(deltas)),
-        float(np.percentile(medians, 2.5)),
-        float(np.percentile(medians, 97.5)),
-    )
 
 
 def sha256_file(path):
@@ -220,6 +117,169 @@ def git_state(repo_dir):
         "branch": run(["git", "rev-parse", "--abbrev-ref", "HEAD"]),
         "dirty_paths": len(run(["git", "status", "--porcelain"]).splitlines()),
     }
+
+
+def _write_atomic(write_fn, path):
+    tmp = f"{path}.tmp"
+    write_fn(tmp)
+    os.replace(tmp, path)
+
+
+class ParentBundleError(ValueError):
+    """The evaluator bundle is absent, stale, malformed, or hash-mismatched."""
+
+
+def _require(condition, message):
+    if not condition:
+        raise ParentBundleError(f"{message} — rerun evaluate.py (daily, openet_source=volk)")
+
+
+def validate_parent_bundle(evaluator_output_dir):
+    """Parent-artifact identity gate (never a reconstruction gate).
+
+    Returns ``(record_frame, evaluator_metadata, gate_report)``. Any failure
+    is a hard error naming the defect; there is no fallback input path.
+    """
+    parent = Path(evaluator_output_dir)
+    paths = {
+        "grouped_metrics": parent / PARENT_METRICS,
+        "grouped_contrasts": parent / PARENT_CONTRASTS,
+        "metadata": parent / PARENT_METADATA,
+        "paired_records": parent / PAIRED_RECORD_FILENAME,
+    }
+    for name, p in paths.items():
+        _require(p.is_file(), f"missing canonical parent artifact {name}: {p}")
+
+    with open(paths["metadata"]) as f:
+        meta = json.load(f)
+
+    _require(meta.get("scale") == "daily", f"parent scale {meta.get('scale')!r} is not daily")
+    _require(
+        meta.get("openet_source") == "volk",
+        f"parent openet_source {meta.get('openet_source')!r} is not the canonical volk source",
+    )
+    _require(
+        meta.get("benchmark_source") == BENCHMARK_SOURCE_MACHINE_TOKENS["volk"],
+        f"parent benchmark_source {meta.get('benchmark_source')!r} is not "
+        f"{BENCHMARK_SOURCE_MACHINE_TOKENS['volk']}",
+    )
+    _require(
+        meta.get("benchmark_construction") == CONSTRUCTION_TOKENS["daily"],
+        f"parent benchmark_construction {meta.get('benchmark_construction')!r} is not "
+        f"{CONSTRUCTION_TOKENS['daily']}",
+    )
+    _require(
+        meta.get("bootstrap", {}).get("unit") == "site",
+        "parent bootstrap unit is not whole-site",
+    )
+    for k in ("kge", "rmse", "mbe"):
+        _require(k in meta.get("formulas", {}), f"parent metadata lacks the {k} formula")
+
+    contract = meta.get("paired_record_contract")
+    _require(contract is not None, "parent metadata has no paired_record_contract")
+    _require(
+        contract.get("schema_version") == PAIRED_RECORD_SCHEMA_VERSION,
+        f"record schema {contract.get('schema_version')!r} is not {PAIRED_RECORD_SCHEMA_VERSION}",
+    )
+    _require(
+        contract.get("filename") == PAIRED_RECORD_FILENAME,
+        f"record filename {contract.get('filename')!r} is not canonical ({PAIRED_RECORD_FILENAME})",
+    )
+
+    # Re-hash every parent artifact named in output_hashes
+    output_hashes = meta.get("output_hashes", {})
+    _require(bool(output_hashes), "parent metadata has no output_hashes map")
+    rehashed = {}
+    for basename, expected in output_hashes.items():
+        p = parent / basename
+        _require(p.is_file(), f"artifact named in output_hashes is missing: {p}")
+        actual = sha256_file(p)
+        _require(
+            actual == expected,
+            f"hash mismatch for {basename}: metadata {expected} vs on-disk {actual}",
+        )
+        rehashed[basename] = actual
+    _require(
+        PAIRED_RECORD_FILENAME in output_hashes,
+        "paired record is not covered by the parent output_hashes",
+    )
+    _require(
+        contract.get("sha256") == output_hashes[PAIRED_RECORD_FILENAME],
+        "paired_record_contract sha256 disagrees with output_hashes",
+    )
+
+    # Load, validate, and count the paired frame against the contract
+    frame = read_paired_record_frame(paths["paired_records"])
+    counts = validate_paired_record_frame(frame)
+    for key in ("n_sites", "n_rows", "n_retrieval", "n_between_retrieval"):
+        _require(
+            counts[key] == contract.get(key),
+            f"record {key}={counts[key]} != contract {contract.get(key)}",
+        )
+    _require(
+        counts["support_class_counts"] == contract.get("support_class_counts"),
+        f"record support_class_counts {counts['support_class_counts']} != "
+        f"contract {contract.get('support_class_counts')}",
+    )
+
+    # Recompute the all-days grouped point estimates from the records and
+    # require identity with the evaluator's grouped metrics table
+    records = paired_records_from_frame(frame)
+    est = grouped_point_estimates(records)
+    gmetrics = pd.read_csv(paths["grouped_metrics"], float_precision="round_trip")
+    gref = gmetrics.set_index(["aggregation", "model", "metric"])["estimate"]
+    point_diffs = {}
+    for key, val in est.items():
+        _require(key in gref.index, f"evaluator grouped metrics lack estimand {key}")
+        diff = abs(val - float(gref[key]))
+        point_diffs["/".join(key)] = diff
+        _require(
+            diff <= IDENTITY_TOL,
+            f"grouped point {key} recomputed from records differs by {diff!r} (> {IDENTITY_TOL})",
+        )
+
+    # Evaluator contrast rows must equal SWIM minus OpenET model rows
+    gcontrasts = pd.read_csv(paths["grouped_contrasts"], float_precision="round_trip")
+    contrast_diffs = {}
+    for _, row in gcontrasts.iterrows():
+        agg, k = row["aggregation"], row["metric"]
+        expected = float(gref[(agg, "swim", k)]) - float(gref[(agg, "openet_ensemble", k)])
+        diff = abs(float(row["estimate"]) - expected)
+        contrast_diffs[f"{agg}/{k}"] = diff
+        _require(
+            diff <= IDENTITY_TOL,
+            f"evaluator contrast {agg}/{k} is not SWIM minus OpenET (diff {diff!r})",
+        )
+
+    gate_report = {
+        "parent_dir": str(parent),
+        "rehashed_artifacts": rehashed,
+        "metadata_sha256": sha256_file(paths["metadata"]),
+        "record_counts": counts,
+        "grouped_point_identity_max_abs_diff": max(point_diffs.values()),
+        "contrast_identity_max_abs_diff": max(contrast_diffs.values()),
+        "identity_tolerance": IDENTITY_TOL,
+    }
+    return frame, meta, gate_report
+
+
+# ---------------------------------------------------------------------------
+# Legacy compatibility products (transition-only; record-derived, secondary)
+# ---------------------------------------------------------------------------
+
+
+def bootstrap_median_ci(deltas, reps, seed):
+    """95% site-bootstrap CI of the median paired delta. Resamples sites."""
+    deltas = np.asarray(deltas, dtype=float)
+    n = len(deltas)
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, n, size=(reps, n))
+    medians = np.median(deltas[idx], axis=1)
+    return (
+        float(np.median(deltas)),
+        float(np.percentile(medians, 2.5)),
+        float(np.percentile(medians, 97.5)),
+    )
 
 
 def _iqr(values):
@@ -251,174 +311,88 @@ def build_summary_row(subset, cohort, rows):
     return out
 
 
-def gate_a_identity(metrics_df, cohort_csv):
-    """Gate A: reconstructed all_days must equal the May v2.1 rebuild metrics.
-
-    Replaces the former identity check against the January-based archived
-    ``daily_paired_metrics.csv`` (superseded source); the replacement is
-    recorded in the output metadata. The reference is the rebuild's
-    ``e2_primary_daily_site_metrics.csv`` (evaluate.py schema, KGE included).
-    """
-    ref = pd.read_csv(cohort_csv, index_col="fid")
-    all_days = metrics_df[metrics_df["subset"] == "all_days"].set_index("fid")
-
-    if sorted(all_days.index) != sorted(ref.index):
-        raise AssertionError("Gate A: site sets differ from the rebuild daily metrics")
-
-    checks = [
-        ("n_paired", ref["n"], 0.5),
-        ("nse_swim", ref["r2_swim"], IDENTITY_TOL),
-        ("r_swim", ref["r_swim"], IDENTITY_TOL),
-        ("rmse_swim", ref["rmse_swim"], IDENTITY_TOL),
-        ("mbe_swim", ref["bias_swim"], IDENTITY_TOL),
-        ("kge_swim", ref["kge_swim"], IDENTITY_TOL),
-        ("nse_openet", ref["r2_ensemble"], IDENTITY_TOL),
-        ("r_openet", ref["r_ensemble"], IDENTITY_TOL),
-        ("rmse_openet", ref["rmse_ensemble"], IDENTITY_TOL),
-        ("mbe_openet", ref["bias_ensemble"], IDENTITY_TOL),
-        ("kge_openet", ref["kge_ensemble"], IDENTITY_TOL),
-    ]
-    max_diffs = {}
-    for col, ref, tol in checks:
-        diff = (all_days[col] - ref.reindex(all_days.index)).abs().max()
-        max_diffs[col] = float(diff)
-        if not diff <= tol:
-            raise AssertionError(f"Gate A: {col} max |diff| {diff:.3e} exceeds {tol:.0e}")
-    return max_diffs
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Run 22 overpass/non-overpass decomposition from frozen artifacts"
-    )
-    parser.add_argument("--run-dir", required=True, help="Run 22 results directory")
-    parser.add_argument(
-        "--openet-daily-dir",
-        required=True,
-        help="Raw May v2.1 daily_data CSV directory (openet_flux_2pt1)",
-    )
-    parser.add_argument(
-        "--cohort-csv",
-        required=True,
-        help="Rebuilt e2_primary_daily_site_metrics.csv from "
-        "rebuild_e1_benchmark_evidence.py — defines the cohort and the Gate A "
-        "identity reference",
-    )
-    parser.add_argument(
-        "--openet-eto-csv",
-        default=str(Path(__file__).resolve().parent / "data" / ETO_SOURCE),
-        help="Pinned OpenET bias-corrected gridMET ETo (the sole benchmark ETo basis)",
-    )
-    parser.add_argument("--output-dir", required=True, help="Working output directory")
-    parser.add_argument(
-        "--support-contrast",
-        action="store_true",
-        help="Also emit the §4.3 support contrast (all five metrics, "
-        "non_overpass − overpass per model) with bootstrap CIs",
-    )
-    parser.add_argument("--bootstrap-reps", type=int, default=10000)
-    parser.add_argument("--seed", type=int, default=42)
-    args = parser.parse_args()
-
-    run_dir = Path(args.run_dir)
-    eval_dir = run_dir / "archive" / "6_evaluation"
-    timeseries_dir = eval_dir / "site_daily_timeseries"
-    eval_metadata = eval_dir / "evaluation_metadata.json"
-    cohort_csv = Path(args.cohort_csv)
-    openet_dir = assert_may_source(args.openet_daily_dir)
-    openet_eto_csv = Path(args.openet_eto_csv)
-    out_dir = Path(args.output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    openet_eto = load_openet_eto(openet_eto_csv)
-    fids = sorted(pd.read_csv(cohort_csv)["fid"])
-    print(f"Rebuild daily cohort: {len(fids)} sites")
-
-    metric_rows, audit_rows, input_manifest = [], [], {}
-    for fid in fids:
-        frozen_path = timeseries_dir / f"{fid}.csv"
-        volk_path = openet_dir / f"{fid}.csv"
-        frozen = pd.read_csv(frozen_path, index_col="date", parse_dates=True)
-        volk = pd.read_csv(volk_path, index_col="DATE", parse_dates=True)
-        input_manifest[f"frozen/{fid}.csv"] = sha256_file(frozen_path)
-        input_manifest[f"volk/{fid}.csv"] = sha256_file(volk_path)
-
-        if fid not in openet_eto.columns:
-            raise AssertionError(f"{fid}: absent from {openet_eto_csv} — do not fill")
-        bench_daily, direct_dates, recon = reconstruct_benchmark(
-            volk["ensemble_mean_3x3"], openet_eto[fid], label=f"{fid}:ensemble_mean"
-        )
-        paired = classify_paired(frozen, bench_daily, direct_dates)
-        check_date_semantics(paired, recon, fid)
-
-        calib_dates = frozen.index[frozen["is_overpass"].astype(bool)]
-        n_inter = len(calib_dates.intersection(direct_dates))
-        subs = subset_frames(paired)
-        support = recon.support_class.reindex(paired.index)
-        audit_rows.append(
-            {
-                "fid": fid,
-                "n_calibration_captures": len(calib_dates),
-                "n_benchmark_captures": len(direct_dates),
-                "n_intersection": n_inter,
-                "n_calibration_only": len(calib_dates) - n_inter,
-                "n_benchmark_only": len(direct_dates) - n_inter,
-                "n_paired_all_days": len(subs["all_days"]),
-                "n_paired_overpass": len(subs["overpass"]),
-                "n_paired_non_overpass": len(subs["non_overpass"]),
-                "n_paired_interpolated": int((support == "interpolated").sum()),
-                "n_paired_flat_fill": int((support == "flat_fill").sum()),
-                "support_start": recon.support_start.date().isoformat(),
-                "support_end": recon.support_end.date().isoformat(),
-                "identity_max_abs_err": recon.identity_max_abs_err,
-            }
-        )
-
-        for subset, sdf in subs.items():
-            obs = sdf["flux"].values
+def legacy_site_metrics(frame):
+    """Per-site per-subset legacy metric rows from the paired record only."""
+    rows = []
+    for fid, grp in frame.groupby("fid", sort=True):
+        for subset in LEGACY_SUBSETS:
+            cls = LEGACY_SUBSET_CLASS[subset]
+            sdf = grp if cls is None else grp[grp["temporal_class"] == cls]
+            n = len(sdf)
             row = {
                 "fid": fid,
                 "subset": subset,
-                "n_paired": len(sdf),
-                "first_date": sdf.index.min().date().isoformat() if len(sdf) else "",
-                "last_date": sdf.index.max().date().isoformat() if len(sdf) else "",
-                "eligible": len(sdf) >= MIN_PAIRED,
-                "exclusion_reason": ""
-                if len(sdf) >= MIN_PAIRED
-                else f"n_paired={len(sdf)} < {MIN_PAIRED}",
+                "n_paired": n,
+                "first_date": sdf["date"].min().date().isoformat() if n else "",
+                "last_date": sdf["date"].max().date().isoformat() if n else "",
+                "eligible": n >= MIN_PAIRED,
+                "exclusion_reason": "" if n >= MIN_PAIRED else f"n_paired={n} < {MIN_PAIRED}",
             }
-            for model in ["swim", "openet"]:
-                m = calc_metrics(obs, sdf[model].values)
+            obs = sdf["flux_et_mm_d"].to_numpy()
+            for model, col in [("swim", "swim_et_mm_d"), ("openet", "openet_et_mm_d")]:
+                m = site_secondary_metrics(obs, sdf[col].to_numpy(), min_n=MIN_PAIRED)
                 for k in METRIC_KEYS:
                     row[f"{k}_{model}"] = m[k]
-            metric_rows.append(row)
+            rows.append(row)
+    return pd.DataFrame(rows)
 
-    metrics_df = pd.DataFrame(metric_rows)
-    audit_df = pd.DataFrame(audit_rows)
 
-    # Gate C: per-site union identity (also enforced per-site in check_date_semantics)
+def legacy_date_audit(frame):
+    """Record-derivable audit counts per site.
+
+    Calibration-capture auditing and raw support spans are deliberately gone:
+    they need raw sources, and calibration flags never participate in the
+    temporal classification (see the paired-record contract).
+    """
+    rows = []
+    for fid, grp in frame.groupby("fid", sort=True):
+        support = grp["openet_support_class"]
+        n_over = int((support == "capture").sum())
+        n_interp = int((support == "interpolated").sum())
+        n_flat = int((support == "flat_fill").sum())
+        rows.append(
+            {
+                "fid": fid,
+                "n_paired_all_days": len(grp),
+                "n_paired_overpass": n_over,
+                "n_paired_non_overpass": n_interp + n_flat,
+                "n_paired_interpolated": n_interp,
+                "n_paired_flat_fill": n_flat,
+                "first_paired_date": grp["date"].min().date().isoformat(),
+                "last_paired_date": grp["date"].max().date().isoformat(),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def write_legacy_products(frame, out_dir, reps, seed):
+    """Emit the former secondary site-level products from the record.
+
+    Historical subset labels are kept (overpass == retrieval, non_overpass ==
+    between_retrieval). Metric definitions are preserved exactly: per-site
+    metrics carry signed MBE; only the paired-delta product uses |MBE|
+    (labeled abs_mbe). Everything derives from the paired record — no
+    reconstruction code exists in this script.
+    """
+    metrics_df = legacy_site_metrics(frame)
+    audit_df = legacy_date_audit(frame)
+
+    # Gate C equivalent: per-site union identity from record counts
     bad = audit_df[
         audit_df["n_paired_overpass"] + audit_df["n_paired_non_overpass"]
         != audit_df["n_paired_all_days"]
     ]
     if not bad.empty:
-        raise AssertionError(f"Gate C: union violation at {list(bad['fid'])}")
+        raise GroupedEstimationError(f"legacy union violation at {list(bad['fid'])}")
 
-    print(f"Running Gate A ({len(fids)}-site all-days identity vs the May rebuild)...")
-    gate_a_diffs = gate_a_identity(metrics_df, cohort_csv)
-    print(
-        "Gate A passed: max per-column |diff| "
-        f"{max(gate_a_diffs.values()):.2e} (tolerance {IDENTITY_TOL:.0e})"
-    )
-
-    # Cohorts
     eligible = metrics_df[metrics_df["eligible"]]
-    eligible_by_subset = {s: set(eligible.loc[eligible["subset"] == s, "fid"]) for s in SUBSETS}
+    eligible_by_subset = {
+        s: set(eligible.loc[eligible["subset"] == s, "fid"]) for s in LEGACY_SUBSETS
+    }
     common_split = sorted(eligible_by_subset["overpass"] & eligible_by_subset["non_overpass"])
-    print(f"Common-split cohort: {len(common_split)} sites")
 
     summary_rows = []
-    for subset in SUBSETS:
+    for subset in LEGACY_SUBSETS:
         sub_rows = eligible[eligible["subset"] == subset]
         summary_rows.append(build_summary_row(subset, "subset_eligible", sub_rows))
         summary_rows.append(
@@ -426,7 +400,6 @@ def main():
         )
     summary_df = pd.DataFrame(summary_rows)
 
-    # Non-overpass fraction: site-median and pooled, per cohort, from audit counts
     fractions = {}
     for cohort, cohort_fids in [
         ("subset_eligible", sorted(eligible_by_subset["non_overpass"])),
@@ -445,14 +418,12 @@ def main():
         for k, v in vals.items():
             summary_df.loc[mask, k] = v
 
-    # Paired site-level deltas with site-bootstrap CIs
     delta_rows = []
-    wide = metrics_df.set_index(["fid", "subset"])
     for cohort, cohort_fids in [
         ("common_split", common_split),
         ("subset_eligible", None),
     ]:
-        for subset in SUBSETS:
+        for subset in LEGACY_SUBSETS:
             sub = eligible[eligible["subset"] == subset]
             if cohort_fids is not None:
                 sub = sub[sub["fid"].isin(cohort_fids)]
@@ -463,9 +434,7 @@ def main():
                 "abs_mbe": sub["mbe_swim"].abs() - sub["mbe_openet"].abs(),
             }
             for metric in DELTA_METRICS:
-                med, lo, hi = bootstrap_median_ci(
-                    deltas[metric].values, args.bootstrap_reps, args.seed
-                )
+                med, lo, hi = bootstrap_median_ci(deltas[metric].values, reps, seed)
                 delta_rows.append(
                     {
                         "metric": metric,
@@ -475,168 +444,241 @@ def main():
                         "median_delta_swim_minus_openet": med,
                         "ci95_low": lo,
                         "ci95_high": hi,
-                        "seed": args.seed,
-                        "n_resamples": args.bootstrap_reps,
+                        "seed": seed,
+                        "n_resamples": reps,
                     }
                 )
     deltas_df = pd.DataFrame(delta_rows)
-    _ = wide  # metrics indexed by (fid, subset); retained for interactive inspection
 
-    # §4.3 support contrast: per-model metric change from overpass to
-    # non_overpass support (all five metrics), common_split cohort only —
-    # both subsets eligible by construction there
-    contrast_df = contrast_persite = None
-    if args.support_contrast:
-        by = metrics_df.set_index(["fid", "subset"])
-        persite_rows, contrast_rows = [], []
-        for fid in common_split:
-            for model in ["swim", "openet"]:
-                for k in METRIC_KEYS:
-                    o = by.loc[(fid, "overpass"), f"{k}_{model}"]
-                    nv = by.loc[(fid, "non_overpass"), f"{k}_{model}"]
-                    persite_rows.append(
-                        {
-                            "fid": fid,
-                            "model": model,
-                            "metric": k,
-                            "overpass": o,
-                            "non_overpass": nv,
-                            "delta_non_minus_overpass": nv - o,
-                        }
-                    )
-        contrast_persite = pd.DataFrame(persite_rows)
+    # Support contrast: per-model metric change non_overpass - overpass,
+    # all five metrics, common_split cohort only
+    by = metrics_df.set_index(["fid", "subset"])
+    persite_rows, contrast_rows = [], []
+    for fid in common_split:
         for model in ["swim", "openet"]:
             for k in METRIC_KEYS:
-                sub = contrast_persite[
-                    (contrast_persite["model"] == model) & (contrast_persite["metric"] == k)
-                ]
-                med, lo, hi = bootstrap_median_ci(
-                    sub["delta_non_minus_overpass"].values, args.bootstrap_reps, args.seed
-                )
-                contrast_rows.append(
+                o = by.loc[(fid, "overpass"), f"{k}_{model}"]
+                nv = by.loc[(fid, "non_overpass"), f"{k}_{model}"]
+                persite_rows.append(
                     {
+                        "fid": fid,
                         "model": model,
                         "metric": k,
-                        "cohort": "common_split",
-                        "n_sites": len(sub),
-                        "median_delta_non_minus_overpass": med,
-                        "ci95_low": lo,
-                        "ci95_high": hi,
-                        "seed": args.seed,
-                        "n_resamples": args.bootstrap_reps,
+                        "overpass": o,
+                        "non_overpass": nv,
+                        "delta_non_minus_overpass": nv - o,
                     }
                 )
-        contrast_df = pd.DataFrame(contrast_rows)
-
-    metadata = {
-        "run_name": "run22_overpass_decomposition",
-        "analysis_date": datetime.now(UTC).isoformat(timespec="seconds"),
-        "git": git_state(str(Path(__file__).resolve().parents[2])),
-        "inputs": {
-            "cohort_and_gate_a_reference": {
-                "path": str(cohort_csv),
-                "sha256": sha256_file(cohort_csv),
-                "note": "rebuilt May v2.1 e2_primary_daily_site_metrics.csv; replaces "
-                "the superseded January-based daily_paired_metrics.csv (and the "
-                "separate KGE reference) as both cohort source and Gate A target",
-            },
-            "openet_eto": {
-                "path": str(openet_eto_csv),
-                "sha256": sha256_file(openet_eto_csv),
-                "note": "sole benchmark ETo basis (OpenET bias-corrected gridMET, "
-                "EE asset projects/openet/assets/reference_et/conus/gridmet/daily/v1); "
-                "the archived site_daily_timeseries eto column is raw gridMET and is "
-                "forbidden for reconstruction",
-            },
-            "evaluation_metadata": {
-                "path": str(eval_metadata),
-                "sha256": sha256_file(eval_metadata),
-            },
-            "site_daily_timeseries_dir": str(timeseries_dir),
-            "openet_daily_dir": str(openet_dir),
-            "per_site_manifest_sha256": input_manifest,
-        },
-        "method": {
-            "benchmark_overpass_definition": "finite raw May v2.1 ensemble_mean_3x3 "
-            "before interpolation",
-            "benchmark_construction": "OpenET-method temporal benchmark using a common "
-            "OpenET bias-corrected gridMET ETo basis; site-series ETf reconstruction "
-            "using the Volk et al. temporal-support rule (not a native-product "
-            "reproduction)",
-            "interpolation_rule": INTERPOLATION_RULE,
-            "eto_source": ETO_SOURCE,
-            "epoch": "captures and scored dates are confined to the extracted-ETo "
-            "support (>= 1999-01-01) structurally: pairing intersects the "
-            "reconstruction with the ETo calendar, and a capture without ETo "
-            "coverage is a hard failure — never a raw-gridMET backfill",
-            "min_paired_dates": MIN_PAIRED,
-            "nse": "1 - SSE/SST (sklearn r2_score); labeled NSE, never r2",
-            "kge": "Gupta et al. 2009: 1 - sqrt((r-1)^2 + (alpha-1)^2 + (beta-1)^2), "
-            "alpha = std ratio (ddof=0), beta = mean ratio",
-            "mbe": "mean(model - flux), mm/day",
-            "bootstrap": "site resampling with replacement; per-(subset,cohort) "
-            "index matrix drawn once from default_rng(seed) and shared across metrics",
-            "seed": args.seed,
-            "bootstrap_reps": args.bootstrap_reps,
-        },
-        "gates": {
-            "gate_a_reference": "rebuilt May v2.1 e2_primary_daily_site_metrics.csv — "
-            "consciously replaces the former identity check against the January-based "
-            "archived daily_paired_metrics.csv + ablation KGE reference (superseded "
-            "sources)",
-            "gate_a_identity_max_abs_diff_by_column": gate_a_diffs,
-            "gate_a_tolerance": IDENTITY_TOL,
-            "gate_b_date_semantics": "enforced per site (check_date_semantics)",
-            "gate_c_union_and_pairing": "enforced per site and via audit counts",
-            "common_split_cohort": common_split,
-            "n_common_split_sites": len(common_split),
-        },
-        "cohort_fractions": fractions,
-    }
+    contrast_persite = pd.DataFrame(persite_rows)
+    for model in ["swim", "openet"]:
+        for k in METRIC_KEYS:
+            sub = contrast_persite[
+                (contrast_persite["model"] == model) & (contrast_persite["metric"] == k)
+            ]
+            med, lo, hi = bootstrap_median_ci(sub["delta_non_minus_overpass"].values, reps, seed)
+            contrast_rows.append(
+                {
+                    "model": model,
+                    "metric": k,
+                    "cohort": "common_split",
+                    "n_sites": len(sub),
+                    "median_delta_non_minus_overpass": med,
+                    "ci95_low": lo,
+                    "ci95_high": hi,
+                    "seed": seed,
+                    "n_resamples": reps,
+                }
+            )
+    contrast_df = pd.DataFrame(contrast_rows)
 
     metrics_out = metrics_df[
         ["fid", "subset", "n_paired", "first_date", "last_date", "eligible", "exclusion_reason"]
         + [f"{k}_{m}" for m in ["swim", "openet"] for k in METRIC_KEYS]
     ]
-    metrics_out.to_csv(out_dir / "overpass_split_metrics.csv", index=False)
-    summary_df.to_csv(out_dir / "overpass_split_summary.csv", index=False)
-    deltas_df.to_csv(out_dir / "overpass_split_paired_deltas.csv", index=False)
-    audit_df.to_csv(out_dir / "overpass_date_audit.csv", index=False)
-    if contrast_df is not None:
-        contrast_df.to_csv(out_dir / "e2_temporal_support_contrast.csv", index=False)
-        contrast_persite.to_csv(out_dir / "e2_temporal_support_contrast_persite.csv", index=False)
-        metadata["support_contrast"] = {
-            "definition": "per-site metric change non_overpass - overpass for each "
-            "model, all five metrics, common_split cohort; site-bootstrap 95% CI",
+    written = {}
+    for name, df in [
+        ("overpass_split_metrics.csv", metrics_out),
+        ("overpass_split_summary.csv", summary_df),
+        ("overpass_split_paired_deltas.csv", deltas_df),
+        ("overpass_date_audit.csv", audit_df),
+        ("e2_temporal_support_contrast.csv", contrast_df),
+        ("e2_temporal_support_contrast_persite.csv", contrast_persite),
+    ]:
+        path = os.path.join(out_dir, name)
+        _write_atomic(lambda p, d=df: d.to_csv(p, index=False), path)
+        written[name] = path
+
+    legacy_meta = {
+        "role": (
+            "LEGACY/SECONDARY transition products derived from the paired-record "
+            "artifact; the default temporal grouped outputs are the primary "
+            "products. No raw-source reconstruction was performed."
+        ),
+        "record_schema": PAIRED_RECORD_SCHEMA_VERSION,
+        "subset_labels": {
+            "overpass": TEMPORAL_CLASS_RETRIEVAL,
+            "non_overpass": TEMPORAL_CLASS_BETWEEN,
+        },
+        "definitions": {
+            "min_paired_dates": MIN_PAIRED,
+            "nse": "1 - SSE/SST; labeled NSE, never r2",
+            "kge": "Gupta et al. 2009: 1 - sqrt((r-1)^2 + (alpha-1)^2 + (beta-1)^2), "
+            "alpha = std ratio (ddof=0), beta = mean ratio",
+            "mbe": "mean(model - flux), mm/day, signed in per-site metrics",
+            "abs_mbe": "|MBE_swim| - |MBE_openet| in the paired-delta product only",
+            "bootstrap": "site resampling with replacement; per-(subset,cohort) "
+            "index matrix drawn once from default_rng(seed) and shared across metrics",
+        },
+        "date_audit_scope": (
+            "record-derivable counts only; calibration-capture counts, raw benchmark "
+            "capture totals, support spans, and reconstruction identity errors are "
+            "no longer audited here (they require raw sources, which this consumer "
+            "does not read)"
+        ),
+        "cohort_fractions": fractions,
+        "common_split_cohort": common_split,
+        "n_common_split_sites": len(common_split),
+        "seed": seed,
+        "bootstrap_reps": reps,
+    }
+    path = os.path.join(out_dir, "overpass_split_metadata.json")
+    _write_atomic(lambda p: Path(p).write_text(json.dumps(legacy_meta, indent=2)), path)
+    written["overpass_split_metadata.json"] = path
+    return written
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="E1 temporal decomposition from the evaluator paired-record bundle"
+    )
+    parser.add_argument(
+        "--evaluator-output-dir",
+        required=True,
+        help="Directory holding the canonical daily volk evaluator bundle "
+        "(grouped metrics/contrasts/metadata + paired daily records)",
+    )
+    parser.add_argument("--output-dir", required=True, help="Working output directory")
+    parser.add_argument("--bootstrap-reps", type=int, default=10000)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--legacy-site-products",
+        action="store_true",
+        help="Also emit the former secondary site-level products "
+        "(overpass_split_*, e2_temporal_support_contrast*) from the record — "
+        "transition/compatibility only",
+    )
+    args = parser.parse_args()
+
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Validating parent bundle: {args.evaluator_output_dir}")
+    frame, parent_meta, gate_report = validate_parent_bundle(args.evaluator_output_dir)
+    print(
+        f"Parent identity gate passed: {gate_report['record_counts']['n_sites']} sites, "
+        f"{gate_report['record_counts']['n_rows']:,} rows; grouped-point max |diff| "
+        f"{gate_report['grouped_point_identity_max_abs_diff']:.2e} "
+        f"(tolerance {IDENTITY_TOL:.0e})"
+    )
+
+    decomp = temporal_decomposition(frame, reps=args.bootstrap_reps, seed=args.seed)
+    n_common = len(decomp.common_cohort)
+    excluded = sorted(set(frame["fid"].unique()) - set(decomp.common_cohort))
+    print(f"Common temporal cohort: {n_common} sites (excluded: {excluded or 'none'})")
+    print(
+        "Class rows (common cohort): "
+        + ", ".join(f"{k}={v:,}" for k, v in decomp.class_counts.items())
+    )
+
+    written = {}
+    for name, df in [
+        (OUT_METRICS, decomp.grouped_metrics),
+        (OUT_CONTRASTS, decomp.grouped_contrasts),
+        (OUT_INTERACTIONS, decomp.interactions),
+        (OUT_ELIGIBILITY, decomp.site_eligibility),
+    ]:
+        path = os.path.join(out_dir, name)
+        _write_atomic(lambda p, d=df: d.to_csv(p, index=False), path)
+        written[name] = path
+
+    legacy_written = None
+    if args.legacy_site_products:
+        legacy_written = write_legacy_products(frame, str(out_dir), args.bootstrap_reps, args.seed)
+
+    metadata = {
+        "run_name": "e1_temporal_decomposition",
+        "analysis_date": datetime.now(UTC).isoformat(timespec="seconds"),
+        "git": git_state(str(Path(__file__).resolve().parents[2])),
+        "parent_bundle": gate_report,
+        "record_schema": PAIRED_RECORD_SCHEMA_VERSION,
+        "temporal_class_definition": TEMPORAL_CLASS_DEFINITION,
+        "cohort": {
+            "rule": f"sites with >= {MIN_OBS_FOR_METRICS} paired dates in BOTH "
+            "retrieval and between_retrieval",
+            "common_cohort": list(decomp.common_cohort),
+            "n_common_sites": n_common,
+            "excluded_from_common": excluded,
+            "class_row_counts": decomp.class_counts,
+        },
+        "estimands": {
+            "within_class_model_contrast": "SWIM - OpenET within each temporal class",
+            "within_model_support_change": (
+                "model between_retrieval - model retrieval (secondary; does not by "
+                "itself test comparative advantage; derivable from the metrics table)"
+            ),
+            "cross_model_support_interaction": TEMPORAL_INTERACTION_FORMULA,
+            "primary_conclusion_estimand": "cross_model_support_interaction",
+            "interaction_favorable_directions": {
+                "kge": "positive favors a relative SWIM gain between retrievals",
+                "rmse": "negative favors a relative SWIM gain between retrievals",
+                "mbe": "signed, directional only — never a bias-magnitude claim",
+            },
+        },
+        "aggregations": [AGG_POOLED, AGG_WEIGHTED],
+        "models": list(GROUPED_MODEL_ORDER),
+        "pooled_metrics": list(POOLED_METRICS),
+        "weighted_metrics": list(WEIGHTED_METRICS),
+        "bootstrap": {
+            "unit": "site",
+            "reps": args.bootstrap_reps,
             "seed": args.seed,
-            "bootstrap_reps": args.bootstrap_reps,
-        }
-    with open(out_dir / "overpass_split_metadata.json", "w") as f:
-        json.dump(metadata, f, indent=2)
+            "interval": "percentile_2.5_97.5",
+            "shared_draws": (
+                "one multiplicity matrix shared across both models, every metric, "
+                "and all three temporal partitions; the interaction is computed "
+                "from the same replicate arrays"
+            ),
+        },
+        "parent_evaluator_metadata": {
+            "benchmark_source": parent_meta.get("benchmark_source"),
+            "benchmark_construction": parent_meta.get("benchmark_construction"),
+            "bootstrap": parent_meta.get("bootstrap"),
+        },
+        "legacy_site_products": (
+            {"emitted": True, "files": sorted(legacy_written)}
+            if legacy_written
+            else {"emitted": False}
+        ),
+        "output_hashes": {
+            name: sha256_file(path)
+            for name, path in {**written, **(legacy_written or {})}.items()
+            if path.endswith(".csv")
+        },
+    }
+    meta_path = os.path.join(out_dir, OUT_METADATA)
+    _write_atomic(lambda p: Path(p).write_text(json.dumps(metadata, indent=2)), meta_path)
+    written[OUT_METADATA] = meta_path
 
     print(f"\nOutputs written to {out_dir}")
-    print("\nCommon-split summary (medians):")
-    show = summary_df[summary_df["cohort"] == "common_split"]
-    cols = [
-        "subset",
-        "n_sites",
-        "total_paired_site_days",
-        "median_paired_days_per_site",
-        "median_nse_swim",
-        "median_nse_openet",
-        "median_kge_swim",
-        "median_kge_openet",
-        "median_rmse_swim",
-        "median_rmse_openet",
-        "median_mbe_swim",
-        "median_mbe_openet",
-    ]
-    print(show[cols].to_string(index=False))
-    print("\nPaired deltas (common_split):")
-    print(deltas_df[deltas_df["cohort"] == "common_split"].to_string(index=False))
-    if contrast_df is not None:
-        print("\nSupport contrast (common_split, non_overpass - overpass):")
-        print(contrast_df.to_string(index=False))
+    inter = decomp.interactions
+    print(
+        "\nCross-model support interaction "
+        "((SWIM-OpenET | between_retrieval) - (SWIM-OpenET | retrieval)):"
+    )
+    cols = ["aggregation", "metric", "estimate", "ci95_low", "ci95_high", "unit"]
+    print(inter[cols].to_string(index=False))
+    if legacy_written:
+        print(f"\nLegacy site products (secondary/transition): {len(legacy_written)} files")
 
 
 if __name__ == "__main__":
