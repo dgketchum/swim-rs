@@ -716,6 +716,24 @@ def _full_model_run(cfg, container, fids, par_csv):
                 os.remove(p)
 
 
+def active_refet_arrays(root, met_source="gridmet", refet_type="eto"):
+    """Reference ET the model actually used, plus the raw series for provenance.
+
+    Mirrors the model-input preference (swimrs.process.input): the corrected
+    series (``{refet_type}_corr``) when present, else the raw series. Returns
+    ``(active, raw)`` where ``raw`` is None unless the corrected series is the
+    active one — the archive then exports it under ``eto_raw`` so the ``eto``
+    column always carries what SWIM consumed.
+    """
+    corr_path = f"meteorology/{met_source}/{refet_type}_corr"
+    raw_path = f"meteorology/{met_source}/{refet_type}"
+    if corr_path in root:
+        active = np.asarray(root[corr_path][:])
+        raw = np.asarray(root[raw_path][:]) if raw_path in root else None
+        return active, raw
+    return np.asarray(root[raw_path][:]), None
+
+
 def cat6_evaluation(cfg, container, cat6_dir, par_csv, results_dir, cat3_dir, gaps):
     os.makedirs(cat6_dir, exist_ok=True)
     flux_dir = ev.resolve_flux_dir(cfg)
@@ -758,7 +776,9 @@ def cat6_evaluation(cfg, container, cat6_dir, par_csv, results_dir, cat3_dir, ga
         obs_meta_path = os.path.join(cat3_dir, "observation_metadata.csv")
         obs_meta = pd.read_csv(obs_meta_path) if os.path.exists(obs_meta_path) else pd.DataFrame()
         root = container._root
-        eto = np.asarray(root["meteorology/gridmet/eto"][:])
+        eto, eto_raw = active_refet_arrays(
+            root, refet_type=getattr(cfg, "refet_type", "eto") or "eto"
+        )
         prcp = np.asarray(root["meteorology/gridmet/prcp"][:])
         cfids = list(container.field_uids)
         cidx = {f: i for i, f in enumerate(cfids)}
@@ -766,20 +786,21 @@ def cat6_evaluation(cfg, container, cat6_dir, par_csv, results_dir, cat3_dir, ga
         for fid in out_fids:
             i = idx[fid]
             ci = cidx.get(fid)
-            df = pd.DataFrame(
-                {
-                    "date": dates,
-                    "swim_ET": output.eta[:, i],
-                    "etf_model": output.etf[:, i],
-                    "precip": prcp[:, ci] if ci is not None else np.nan,
-                    "eto": eto[:, ci] if ci is not None else np.nan,
-                    "ndvi_kcb": output.kcb[:, i],
-                    "ks": output.ks[:, i],
-                    "rz_depletion": output.depl_root[:, i],
-                    "irr_applied": output.irr_sim[:, i],
-                    "swe": output.swe[:, i],
-                }
-            )
+            data = {
+                "date": dates,
+                "swim_ET": output.eta[:, i],
+                "etf_model": output.etf[:, i],
+                "precip": prcp[:, ci] if ci is not None else np.nan,
+                "eto": eto[:, ci] if ci is not None else np.nan,
+                "ndvi_kcb": output.kcb[:, i],
+                "ks": output.ks[:, i],
+                "rz_depletion": output.depl_root[:, i],
+                "irr_applied": output.irr_sim[:, i],
+                "swe": output.swe[:, i],
+            }
+            if eto_raw is not None:
+                data["eto_raw"] = eto_raw[:, ci] if ci is not None else np.nan
+            df = pd.DataFrame(data)
             # flux ET
             flux = ev.load_flux_et(fid, flux_dir)
             df = df.merge(flux.rename("flux_ET"), left_on="date", right_index=True, how="left")
