@@ -1,4 +1,7 @@
-"""Run the Study 2 weighting ablation: E1 (spread) vs E2 (fixed_sd).
+"""Run the paper E1 weighting ablation: spread vs fixed-denominator weighting.
+
+The legacy internal arm identifiers ``e1_spread`` and ``e2_fixed_sd`` are
+retained in archived outputs.
 
 Launches both calibration runs sequentially, then evaluates each against
 flux tower ET using the canonical Ex5 evaluation, and produces paired
@@ -463,7 +466,7 @@ def _build_paired_delta_summary(exp_dirs, summary_dir, seed=42, reps=10000):
 
 
 def summarize_ablation(e1_dir, e2_dir, summary_dir):
-    """Produce all paired comparison and diagnostic artifacts for E1 vs E2."""
+    """Produce paired artifacts for the spread and fixed-SD calibration arms."""
     os.makedirs(summary_dir, exist_ok=True)
 
     # Paired deltas: daily, monthly, ETf
@@ -510,7 +513,9 @@ def regenerate_summaries(e1_dir, e2_dir, summary_dir):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run Study 2 weighting ablation (E1 vs E2)")
+    parser = argparse.ArgumentParser(
+        description="Run the paper E1 spread-vs-fixed weighting ablation"
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",

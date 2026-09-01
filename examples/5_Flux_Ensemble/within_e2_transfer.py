@@ -1,11 +1,13 @@
-"""Within-E2 held-out spatial transfer (leave-region-out + leave-one-site-out).
+"""Within-E1 held-out spatial transfer (leave-region-out + leave-one-site-out).
+
+The filename retains the former paper-numbering label for archive continuity.
 
 Supports the manuscript claim (``paper/text/main.md`` Table 1 and the Parameter
-Transfer methods paragraph) that within Experiment 2 a fixed parameter vector
+Transfer methods paragraph) that within Experiment 1 a fixed parameter vector
 formed from the across-site median of *training-site* posterior medians, applied
 to *held-out* sites without local recalibration, retains most of the
 site-calibrated skill. This is the within-domain spatial cross-validation that
-removes the E2->E3 domain-shift confound (single forcing GridMET, single soils
+removes the E1->E2 domain-shift confound (single forcing GridMET, single soils
 SSURGO, single OpenET target; only the site set changes between train and test).
 
 Design (see ``paper/final_implementations.md`` WP6.2 and
@@ -39,7 +41,7 @@ held-out site a management-allowable-depletion value its own prior forbids. Two
 extra arms test whether conditioning the transfer on an independently inferred
 irrigation class preserves or improves held-out skill while keeping rainfed ``mad``
 inside the rainfed domain (see ``paper/notes/irrigation_stratified_transfer_handoff.md``,
-"Target-class policy > Within E2"):
+"Target-class policy > Within E1"):
 
     loro_strat - stratified leave-region-out (PRIMARY stratified comparison): the
                  vector is the median over training sites in the SAME irrigation
@@ -186,7 +188,7 @@ WIN_PAIRS = [
 ]
 
 # `r2` in this codebase IS Nash-Sutcliffe efficiency (verified pure relabel); the
-# key name is kept for continuity with every other E2 artifact. `abs_bias` is the
+# key name is kept for continuity with the legacy ``e2_*`` artifacts. `abs_bias` is the
 # absolute mean bias error, lower-is-better, added for the stratified comparison.
 METRIC_KEYS = ["r2", "kge", "rmse", "bias", "r", "mae", "alpha", "beta", "abs_bias"]
 SUMMARY_METRICS = ["r2", "kge", "rmse", "bias", "abs_bias"]
@@ -881,8 +883,8 @@ def main():
             json.dump(vectors, f, indent=2)
 
         metadata = {
-            "experiment": "within-E2 held-out spatial transfer (leave-region-out + LOSO), pooled and irrigation-stratified",
-            "purpose": "support main.md within-E2 held-out transfer claim (Table 1 + Parameter Transfer methods) and test irrigation-class regionalization of the E2 transfer vector",
+            "experiment": "within-E1 held-out spatial transfer (leave-region-out + LOSO), pooled and irrigation-stratified",
+            "purpose": "support the main.md within-E1 held-out transfer claim and test irrigation-class regionalization of the E1 transfer vector",
             "source_par_csv": args.par_csv,
             "source_par_csv_sha256": _sha256(args.par_csv),
             "container": args.container,
@@ -938,7 +940,7 @@ def main():
             return f"{med:6.3f}[{lo:5.2f},{hi:5.2f}]"
 
         print("\n" + "=" * 110)
-        print("WITHIN-E2 HELD-OUT TRANSFER — median metrics (common-support sites)")
+        print("WITHIN-E1 HELD-OUT TRANSFER — median metrics (common-support sites)")
         print("=" * 110)
         for basis in ("daily", "monthly"):
             for stratum in ["all"] + IRR_CLASSES:

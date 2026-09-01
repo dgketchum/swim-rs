@@ -1,7 +1,6 @@
 """Unit tests for the weighting-ablation summary builders (Example 5).
 
-Covers the review-specified behaviors
-(examples/5_Flux_Ensemble/notes/weighting_ablation_run22_review_handoff.md §10):
+Covers the required summary behaviors:
 
 1. the phi parser reads real pestpp-ies phi.meas.csv structure correctly
    (rows are iterations; per-iteration phi comes from the ``mean`` column;

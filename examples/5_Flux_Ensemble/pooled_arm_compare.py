@@ -1,11 +1,11 @@
-"""Pooled two-arm comparison: SWIM current formulation vs standard FAO-56.
+"""Pooled two-arm vegetation-formulation comparison on a common flux mask.
 
 Scores two calibrated arms against the same flux observations on the *same*
 site-days, then pools every site-day into a single vector before computing
-RMSE / MBE / KGE.  This is deliberately different from ``evaluate.py``, which
-reports per-site metrics and then takes a median across sites: pooling lets the
-long-record sites carry proportional weight, so an arm cannot win by edging out
-a large number of short records.
+RMSE / MBE / KGE. Unlike the E1 SWIM-OpenET evaluator, this comparison requires
+both formulation arms to be finite on the same flux-observation mask. Pooling
+lets the long-record sites carry proportional weight and provides the E0 cohort
+estimand used for formulation selection.
 
 The two arms differ only in transpiration physics:
 
@@ -23,7 +23,7 @@ the numbers here will not reconcile exactly with the canonical Run 22 table.
 Both bases are reported so the difference is auditable.
 
 Usage:
-    python pooled_arm_compare.py \
+    uv run python pooled_arm_compare.py \
         --a-name run22 --a-config 5_Flux_Ensemble.toml \
         --a-container .../5_Flux_Ensemble_run22.swim \
         --a-par .../results/run22/5_Flux_Ensemble.3.par.csv \

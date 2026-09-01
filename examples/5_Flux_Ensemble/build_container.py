@@ -4,7 +4,7 @@ Copies the base container, re-ingests ETf (OpenET ETo denominator, MAX dedup,
 2016-2025), ingests OpenET reference ETo/ETr, computes simple mean ensemble,
 and recomputes dynamics.
 
-Reference ET policy (single source, see notes/handoff_single_refet.md):
+Reference ET policy (single source):
 OpenET bias-corrected ETo/ETr is written to meteorology/gridmet/{var}_corr
 for 1999+ (OpenET refET starts 1999). The 1995-1998 spinup years are
 backfilled from raw GridMET {var} — slightly high ETo for ~4 years before
@@ -19,8 +19,7 @@ Dynamics settings (Example 5 constraints):
   - Group bridging disabled, decay-threshold forward extension
 
 Usage:
-    python build_container.py --run run17
-    python build_container.py --run run16  # reproduce Run 16
+    uv run python build_container.py --run <tag> --source <base-container>
 """
 
 import argparse
@@ -356,7 +355,7 @@ def main():
     parser.add_argument(
         "--mad",
         action="store_true",
-        help="Use MAD-filtered ensemble (Volk methodology) instead of simple mean",
+        help="Use a diagnostic MAD-filtered target instead of the primary simple mean",
     )
     args = parser.parse_args()
 

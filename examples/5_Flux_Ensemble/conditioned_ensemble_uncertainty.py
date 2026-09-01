@@ -1,7 +1,6 @@
-"""Conditioned-ensemble uncertainty diagnostic for Example 5 / Experiment E2.
+"""Conditioned-ensemble uncertainty diagnostic for Example 5 / paper Experiment E1.
 
-Implements notes/conditioned_ensemble_uncertainty_plan.md. On the frozen
-2,131-capture / 33-site spread-error cohort, compares multi-algorithm
+On the frozen 2,131-capture / 33-site spread-error cohort, compares multi-algorithm
 retrieval spread (sample std among available OpenET ETf members at a
 capture) with conditioned simulation spread (dispersion among ETf
 simulations from the 199 non-base final PEST++ IES realizations) as
@@ -128,7 +127,7 @@ def gate_a_canonical_identity():
         os.path.join(CANONICAL["container"], "zarr.json")
     )
 
-    # Confirm config and container against the canonical E2 archive.
+    # Confirm config and container against the canonical E1 archive.
     archived_cfg_sha = sha256_file(CANONICAL["provenance_config"])
     config_matches_archive = identities["config"]["sha256"] == archived_cfg_sha
     with open(CANONICAL["provenance_container_path"]) as f:
@@ -477,7 +476,7 @@ def gate_e_central_prediction(cfg, container, fids, flux_dir):
 
     The forward model output is captured from inside ``evaluate.evaluate`` so
     the capture-level predictions used downstream are the exact simulations
-    that reproduce the frozen E2 evaluation (one forward run, one code path).
+    that reproduce the frozen E1 evaluation (one forward run, one code path).
     """
     captured = {}
     orig_run = ev.run_calibrated_model
@@ -817,7 +816,7 @@ def classify_outcome(delta_ci, rho_cond_ci):
 
 OUTCOME_TEXT = {
     "A": (
-        "At flux-matched E2 acquisitions, multi-algorithm retrieval spread tracked "
+        "At flux-matched E1 acquisitions, multi-algorithm retrieval spread tracked "
         "absolute SWIM-RS ETf error more closely than dispersion among simulations "
         "from the final conditioned parameter ensemble. Retrieval disagreement was "
         "therefore the more useful observation-level reliability signal in this "
@@ -920,7 +919,7 @@ def make_figure(obs, quintiles, out_png, out_pdf):
     axes[2].legend(frameon=False, fontsize=8)
 
     fig.suptitle(
-        "E2 acquisition-date error vs retrieval spread and conditioned simulation spread",
+        "E1 acquisition-date error vs retrieval spread and conditioned simulation spread",
         fontsize=10,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.95))
@@ -965,7 +964,7 @@ def write_results_note(path, meta, summary_rows, contraction_summary):
         return format(r["point"], spec)
 
     lines = [
-        "# E2 Conditioned-Ensemble Uncertainty Diagnostic — Results",
+        "# E1 Conditioned-Ensemble Uncertainty Diagnostic — Results",
         "",
         f"**Date:** {meta['finished']}",
         "**Plan:** `notes/conditioned_ensemble_uncertainty_plan.md` (prespecified; no adaptations)",

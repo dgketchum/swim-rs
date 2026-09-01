@@ -240,8 +240,7 @@ if __name__ == "__main__":
         "--config",
         type=str,
         default=None,
-        help="Path to project TOML (default: 5_Flux_Ensemble.toml). Use a "
-        "variant config to enable the WP-C7 mad split (stress_depletion_fraction).",
+        help="Project TOML (default: 5_Flux_Ensemble.toml; E0 arms use variant configs)",
     )
     parser.add_argument(
         "--etf-weighting-mode",

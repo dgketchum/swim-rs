@@ -1,18 +1,14 @@
-# fao56_sig — unscaled-sigmoid arm of the E0 vegetation-formulation study,
-# calibrated natively on the Ex5 cohort (six-model ensemble target).
+# Standard FAO-56 dual crop coefficient arm on the E0/E1 cohort.
 #
-# Matches the primary 5_Flux_Ensemble.toml except for two keys:
+# Matches the primary 5_Flux_Ensemble.toml except for three keys:
 #
-#   misc.transpiration_cover_mode = "none"   kc_act = Ks*Kcb + Ke (no fc weight);
-#                                            Kcb stays the SIGMOID of NDVI, so this
-#                                            arm differs from the primary ONLY in cover
-#                                            scaling (isolated cover comparison)
+#   misc.kcb_ndvi_mode          = "linear"   Kcb = ndvi_beta*NDVI + ndvi_alpha
+#   misc.transpiration_cover_mode = "none"   kc_act = Ks*Kcb + Ke (no fc weight)
 #   calibration.pest_run_dir                 relocated so the shared pestrun/ is
 #                                            never removed with the primary workspace
 #
-# Results tag: fao56_sig. Companion arms are the primary cover-scaled sigmoid
-# configuration and the unscaled-linear 5_Flux_Ensemble_fao56.toml. Together
-# the three form the E0 comparison.
+# Results tag: RunFAO56. The companion primary arm uses
+# 5_Flux_Ensemble.toml.
 
 project = "5_Flux_Ensemble"
 root = "/data/ssd1/swim"
@@ -65,14 +61,13 @@ irrigation_threshold = 0.3
 elev_units = "m"
 refet_type = "eto"
 runoff_process = "cn"
-# --- Unscaled-sigmoid physics: the only substantive delta from the primary ---
-# Sigmoid Kcb-NDVI (default mode, same as Run 22) WITHOUT the fc cover weight:
-# kc_act = Ks*Kcb + Ke. Calibrates the same (ndvi_k, ndvi_0) pair with the same
-# priors (including irrigation-informed ndvi_0), so the contrast is
-# cover scaling alone — no prior asymmetry. Do NOT set kcb_ndvi_mode (sigmoid
-# is the default) and do NOT also set transpiration_cover_scaling:
-# resolve_cover_mode() raises on a conflicting pair, and "none" already
-# implies it False.
+# --- Unscaled-linear physics: the substantive delta from the primary ---
+# Standard FAO-56 dual crop coefficient with a linear Kcb-NDVI relation.
+# Calibrates (ndvi_alpha, ndvi_beta) instead of (ndvi_k, ndvi_0) -- PestBuilder
+# SWAPS the pair, so this arm carries the same COUNT of free curve parameters
+# as the primary arm. Do NOT also set transpiration_cover_scaling: resolve_cover_mode()
+# raises on a conflicting pair, and "none" already implies it False.
+kcb_ndvi_mode = "linear"
 transpiration_cover_mode = "none"
 
 [date_range]
@@ -91,7 +86,7 @@ flux_dir = "{data}/daily_flux_files_2pt1"
 # pest_run_dir unconditionally at startup; the shared one still holds unarchived
 # leftovers. calibration_dir/obs_folder/initial_values_csv/spinup all interpolate
 # from this key, so this one line isolates the whole working tree.
-pest_run_dir = "{project_workspace}/pestrun_fao56_sig"
+pest_run_dir = "{project_workspace}/pestrun_fao56"
 # "ensemble" + "computed" is the paper E1 simple member-mean target.
 etf_target_model = "ensemble"
 ensemble_source = "computed"  # "computed" = DIY mean of members, "openet" = pre-computed OpenET ensemble

@@ -1057,7 +1057,7 @@ def build_metadata(
             "manuscript main.md/supp.md E1 numbers",
             "LaTeX tables",
             "VALIDATION_POLICY / example READMEs",
-            "Ex6 (paper E2/E3) endpoint audit — separate plan",
+            "Ex6 (paper E2) and downstream E3 endpoint audit — separate plan",
         ],
     }
 

@@ -21,7 +21,6 @@ landsat = "{remote_sensing}/landsat"
 met = "{data}/meteorology/gridmet"
 gridmet_centroids = "{gis}/gridmet_centroids.shp"
 gridmet_mapping = "{gis}/flux_fields_gfid.shp"
-# Legacy local GridMET bias-correction removed (see notes/handoff_single_refet.md).
 # Reference ET is OpenET bias-corrected ETo/ETr (1999+), ingested by
 # build_container.py; 1995-1998 spinup uses raw GridMET.
 irr = "{properties}/{project}_irr.csv"
@@ -64,9 +63,7 @@ flux_dir = "{data}/daily_flux_files_2pt1"
 
 [calibration]
 pest_run_dir = "{project_workspace}/pestrun"
-# "ensemble" + "computed" = simple nanmean of members — the Run 21 publication target.
-# The MAD sensitivity test (Run 21b) overrides to etf_target_model = "ensemble_mad"
-# (dedicated path built by build_run21b_mad.py).
+# "ensemble" + "computed" is the paper E1 simple member-mean target.
 etf_target_model = "ensemble"
 ensemble_source = "computed"  # "computed" = DIY mean of members, "openet" = pre-computed OpenET ensemble
 etf_ensemble_members = ["ssebop", "sims", "geesebal", "eemetric", "ptjpl", "disalexi"]

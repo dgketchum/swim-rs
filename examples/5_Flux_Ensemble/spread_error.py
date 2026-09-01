@@ -1,4 +1,4 @@
-"""Spread-error analysis for Example 5 / Experiment E2 (Flux Ensemble).
+"""Spread-error analysis for Example 5 / paper Experiment E1 (Flux Ensemble).
 
 Tests whether the OpenET six-member inter-model ensemble spread at each
 calibration observation predicts the error of the ensemble-mean ETf target
@@ -9,7 +9,7 @@ pushback.
 Per observation i (site x Landsat overpass date with valid flux):
     spread_i = std across available members' ETf   (= archived ensemble_std)
     target_i = ensemble-mean ETf                   (= archived target_etf)
-    truth_i  = flux ETf = flux ET_corr / reference ETo (grass, eto_corr)
+    truth_i  = flux ETf = closure-corrected flux ET / reference ETo
     err_i    = target_i - truth_i
 
 The per-observation spread and target are read from the RUN_POLICY Category-3
@@ -39,7 +39,7 @@ from swimrs.container import SwimContainer
 
 MEMBERS = ["ssebop", "sims", "geesebal", "eemetric", "ptjpl", "disalexi"]
 
-# Canonical Run 22 artifacts (VALIDATION_POLICY E2 section).
+# Canonical Run 22 artifacts for paper Experiment E1.
 DEFAULT_RUN_DIR = "run22"
 DEFAULT_CONTAINER = "/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run22.swim"
 
@@ -122,7 +122,7 @@ def load_reference_eto(container, fids):
     """Load daily reference ETo (grass) matching the forward model.
 
     Forward model prefers ``{refet}_corr`` when present (input.py); refet_type
-    is eto for E2, so this returns ``meteorology/gridmet/eto_corr`` (OpenET
+    is eto for E1, so this returns ``meteorology/gridmet/eto_corr`` (OpenET
     bias-corrected grass ETo), falling back to raw ``eto``.
     """
     for path in ["meteorology/gridmet/eto_corr", "meteorology/gridmet/eto"]:
