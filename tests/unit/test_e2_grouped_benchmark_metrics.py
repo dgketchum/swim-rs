@@ -558,6 +558,21 @@ def test_no_legacy_aggregate_strings_in_module(ev):
     assert "win rate" not in source.lower()
 
 
+def test_default_run_resolves_canonical_run22(ev, tmp_path):
+    # Policy (examples/VALIDATION_POLICY.md): run22 is canonical; a bare run
+    # must not silently resolve the superseded run21 configuration.
+    for run in ("run21", "run22"):
+        d = tmp_path / run
+        d.mkdir()
+        (d / "proj.3.par.csv").write_text("x")
+    found = ev.find_reference_par_csv(str(tmp_path), "proj")
+    assert found == str(tmp_path / "run22" / "proj.3.par.csv")
+
+    source = SCRIPT.read_text()
+    assert "_run21.swim" not in source
+    assert "_run22.swim" in source
+
+
 def test_grouped_summary_print_content(ev, two_site_cohort, capsys):
     bundle = _bundle(ev, two_site_cohort, reps=50)
     ev.print_grouped_summary(bundle, "daily")

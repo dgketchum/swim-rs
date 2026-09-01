@@ -1648,12 +1648,16 @@ def find_par_csv(results_dir, project_name):
 
 
 def find_reference_par_csv(results_dir, project_name):
-    """Resolve the canonical Example 5 parameter file when none is provided."""
+    """Resolve the canonical Example 5 parameter file when none is provided.
+
+    Prefers the canonical run22 results (examples/VALIDATION_POLICY.md); any
+    automatically discovered fallback is diagnostic-only.
+    """
     candidate_dirs = []
 
-    run21_dir = os.path.join(results_dir, "run21")
-    if os.path.isdir(run21_dir):
-        candidate_dirs.append(run21_dir)
+    run22_dir = os.path.join(results_dir, "run22")
+    if os.path.isdir(run22_dir):
+        candidate_dirs.append(run22_dir)
 
     candidate_dirs.append(results_dir)
 
@@ -1751,6 +1755,11 @@ if __name__ == "__main__":
         par_csv = args.par_csv
     else:
         par_csv = find_reference_par_csv(results_dir, cfg.project_name)
+        print(
+            "WARNING: --par-csv not given; automatic parameter discovery is "
+            "diagnostic-only (see examples/VALIDATION_POLICY.md). Pass the "
+            "explicit canonical run22 paths for citable results."
+        )
     if par_csv is None:
         raise FileNotFoundError(f"No .par.csv found in {results_dir}")
     print(f"Using parameters: {par_csv}")
@@ -1758,7 +1767,7 @@ if __name__ == "__main__":
     if args.container:
         container_path = args.container
     else:
-        container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}_run21.swim")
+        container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}_run22.swim")
     container = SwimContainer.open(container_path, mode="r")
 
     if args.sites:
