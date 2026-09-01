@@ -1,13 +1,15 @@
 """Unit tests for the Run 22 overpass/non-overpass decomposition (Example 5).
 
-Synthetic-data tests for the handoff-specified invariants
-(examples/5_Flux_Ensemble/notes/run22_overpass_nonoverpass_handoff.md §9):
+Synthetic-data tests for the split invariants on the ETf-first footing:
 
 1. raw benchmark dates, not calibration flags, define the direct subset;
-2. interpolation occurs only between the first and last finite raw observations;
-3. the subsets are disjoint and their union equals the paired all-days record;
-4. both models are scored on identical dates;
-5. a site below the 10-date subset threshold is explicitly excluded.
+2. the benchmark is reconstructed ETf-first on the common ETo basis — it
+   visibly differs from direct-ET interpolation under varying ETo;
+3. temporal support follows the Volk ±32-day rule with openet-core
+   semantics (one-sided flat fill inside the window, NaN outside);
+4. the subsets are disjoint and their union equals the paired all-days record;
+5. both models are scored on identical dates;
+6. a site below the 10-date subset threshold is explicitly excluded.
 
 The script lives outside the swimrs package and is imported by path.
 """
@@ -39,12 +41,13 @@ def od():
 
 @pytest.fixture()
 def synthetic_site():
-    """Frozen-style site frame plus a raw benchmark series.
+    """Frozen-style site frame, a raw benchmark ET series, and a varying ETo.
 
     Calibration captures (is_overpass) are deliberately placed on DIFFERENT
     dates than the raw benchmark values, so any leakage of the calibration
-    flag into the split is detectable. Flux/SWIM extend beyond the benchmark
-    support on both ends, so extrapolation would also be detectable.
+    flag into the split is detectable. The ETo varies strongly (7-day
+    sawtooth), so an invalid direct-ET interpolation is numerically
+    distinguishable from the ETf-first reconstruction.
     """
     idx = pd.date_range("2020-01-01", "2020-03-31", freq="D")
     rng = np.random.default_rng(7)
@@ -60,23 +63,26 @@ def synthetic_site():
     calib_dates = pd.date_range("2020-01-03", "2020-03-27", freq="7D")
     frozen.loc[calib_dates, "is_overpass"] = True
 
-    # raw benchmark: finite every 8 days from Jan 10 through Mar 22 only
+    # raw benchmark ET: finite every 8 days from Jan 10 through Mar 22 only
     raw_dates = pd.date_range("2020-01-10", "2020-03-22", freq="8D")
     raw = pd.Series(np.nan, index=idx)
     raw.loc[raw_dates] = np.linspace(1.0, 3.0, len(raw_dates))
-    return frozen, raw, raw_dates, calib_dates
+
+    # strongly varying, strictly positive ETo (sawtooth, period 7 days)
+    eto = pd.Series(2.0 + 1.5 * (np.arange(len(idx)) % 7) / 6.0, index=idx)
+    return frozen, raw, raw_dates, calib_dates, eto
 
 
-def _paired(od, frozen, raw):
-    daily, direct = od.reconstruct_benchmark(raw)
+def _paired(od, frozen, raw, eto):
+    daily, direct, recon = od.reconstruct_benchmark(raw, eto, label="SYN")
     paired = od.classify_paired(frozen, daily, direct)
-    od.check_date_semantics(paired, direct, "SYN")
-    return paired, daily, direct
+    od.check_date_semantics(paired, recon, "SYN")
+    return paired, daily, direct, recon
 
 
 def test_raw_benchmark_dates_define_direct_subset(od, synthetic_site):
-    frozen, raw, raw_dates, calib_dates = synthetic_site
-    paired, _, direct = _paired(od, frozen, raw)
+    frozen, raw, raw_dates, calib_dates, eto = synthetic_site
+    paired, _, direct, _ = _paired(od, frozen, raw, eto)
     over = paired[paired["is_benchmark_overpass"]]
     assert set(over.index) == set(raw_dates)
     assert set(direct) == set(raw_dates)
@@ -85,22 +91,54 @@ def test_raw_benchmark_dates_define_direct_subset(od, synthetic_site):
     assert not set(calib_dates).issubset(set(over.index))
 
 
-def test_no_extrapolation_outside_raw_support(od, synthetic_site):
-    frozen, raw, raw_dates, _ = synthetic_site
-    paired, daily, _ = _paired(od, frozen, raw)
-    lo, hi = raw_dates.min(), raw_dates.max()
-    # flux and SWIM are finite outside [lo, hi], yet no paired date escapes it
-    assert paired.index.min() >= lo
-    assert paired.index.max() <= hi
-    # the interpolated series itself spans exactly first→last finite raw date
-    assert daily.index.min() == lo
-    assert daily.index.max() == hi
-    assert np.isfinite(daily.values).all()
+def test_etf_first_differs_from_direct_et_interpolation(od, synthetic_site):
+    frozen, raw, raw_dates, _, eto = synthetic_site
+    _, daily, _, _ = _paired(od, frozen, raw, eto)
+    finite = raw[np.isfinite(raw.values)]
+    # the superseded (invalid) construction: linear interpolation of ET itself
+    span = pd.date_range(raw_dates.min(), raw_dates.max(), freq="D")
+    direct_et = finite.reindex(span).interpolate(method="linear")
+    between = span.difference(raw_dates)
+    max_gap = (daily.loc[between] - direct_et.loc[between]).abs().max()
+    assert max_gap > 0.05, "ETf-first must diverge from direct-ET under varying ETo"
+    # both reproduce the raw ET exactly on capture dates
+    assert np.allclose(daily.loc[raw_dates].values, finite.values)
+
+
+def test_volk_window_limits_support(od, synthetic_site):
+    frozen, _, _, _, eto = synthetic_site
+    idx = frozen.index
+    raw = pd.Series(np.nan, index=idx)
+    raw.loc[pd.Timestamp("2020-01-10")] = 2.0
+    raw.loc[pd.Timestamp("2020-03-30")] = 3.0  # 80-day gap
+    paired, daily, _, recon = _paired(od, frozen, raw, eto)
+    # interior days more than 32 d from both captures are unsupported: unpaired
+    dead = pd.date_range("2020-02-12", "2020-02-26", freq="D")
+    assert not np.isfinite(daily.loc[dead].values).any()
+    assert len(paired.index.intersection(dead)) == 0
+    assert (recon.support_class.loc[dead] == "unsupported").all()
+    # one-sided flat fill holds ETf (not ET) flat within the window
+    etf0 = 2.0 / eto.loc["2020-01-10"]
+    assert daily.loc["2020-01-15"] == pytest.approx(etf0 * eto.loc["2020-01-15"])
+    # flat fill also extends before the first capture, inside the window
+    assert daily.loc["2020-01-01"] == pytest.approx(etf0 * eto.loc["2020-01-01"])
+
+
+def test_flat_fill_days_are_non_overpass(od, synthetic_site):
+    frozen, raw, raw_dates, _, eto = synthetic_site
+    paired, daily, _, recon = _paired(od, frozen, raw, eto)
+    tail = pd.date_range("2020-03-23", "2020-03-31", freq="D")
+    assert set(tail).issubset(set(paired.index))
+    assert (recon.support_class.loc[tail] == "flat_fill").all()
+    assert not paired.loc[tail, "is_benchmark_overpass"].any()
+    # ETf is held flat past the last capture; ET still varies with daily ETo
+    etf_last = raw.loc[raw_dates[-1]] / eto.loc[raw_dates[-1]]
+    assert np.allclose(daily.loc[tail].values, (etf_last * eto.loc[tail]).values)
 
 
 def test_subsets_disjoint_and_union_equals_all_days(od, synthetic_site):
-    frozen, raw, _, _ = synthetic_site
-    paired, _, _ = _paired(od, frozen, raw)
+    frozen, raw, _, _, eto = synthetic_site
+    paired, _, _, _ = _paired(od, frozen, raw, eto)
     subs = od.subset_frames(paired)
     over, non, all_days = subs["overpass"], subs["non_overpass"], subs["all_days"]
     assert len(over.index.intersection(non.index)) == 0
@@ -109,12 +147,12 @@ def test_subsets_disjoint_and_union_equals_all_days(od, synthetic_site):
 
 
 def test_both_models_scored_on_identical_dates(od, synthetic_site):
-    frozen, raw, _, _ = synthetic_site
+    frozen, raw, _, _, eto = synthetic_site
     # knock a flux value out inside the benchmark span: that date must drop
     # from the paired record for BOTH models, not just one
     frozen = frozen.copy()
     frozen.loc["2020-02-01", "flux_ET"] = np.nan
-    paired, _, _ = _paired(od, frozen, raw)
+    paired, _, _, _ = _paired(od, frozen, raw, eto)
     assert pd.Timestamp("2020-02-01") not in paired.index
     for sdf in od.subset_frames(paired).values():
         obs = sdf["flux"].values
@@ -124,19 +162,29 @@ def test_both_models_scored_on_identical_dates(od, synthetic_site):
 
 
 def test_below_threshold_subset_is_excluded(od, synthetic_site):
-    frozen, _, _, _ = synthetic_site
+    frozen, _, _, _, eto = synthetic_site
     # only 6 raw benchmark dates -> overpass subset below the 10-date minimum
     idx = frozen.index
     raw = pd.Series(np.nan, index=idx)
     sparse_dates = pd.date_range("2020-01-10", periods=6, freq="10D")
     raw.loc[sparse_dates] = 2.0
-    paired, _, _ = _paired(od, frozen, raw)
+    paired, _, _, _ = _paired(od, frozen, raw, eto)
     over = od.subset_frames(paired)["overpass"]
     assert len(over) == 6 < od.MIN_PAIRED
     m = od.calc_metrics(over["flux"].values, over["swim"].values)
     assert m["n"] == 6
     for k in od.METRIC_KEYS:
         assert np.isnan(m[k]), f"{k} must be NaN below the {od.MIN_PAIRED}-date minimum"
+
+
+def test_january_source_rejected(od, tmp_path):
+    jan = tmp_path / "data" / "openet_flux" / "daily_data"
+    jan.mkdir(parents=True)
+    with pytest.raises(ValueError, match="openet_flux_2pt1"):
+        od.assert_may_source(jan)
+    may = tmp_path / "data" / "openet_flux_2pt1" / "daily_data"
+    may.mkdir(parents=True)
+    assert od.assert_may_source(may) == may
 
 
 def test_kge_is_gupta_2009_form(od):

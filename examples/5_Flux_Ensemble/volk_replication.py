@@ -18,7 +18,9 @@ import numpy as np
 import pandas as pd
 from evaluate import (
     OPEN_SOURCE_MODELS,
+    OPENET_SOURCE_DIRNAME,
     apply_exclusions,
+    assert_may_source,
     load_config,
     load_flux_et,
     load_openet_etf_nomask,
@@ -30,6 +32,7 @@ from evaluate import (
 )
 from scipy import stats
 
+from swimrs.calibrate.benchmark import reconstruct_daily_benchmark
 from swimrs.container import SwimContainer
 
 PAR_CSV_DEFAULT = "/data/ssd1/swim/5_Flux_Ensemble/results/run21/5_Flux_Ensemble.3.par.csv"
@@ -37,6 +40,28 @@ CONTAINER_DEFAULT = "/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run21.
 
 MIN_DAILY_OBS = 6
 MIN_MONTHLY_OBS = 3
+
+
+def diy_daily_et(container, fid, etref):
+    """DIY daily ET per model via the shared ETf-first reconstruction helper.
+
+    ETf is interpolated under the Volk ±32-day temporal-support rule
+    (openet-core semantics) and multiplied by the model's ETo. Unbounded
+    ``ETf.interpolate()`` bridges gaps of any length and is invalid — it must
+    never be reintroduced here.
+    """
+    etf_by_model = load_openet_etf_nomask(container, fid)
+    et_daily = {}
+    for mn, etf_series in etf_by_model.items():
+        recon = reconstruct_daily_benchmark(
+            capture_series=etf_series,
+            capture_space="etf",
+            eto=etref,
+            eto_name="model_etref",
+            label=f"{fid}:{mn}",
+        )
+        et_daily[mn] = recon.daily_et
+    return et_daily
 
 
 def sqrt_n_weighted_mean(values, counts):
@@ -105,15 +130,11 @@ def pooled_alldays(model_results, fids, flux_dir, container=None):
         pooled_obs["swim"].append(obs)
         pooled_mod["swim"].append(mod)
 
-        # DIY OpenET models: interpolate ETf to daily, multiply by ETo
+        # DIY OpenET models: ETf-first reconstruction (Volk ±32-day rule)
         if not container:
             continue
 
-        etf_by_model = load_openet_etf_nomask(container, fid)
-        et_daily_by_model = {}
-        for mn, etf_series in etf_by_model.items():
-            etf_interp = etf_series.interpolate(method="linear")
-            et_daily_by_model[mn] = etf_interp * etref
+        et_daily_by_model = diy_daily_et(container, fid, etref)
 
         # Computed ensemble from available models
         if et_daily_by_model:
@@ -279,12 +300,8 @@ def pooled_monthly_diy(model_results, fids, flux_dir, container):
         pooled_obs["swim"].append(obs)
         pooled_mod["swim"].append(mod)
 
-        # DIY OpenET models
-        etf_by_model = load_openet_etf_nomask(container, fid)
-        et_daily_by_model = {}
-        for mn, etf_series in etf_by_model.items():
-            etf_interp = etf_series.interpolate(method="linear")
-            et_daily_by_model[mn] = etf_interp * etref
+        # DIY OpenET models: ETf-first reconstruction (Volk ±32-day rule)
+        et_daily_by_model = diy_daily_et(container, fid, etref)
 
         # Computed ensemble
         if et_daily_by_model:
@@ -401,7 +418,9 @@ def pooled_monthly_diy(model_results, fids, flux_dir, container):
 def volk_daily(cfg, container, par_csv, fids, flux_dir):
     """Daily evaluation on overpass days only, using Volk methodology."""
     fids = apply_exclusions(fids)
-    openet_daily_dir = os.path.join(cfg.data_dir, "openet_flux", "daily_data")
+    openet_daily_dir = assert_may_source(
+        os.path.join(cfg.data_dir, OPENET_SOURCE_DIRNAME, "daily_data")
+    )
 
     calibrated_params = parse_pest_params(par_csv, fids)
     print("Running calibrated model...")
@@ -546,7 +565,9 @@ def volk_daily(cfg, container, par_csv, fids, flux_dir):
 def volk_monthly(cfg, container, par_csv, fids, flux_dir):
     """Monthly evaluation using Volk methodology."""
     fids = apply_exclusions(fids)
-    monthly_dir = os.path.join(cfg.data_dir, "openet_flux", "monthly_data")
+    monthly_dir = assert_may_source(
+        os.path.join(cfg.data_dir, OPENET_SOURCE_DIRNAME, "monthly_data")
+    )
 
     calibrated_params = parse_pest_params(par_csv, fids)
     print("\nRunning calibrated model...")

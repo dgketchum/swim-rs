@@ -22,6 +22,10 @@ import pandas as pd
 from scipy import stats
 from sklearn.metrics import mean_squared_error, r2_score
 
+from swimrs.calibrate.benchmark import (
+    BenchmarkConstructionError,
+    reconstruct_daily_benchmark,
+)
 from swimrs.calibrate.flux_utils import (
     full_month_paired_sums,
     passes_site_minimum,
@@ -55,6 +59,50 @@ VOLK_COLUMN_MAP = {
     "EEMETRIC_3x3": "eemetric",
     "DISALEXI_3x3": "disalexi",
 }
+
+# May v2.1 is the only sanctioned OpenET capture source; the January
+# "openet_flux" directory is rejected on source-version grounds.
+OPENET_SOURCE_DIRNAME = "openet_flux_2pt1"
+JANUARY_SOURCE_DIRNAME = "openet_flux"
+
+_OPENET_ETO_CACHE = {}
+
+
+def assert_may_source(path):
+    """Hard-fail if a resolved OpenET data path is the January capture set."""
+    parts = os.path.normpath(path).split(os.sep)
+    if JANUARY_SOURCE_DIRNAME in parts:
+        raise BenchmarkConstructionError(
+            f"January OpenET source rejected: {path} — use {OPENET_SOURCE_DIRNAME}"
+        )
+    if OPENET_SOURCE_DIRNAME not in parts:
+        raise BenchmarkConstructionError(f"OpenET data path is not the May v2.1 source: {path}")
+    return path
+
+
+def load_openet_eto(data_dir=None):
+    """Load the extracted OpenET bias-corrected gridMET ETo (dates x sites).
+
+    This is the sole ETo basis for benchmark reconstruction (identical to the
+    run container's meteorology/gridmet/eto_corr; the archived
+    site_daily_timeseries `eto` column is raw gridMET and must not be used).
+    """
+    candidates = []
+    if data_dir:
+        candidates.append(os.path.join(data_dir, "openet_refet", "openet_eto.csv"))
+    candidates.append(
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "data", "openet_refet", "openet_eto.csv"
+        )
+    )
+    for path in candidates:
+        if os.path.exists(path):
+            if path not in _OPENET_ETO_CACHE:
+                wide = pd.read_csv(path, index_col="site_id")
+                wide.columns = pd.to_datetime(wide.columns, format="%Y%m%d")
+                _OPENET_ETO_CACHE[path] = (wide.T.sort_index(), path)
+            return _OPENET_ETO_CACHE[path]
+    raise FileNotFoundError(f"openet_eto.csv not found in: {candidates}")
 
 
 def load_config(config_path=None):
@@ -235,17 +283,25 @@ def calc_metrics(obs, mod):
 
 
 def _get_diy_openet(container, fid, irr_data, etref):
-    """DIY: interpolate our sparse ETf to daily, then multiply by daily ETo.
+    """DIY: reconstruct daily ET from our sparse container ETf, ETf-first.
 
-    Uses no_mask ETf exclusively — no fallback to masked ETf.
+    Uses no_mask ETf exclusively — no fallback to masked ETf. Reconstruction
+    goes through the shared helper (Volk ±32-day temporal-support rule, no
+    unbounded tail padding).
 
     Returns {model_name: pd.Series} of daily ET (interpolated ETf × ETo).
     """
     etf_by_model = load_openet_etf_nomask(container, fid)
     et_daily = {}
     for model_name, etf_series in etf_by_model.items():
-        etf_interp = etf_series.interpolate(method="linear")
-        et_daily[model_name] = etf_interp * etref
+        recon = reconstruct_daily_benchmark(
+            capture_series=etf_series,
+            capture_space="etf",
+            eto=etref,
+            eto_name="model_etref",
+            label=f"{fid}:{model_name}",
+        )
+        et_daily[model_name] = recon.daily_et
     return et_daily
 
 
@@ -282,7 +338,10 @@ def evaluate(cfg, container, par_csv, fids, flux_dir, openet_source="diy"):
         pass
 
     if openet_source == "volk":
-        openet_daily_dir = os.path.join(cfg.data_dir, "openet_flux", "daily_data")
+        openet_daily_dir = assert_may_source(
+            os.path.join(cfg.data_dir, OPENET_SOURCE_DIRNAME, "daily_data")
+        )
+        openet_eto, openet_eto_path = load_openet_eto(cfg.data_dir)
 
     calibrated_params = parse_pest_params(par_csv, fids)
     missing = [f for f in fids if f not in calibrated_params]
@@ -322,17 +381,28 @@ def evaluate(cfg, container, par_csv, fids, flux_dir, openet_source="diy"):
         if openet_source == "diy":
             et_daily_by_model = _get_diy_openet(container, fid, irr_data, etref)
         else:
+            # ETf-first reconstruction on the common OpenET bias-corrected
+            # gridMET ETo basis: ETf_i = ET_i/ETo_i at captures, linear-in-time
+            # ETf interpolation under the Volk ±32-day rule, × daily ETo.
+            # Direct interpolation of sparse ET is invalid (it smooths the
+            # daily demand signal) and must never be reintroduced here.
+            if fid not in openet_eto.columns:
+                raise BenchmarkConstructionError(f"{fid}: no extracted OpenET ETo")
+            site_eto = openet_eto[fid].astype("float64")
             et_sparse_by_model = _get_volk_openet(fid, openet_daily_dir)
             et_daily_by_model = {}
             for mn, s in et_sparse_by_model.items():
-                # Reindex to daily within the Volk data range, then interpolate
-                if s.notna().any():
-                    daily_idx = pd.date_range(
-                        s.dropna().index.min(), s.dropna().index.max(), freq="D"
-                    )
-                    et_daily_by_model[mn] = s.reindex(daily_idx).interpolate(method="linear")
-                else:
+                if not s.notna().any():
                     et_daily_by_model[mn] = s
+                    continue
+                recon = reconstruct_daily_benchmark(
+                    capture_series=s,
+                    capture_space="et",
+                    eto=site_eto,
+                    eto_name=openet_eto_path,
+                    label=f"{fid}:{mn}",
+                )
+                et_daily_by_model[mn] = recon.daily_et
 
         # Ensemble ET on common dates
         ens_vals = np.full(len(common), np.nan)
@@ -345,8 +415,14 @@ def evaluate(cfg, container, par_csv, fids, flux_dir, openet_source="diy"):
                 try:
                     ens_df = container.query.dataframe(ens_path, fields=[fid])
                     if fid in ens_df.columns and ens_df[fid].notna().any():
-                        ens_et_daily = ens_df[fid].interpolate(method="linear") * etref
-                        ens_vals = ens_et_daily.reindex(common).values
+                        recon = reconstruct_daily_benchmark(
+                            capture_series=ens_df[fid],
+                            capture_space="etf",
+                            eto=etref,
+                            eto_name="model_etref",
+                            label=f"{fid}:ensemble",
+                        )
+                        ens_vals = recon.daily_et.reindex(common).values
                 except KeyError:
                     pass
             else:
@@ -573,7 +649,9 @@ def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
     the paired month index — all models share it.
     """
     fids = apply_exclusions(fids)
-    monthly_dir = os.path.join(cfg.data_dir, "openet_flux", "monthly_data")
+    monthly_dir = assert_may_source(
+        os.path.join(cfg.data_dir, OPENET_SOURCE_DIRNAME, "monthly_data")
+    )
     print(f"Monthly evaluation: {len(fids)} fields from {par_csv}")
 
     calibrated_params = parse_pest_params(par_csv, fids)
