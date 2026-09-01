@@ -41,7 +41,10 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from matplotlib import font_manager as fm  # noqa: E402
+from matplotlib.legend_handler import HandlerTuple  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
+from matplotlib.patches import Patch  # noqa: E402
+from PIL import Image, ImageOps  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[3]
@@ -76,7 +79,11 @@ FS_HEAD = 7.0
 FS_AXIS = 7.0
 FS_TICK = 6.5
 FS_ANNO = 6.5
-FS_MIN = 6.5
+# Suite-standard interior framed key (figures_update_31082026.md section 2,
+# journal_figures.mplstyle): 6 pt text so borderaxespad 0.5 yields the shared
+# 3 pt (1.06 mm) frame-to-spine inset used by Figures 4-6.
+FS_LEGEND = 6.0
+FS_MIN = 6.0  # Elsevier floor; only the interior key sits below 6.5
 
 FORBIDDEN_STRINGS = ("run22", "RunFAO56", "fao56_sig", "NSE", "|MBE|")
 
@@ -103,6 +110,11 @@ def register_typeface() -> None:
             "mathtext.it": "Arial:italic",
             "mathtext.bf": "Arial:bold",
             "mathtext.cal": "Arial",
+            # Guide section 8, "One inset distance, everywhere": interior
+            # legends take their axes offset from this single shared value
+            # (journal_figures.mplstyle), never a per-panel bbox_to_anchor
+            # or borderaxespad override.
+            "legend.borderaxespad": 0.5,
             "pdf.fonttype": 42,
             "ps.fonttype": 42,
             "svg.fonttype": "none",
@@ -144,6 +156,7 @@ def load_package():
         "resp": "fig02_formulation_response.csv",
         "supp": "fig02_ndvi_support.csv",
         "pooled": "fig02_pooled_metrics.csv",
+        "boot": "fig02_pooled_bootstrap.csv",
         "eff": "fig02_site_rmse_effects.csv",
         "meta": "fig02_metadata.json",
     }
@@ -154,13 +167,29 @@ def load_package():
     resp = pd.read_csv(PKG / files["resp"])
     supp = pd.read_csv(PKG / files["supp"])
     pooled = pd.read_csv(PKG / files["pooled"], dtype={"manuscript_value": str})
+    boot = pd.read_csv(PKG / files["boot"])
     eff = pd.read_csv(PKG / files["eff"])
     meta = json.loads((PKG / files["meta"]).read_text())
 
     assert len(resp) == 3 * 60 * 101, "response table size"
     assert len(supp) == 50, "support table size"
     assert len(pooled) == 18, "pooled table size"
+    assert len(boot) == 18, "bootstrap table size"
     assert len(eff) == 2 * (45 + 31), "effects table size"
+
+    # Whole-site bootstrap intervals (10,000 resamples, seed 42) must bracket
+    # and exactly reproduce the frozen pooled point values before display.
+    keys = ["formulation", "scale", "metric"]
+    assert (boot["n_resamples"] == 10_000).all() and (boot["seed"] == 42).all()
+    merged = pooled.merge(
+        boot[keys + ["value", "ci95_lo", "ci95_hi"]], on=keys, suffixes=("", "_boot")
+    )
+    assert len(merged) == 18, "pooled/bootstrap key mismatch"
+    assert (merged["value"] == merged["value_boot"]).all(), "bootstrap point-value drift"
+    assert (merged["ci95_lo"] <= merged["value"]).all() and (
+        merged["value"] <= merged["ci95_hi"]
+    ).all()
+    pooled = merged.drop(columns=["value_boot"])
     assert sorted(resp["formulation"].unique()) == sorted(FORMS)
     assert resp["site_id"].nunique() == 60
 
@@ -248,7 +277,7 @@ def draw_panel_a(fig, resp, supp, meta):
     # point markers together, in the empty interior upper-left, entered in
     # the curves' stacking order at their right edge.
     order = sorted(FORMS, key=lambda f: end_val[f], reverse=True)
-    handles = [
+    handles: list = [
         Line2D(
             [],
             [],
@@ -261,20 +290,32 @@ def draw_panel_a(fig, resp, supp, meta):
         )
         for f in order
     ]
+    labels = [LABELS[f] for f in order]
+    # Reviewer item 8.1-1: the band must be defined in the artwork key — it is
+    # the across-site IQR around the across-site median fitted response, not a
+    # fit confidence or prediction interval. One neutral swatch keys all three
+    # per-form bands; the overlaid line keys the median curves.
+    handles.append(
+        (
+            Patch(facecolor="#9AA0A8", alpha=0.30, lw=0),
+            Line2D([], [], color="#50545A", lw=1.1),
+        )
+    )
+    labels.append("Across-site median and IQR")
     leg = ax.legend(
         handles,
-        [LABELS[f] for f in order],
+        labels,
         loc="upper left",
         frameon=True,
         fancybox=False,
         framealpha=1.0,
         edgecolor="#000000",
         facecolor="white",
-        fontsize=FS_TICK,
+        fontsize=FS_LEGEND,
         handlelength=2.4,
         handletextpad=0.6,
         labelspacing=0.55,
-        borderaxespad=0.35,
+        handler_map={tuple: HandlerTuple(ndivide=1, pad=0.0)},
     )
     leg.get_frame().set_linewidth(0.5)
     for t in leg.get_texts():
@@ -297,8 +338,9 @@ def draw_panel_a(fig, resp, supp, meta):
     axs.set_xlabel("NDVI", fontsize=FS_AXIS, labelpad=1.6)
     n_obs = int(supp["n_obs"].sum())
     assert n_obs == meta["ndvi_support"]["n_obs_total"]
-    # the weighting scheme and observation counts are caption material
-    # (FIGURE_STYLE_GUIDE.md section 9: no methods text in figures)
+    # Reviewer item 8.2-10 counts (76,758 obs., 60 sites) and the site-equal
+    # weighting scheme live in the caption (guide section 9); the assert above
+    # keeps the caption's number pinned to the frozen package.
     axs.text(
         0.015,
         0.86,
@@ -320,19 +362,31 @@ def draw_panel_b(fig, pooled):
             assert len(sub) == 3, f"panel-b facet {scale}/{metric}"
             vals = {r["formulation"]: r for _, r in sub.iterrows()}
             vv = [vals[f]["value"] for f in FORMS]
-            lo, hi = min(vv), max(vv)
-            pad = 0.28 * (hi - lo)
+            lo = min(vals[f]["ci95_lo"] for f in FORMS)
+            hi = max(vals[f]["ci95_hi"] for f in FORMS)
+            pad = 0.10 * (hi - lo)
             ylo, yhi = lo - pad, hi + pad
             if metric == "mbe":
                 ylo = min(ylo, -0.05 * (hi - lo))
                 ax.axhline(0.0, color=C_RULE, lw=0.7, zorder=1)
             ax.set_ylim(ylo, yhi)
-            ax.set_xlim(0.45, 3.95)
+            ax.set_xlim(0.5, 3.5)
             ax.set_xticks([])
             ax.yaxis.set_major_locator(matplotlib.ticker.MaxNLocator(4))
+            # Per-point numeric labels removed (2026-08-31 note item 6): the
+            # y-axis carries magnitude and Table 3 holds the exact values.
             for f in FORMS:
                 st = STYLE[f]
                 v = vals[f]["value"]
+                # 95% whole-site bootstrap interval (caption-defined).
+                ax.plot(
+                    [x_pos[f], x_pos[f]],
+                    [vals[f]["ci95_lo"], vals[f]["ci95_hi"]],
+                    color=st["color"],
+                    lw=0.9,
+                    solid_capstyle="butt",
+                    zorder=2,
+                )
                 ax.plot(
                     [x_pos[f]],
                     [v],
@@ -341,15 +395,6 @@ def draw_panel_b(fig, pooled):
                     color=st["color"],
                     mew=0,
                     zorder=3,
-                )
-                ax.text(
-                    x_pos[f] + 0.17,
-                    v,
-                    str(vals[f]["manuscript_value"]),
-                    fontsize=FS_TICK,
-                    color=C_TEXT,
-                    ha="left",
-                    va="center",
                 )
             if metric == "kge":
                 unit = ""
@@ -399,8 +444,10 @@ def draw_panel_c(fig, eff):
             sub = eff[(eff["scale"] == scale) & (eff["comparator"] == comp)]
             d = sub["d_rmse"].to_numpy(dtype=float)
             n = len(d)
-            wins = int(sub["win_cover_scaled"].sum())
-            jitter = rng.uniform(0.30, 0.74, size=n)
+            # Collision-scale jitter only (2026-08-31 note item 5): the strip
+            # spans 1.0 y-unit over ~14.5 mm, so half a marker width (~0.46 mm)
+            # is about 0.032 units.
+            jitter = 0.52 + rng.uniform(-0.045, 0.045, size=n)
             ax.axvline(0.0, color=C_RULE, lw=0.7, zorder=1)
             ax.plot(
                 d,
@@ -428,16 +475,9 @@ def draw_panel_c(fig, eff):
             ax.set_xlim(-span, span)
             ax.set_ylim(0.0, 1.0)
             ax.set_yticks([])
-            ax.text(
-                0.985,
-                0.94,
-                f"{wins}/{n} sites lower RMSE",
-                fontsize=FS_ANNO,
-                color=C_TEXT,
-                ha="right",
-                va="top",
-                transform=ax.transAxes,
-            )
+            # Win-count annotations removed (2026-08-31 note item 6): the
+            # paired distribution and the median/IQR glyph carry the evidence;
+            # the win counts move to the caption.
             ax.text(
                 0.015,
                 0.94,
@@ -499,6 +539,11 @@ def draw_headers(fig, meta):
         fontsize=FS_PANEL,
         va="bottom",
     )
+    mask = meta["evaluation_mask"]
+    assert mask["n_sites"] == 45 and mask["n_daily"] == 63681 and mask["n_monthly"] == 1435
+    # Reviewer item 8.2-7 support counts are stated in the Figure 2 caption
+    # (guide section 9: exact n lives in a stats block or the caption); the
+    # assert above keeps the caption's numbers pinned to the frozen package.
     fig.text(
         0.5 / PAGE_W,
         57.8 / PAGE_H,  # clears the NDVI xlabel above at Arial's wider set
@@ -506,8 +551,23 @@ def draw_headers(fig, meta):
         fontsize=FS_PANEL,
         va="bottom",
     )
-    mask = meta["evaluation_mask"]
-    assert mask["n_sites"] == 45 and mask["n_daily"] == 63681 and mask["n_monthly"] == 1435
+    # Reviewer item 8.1-3: the summary glyph is an open diamond at the median
+    # with a horizontal IQR rule over paired site effects — keyed in the
+    # artwork, not relabeled as a confidence interval.
+    site_handle = Line2D([], [], ls="", marker="o", ms=2.6, color="#0072B2", alpha=0.55, mew=0)
+    glyph_handle = Line2D([], [], color=C_TEXT, lw=1.2, marker="D", ms=3.6, mew=0.8, mfc="white")
+    fig.legend(
+        [site_handle, glyph_handle],
+        ["Site ΔRMSE", "Median and IQR of site effects"],
+        loc="lower right",
+        bbox_to_anchor=(187.0 / PAGE_W, 57.4 / PAGE_H),
+        ncol=2,
+        frameon=False,
+        fontsize=FS_ANNO,
+        handletextpad=0.5,
+        columnspacing=1.2,
+        borderaxespad=0.0,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -519,6 +579,8 @@ def collect_texts(fig):
     items = []
     for t in fig.texts:
         items.append(t)
+    for leg in fig.legends:
+        items.extend(leg.get_texts())
     for ax in fig.axes:
         items.extend(ax.texts)
         items.append(ax.xaxis.label)
@@ -538,6 +600,11 @@ def audit(fig):
         s = t.get_text()
         size = float(t.get_fontsize())
         assert size >= FS_MIN - 1e-6, f"type below {FS_MIN} pt: {s!r} at {size}"
+        # Below the 6.5 pt working ladder only the suite-standard 6 pt
+        # interior-key size is sanctioned.
+        assert size >= FS_TICK - 1e-6 or abs(size - FS_LEGEND) < 1e-6, (
+            f"unsanctioned type size {size} pt: {s!r}"
+        )
         for bad in FORBIDDEN_STRINGS:
             assert bad not in s, f"forbidden string {bad!r} in rendered text {s!r}"
         rows.append({"text": s, "fontsize": size})
@@ -546,6 +613,47 @@ def audit(fig):
         w.writeheader()
         w.writerows(rows)
     return len(rows)
+
+
+def _simulate_cvd(image: Image.Image, matrix: np.ndarray) -> Image.Image:
+    rgb = np.asarray(image.convert("RGB"), dtype=float) / 255.0
+    transformed = np.clip(rgb @ matrix.T, 0.0, 1.0)
+    return Image.fromarray(np.round(transformed * 255).astype(np.uint8), mode="RGB")
+
+
+def _write_review_rasters(png_path: Path) -> None:
+    source = Image.open(png_path)
+    ImageOps.grayscale(source).save(png_path.with_name(f"{png_path.stem}_grayscale.png"))
+    source.resize(
+        (source.width // 4, source.height // 4),
+        resample=Image.Resampling.LANCZOS,
+    ).save(png_path.with_name(f"{png_path.stem}_printcheck.png"))
+
+    matrices = {
+        "protanopia": np.array(
+            [
+                [0.56667, 0.43333, 0.00000],
+                [0.55833, 0.44167, 0.00000],
+                [0.00000, 0.24167, 0.75833],
+            ]
+        ),
+        "deuteranopia": np.array(
+            [
+                [0.62500, 0.37500, 0.00000],
+                [0.70000, 0.30000, 0.00000],
+                [0.00000, 0.30000, 0.70000],
+            ]
+        ),
+        "tritanopia": np.array(
+            [
+                [0.95000, 0.05000, 0.00000],
+                [0.00000, 0.43333, 0.56667],
+                [0.00000, 0.47500, 0.52500],
+            ]
+        ),
+    }
+    for label, matrix in matrices.items():
+        _simulate_cvd(source, matrix).save(png_path.with_name(f"{png_path.stem}_cvd_{label}.png"))
 
 
 def main():
@@ -564,10 +672,12 @@ def main():
     assert abs(w_in * 25.4 - PAGE_W) < 1e-6 and abs(h_in * 25.4 - PAGE_H) < 1e-6
     n_texts = audit(fig)
 
-    for ext, kw in (("pdf", {}), ("svg", {}), ("png", {"dpi": 300})):
+    for ext, kw in (("pdf", {}), ("svg", {}), ("png", {"dpi": 600})):
         fig.savefig(HERE / f"{STEM}.{ext}", facecolor="white", **kw)
+    _write_review_rasters(HERE / f"{STEM}.png")
     print(f"{STEM}: rendered 190 x 125 mm, {n_texts} text items, all checks passed")
     print(f"  package: {PKG}")
+    print("  review rasters: grayscale, printcheck, cvd_{protanopia,deuteranopia,tritanopia}")
 
 
 if __name__ == "__main__":
