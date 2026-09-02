@@ -155,6 +155,8 @@ class ProjectConfig:
         self.ssm_surface_capacity = False
         self.workers = None
         self.realizations = None
+        self.noptmax = None
+        self.batch_size = None
         self.calibration_dir = None
         self.obs_folder = None
         self.initial_values_csv = None
@@ -486,6 +488,8 @@ class ProjectConfig:
         self.swe_weighting_phi_share = calib_toml_conf.get("swe_weighting_phi_share", 0.15)
         self.workers = calib_toml_conf.get("workers")
         self.realizations = calib_toml_conf.get("realizations")
+        self.noptmax = calib_toml_conf.get("noptmax")
+        self.batch_size = calib_toml_conf.get("batch_size")
         self.obs_folder = calib_toml_conf.get("obs_folder")
         self.calibration_dir = calib_toml_conf.get("calibration_dir")
         self.initial_values_csv = calib_toml_conf.get("initial_values_csv")

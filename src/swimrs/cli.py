@@ -555,7 +555,13 @@ def cmd_calibrate_batch(args: argparse.Namespace) -> int:
     action = args.action
 
     if action == "prep":
-        prep(ctx, exclude_uncovered=args.exclude_uncovered, skip_fids_path=args.skip_fids)
+        prep(
+            ctx,
+            exclude_uncovered=args.exclude_uncovered,
+            skip_fids_path=args.skip_fids,
+            override=args.override,
+            skip_health=args.skip_health,
+        )
     elif action == "status":
         show_status(ctx)
     elif action == "cleanup-failed":
@@ -585,6 +591,13 @@ def cmd_calibrate_batch(args: argparse.Namespace) -> int:
             print("Error: --batch-id required for ingest-batch")
             return 1
         ingest_batch(ctx, args.batch_id)
+    elif action == "run-batch-task":
+        from swimrs.calibrate.batch_runner import run_batch_task
+
+        if args.batch_id is None:
+            print("Error: --batch-id required for run-batch-task")
+            return 1
+        return run_batch_task(ctx, args.batch_id, rebuild=args.rebuild)
     elif action == "run-batch":
         if args.batch_id is None:
             print("Error: --batch-id required for run-batch")
@@ -1417,6 +1430,7 @@ def build_parser() -> argparse.ArgumentParser:
             "prep",
             "build-all",
             "run-batch",
+            "run-batch-task",
             "run-all",
             "ingest-batch",
             "ingest-all",
@@ -1427,13 +1441,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Batch action to perform",
     )
     pb.add_argument(
-        "--batch-id", type=int, default=None, help="Batch ID for run-batch/ingest-batch"
+        "--batch-id",
+        type=int,
+        default=None,
+        help="Batch ID for run-batch/run-batch-task/ingest-batch",
     )
-    pb.add_argument("--batch-size", type=int, default=50, help="Fields per batch")
+    pb.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="run-batch-task: rebuild and rerun even when the batch is already complete",
+    )
+    pb.add_argument(
+        "--batch-size", type=int, default=None, help="Fields per batch (default: config, else 50)"
+    )
     pb.add_argument(
         "--workers", type=int, default=None, help="PEST workers per batch (default: from config)"
     )
-    pb.add_argument("--noptmax", type=int, default=3, help="Max PEST iterations")
+    pb.add_argument(
+        "--noptmax", type=int, default=None, help="Max PEST iterations (default: config, else 3)"
+    )
     pb.add_argument(
         "--reals", type=int, default=None, help="Ensemble realizations (default: from config)"
     )

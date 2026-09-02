@@ -1,6 +1,7 @@
 """Tests for swimrs.calibrate.batch_support and batch_runner modules."""
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -525,6 +526,8 @@ class TestArchivePestOutputs:
         (pest / "weight_audit.csv").write_text("audit")
         (master / "project.rec").write_text("rec")
         (master / "project.phi.meas.csv").write_text("phi")
+        # per-field phi: the only per-field fit-quality artifact PEST++ emits
+        (master / "project.phi.group.csv").write_text("phigroup")
         for i in range(4):
             (master / f"project.{i}.par.csv").write_text(f"par{i}")
             (master / f"project.{i}.obs.csv").write_text(f"obs{i}")
@@ -551,6 +554,7 @@ class TestArchivePestOutputs:
         assert (archive / "project.pst").exists()
         assert (archive / "project.rec").exists()
         assert (archive / "project.phi.meas.csv").exists()
+        assert (archive / "project.phi.group.csv").exists()
         assert (archive / "loc.mat").exists()
         # external tables + noise ensemble + prior-mean residuals survive
         assert (archive / "project.obs_data.csv").exists()
@@ -560,7 +564,7 @@ class TestArchivePestOutputs:
         # ETf weight decomposition survives cleanup (auxiliary-source runs)
         assert (archive / "weight_audit.csv").exists()
         assert not (archive / "project.jcb").exists()
-        assert len(copied) == 17
+        assert len(copied) == 18
 
     def test_verify_ok_after_archive(self, tmp_path):
         from swimrs.calibrate.batch_support import archive_pest_outputs, verify_pest_archive
@@ -604,6 +608,7 @@ class TestApplyArchiveRetention:
         (archive / "project.rec").write_text("run record contents")
         (archive / "project.phi.meas.csv").write_text("phi")
         (archive / "project.phi.actual.csv").write_text("phi")
+        (archive / "project.phi.group.csv").write_text("phigroup")
         (archive / "project.pdc.csv").write_text("pdc")
         (archive / "loc.mat").write_text("localizer")
         (archive / "localizer_summary.json").write_text("{}")
@@ -675,6 +680,9 @@ class TestApplyArchiveRetention:
         # parameter trajectory, phi history, and metadata survive
         assert (archive / "project.pst").exists()
         assert (archive / "project.phi.meas.csv").exists()
+        # per-field phi is what makes a posterior usable as a training label;
+        # it must survive the tier that drops every other per-field artifact
+        assert (archive / "project.phi.group.csv").exists()
         assert (archive / "project.pdc.csv").exists()
         assert (archive / "params.csv").exists()
         assert (archive / "weight_audit.csv").exists()
@@ -705,6 +713,355 @@ class TestApplyArchiveRetention:
         (archive / "project.pst").write_text("pst")
         with pytest.raises(RuntimeError, match="refusing to prune"):
             apply_archive_retention(archive, "slim")
+
+
+# ---------------------------------------------------------------------------
+# Per-field fit summary
+# ---------------------------------------------------------------------------
+
+
+REI_HEADER = """ MODEL OUTPUTS AT END OF OPTIMISATION ITERATION NO. {i}:-
+
+
+ Name Group Measured Modelled Residual Weight
+"""
+
+
+def _write_rei(path, rows, iteration=1):
+    """Write a minimal PEST .rei file. rows: (fid, type, meas, mod, weight)."""
+    lines = [REI_HEADER.format(i=iteration)]
+    for n, (fid, otype, meas, mod, weight) in enumerate(rows):
+        name = f"oname:obs_{otype}_{fid}_otype:arr_i:{n}_j:0"
+        group = f"oname:obs/obs_{otype}_{fid}.np_otype:arr"
+        lines.append(f" {name} {group} {meas} {mod} {meas - mod} {weight}\n")
+    path.write_text("".join(lines))
+
+
+class TestFieldFitSummary:
+    def test_aggregates_per_field_and_type(self, tmp_path):
+        import pandas as pd
+
+        from swimrs.calibrate.batch_support import write_field_fit_summary
+
+        archive = tmp_path / "archive"
+        archive.mkdir()
+        _write_rei(
+            archive / "project.1.base.rei",
+            [
+                ("nv_1", "etf", 1.0, 0.8, 1.0),
+                ("nv_1", "etf", 1.0, 0.6, 1.0),
+                ("nv_1", "swe", 10.0, 8.0, 2.0),
+                ("nv_2", "etf", 1.0, 1.0, 1.0),
+            ],
+        )
+        out = write_field_fit_summary(archive, ["NV_1", "NV_2"])
+        df = pd.read_csv(out).set_index(["fid", "obs_type"])
+
+        assert sorted(df.index.get_level_values("fid").unique()) == ["NV_1", "NV_2"]
+        assert df.loc[("NV_1", "etf"), "n_obs"] == 2
+        # residuals 0.2 and 0.4 at weight 1 -> phi = 0.04 + 0.16
+        assert df.loc[("NV_1", "etf"), "phi_post"] == pytest.approx(0.20)
+        assert df.loc[("NV_1", "etf"), "bias_post"] == pytest.approx(0.30)
+        # weight 2 squares into phi: (2 * 2.0)^2
+        assert df.loc[("NV_1", "swe"), "phi_post"] == pytest.approx(16.0)
+        assert df.loc[("NV_2", "etf"), "rmse_post"] == pytest.approx(0.0)
+
+    def test_ignores_zero_weight_fill(self, tmp_path):
+        import pandas as pd
+
+        from swimrs.calibrate.batch_support import write_field_fit_summary
+
+        archive = tmp_path / "archive"
+        archive.mkdir()
+        _write_rei(
+            archive / "project.1.base.rei",
+            [
+                ("nv_1", "etf", 1.0, 0.8, 1.0),
+                ("nv_1", "etf", -99.0, 0.8, 0.0),
+                ("nv_1", "etf", -99.0, 0.8, 0.0),
+            ],
+        )
+        df = pd.read_csv(write_field_fit_summary(archive, ["NV_1"]))
+        assert df.loc[0, "n_obs"] == 1
+
+    def test_includes_prior_when_iteration_zero_present(self, tmp_path):
+        import pandas as pd
+
+        from swimrs.calibrate.batch_support import write_field_fit_summary
+
+        archive = tmp_path / "archive"
+        archive.mkdir()
+        _write_rei(archive / "project.0.base.rei", [("nv_1", "etf", 1.0, 0.0, 1.0)], iteration=0)
+        _write_rei(archive / "project.1.base.rei", [("nv_1", "etf", 1.0, 0.9, 1.0)], iteration=1)
+
+        df = pd.read_csv(write_field_fit_summary(archive, ["NV_1"]))
+        assert df.loc[0, "phi_prior"] == pytest.approx(1.0)
+        assert df.loc[0, "phi_post"] == pytest.approx(0.01)
+
+    def test_uses_highest_iteration_as_posterior(self, tmp_path):
+        import pandas as pd
+
+        from swimrs.calibrate.batch_support import write_field_fit_summary
+
+        archive = tmp_path / "archive"
+        archive.mkdir()
+        _write_rei(archive / "project.1.base.rei", [("nv_1", "etf", 1.0, 0.5, 1.0)], iteration=1)
+        _write_rei(archive / "project.3.base.rei", [("nv_1", "etf", 1.0, 0.9, 1.0)], iteration=3)
+
+        df = pd.read_csv(write_field_fit_summary(archive, ["NV_1"]))
+        assert df.loc[0, "phi_post"] == pytest.approx(0.01)
+
+    def test_returns_none_without_residuals(self, tmp_path):
+        from swimrs.calibrate.batch_support import write_field_fit_summary
+
+        archive = tmp_path / "archive"
+        archive.mkdir()
+        assert write_field_fit_summary(archive, ["NV_1"]) is None
+
+
+# ---------------------------------------------------------------------------
+# Per-batch status shards (fan-out)
+# ---------------------------------------------------------------------------
+
+
+class TestBatchShards:
+    def test_write_read_roundtrip(self, tmp_path):
+        from swimrs.calibrate.batch_support import read_batch_shard, write_batch_shard
+
+        write_batch_shard(tmp_path, 3, {"status": "archived", "n_fields": 12})
+        entry = read_batch_shard(tmp_path, 3)
+        assert entry["status"] == "archived"
+        assert entry["n_fields"] == 12
+        assert entry["batch_id"] == 3
+        assert "timestamp" in entry
+
+    def test_shard_path_is_zero_padded(self, tmp_path):
+        from swimrs.calibrate.batch_support import write_batch_shard
+
+        path = write_batch_shard(tmp_path, 7, {"status": "archived"})
+        assert path.name == "batch_007.json"
+
+    def test_read_missing_shard_is_none(self, tmp_path):
+        from swimrs.calibrate.batch_support import read_batch_shard
+
+        assert read_batch_shard(tmp_path, 0) is None
+
+    def test_read_shards_keyed_by_id(self, tmp_path):
+        from swimrs.calibrate.batch_support import read_batch_shards, write_batch_shard
+
+        write_batch_shard(tmp_path, 0, {"status": "archived"})
+        write_batch_shard(tmp_path, 11, {"status": "run_failed"})
+        shards = read_batch_shards(tmp_path)
+        assert set(shards) == {"0", "11"}
+        assert shards["11"]["status"] == "run_failed"
+
+    def test_malformed_shard_is_skipped(self, tmp_path):
+        from swimrs.calibrate.batch_support import (
+            SHARD_DIRNAME,
+            read_batch_shards,
+            write_batch_shard,
+        )
+
+        write_batch_shard(tmp_path, 0, {"status": "archived"})
+        (tmp_path / SHARD_DIRNAME / "batch_001.json").write_text("{not json")
+        assert set(read_batch_shards(tmp_path)) == {"0"}
+
+    def test_merge_shards_wins_over_log(self, tmp_path):
+        from swimrs.calibrate.batch_support import (
+            merge_shards_into_log,
+            read_batch_log,
+            update_batch_entry,
+            write_batch_shard,
+        )
+
+        update_batch_entry(tmp_path, 0, {"status": "stale"})
+        update_batch_entry(tmp_path, 1, {"status": "ingested"})
+        write_batch_shard(tmp_path, 0, {"status": "archived"})
+
+        merged = merge_shards_into_log(tmp_path)
+        # the shard is written by the task that actually ran the batch
+        assert merged["0"]["status"] == "archived"
+        # log-only entries are preserved
+        assert merged["1"]["status"] == "ingested"
+        assert read_batch_log(tmp_path)["0"]["status"] == "archived"
+
+    def test_no_shard_dir_is_empty(self, tmp_path):
+        from swimrs.calibrate.batch_support import read_batch_shards
+
+        assert read_batch_shards(tmp_path) == {}
+
+
+# ---------------------------------------------------------------------------
+# find_par_csv against a flat pest_archive directory
+# ---------------------------------------------------------------------------
+
+
+class TestFindParCsvFromArchive:
+    def _make_archive(self, tmp_path):
+        archive = tmp_path / "pest_archive" / "batch_000"
+        archive.mkdir(parents=True)
+        for i in range(4):
+            (archive / f"project.{i}.par.csv").write_text(f"par{i}")
+        return archive
+
+    def test_finds_best_iteration_in_flat_archive(self, tmp_path):
+        from swimrs.calibrate.batch_support import find_par_csv
+
+        archive = self._make_archive(tmp_path)
+        (archive / "project.phi.meas.csv").write_text(
+            "iteration,mean\n0,100.0\n1,50.0\n2,10.0\n3,40.0\n"
+        )
+        assert find_par_csv(archive).name == "project.2.par.csv"
+
+    def test_falls_back_to_last_iteration(self, tmp_path):
+        from swimrs.calibrate.batch_support import find_par_csv
+
+        archive = self._make_archive(tmp_path)
+        assert find_par_csv(archive).name == "project.3.par.csv"
+
+    def test_batch_dir_with_master_still_preferred(self, tmp_path):
+        from swimrs.calibrate.batch_support import find_par_csv
+
+        batch = tmp_path / "batch_000"
+        master = batch / "master"
+        master.mkdir(parents=True)
+        (master / "project.1.par.csv").write_text("from master")
+        # a stray par at the batch root must not win over master/
+        (batch / "project.9.par.csv").write_text("stray")
+        assert find_par_csv(batch).name == "project.1.par.csv"
+
+
+# ---------------------------------------------------------------------------
+# Stage 2 array task
+# ---------------------------------------------------------------------------
+
+
+class TestRunBatchTask:
+    def _ctx(self, tmp_path):
+        from swimrs.calibrate.batch_runner import BatchContext
+
+        return BatchContext(
+            project_name="project",
+            container_path=str(tmp_path / "project.swim"),
+            fields_shapefile=str(tmp_path / "fields.shp"),
+            feature_id_col="FID",
+            grouping_column=None,
+            grouping_shapefile=None,
+            output_root=str(tmp_path / "pestrun"),
+            mask_mode="none",
+            etf_target_model="ssebop",
+            etf_ensemble_members=None,
+            etf_target_instrument="landsat",
+            workers=4,
+            realizations=20,
+            noptmax=2,
+            batch_size=50,
+            toml_path=str(tmp_path / "project.toml"),
+        )
+
+    def _manifest(self, output_root, fids=("NV_1", "NV_2")):
+        import pandas as pd
+
+        output_root.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame([{"batch_id": 0, "FID": f} for f in fids]).to_csv(
+            output_root / "batch_manifest.csv", index=False
+        )
+
+    def _verified_archive(self, output_root):
+        archive = output_root / "pest_archive" / "batch_000"
+        archive.mkdir(parents=True)
+        (archive / "project.pst").write_text("pst")
+        (archive / "project.rec").write_text("rec")
+        (archive / "project.0.par.csv").write_text("par")
+        return archive
+
+    def test_skips_when_shard_terminal_and_archive_verifies(self, tmp_path, monkeypatch):
+        from swimrs.calibrate import batch_runner
+        from swimrs.calibrate.batch_support import write_batch_shard
+
+        ctx = self._ctx(tmp_path)
+        output_root = Path(ctx.output_root)
+        self._manifest(output_root)
+        self._verified_archive(output_root)
+        write_batch_shard(output_root, 0, {"status": "archived", "n_fields": 2})
+
+        def _boom(*a, **k):
+            raise AssertionError("must not rebuild a completed batch")
+
+        monkeypatch.setattr(batch_runner, "build_batch", _boom)
+        monkeypatch.setattr(batch_runner, "run_batch", _boom)
+
+        assert batch_runner.run_batch_task(ctx, 0) == 0
+
+    def test_rebuild_flag_ignores_completed_shard(self, tmp_path, monkeypatch):
+        from swimrs.calibrate import batch_runner
+        from swimrs.calibrate.batch_support import write_batch_shard
+
+        ctx = self._ctx(tmp_path)
+        output_root = Path(ctx.output_root)
+        self._manifest(output_root)
+        self._verified_archive(output_root)
+        write_batch_shard(output_root, 0, {"status": "archived", "n_fields": 2})
+
+        called = []
+        monkeypatch.setattr(
+            batch_runner,
+            "build_batch",
+            lambda ctx, fids, bid: called.append(bid)
+            or {"status": "build_failed", "n_fields": 2, "dropped_fids": [], "error": "stop"},
+        )
+        assert batch_runner.run_batch_task(ctx, 0, rebuild=True) == 1
+        assert called == [0]
+
+    def test_reruns_when_archive_does_not_verify(self, tmp_path, monkeypatch):
+        from swimrs.calibrate import batch_runner
+        from swimrs.calibrate.batch_support import write_batch_shard
+
+        ctx = self._ctx(tmp_path)
+        output_root = Path(ctx.output_root)
+        self._manifest(output_root)
+        # shard claims success but nothing was archived
+        write_batch_shard(output_root, 0, {"status": "archived", "n_fields": 2})
+
+        called = []
+        monkeypatch.setattr(
+            batch_runner,
+            "build_batch",
+            lambda ctx, fids, bid: called.append(bid)
+            or {"status": "build_failed", "n_fields": 2, "dropped_fids": [], "error": "stop"},
+        )
+        assert batch_runner.run_batch_task(ctx, 0) == 1
+        assert called == [0]
+
+    def test_build_failure_records_shard(self, tmp_path, monkeypatch):
+        from swimrs.calibrate import batch_runner
+        from swimrs.calibrate.batch_support import read_batch_shard
+
+        ctx = self._ctx(tmp_path)
+        output_root = Path(ctx.output_root)
+        self._manifest(output_root)
+        monkeypatch.setattr(
+            batch_runner,
+            "build_batch",
+            lambda ctx, fids, bid: {
+                "status": "build_failed",
+                "n_fields": 2,
+                "dropped_fids": [],
+                "error": "spinup NaN",
+            },
+        )
+        assert batch_runner.run_batch_task(ctx, 0) == 1
+        shard = read_batch_shard(output_root, 0)
+        assert shard["status"] == "build_failed"
+        assert shard["error"] == "spinup NaN"
+
+    def test_unknown_batch_id_raises(self, tmp_path):
+        from swimrs.calibrate import batch_runner
+
+        ctx = self._ctx(tmp_path)
+        self._manifest(Path(ctx.output_root))
+        with pytest.raises(ValueError, match="no fields"):
+            batch_runner.run_batch_task(ctx, 5)
 
 
 # ---------------------------------------------------------------------------
@@ -863,6 +1220,32 @@ spinup = "{tmp_path / "pestrun" / "spinup.json"}"
 
         ctx = resolve_context(str(ex4_toml), workers=8)
         assert ctx.workers == 8
+
+    def test_noptmax_and_batch_size_fall_back_to_builtin(self, ex4_toml):
+        from swimrs.calibrate.batch_runner import resolve_context
+
+        # The fixture sets neither, so the built-in defaults apply.
+        ctx = resolve_context(str(ex4_toml))
+        assert ctx.noptmax == 3
+        assert ctx.batch_size == 50
+
+    def test_noptmax_and_batch_size_read_from_config(self, ex4_toml):
+        from swimrs.calibrate.batch_runner import resolve_context
+
+        # A TOML value must not be silently clobbered by an argparse default —
+        # statewide runs are configured this way.
+        ex4_toml.write_text(ex4_toml.read_text() + "noptmax = 2\nbatch_size = 30\n")
+        ctx = resolve_context(str(ex4_toml))
+        assert ctx.noptmax == 2
+        assert ctx.batch_size == 30
+
+    def test_explicit_noptmax_and_batch_size_beat_config(self, ex4_toml):
+        from swimrs.calibrate.batch_runner import resolve_context
+
+        ex4_toml.write_text(ex4_toml.read_text() + "noptmax = 2\nbatch_size = 30\n")
+        ctx = resolve_context(str(ex4_toml), noptmax=5, batch_size=25)
+        assert ctx.noptmax == 5
+        assert ctx.batch_size == 25
 
     def test_container_override(self, ex4_toml, tmp_path):
         from swimrs.calibrate.batch_runner import resolve_context

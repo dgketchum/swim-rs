@@ -60,10 +60,10 @@ def resolve_context(
     container_override=None,
     output_override=None,
     shapefile_override=None,
-    batch_size=50,
+    batch_size=None,
     workers=None,
     realizations=None,
-    noptmax=3,
+    noptmax=None,
     prior_params_path=None,
 ) -> BatchContext:
     """Build a BatchContext from a SWIM-RS .toml config file.
@@ -74,12 +74,9 @@ def resolve_context(
         Path to project TOML configuration.
     container_override, output_override, shapefile_override : str, optional
         CLI overrides for paths that would otherwise come from config.
-    batch_size : int
-        Target fields per batch.
-    workers, realizations : int, optional
-        Override config values.
-    noptmax : int
-        Max PEST++ iterations.
+    batch_size, workers, realizations, noptmax : int, optional
+        Override the corresponding config values. When None, the TOML's
+        [calibration] value is used, then the built-in default.
     """
     from swimrs.calibrate.batch_support import ARCHIVE_RETENTION_TIERS
     from swimrs.swim.config import ProjectConfig
@@ -134,8 +131,8 @@ def resolve_context(
         etf_target_instrument=config.etf_target_instrument or "landsat",
         workers=workers or config.workers or 10,
         realizations=realizations or config.realizations or 200,
-        noptmax=noptmax,
-        batch_size=batch_size,
+        noptmax=noptmax or config.noptmax or 3,
+        batch_size=batch_size or config.batch_size or 50,
         toml_path=str(os.path.abspath(toml_path)),
         prior_params_path=str(os.path.abspath(prior_params_path)) if prior_params_path else None,
         archive_retention=archive_retention,
@@ -417,6 +414,152 @@ def run_batch(batch_dir, num_workers=10, pst_name=None):
 
 
 # ---------------------------------------------------------------------------
+# Fanned-out batch task (stage 2 of prep -> array -> ingest)
+# ---------------------------------------------------------------------------
+
+
+def run_batch_task(ctx: BatchContext, batch_id, *, rebuild=False):
+    """Build, run and archive one batch. Never opens the container for write.
+
+    This is the body of a Slurm array task over batch ids. Everything that
+    touches the container for write — parameter ingest and the `batches`
+    attribute — is deferred to the serial `ingest-all` reduce step, because
+    the zarr store takes a whole-container FileLock with a 3 s timeout and
+    concurrent writers would simply fail.
+
+    Idempotent: a batch whose shard is terminal and whose archive verifies is
+    skipped, so a requeued or resubmitted task never redoes hours of PEST++.
+
+    Returns 0 on success, 1 on failure.
+    """
+    from swimrs.calibrate.batch_support import (
+        apply_archive_retention,
+        archive_pest_outputs,
+        batch_is_built,
+        read_batch_shard,
+        read_manifest,
+        verify_pest_archive,
+        write_batch_shard,
+        write_field_fit_summary,
+    )
+    from swimrs.calibrate.pest_cleanup import PestResults
+
+    output_root = Path(ctx.output_root)
+    batch_dir = output_root / f"batch_{batch_id:03d}"
+    archive_dir = output_root / "pest_archive" / f"batch_{batch_id:03d}"
+
+    manifest = read_manifest(output_root)
+    fid_col = ctx.feature_id_col if ctx.feature_id_col in manifest.columns else "FID"
+    batch_fids = manifest.loc[manifest["batch_id"] == batch_id, fid_col].astype(str).tolist()
+    if not batch_fids:
+        raise ValueError(f"Batch {batch_id} has no fields in {output_root}/batch_manifest.csv")
+
+    if not rebuild:
+        shard = read_batch_shard(output_root, batch_id)
+        if shard is not None and shard.get("status") in ("archived", "ingested"):
+            archive_ok, _ = verify_pest_archive(archive_dir)
+            if archive_ok:
+                print(f"Batch {batch_id:03d}: already complete, skipping")
+                return 0
+
+    def _fail(status, error):
+        write_batch_shard(
+            output_root,
+            batch_id,
+            {
+                "status": status,
+                "n_fields": len(batch_fids),
+                "dropped_fids": [],
+                "error": error,
+            },
+        )
+        print(f"Batch {batch_id:03d}: {status}")
+        return 1
+
+    # --- Build ---
+    dropped_fids = []
+    if rebuild or not batch_is_built(batch_dir):
+        print(f"Batch {batch_id:03d}: building ({len(batch_fids)} fields)")
+        build_result = build_batch(ctx, batch_fids, batch_id)
+        if build_result["status"] != "built":
+            return _fail("build_failed", build_result.get("error"))
+        dropped_fids = build_result.get("dropped_fids", [])
+        n_fields = build_result["n_fields"]
+    else:
+        print(f"Batch {batch_id:03d}: using existing build on disk")
+        n_fields = len(batch_fids)
+
+    # --- Run ---
+    try:
+        run_batch(batch_dir, num_workers=ctx.workers)
+    except Exception:
+        return _fail("run_failed", traceback.format_exc()[-4096:])
+
+    pst_files = list((batch_dir / "pest").glob("*.pst")) or list(
+        (batch_dir / "master").glob("*.pst")
+    )
+    if not pst_files:
+        return _fail("run_failed", f"No .pst found under {batch_dir}")
+
+    results = PestResults(
+        str(batch_dir / "pest"), pst_files[0].stem, master_dir=str(batch_dir / "master")
+    )
+    success, issues = results.is_successful()
+    summary = results.get_summary()
+
+    # --- Archive (RUN_POLICY Cat 3/4) ---
+    archived = archive_pest_outputs(batch_dir, archive_dir)
+    print(f"Batch {batch_id:03d}: archived {len(archived)} artifact(s) -> {archive_dir}")
+
+    fit_path = write_field_fit_summary(archive_dir, batch_fids)
+    if fit_path is not None:
+        print(f"Batch {batch_id:03d}: field fit summary -> {fit_path.name}")
+
+    report = results.cleanup(archive_dir=str(archive_dir))
+    print(f"Batch {batch_id:03d}: cleanup recovered {report['space_recovered_mb']:.1f} MB")
+
+    if ctx.archive_retention != "full":
+        if success:
+            pruned = apply_archive_retention(archive_dir, ctx.archive_retention)
+            print(f"Batch {batch_id:03d}: retention '{ctx.archive_retention}' pruned {len(pruned)}")
+        else:
+            print(
+                f"Batch {batch_id:03d}: retention '{ctx.archive_retention}' skipped "
+                "(did not converge, keeping full archive)"
+            )
+
+    if not success:
+        return _fail("run_failed", f"PEST++ run did not succeed: {issues}")
+
+    write_batch_shard(
+        output_root,
+        batch_id,
+        {
+            "status": "archived",
+            "n_fields": n_fields,
+            "dropped_fids": dropped_fids,
+            "error": None,
+            "archive_dir": str(archive_dir),
+            "phi_initial": summary.get("phi_initial"),
+            "phi_final": summary.get("phi_final"),
+            "summary": summary,
+        },
+    )
+
+    # Free the build directory only once the trajectory is safely archived.
+    archive_ok, missing = verify_pest_archive(archive_dir)
+    if archive_ok:
+        shutil.rmtree(batch_dir)
+        print(f"Batch {batch_id:03d}: archive verified, build directory removed")
+    else:
+        print(
+            f"Batch {batch_id:03d}: WARNING — archive missing {missing}; "
+            f"keeping build directory {batch_dir}"
+        )
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Ingest a single batch
 # ---------------------------------------------------------------------------
 
@@ -432,6 +575,7 @@ def ingest_batch(ctx: BatchContext, batch_id, summary_stat="median", force=False
         archive_pest_outputs,
         find_par_csv,
         read_manifest,
+        write_field_fit_summary,
     )
     from swimrs.calibrate.pest_cleanup import PestResults
     from swimrs.container.container import SwimContainer
@@ -502,6 +646,12 @@ def ingest_batch(ctx: BatchContext, batch_id, summary_stat="median", force=False
             archived = archive_pest_outputs(batch_dir, archive_dir)
             print(f"  Archived {len(archived)} PEST++ artifact(s) -> {archive_dir}")
 
+            # Distil per-field fit quality while the residuals still exist —
+            # every retention tier below "full" discards them.
+            fit_path = write_field_fit_summary(archive_dir, batch_fids)
+            if fit_path is not None:
+                print(f"  Field fit summary -> {fit_path.name}")
+
             report = results.cleanup(archive_dir=str(archive_dir))
             print(f"  Cleanup: {report['space_recovered_mb']:.1f} MB recovered")
 
@@ -524,56 +674,89 @@ def ingest_batch(ctx: BatchContext, batch_id, summary_stat="median", force=False
 
 
 def ingest_all(ctx: BatchContext, summary_stat="median", force=False):
-    """Ingest all completed batches, skipping those already ingested.
+    """Reduce step: fold every completed batch into the container.
 
-    Batches whose PEST++ run did not succeed (per PestResults.is_successful)
-    are skipped with a warning unless force=True.
+    This is the sole container writer in the fanned-out pipeline. Array tasks
+    (`run-batch-task`) leave a status shard and a verified pest_archive
+    behind; this walks them in batch order under a single container open, so
+    the zarr FileLock is taken once and never contended.
+
+    Also handles the legacy layout where the batch build directory is still
+    on disk (the serial `calibrate-all` path). Batches whose PEST++ run did
+    not succeed are skipped with a warning unless force=True.
     """
-    from swimrs.calibrate.batch_support import find_par_csv, read_manifest
+    from swimrs.calibrate.batch_support import (
+        find_par_csv,
+        merge_shards_into_log,
+        read_batch_shards,
+        read_manifest,
+        update_batch_entry,
+    )
     from swimrs.calibrate.pest_cleanup import PestResults
     from swimrs.container.container import SwimContainer
 
     output_root = Path(ctx.output_root)
     manifest = read_manifest(output_root)
     batch_ids = sorted(manifest["batch_id"].unique())
+    shards = read_batch_shards(output_root)
+    merge_shards_into_log(output_root)
 
     container = SwimContainer.open(ctx.container_path, mode="r+")
     try:
+        cal_group = container._root["calibration"] if "calibration" in container._root else None
+        batches_meta = {}
         already_done = set()
-        if "calibration" in container._root:
-            batches_str = container._root["calibration"].attrs.get("batches", "{}")
-            already_done = set(json.loads(batches_str).keys())
+        if cal_group is not None:
+            batches_meta = json.loads(cal_group.attrs.get("batches", "{}"))
+            already_done = set(batches_meta.keys())
 
         total_ingested = 0
         n_skipped_failed = 0
+        ingested_ids = []
         fid_col = ctx.feature_id_col if ctx.feature_id_col in manifest.columns else "FID"
+
         for bid in batch_ids:
             if str(bid) in already_done:
                 print(f"Batch {bid:03d}: already ingested, skipping")
                 continue
 
             batch_dir = output_root / f"batch_{bid:03d}"
+            archive_dir = output_root / "pest_archive" / f"batch_{bid:03d}"
+            shard = shards.get(str(bid))
 
-            pst_files = list((batch_dir / "pest").glob("*.pst"))
-            if not pst_files:
-                pst_files = list((batch_dir / "master").glob("*.pst"))
-            if pst_files:
-                results = PestResults(
-                    str(batch_dir / "pest"),
-                    pst_files[0].stem,
-                    master_dir=str(batch_dir / "master"),
+            summary = None
+            if shard is not None and shard.get("status") in ("archived", "ingested"):
+                # Stage 2 already ran, verified and archived this batch; the
+                # build directory is gone by design.
+                summary = shard.get("summary") or {}
+                source = archive_dir
+            else:
+                source = batch_dir
+                pst_files = list((batch_dir / "pest").glob("*.pst")) or list(
+                    (batch_dir / "master").glob("*.pst")
                 )
-                success, issues = results.is_successful()
-                if not success:
-                    if not force:
-                        print(f"Batch {bid:03d}: run not successful, skipping — {issues}")
-                        n_skipped_failed += 1
-                        continue
-                    print(f"Batch {bid:03d}: WARNING — ingesting despite issues: {issues}")
+                if pst_files:
+                    results = PestResults(
+                        str(batch_dir / "pest"),
+                        pst_files[0].stem,
+                        master_dir=str(batch_dir / "master"),
+                    )
+                    success, issues = results.is_successful()
+                    if not success:
+                        if not force:
+                            print(f"Batch {bid:03d}: run not successful, skipping — {issues}")
+                            n_skipped_failed += 1
+                            continue
+                        print(f"Batch {bid:03d}: WARNING — ingesting despite issues: {issues}")
+                    summary = results.get_summary()
+                elif shard is not None and shard.get("status", "").endswith("failed"):
+                    print(f"Batch {bid:03d}: {shard['status']}, skipping — {shard.get('error')}")
+                    n_skipped_failed += 1
+                    continue
 
-            par_csv = find_par_csv(batch_dir)
+            par_csv = find_par_csv(source)
             if par_csv is None:
-                print(f"Batch {bid:03d}: no .par.csv, skipping")
+                print(f"Batch {bid:03d}: no .par.csv under {source}, skipping")
                 continue
 
             batch_fids = manifest.loc[manifest["batch_id"] == bid, fid_col].astype(str).tolist()
@@ -581,7 +764,24 @@ def ingest_all(ctx: BatchContext, summary_stat="median", force=False):
                 par_csv, fields=batch_fids, batch_id=bid, summary_stat=summary_stat
             )
             total_ingested += len(batch_fids)
-            print(f"Batch {bid:03d}: ingested {len(batch_fids)} fields")
+            ingested_ids.append(bid)
+            print(f"Batch {bid:03d}: ingested {len(batch_fids)} fields from {par_csv.name}")
+
+            if summary:
+                batches_meta[str(bid)] = {
+                    "n_fields": len(batch_fids),
+                    "status": summary.get("status", "unknown"),
+                    "phi_initial": summary.get("phi_initial"),
+                    "phi_final": summary.get("phi_final"),
+                    "phi_reduction_pct": summary.get("phi_reduction_pct"),
+                    "phi_history": summary.get("phi_history"),
+                    "noptmax": summary.get("noptmax"),
+                    "iterations_completed": summary.get("iterations_completed"),
+                }
+
+        # One attribute write for the whole pass rather than one per batch.
+        if batches_meta and "calibration" in container._root:
+            container._root["calibration"].attrs["batches"] = json.dumps(batches_meta)
 
         print(f"\nTotal: {total_ingested} fields ingested across {len(batch_ids)} batches")
         if n_skipped_failed:
@@ -591,17 +791,32 @@ def ingest_all(ctx: BatchContext, summary_stat="median", force=False):
     finally:
         container.close()
 
-
-# ---------------------------------------------------------------------------
-# Status and cleanup
-# ---------------------------------------------------------------------------
+    for bid in ingested_ids:
+        entry = dict(shards.get(str(bid), {}))
+        entry.update({"status": "ingested", "timestamp": datetime.now().isoformat()})
+        entry.setdefault("batch_id", int(bid))
+        update_batch_entry(output_root, bid, entry)
 
 
 def show_status(ctx: BatchContext):
-    """Print calibration status from the container."""
+    """Print calibration status from the container and any pending shards."""
     import numpy as np
 
+    from swimrs.calibrate.batch_support import read_batch_shards
     from swimrs.container.container import SwimContainer
+
+    # Shards are written by array tasks that have run but not yet been
+    # reduced into the container, so status is meaningful mid-fan-out.
+    shards = read_batch_shards(ctx.output_root)
+    if shards:
+        counts = {}
+        for entry in shards.values():
+            counts[entry.get("status", "?")] = counts.get(entry.get("status", "?"), 0) + 1
+        summary = ", ".join(f"{k}={v}" for k, v in sorted(counts.items()))
+        print(f"Batch task shards: {len(shards)} ({summary})")
+        pending = [b for b, e in shards.items() if e.get("status") == "archived"]
+        if pending:
+            print(f"  {len(pending)} archived batch(es) awaiting ingest-all")
 
     container = SwimContainer.open(ctx.container_path, mode="r")
     try:
@@ -1063,9 +1278,23 @@ def calibrate_all(
 # ---------------------------------------------------------------------------
 
 
-def prep(ctx: BatchContext, *, exclude_uncovered=False, skip_fids_path=None):
-    """Create batch manifest with exclusions (no PEST runs)."""
+def prep(
+    ctx: BatchContext,
+    *,
+    exclude_uncovered=False,
+    skip_fids_path=None,
+    override=False,
+    skip_health=False,
+):
+    """Stage 1 of the fanned-out pipeline: gate, partition, and record the run.
+
+    Runs the preflight gate once and writes batch_manifest.csv plus
+    run_manifest.json, so the array tasks that follow do no gating and no
+    provenance capture of their own. Prints ``BATCH_COUNT=<n>`` for the
+    submitting script to size its --array range.
+    """
     from swimrs.calibrate.batch_support import (
+        create_run_manifest,
         get_uncovered_fids,
         partition_fields,
         write_manifest,
@@ -1074,6 +1303,16 @@ def prep(ctx: BatchContext, *, exclude_uncovered=False, skip_fids_path=None):
 
     output_root = Path(ctx.output_root)
     output_root.mkdir(parents=True, exist_ok=True)
+
+    if skip_health:
+        _verify_prior_health(ctx)
+        report = None
+    else:
+        try:
+            report = preflight_gate(ctx, override=override)
+        except Exception as e:
+            print(f"PREFLIGHT GATE BLOCKED: {e}")
+            raise
 
     exclude_set: set[str] = set()
     if exclude_uncovered:
@@ -1088,11 +1327,15 @@ def prep(ctx: BatchContext, *, exclude_uncovered=False, skip_fids_path=None):
                 instrument=ctx.etf_target_instrument,
             )
             exclude_set.update(uncovered["all"])
+            n_uncovered = len(uncovered["all"])
+            n_container = len(c.field_uids)
+            frac = 100 * n_uncovered / n_container if n_container else 0.0
             print(
                 f"  ndvi uncovered: {len(uncovered.get('ndvi', []))}, "
                 f"etf uncovered: {len(uncovered.get('etf', []))}, "
-                f"total excluded: {len(uncovered['all'])}"
+                f"total excluded: {n_uncovered}"
             )
+            print(f"  UNCOVERED_FRACTION={frac:.2f}% ({n_uncovered}/{n_container})")
         finally:
             c.close()
 
@@ -1134,6 +1377,28 @@ def prep(ctx: BatchContext, *, exclude_uncovered=False, skip_fids_path=None):
         print(f"  Batch {i:03d}: {len(batch)} fields")
     print(f"\nWrote manifest: {manifest_path}")
 
+    create_run_manifest(
+        output_root,
+        ctx.container_path,
+        ctx.toml_path,
+        report,
+        raw_batches,
+        ctx.noptmax,
+        ctx.realizations,
+        ctx.workers,
+        ctx.batch_size,
+        override,
+        ctx.feature_id_col,
+        ctx.grouping_column,
+        ctx.mask_mode,
+        ctx.etf_target_model,
+        ctx.project_name,
+    )
+
+    # Parsed by the submitting script to size --array=0-(N-1).
+    print(f"BATCH_COUNT={len(raw_batches)}")
+    return len(raw_batches)
+
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -1153,6 +1418,7 @@ def build_batch_parser() -> argparse.ArgumentParser:
             "prep",
             "build-all",
             "run-batch",
+            "run-batch-task",
             "run-all",
             "ingest-batch",
             "ingest-all",
@@ -1162,7 +1428,14 @@ def build_batch_parser() -> argparse.ArgumentParser:
         ],
         help="Action to perform",
     )
-    parser.add_argument("--batch-id", type=int, help="Batch ID for run-batch/ingest-batch")
+    parser.add_argument(
+        "--batch-id", type=int, help="Batch ID for run-batch/run-batch-task/ingest-batch"
+    )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="run-batch-task: rebuild and rerun even when the batch is already complete",
+    )
     parser.add_argument("--resume", action="store_true", help="Skip already-ingested batches")
     parser.add_argument(
         "--override",
@@ -1174,9 +1447,13 @@ def build_batch_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip preflight health check (requires prior check in container)",
     )
-    parser.add_argument("--batch-size", type=int, default=50, help="Fields per batch")
+    parser.add_argument(
+        "--batch-size", type=int, default=None, help="Fields per batch (default: config, else 50)"
+    )
     parser.add_argument("--workers", type=int, default=None, help="PEST workers per batch")
-    parser.add_argument("--noptmax", type=int, default=3, help="Max PEST iterations")
+    parser.add_argument(
+        "--noptmax", type=int, default=None, help="Max PEST iterations (default: config, else 3)"
+    )
     parser.add_argument("--reals", type=int, default=None, help="Ensemble realizations")
     parser.add_argument(
         "--exclude-uncovered",
@@ -1231,7 +1508,13 @@ def main(argv=None):
     action = args.action
 
     if action == "prep":
-        prep(ctx, exclude_uncovered=args.exclude_uncovered, skip_fids_path=args.skip_fids)
+        prep(
+            ctx,
+            exclude_uncovered=args.exclude_uncovered,
+            skip_fids_path=args.skip_fids,
+            override=args.override,
+            skip_health=args.skip_health,
+        )
 
     elif action == "build-all":
         from swimrs.calibrate.batch_support import load_batches_from_manifest, partition_fields
@@ -1267,6 +1550,11 @@ def main(argv=None):
         if not batch_dir.exists():
             parser.error(f"Batch directory not found: {batch_dir}")
         run_batch(batch_dir, num_workers=ctx.workers)
+
+    elif action == "run-batch-task":
+        if args.batch_id is None:
+            parser.error("--batch-id required for run-batch-task")
+        return run_batch_task(ctx, args.batch_id, rebuild=args.rebuild)
 
     elif action == "run-all":
         batch_dirs = sorted(Path(ctx.output_root).glob("batch_*"))

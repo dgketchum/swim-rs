@@ -45,6 +45,78 @@ def update_batch_entry(output_root, batch_id, entry):
 
 
 # ---------------------------------------------------------------------------
+# Per-batch status shards
+#
+# batch_log.json is a single JSON object rewritten in full by every writer.
+# That is safe for the serial runner but loses entries when array tasks write
+# concurrently, so fanned-out tasks each write their own shard and a single
+# serial reduce step merges them.
+# ---------------------------------------------------------------------------
+
+SHARD_DIRNAME = "batch_status"
+
+
+def shard_path(output_root, batch_id):
+    """Path to one batch's status shard."""
+    return Path(output_root) / SHARD_DIRNAME / f"batch_{int(batch_id):03d}.json"
+
+
+def write_batch_shard(output_root, batch_id, entry):
+    """Atomically write one batch's status shard (tmp+rename)."""
+    path = shard_path(output_root, batch_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = dict(entry)
+    payload.setdefault("batch_id", int(batch_id))
+    payload.setdefault("timestamp", datetime.now().isoformat())
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, indent=2))
+    tmp.rename(path)
+    return path
+
+
+def read_batch_shard(output_root, batch_id):
+    """Read one batch's status shard, or None when absent/unreadable."""
+    path = shard_path(output_root, batch_id)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return None
+
+
+def read_batch_shards(output_root):
+    """Read every status shard, keyed by batch id string."""
+    shard_dir = Path(output_root) / SHARD_DIRNAME
+    if not shard_dir.exists():
+        return {}
+    shards = {}
+    for f in sorted(shard_dir.glob("batch_*.json")):
+        try:
+            entry = json.loads(f.read_text())
+        except json.JSONDecodeError:
+            continue
+        bid = entry.get("batch_id")
+        if bid is None:
+            continue
+        shards[str(int(bid))] = entry
+    return shards
+
+
+def merge_shards_into_log(output_root):
+    """Fold status shards into batch_log.json. Single-writer only.
+
+    Shards win over existing log entries: they are written by the task that
+    actually ran the batch. Returns the merged log.
+    """
+    log_data = read_batch_log(output_root)
+    for bid, entry in read_batch_shards(output_root).items():
+        log_data[bid] = entry
+    write_batch_log(output_root, log_data)
+    return log_data
+
+
+# ---------------------------------------------------------------------------
 # FID coercion
 # ---------------------------------------------------------------------------
 
@@ -647,14 +719,22 @@ def _best_phi_iteration(master_dir):
 
 
 def find_par_csv(batch_dir):
-    """Find the best .par.csv in a batch's master/ directory.
+    """Find the best .par.csv for a batch.
+
+    Accepts either a batch directory (reads its master/ subdirectory) or a
+    flat pest_archive directory. Both .par.csv and .phi.meas.csv are in
+    PEST_ARCHIVE_PATTERNS and survive every retention tier, so the archive
+    supports the same selection once the batch directory is gone.
 
     Selects the iteration with minimum mean measured phi from
     {project}.phi.meas.csv (the last iteration is not always the best).
     Falls back to the highest-numbered iteration when no phi history is
     available.
     """
-    master = Path(batch_dir) / "master"
+    batch_dir = Path(batch_dir)
+    master = batch_dir / "master"
+    if not master.exists():
+        master = batch_dir
     par_files = list(master.glob("*.par.csv"))
     if not par_files:
         return None
@@ -686,6 +766,9 @@ PEST_ARCHIVE_PATTERNS = [
     "*.phi.meas.csv",
     "*.phi.actual.csv",
     "*.phi.composite.csv",
+    # per-observation-group phi: one column per field per obs type, the only
+    # per-field fit-quality artifact PEST++ emits (~300 KB/batch)
+    "*.phi.group.csv",
     "*.par.csv",
     "*.obs.csv",
     "*.pdc.csv",
@@ -739,6 +822,104 @@ ARCHIVE_RETENTION_TIERS = ("full", "reference", "slim")
 _OBS_ITER_RE = re.compile(r"\.(\d+)\.obs\.csv$")
 _REI_ITER_RE = re.compile(r"\.(\d+)\.base\.rei$")
 _PAR_ITER_RE = re.compile(r"\.(\d+)\.par\.csv$")
+
+# Observation group names are emitted by the PEST builder as
+# "oname:obs/obs_{type}_{fid}.np_otype:arr" (lowercased by PEST++).
+_REI_GROUP_RE = re.compile(r"obs_(.+?)\.np")
+
+
+def _parse_rei(path):
+    """Read a PEST .rei residual file, keeping only weighted observations.
+
+    The file has three preamble lines, then a header row of
+    Name/Group/Measured/Modelled/Residual/Weight. Zero-weight rows are
+    no-observation fill (Measured = -99) and carry no information.
+    """
+    df = pd.read_csv(path, sep=r"\s+", skiprows=3)
+    df.columns = [c.strip().lower() for c in df.columns]
+    return df.loc[df["weight"] > 0]
+
+
+def _rei_group_keys(groups):
+    """Split PEST observation-group names into (obs_type, lowercase fid)."""
+    bodies = groups.str.extract(_REI_GROUP_RE, expand=False)
+    split = bodies.str.split("_", n=1, expand=True)
+    return split[0], split[1]
+
+
+def _fit_stats(df, fids):
+    """Per (fid, obs type) fit statistics from a parsed .rei frame."""
+    obs_type, fid_key = _rei_group_keys(df["group"])
+    # PEST lowercases observation names; map back to the container's FIDs.
+    lookup = {str(f).lower(): str(f) for f in fids}
+    out = pd.DataFrame(
+        {
+            "fid": fid_key.map(lookup).fillna(fid_key),
+            "obs_type": obs_type,
+            "residual": df["residual"].to_numpy(),
+            "phi": (df["weight"].to_numpy() * df["residual"].to_numpy()) ** 2,
+        }
+    )
+    grouped = out.groupby(["fid", "obs_type"], sort=True)
+    return pd.DataFrame(
+        {
+            "n_obs": grouped["residual"].size(),
+            "phi": grouped["phi"].sum(),
+            # PEST defines Residual = Measured - Modelled, so a positive bias
+            # means the model runs dry against the observation.
+            "bias": grouped["residual"].mean(),
+            "rmse": grouped["residual"].apply(lambda r: float(np.sqrt((r**2).mean()))),
+        }
+    )
+
+
+def write_field_fit_summary(archive_dir, fids):
+    """Write per-field fit quality distilled from the archived residuals.
+
+    The .rei residual files are 100-300 MB per batch and every retention tier
+    below "full" discards them, but per-field fit quality is what makes a
+    posterior parameter set usable as a training label downstream. This
+    collapses them to a few KB: one row per field per observation type, with
+    prior and posterior phi, RMSE and bias.
+
+    Must run after archive_pest_outputs and BEFORE apply_archive_retention.
+    Returns the path written, or None when no residuals are present.
+    """
+    archive_dir = Path(archive_dir)
+
+    prior_path = None
+    final_path = None
+    final_iter = -1
+    for f in archive_dir.glob("*.base.rei"):
+        m = _REI_ITER_RE.search(f.name)
+        if m is None:
+            continue
+        i = int(m.group(1))
+        if i == 0:
+            prior_path = f
+        if i > final_iter:
+            final_iter, final_path = i, f
+
+    if final_path is None:
+        # Fall back to the unnumbered final-iteration residual file.
+        unnumbered = [
+            f for f in archive_dir.glob("*.base.rei") if _REI_ITER_RE.search(f.name) is None
+        ]
+        if not unnumbered:
+            return None
+        final_path = unnumbered[0]
+
+    summary = _fit_stats(_parse_rei(final_path), fids)
+    summary = summary.rename(columns={"phi": "phi_post", "bias": "bias_post", "rmse": "rmse_post"})
+
+    if prior_path is not None and prior_path != final_path:
+        prior = _fit_stats(_parse_rei(prior_path), fids)[["phi", "rmse", "bias"]]
+        prior.columns = ["phi_prior", "rmse_prior", "bias_prior"]
+        summary = summary.join(prior)
+
+    out_path = archive_dir / "field_fit_summary.csv"
+    summary.reset_index().to_csv(out_path, index=False)
+    return out_path
 
 
 def apply_archive_retention(archive_dir, tier):
