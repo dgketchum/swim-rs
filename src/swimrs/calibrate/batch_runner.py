@@ -1314,30 +1314,37 @@ def prep(
             print(f"PREFLIGHT GATE BLOCKED: {e}")
             raise
 
+    # The coverage scan always runs and always reports; --exclude-uncovered only
+    # decides whether to act on it. Keeping the two separate lets a run that
+    # deliberately calibrates every field (e.g. reproducing an earlier run whose
+    # partitioning must match) still measure what exclusion would have dropped.
     exclude_set: set[str] = set()
-    if exclude_uncovered:
-        print("Scanning container for zero-coverage fields…")
-        c = SwimContainer.open(ctx.container_path, mode="r")
-        try:
-            uncovered = get_uncovered_fids(
-                c,
-                ctx.etf_target_model,
-                ctx.mask_mode,
-                etf_ensemble_members=ctx.etf_ensemble_members,
-                instrument=ctx.etf_target_instrument,
-            )
+    print("Scanning container for zero-coverage fields…")
+    c = SwimContainer.open(ctx.container_path, mode="r")
+    try:
+        uncovered = get_uncovered_fids(
+            c,
+            ctx.etf_target_model,
+            ctx.mask_mode,
+            etf_ensemble_members=ctx.etf_ensemble_members,
+            instrument=ctx.etf_target_instrument,
+        )
+        n_uncovered = len(uncovered["all"])
+        n_container = len(c.field_uids)
+        frac = 100 * n_uncovered / n_container if n_container else 0.0
+        print(
+            f"  ndvi uncovered: {len(uncovered.get('ndvi', []))}, "
+            f"etf uncovered: {len(uncovered.get('etf', []))}, "
+            f"total uncovered: {n_uncovered}"
+        )
+        print(f"  UNCOVERED_FRACTION={frac:.2f}% ({n_uncovered}/{n_container})")
+        if exclude_uncovered:
             exclude_set.update(uncovered["all"])
-            n_uncovered = len(uncovered["all"])
-            n_container = len(c.field_uids)
-            frac = 100 * n_uncovered / n_container if n_container else 0.0
-            print(
-                f"  ndvi uncovered: {len(uncovered.get('ndvi', []))}, "
-                f"etf uncovered: {len(uncovered.get('etf', []))}, "
-                f"total excluded: {n_uncovered}"
-            )
-            print(f"  UNCOVERED_FRACTION={frac:.2f}% ({n_uncovered}/{n_container})")
-        finally:
-            c.close()
+            print(f"  --exclude-uncovered: dropping those {n_uncovered} field(s)")
+        else:
+            print("  --exclude-uncovered not set: reporting only, all fields retained")
+    finally:
+        c.close()
 
     if skip_fids_path:
         extra = {
