@@ -931,6 +931,65 @@ class TestFindParCsvFromArchive:
         assert find_par_csv(batch).name == "project.1.par.csv"
 
 
+class TestMaxIterationCap:
+    """--max-iteration reproduces a shorter noptmax run from a longer archive."""
+
+    def _make_archive(self, tmp_path, phi=None):
+        archive = tmp_path / "pest_archive" / "batch_000"
+        archive.mkdir(parents=True)
+        for i in range(4):
+            (archive / f"project.{i}.par.csv").write_text(f"par{i}")
+        if phi:
+            (archive / "project.phi.meas.csv").write_text(phi)
+        return archive
+
+    def test_cap_selects_capped_iteration(self, tmp_path):
+        from swimrs.calibrate.batch_support import find_par_csv
+
+        # phi keeps improving through iteration 3, so uncapped picks 3.
+        archive = self._make_archive(tmp_path, "iteration,mean\n0,100.0\n1,50.0\n2,20.0\n3,10.0\n")
+        assert find_par_csv(archive).name == "project.3.par.csv"
+        assert find_par_csv(archive, max_iteration=2).name == "project.2.par.csv"
+        assert find_par_csv(archive, max_iteration=1).name == "project.1.par.csv"
+
+    def test_cap_still_honours_min_phi_below_the_cap(self, tmp_path):
+        from swimrs.calibrate.batch_support import find_par_csv
+
+        # iteration 2 regressed; a noptmax 2 run would still have ingested
+        # iteration 1, because the selector minimises phi rather than taking
+        # the last iteration.
+        archive = self._make_archive(tmp_path, "iteration,mean\n0,100.0\n1,20.0\n2,55.0\n3,10.0\n")
+        assert find_par_csv(archive).name == "project.3.par.csv"
+        assert find_par_csv(archive, max_iteration=2).name == "project.1.par.csv"
+
+    def test_cap_without_phi_history_falls_back_to_capped_max(self, tmp_path):
+        from swimrs.calibrate.batch_support import find_par_csv
+
+        archive = self._make_archive(tmp_path)
+        assert find_par_csv(archive, max_iteration=2).name == "project.2.par.csv"
+
+    def test_cap_below_every_iteration_returns_none(self, tmp_path):
+        from swimrs.calibrate.batch_support import find_par_csv
+
+        archive = tmp_path / "pest_archive" / "batch_000"
+        archive.mkdir(parents=True)
+        (archive / "project.3.par.csv").write_text("par3")
+        assert find_par_csv(archive, max_iteration=2) is None
+
+    def test_uncapped_behaviour_unchanged(self, tmp_path):
+        from swimrs.calibrate.batch_support import find_par_csv
+
+        archive = self._make_archive(tmp_path, "iteration,mean\n0,100.0\n1,50.0\n2,10.0\n3,40.0\n")
+        assert find_par_csv(archive).name == "project.2.par.csv"
+
+    def test_best_phi_iteration_respects_cap(self, tmp_path):
+        from swimrs.calibrate.batch_support import _best_phi_iteration
+
+        archive = self._make_archive(tmp_path, "iteration,mean\n0,100.0\n1,50.0\n2,20.0\n3,10.0\n")
+        assert _best_phi_iteration(archive) == 3
+        assert _best_phi_iteration(archive, max_iteration=2) == 2
+
+
 # ---------------------------------------------------------------------------
 # Stage 2 array task
 # ---------------------------------------------------------------------------

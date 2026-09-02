@@ -579,7 +579,7 @@ def cmd_calibrate_batch(args: argparse.Namespace) -> int:
     elif action == "ingest-all":
         from swimrs.calibrate.batch_support import persist_calibration_resolved_state
 
-        ingest_all(ctx)
+        ingest_all(ctx, max_iteration=args.max_iteration, reingest=args.reingest)
         persist_calibration_resolved_state(
             ctx.container_path,
             ctx.toml_path,
@@ -590,7 +590,7 @@ def cmd_calibrate_batch(args: argparse.Namespace) -> int:
         if args.batch_id is None:
             print("Error: --batch-id required for ingest-batch")
             return 1
-        ingest_batch(ctx, args.batch_id)
+        ingest_batch(ctx, args.batch_id, max_iteration=args.max_iteration)
     elif action == "run-batch-task":
         from swimrs.calibrate.batch_runner import run_batch_task
 
@@ -1450,6 +1450,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--rebuild",
         action="store_true",
         help="run-batch-task: rebuild and rerun even when the batch is already complete",
+    )
+    pb.add_argument(
+        "--max-iteration",
+        type=int,
+        default=None,
+        help=(
+            "ingest: cap the PEST++ iteration ingested. IES iterations are "
+            "sequential and the seed is fixed, so --max-iteration 2 against a "
+            "noptmax 3 archive yields exactly the noptmax 2 product, no rerun."
+        ),
+    )
+    pb.add_argument(
+        "--reingest",
+        action="store_true",
+        help="ingest-all: re-fold batches the container already records",
     )
     pb.add_argument(
         "--batch-size", type=int, default=None, help="Fields per batch (default: config, else 50)"

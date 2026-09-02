@@ -696,12 +696,16 @@ def _par_csv_iteration(path):
         return -1
 
 
-def _best_phi_iteration(master_dir):
+def _best_phi_iteration(master_dir, max_iteration=None):
     """Return the iteration with minimum mean measured phi, or None.
 
     Reads {project}.phi.meas.csv from the master dir. Returns None when the
     file is missing or unreadable so callers can fall back to the
     latest-iteration heuristic.
+
+    ``max_iteration`` restricts the choice to iterations at or below N, which
+    reproduces what a ``noptmax N`` run would have selected: IES iterations are
+    sequential, so a shorter run is a prefix of a longer one.
     """
     phi_files = list(Path(master_dir).glob("*.phi.meas.csv"))
     if not phi_files:
@@ -713,12 +717,14 @@ def _best_phi_iteration(master_dir):
     if df.empty or "iteration" not in df.columns or "mean" not in df.columns:
         return None
     valid = df.dropna(subset=["mean"])
+    if max_iteration is not None:
+        valid = valid.loc[valid["iteration"] <= max_iteration]
     if valid.empty:
         return None
     return int(valid.loc[valid["mean"].idxmin(), "iteration"])
 
 
-def find_par_csv(batch_dir):
+def find_par_csv(batch_dir, max_iteration=None):
     """Find the best .par.csv for a batch.
 
     Accepts either a batch directory (reads its master/ subdirectory) or a
@@ -730,15 +736,23 @@ def find_par_csv(batch_dir):
     {project}.phi.meas.csv (the last iteration is not always the best).
     Falls back to the highest-numbered iteration when no phi history is
     available.
+
+    ``max_iteration`` caps the iterations considered, so an archive from a
+    ``noptmax 3`` run yields exactly what a ``noptmax 2`` run would have
+    ingested. PEST++-IES iterations are sequential and the seed is fixed, so
+    the shorter run is a genuine prefix — re-ingesting under a cap is
+    equivalent to recalibrating, at no compute cost.
     """
     batch_dir = Path(batch_dir)
     master = batch_dir / "master"
     if not master.exists():
         master = batch_dir
     par_files = list(master.glob("*.par.csv"))
+    if max_iteration is not None:
+        par_files = [f for f in par_files if 0 <= _par_csv_iteration(f) <= max_iteration]
     if not par_files:
         return None
-    best_iter = _best_phi_iteration(master)
+    best_iter = _best_phi_iteration(master, max_iteration=max_iteration)
     if best_iter is not None:
         for f in par_files:
             if _par_csv_iteration(f) == best_iter:

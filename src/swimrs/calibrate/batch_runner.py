@@ -564,11 +564,14 @@ def run_batch_task(ctx: BatchContext, batch_id, *, rebuild=False):
 # ---------------------------------------------------------------------------
 
 
-def ingest_batch(ctx: BatchContext, batch_id, summary_stat="median", force=False):
+def ingest_batch(
+    ctx: BatchContext, batch_id, summary_stat="median", force=False, max_iteration=None
+):
     """Ingest calibrated parameters from one batch into the container.
 
     Refuses to ingest a batch whose PEST++ run did not succeed (per
-    PestResults.is_successful) unless force=True.
+    PestResults.is_successful) unless force=True. ``max_iteration`` caps which
+    PEST++ iteration is ingested (see find_par_csv).
     """
     from swimrs.calibrate.batch_support import (
         apply_archive_retention,
@@ -608,7 +611,7 @@ def ingest_batch(ctx: BatchContext, batch_id, summary_stat="median", force=False
         if not success:
             print(f"Batch {batch_id:03d}: WARNING — ingesting despite issues: {issues}")
 
-    par_csv = find_par_csv(batch_dir)
+    par_csv = find_par_csv(batch_dir, max_iteration=max_iteration)
     if par_csv is None:
         print(f"No .par.csv found in {batch_dir}/master/")
         return
@@ -673,7 +676,25 @@ def ingest_batch(ctx: BatchContext, batch_id, summary_stat="median", force=False
         container.close()
 
 
-def ingest_all(ctx: BatchContext, summary_stat="median", force=False):
+def _archived_summary(archive_dir):
+    """Read calibration_summary.json out of an archived batch, or {}.
+
+    Legacy `calibrate-all` batches have no status shard and their build
+    directory was removed after the original ingest, but the archive keeps the
+    summary, so a re-ingest can still record run metadata.
+    """
+    path = Path(archive_dir) / "calibration_summary.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def ingest_all(
+    ctx: BatchContext, summary_stat="median", force=False, max_iteration=None, reingest=False
+):
     """Reduce step: fold every completed batch into the container.
 
     This is the sole container writer in the fanned-out pipeline. Array tasks
@@ -684,8 +705,14 @@ def ingest_all(ctx: BatchContext, summary_stat="median", force=False):
     Also handles the legacy layout where the batch build directory is still
     on disk (the serial `calibrate-all` path). Batches whose PEST++ run did
     not succeed are skipped with a warning unless force=True.
+
+    ``max_iteration`` caps which PEST++ iteration is ingested, and ``reingest``
+    re-folds batches the container already records. Together they convert an
+    archive from a longer run into the product a shorter one would have
+    produced, without recalibrating.
     """
     from swimrs.calibrate.batch_support import (
+        _par_csv_iteration,
         find_par_csv,
         merge_shards_into_log,
         read_batch_shards,
@@ -714,6 +741,10 @@ def ingest_all(ctx: BatchContext, summary_stat="median", force=False):
         n_skipped_failed = 0
         ingested_ids = []
         fid_col = ctx.feature_id_col if ctx.feature_id_col in manifest.columns else "FID"
+
+        if reingest and already_done:
+            print(f"--reingest: re-folding {len(already_done)} batch(es) already in the container")
+            already_done = set()
 
         for bid in batch_ids:
             if str(bid) in already_done:
@@ -754,7 +785,16 @@ def ingest_all(ctx: BatchContext, summary_stat="median", force=False):
                     n_skipped_failed += 1
                     continue
 
-            par_csv = find_par_csv(source)
+            par_csv = find_par_csv(source, max_iteration=max_iteration)
+            if par_csv is None and source != archive_dir and archive_dir.exists():
+                # Legacy `calibrate-all` batch: no shard, and the build
+                # directory was cleaned up after the original ingest. The
+                # archive still holds every iteration's .par.csv, which is what
+                # makes a capped re-ingest possible without recalibrating.
+                source = archive_dir
+                par_csv = find_par_csv(source, max_iteration=max_iteration)
+                if par_csv is not None and not summary:
+                    summary = _archived_summary(archive_dir)
             if par_csv is None:
                 print(f"Batch {bid:03d}: no .par.csv under {source}, skipping")
                 continue
@@ -777,6 +817,11 @@ def ingest_all(ctx: BatchContext, summary_stat="median", force=False):
                     "phi_history": summary.get("phi_history"),
                     "noptmax": summary.get("noptmax"),
                     "iterations_completed": summary.get("iterations_completed"),
+                    # Which iteration's parameters were actually folded in.
+                    # Under --max-iteration this differs from the run's own
+                    # noptmax, and the distinction is the whole record of what
+                    # the container holds.
+                    "ingested_iteration": _par_csv_iteration(par_csv),
                 }
 
         # One attribute write for the whole pass rather than one per batch.
@@ -1487,6 +1532,21 @@ def build_batch_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Ingest batches even when the PEST++ run did not succeed",
     )
+    parser.add_argument(
+        "--max-iteration",
+        type=int,
+        default=None,
+        help=(
+            "Cap the PEST++ iteration ingested. IES iterations are sequential "
+            "and the seed is fixed, so --max-iteration 2 against a noptmax 3 "
+            "archive yields exactly the noptmax 2 product, with no rerun."
+        ),
+    )
+    parser.add_argument(
+        "--reingest",
+        action="store_true",
+        help="Re-fold batches the container already records (use with --max-iteration)",
+    )
     return parser
 
 
@@ -1578,10 +1638,15 @@ def main(argv=None):
     elif action == "ingest-batch":
         if args.batch_id is None:
             parser.error("--batch-id required for ingest-batch")
-        ingest_batch(ctx, args.batch_id, force=args.force_ingest)
+        ingest_batch(ctx, args.batch_id, force=args.force_ingest, max_iteration=args.max_iteration)
 
     elif action == "ingest-all":
-        ingest_all(ctx, force=args.force_ingest)
+        ingest_all(
+            ctx,
+            force=args.force_ingest,
+            max_iteration=args.max_iteration,
+            reingest=args.reingest,
+        )
         persist_calibration_resolved_state(
             ctx.container_path,
             ctx.toml_path,
