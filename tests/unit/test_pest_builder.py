@@ -845,3 +845,30 @@ class TestAuxiliaryGuards:
 
         primary = PestBuilder._etf_information_mass_by_site(pst, exclude={etf_names[3]})
         assert np.isclose(primary[fid], 12.0)  # aux obs dropped
+
+
+class TestParsePriorSpec:
+    """PestBuilder._parse_prior_spec: legacy float and dict (value/lower/upper) forms."""
+
+    def test_bare_number_is_value_only(self):
+        assert PestBuilder._parse_prior_spec(4.85) == (4.85, None, None)
+        assert PestBuilder._parse_prior_spec(361) == (361.0, None, None)
+
+    def test_dict_full_spec(self):
+        v, lb, ub = PestBuilder._parse_prior_spec({"value": 0.52, "lower": 0.45, "upper": 0.60})
+        assert (v, lb, ub) == (0.52, 0.45, 0.60)
+
+    def test_dict_bounds_only(self):
+        v, lb, ub = PestBuilder._parse_prior_spec({"lower": 3.5, "upper": 6.0})
+        assert v is None and (lb, ub) == (3.5, 6.0)
+
+    def test_dict_value_only(self):
+        assert PestBuilder._parse_prior_spec({"value": 1.2}) == (1.2, None, None)
+
+    def test_empty_dict_raises(self):
+        with pytest.raises(ValueError, match="none of"):
+            PestBuilder._parse_prior_spec({})
+
+    def test_inverted_bounds_raise(self):
+        with pytest.raises(ValueError, match="lower >= upper"):
+            PestBuilder._parse_prior_spec({"lower": 0.6, "upper": 0.45})

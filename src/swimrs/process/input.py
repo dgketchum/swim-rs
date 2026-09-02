@@ -497,6 +497,7 @@ def build_swim_input(
     met_source: str = "gridmet",
     fields: list[str] | None = None,
     empirical_kc_max: bool = False,
+    kc_max_overrides: dict[str, float] | None = None,
     mask_mode: str = "irrigation",
     ndvi_mode: str = "observed",
     max_irr_rate: float = 100.0,
@@ -542,6 +543,11 @@ def build_swim_input(
     empirical_kc_max : bool
         If True, use empirical kc_max from container (90th percentile ETf).
         If False (default), use fixed FAO-56 value of 1.2.
+    kc_max_overrides : dict, optional
+        Per-field kc_max mapping ({fid: kc_max}). An override wins over both
+        the empirical and fixed values and is NOT subject to the 1.35 floor —
+        this is the mechanism for class-appropriate kc_max experiments.
+        Fields absent from the mapping keep the empirical/fixed value.
     mask_mode : str
         NDVI masking strategy: ``"none"`` uses only ``no_mask`` NDVI,
         ``"irrigation"`` uses ``irr``/``inv_irr`` with year-based switching.
@@ -698,7 +704,13 @@ def build_swim_input(
 
         # Write properties from container data
         _write_properties_from_container(
-            h5, container_data, fids, n_fields, calibrated_params, empirical_kc_max=empirical_kc_max
+            h5,
+            container_data,
+            fids,
+            n_fields,
+            calibrated_params,
+            empirical_kc_max=empirical_kc_max,
+            kc_max_overrides=kc_max_overrides,
         )
 
         # Write parameters
@@ -967,6 +979,39 @@ def _assert_finite_ndvi(
 FSUB_THRESHOLD = 0.2
 
 
+def load_kc_max_overrides(path: Path | str | None) -> dict[str, float] | None:
+    """Load a per-field kc_max override mapping ({fid: kc_max}) from JSON."""
+    if not path:
+        return None
+    with open(path) as f:
+        data = json.load(f)
+    return {str(fid): float(v) for fid, v in data.items()}
+
+
+def _resolve_kc_max(
+    fids: list[str],
+    kc_max_data: dict[str, float],
+    empirical_kc_max: bool,
+    kc_max_overrides: dict[str, float] | None = None,
+) -> NDArray[np.float64]:
+    """Resolve per-field kc_max: explicit override > empirical (floor 1.35) > fixed 1.35.
+
+    Overrides are exempt from the 1.35 floor — the floor exists to keep the
+    empirical (observed-ETf) estimate from truncating the FAO-56 default, not
+    to forbid deliberately lower class-based ceilings.
+    """
+    if empirical_kc_max:
+        kc_max = np.array([kc_max_data.get(fid, 1.35) for fid in fids])
+        kc_max = np.maximum(kc_max, 1.35)
+    else:
+        kc_max = np.full(len(fids), 1.35)
+    if kc_max_overrides:
+        for j, fid in enumerate(fids):
+            if fid in kc_max_overrides:
+                kc_max[j] = float(kc_max_overrides[fid])
+    return kc_max
+
+
 def _write_properties_from_container(
     h5: h5py.File,
     container_data: dict[str, Any],
@@ -974,6 +1019,7 @@ def _write_properties_from_container(
     n_fields: int,
     calibrated_params: dict[str, NDArray[np.float64]] | None = None,
     empirical_kc_max: bool = False,
+    kc_max_overrides: dict[str, float] | None = None,
 ):
     """Write properties from container data to HDF5.
 
@@ -982,6 +1028,8 @@ def _write_properties_from_container(
     empirical_kc_max : bool
         If True, use empirical kc_max from container (90th percentile ETf).
         If False (default), use fixed FAO-56 value of 1.2.
+    kc_max_overrides : dict, optional
+        Per-field kc_max mapping; wins over empirical/fixed, no floor.
     """
 
     props_group = h5.create_group("properties")
@@ -1076,13 +1124,8 @@ def _write_properties_from_container(
     ke_max_data = dynamics.get("ke_max", {})
     ke_max = np.array([ke_max_data.get(fid, 1.0) for fid in fids])
 
-    # kc_max: empirical > fixed FAO-56 default, floor 1.35
-    if empirical_kc_max:
-        kc_max_data = dynamics.get("kc_max", {})
-        kc_max = np.array([kc_max_data.get(fid, 1.35) for fid in fids])
-        kc_max = np.maximum(kc_max, 1.35)
-    else:
-        kc_max = np.full(n_fields, 1.35)
+    # kc_max: explicit override > empirical (floor 1.35) > fixed FAO-56 default
+    kc_max = _resolve_kc_max(fids, dynamics.get("kc_max", {}), empirical_kc_max, kc_max_overrides)
 
     # f_sub: source-exclusive supply accounting — a year with an irrigation
     # window is supplied by the irrigation mechanism alone, so the static

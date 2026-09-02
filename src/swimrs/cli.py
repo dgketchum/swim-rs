@@ -1006,6 +1006,13 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_kc_max_overrides_from_config(config):
+    """Resolve the optional [crop_coefficient] kc_max_overrides JSON into a dict."""
+    from swimrs.process.input import load_kc_max_overrides
+
+    return load_kc_max_overrides(getattr(config, "kc_max_overrides", None))
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     """Run the model and persist outputs in the target container."""
     conf_path = args.config
@@ -1043,6 +1050,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             etf_model=getattr(config, "etf_target_model", "ssebop"),
             met_source=getattr(config, "met_source", "gridmet"),
             fields=_parse_sites_arg(args.sites),
+            kc_max_overrides=_load_kc_max_overrides_from_config(config),
             mask_mode=getattr(config, "mask_mode", "irrigation"),
             ndvi_mode=args.ndvi_mode,
             max_irr_rate=getattr(config, "max_irr_rate", 100.0) or 100.0,

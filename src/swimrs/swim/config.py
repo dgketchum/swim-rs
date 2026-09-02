@@ -92,6 +92,7 @@ class ProjectConfig:
         self.end_dt = None
         self.kc_proxy = None
         self.cover_proxy = None
+        self.kc_max_overrides = None
 
         # Calibration / Forecast
         self.pest_run_dir = None
@@ -438,6 +439,7 @@ class ProjectConfig:
         # Crop coefficients
         self.kc_proxy = crop_coeff_conf.get("kc_proxy")
         self.cover_proxy = crop_coeff_conf.get("cover_proxy")
+        self.kc_max_overrides = crop_coeff_conf.get("kc_max_overrides")
 
         if self.project_ws:
             os.makedirs(self.project_ws, exist_ok=True)

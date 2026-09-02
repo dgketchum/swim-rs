@@ -20,7 +20,7 @@ with warnings.catch_warnings():
 
 from swimrs.calibrate.ssm_obs import GROW_MONTHS, build_ssm_observation
 from swimrs.container.schema import SWE_PATHS, find_swe_path
-from swimrs.process.input import build_swim_input
+from swimrs.process.input import build_swim_input, load_kc_max_overrides
 from swimrs.process.kcb_modes import (
     KCB_MODE_NAMES,
     KCB_SIGMOID_PARAMS,
@@ -1453,6 +1453,9 @@ if __name__ == "__main__":
                 etf_model=getattr(self.config, "etf_target_model", "ssebop"),
                 met_source=getattr(self.config, "met_source", "gridmet"),
                 empirical_kc_max=True,
+                kc_max_overrides=load_kc_max_overrides(
+                    getattr(self.config, "kc_max_overrides", None)
+                ),
                 mask_mode=getattr(self.config, "mask_mode", "irrigation"),
                 fields=self.plot_order,
                 transpiration_cover_scaling=getattr(
@@ -1570,6 +1573,7 @@ if __name__ == "__main__":
             etf_model=getattr(self.config, "etf_target_model", "ssebop"),
             met_source=getattr(self.config, "met_source", "gridmet"),
             empirical_kc_max=True,
+            kc_max_overrides=load_kc_max_overrides(getattr(self.config, "kc_max_overrides", None)),
             mask_mode=getattr(self.config, "mask_mode", "irrigation"),
             max_irr_rate=getattr(self.config, "max_irr_rate", 100.0) or 100.0,
             fields=self.plot_order,
@@ -2041,11 +2045,40 @@ if __name__ == "__main__":
 
         pst.write(pst.filename, version=2)
 
-    def apply_prior_params(self, prior_params_path: str) -> None:
-        """Override .pst parval1 with LULC-specific prior values from a JSON file.
+    @staticmethod
+    def _parse_prior_spec(spec) -> tuple[float | None, float | None, float | None]:
+        """Parse one prior-params JSON entry into (value, lower, upper).
 
-        The JSON should map site IDs to parameter dicts, e.g.:
-            {"US-Bi1": {"aw": 361, "ndvi_k": 4.85, "ks_alpha": 0.39, ...}, ...}
+        A bare number is a parval1-only entry (legacy form). A dict may carry
+        any of ``value``/``lower``/``upper``; missing keys leave that quantity
+        unchanged. Raises on a dict with none of the three keys, or lower >= upper.
+        """
+        if isinstance(spec, dict):
+            value = spec.get("value")
+            lower = spec.get("lower")
+            upper = spec.get("upper")
+            if value is None and lower is None and upper is None:
+                raise ValueError(f"prior-params entry {spec!r} has none of 'value'/'lower'/'upper'")
+            if lower is not None and upper is not None and float(lower) >= float(upper):
+                raise ValueError(f"prior-params entry {spec!r} has lower >= upper")
+            return (
+                None if value is None else float(value),
+                None if lower is None else float(lower),
+                None if upper is None else float(upper),
+            )
+        return float(spec), None, None
+
+    def apply_prior_params(self, prior_params_path: str) -> None:
+        """Override .pst prior values (and optionally bounds) from a JSON file.
+
+        The JSON maps site IDs to parameter dicts. Each entry is either a bare
+        number (sets parval1 only, clamped to existing bounds):
+            {"US-Bi1": {"aw": 361, "ndvi_k": 4.85, ...}, ...}
+        or a dict with any of ``value``/``lower``/``upper``, which additionally
+        narrows the parameter bounds (the prior-regularization penalty is
+        weighted by the bounds-derived covariance, so bounds are the prior
+        strength):
+            {"US-Bi1": {"ndvi_0": {"value": 0.52, "lower": 0.45, "upper": 0.60}}}
 
         Parameters not present in the JSON for a given site are left unchanged.
         This must be called after build_pest() and before add_regularization().
@@ -2061,7 +2094,7 @@ if __name__ == "__main__":
         n_updated = 0
 
         for fid, site_params in prior_params.items():
-            for param_name, value in site_params.items():
+            for param_name, spec in site_params.items():
                 pargp = name_map.get(param_name, param_name)
                 # Find the matching parameter row
                 mask = (par["pargp"] == pargp) & par.index.str.contains(
@@ -2069,11 +2102,23 @@ if __name__ == "__main__":
                 )
                 if mask.any():
                     idx = par.index[mask]
-                    # Clamp to bounds
+                    value, lb_new, ub_new = self._parse_prior_spec(spec)
+                    if lb_new is not None:
+                        if par.loc[idx, "partrans"].values[0] == "log" and lb_new <= 0:
+                            raise ValueError(
+                                f"lower bound must be > 0 for log-transformed "
+                                f"{param_name} ({fid}): got {lb_new}"
+                            )
+                        par.loc[idx, "parlbnd"] = lb_new
+                    if ub_new is not None:
+                        par.loc[idx, "parubnd"] = ub_new
+                    # Clamp into (possibly narrowed) bounds
                     lb = par.loc[idx, "parlbnd"].values[0]
                     ub = par.loc[idx, "parubnd"].values[0]
-                    clamped = max(lb, min(ub, float(value)))
-                    par.loc[idx, "parval1"] = clamped
+                    target = (
+                        value if value is not None else float(par.loc[idx, "parval1"].values[0])
+                    )
+                    par.loc[idx, "parval1"] = max(lb, min(ub, target))
                     n_updated += 1
 
         pst.write(self.pst_file, version=2)

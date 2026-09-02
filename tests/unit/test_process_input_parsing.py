@@ -211,3 +211,46 @@ def test_get_prescribed_irr_round_trip_and_absent(tmp_path):
         h5.create_dataset("irrigation/irr_flag", data=np.zeros((3, 1)))
     with h5py.File(without, "r") as h5:
         assert SwimInput.get_prescribed_irr(_Stub(h5)) is None
+
+
+# ---------------------------------------------------------------------------
+# kc_max resolution: override > empirical (floor 1.35) > fixed
+# ---------------------------------------------------------------------------
+
+from swimrs.process.input import _resolve_kc_max, load_kc_max_overrides  # noqa: E402
+
+
+class TestResolveKcMax:
+    def test_fixed_default_when_not_empirical(self):
+        out = _resolve_kc_max(["A", "B"], {"A": 1.6}, empirical_kc_max=False)
+        assert np.allclose(out, [1.35, 1.35])
+
+    def test_empirical_floor_holds(self):
+        out = _resolve_kc_max(["A", "B"], {"A": 1.6, "B": 0.95}, empirical_kc_max=True)
+        assert np.allclose(out, [1.6, 1.35])
+
+    def test_override_bypasses_floor(self):
+        out = _resolve_kc_max(
+            ["A", "B"],
+            {"A": 1.6, "B": 0.95},
+            empirical_kc_max=True,
+            kc_max_overrides={"B": 1.05},
+        )
+        assert np.allclose(out, [1.6, 1.05])
+
+    def test_override_wins_over_fixed_and_absent_fid_keeps_default(self):
+        out = _resolve_kc_max(
+            ["A", "B", "C"],
+            {},
+            empirical_kc_max=False,
+            kc_max_overrides={"A": 0.90},
+        )
+        assert np.allclose(out, [0.90, 1.35, 1.35])
+
+
+def test_load_kc_max_overrides(tmp_path):
+    assert load_kc_max_overrides(None) is None
+    p = tmp_path / "kcmax.json"
+    p.write_text(json.dumps({"US-Tw3": 1.15, "SLM001": 0.90}))
+    out = load_kc_max_overrides(p)
+    assert out == {"US-Tw3": 1.15, "SLM001": 0.90}
