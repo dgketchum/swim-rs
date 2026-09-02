@@ -382,7 +382,7 @@ def main():
         "GridMET ETo, SNODAS SWE, and SSURGO soils via Earth Engine"
     )
     parser.add_argument("--shapefile", required=True, help="Fields shapefile (any CRS)")
-    parser.add_argument("--feature-id", default="OPENET_ID", help="Unique field ID column")
+    parser.add_argument("--feature-id", default="NWI_ID", help="Unique field ID column")
     parser.add_argument("--partition-col", default="FIPS", help="Column to partition exports by")
     parser.add_argument("--project", required=True, help="EE cloud project ID")
     parser.add_argument("--key-file", default=None, help="Optional EE service-account JSON key")
@@ -402,7 +402,13 @@ def main():
         default="landsat,sentinel",
         help="Comma-separated from landsat,sentinel (sentinel starts 2017)",
     )
-    parser.add_argument("--start-yr", type=int, default=1995, help="NDVI/ETo start year")
+    parser.add_argument(
+        "--start-yr",
+        type=int,
+        default=1985,
+        help="Landsat-NDVI/ETo start year (NWI POR; ETf/SWE/Sentinel clamp to "
+        "their own coverage starts, so 1985 spawns no empty tasks)",
+    )
     parser.add_argument("--end-yr", type=int, default=2025)
     parser.add_argument("--years", default=None, help="Comma-separated years (overrides start/end)")
     parser.add_argument("--fips", default=None, help="Run only these comma-separated FIPS codes")
