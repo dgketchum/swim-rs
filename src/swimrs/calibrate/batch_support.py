@@ -160,7 +160,12 @@ def get_uncovered_fids(
 
 
 def partition_fields(
-    shapefile, feature_id_col, batch_size=50, grouping_column=None, exclude_fids=None
+    shapefile,
+    feature_id_col,
+    batch_size=50,
+    grouping_column=None,
+    exclude_fids=None,
+    include_fids=None,
 ):
     """Partition fields into batches, optionally grouping by a column.
 
@@ -180,6 +185,11 @@ def partition_fields(
         Column for grid-cell grouping (e.g., "GFID"). None = sequential.
     exclude_fids : set[str] or None
         Field IDs to omit from all batches.
+    include_fids : set[str] or None
+        When given, only field IDs in this set are eligible (typically the
+        container's field UIDs — the shapefile may cover a larger network
+        than the container, and a batch with no container fields cannot
+        build).
 
     Returns
     -------
@@ -187,6 +197,13 @@ def partition_fields(
         Each inner list is a batch of field ID strings.
     """
     exclude_fids = set(exclude_fids or [])
+    include_fids = set(include_fids) if include_fids is not None else None
+
+    def _keep(fid):
+        if fid in exclude_fids:
+            return False
+        return include_fids is None or fid in include_fids
+
     gdf = gpd.read_file(str(shapefile), engine="fiona")
 
     if feature_id_col not in gdf.columns:
@@ -202,7 +219,7 @@ def partition_fields(
         groups: dict[str, list[str]] = {}
         for _, row in gdf.iterrows():
             fid = coerce_fid(row[feature_id_col])
-            if fid in exclude_fids:
+            if not _keep(fid):
                 continue
             gfid = coerce_fid(row[grouping_column])
             groups.setdefault(gfid, []).append(fid)
@@ -226,7 +243,7 @@ def partition_fields(
         all_fids = [
             coerce_fid(row[feature_id_col])
             for _, row in gdf.iterrows()
-            if coerce_fid(row[feature_id_col]) not in exclude_fids
+            if _keep(coerce_fid(row[feature_id_col]))
         ]
         batches = [all_fids[i : i + batch_size] for i in range(0, len(all_fids), batch_size)]
 

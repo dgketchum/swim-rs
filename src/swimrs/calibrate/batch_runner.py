@@ -269,6 +269,13 @@ def _open_and_subset(toml_path, container_path, batch_dir, fids):
     container = SwimContainer.open(str(container_path), mode="r")
     fid_set = set(fids)
     container._field_uids = [uid for uid in container._field_uids if uid in fid_set]
+    if not container._field_uids:
+        container.close()
+        raise ValueError(
+            f"None of the {len(fid_set)} batch field(s) exist in container "
+            f"{container_path}; the batch manifest likely predates the container "
+            f"or was partitioned from a shapefile covering a different network."
+        )
     return config, container
 
 
@@ -745,12 +752,22 @@ def calibrate_all(
         grouping_col = ctx.grouping_column
         shapefile = ctx.grouping_shapefile or ctx.fields_shapefile
 
+        # The shapefile may cover a larger network than the container; a
+        # batch with no container fields cannot build.
+        c = SwimContainer.open(ctx.container_path, mode="r")
+        try:
+            container_fids = set(c.field_uids)
+        finally:
+            c.close()
+        print(f"  Restricting manifest to {len(container_fids)} container field(s)")
+
         raw_batches = partition_fields(
             shapefile,
             ctx.feature_id_col,
             ctx.batch_size,
             grouping_column=grouping_col,
             exclude_fids=exclude_set,
+            include_fids=container_fids,
         )
         write_manifest(output_root, raw_batches, feature_id_col=ctx.feature_id_col)
         batches = list(enumerate(raw_batches))
@@ -1096,12 +1113,20 @@ def prep(ctx: BatchContext, *, exclude_uncovered=False, skip_fids_path=None):
         excluded_path.write_text(json.dumps(excluded_record, indent=2))
         print(f"  Wrote {excluded_path}")
 
+    c = SwimContainer.open(ctx.container_path, mode="r")
+    try:
+        container_fids = set(c.field_uids)
+    finally:
+        c.close()
+    print(f"  Restricting manifest to {len(container_fids)} container field(s)")
+
     raw_batches = partition_fields(
         ctx.grouping_shapefile or ctx.fields_shapefile,
         ctx.feature_id_col,
         ctx.batch_size,
         grouping_column=ctx.grouping_column,
         exclude_fids=exclude_set,
+        include_fids=container_fids,
     )
     manifest_path = write_manifest(output_root, raw_batches, feature_id_col=ctx.feature_id_col)
     print(f"Partitioned into {len(raw_batches)} batches:")
@@ -1210,16 +1235,23 @@ def main(argv=None):
 
     elif action == "build-all":
         from swimrs.calibrate.batch_support import load_batches_from_manifest, partition_fields
+        from swimrs.container.container import SwimContainer
 
         manifest_path = Path(ctx.output_root) / "batch_manifest.csv"
         if manifest_path.exists():
             batches = load_batches_from_manifest(ctx.output_root, ctx.feature_id_col)
         else:
+            c = SwimContainer.open(ctx.container_path, mode="r")
+            try:
+                container_fids = set(c.field_uids)
+            finally:
+                c.close()
             raw = partition_fields(
                 ctx.grouping_shapefile or ctx.fields_shapefile,
                 ctx.feature_id_col,
                 ctx.batch_size,
                 grouping_column=ctx.grouping_column,
+                include_fids=container_fids,
             )
             batches = list(enumerate(raw))
 

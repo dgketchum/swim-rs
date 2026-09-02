@@ -294,6 +294,42 @@ class TestPartitionFields:
         all_fids = [fid for batch in batches for fid in batch]
         assert len(all_fids) == 10
 
+    def test_include_fids_restricts_candidates(self, simple_shapefile):
+        """Only FIDs in include_fids are partitioned (container-restricted manifest)."""
+        batches = partition_fields(
+            simple_shapefile,
+            "site_id",
+            batch_size=10,
+            include_fids={"S1", "S3", "S5"},
+        )
+        all_fids = [fid for batch in batches for fid in batch]
+        assert sorted(all_fids) == ["S1", "S3", "S5"]
+        assert all(batch for batch in batches)
+
+    def test_include_and_exclude_compose(self, simple_shapefile):
+        """A FID must be in include_fids and not in exclude_fids to survive."""
+        batches = partition_fields(
+            simple_shapefile,
+            "site_id",
+            batch_size=10,
+            exclude_fids={"S1"},
+            include_fids={"S1", "S3", "S5"},
+        )
+        all_fids = [fid for batch in batches for fid in batch]
+        assert sorted(all_fids) == ["S3", "S5"]
+
+    def test_include_fids_grouped(self, simple_shapefile):
+        """include_fids also applies under GFID-grouped packing."""
+        batches = partition_fields(
+            simple_shapefile,
+            "site_id",
+            batch_size=5,
+            grouping_column="GFID",
+            include_fids={"S0", "S1", "S8"},
+        )
+        all_fids = [fid for batch in batches for fid in batch]
+        assert sorted(all_fids) == ["S0", "S1", "S8"]
+
 
 # ---------------------------------------------------------------------------
 # Manifest I/O
