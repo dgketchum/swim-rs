@@ -8,7 +8,7 @@ header and notes/nwi_ingest_plan.md):
     ndvi/sentinel/{mask}/ndvi_sentinel_{mask}_{year}.csv
     met/eto/eto_{year}.csv                    OpenET bias-corrected ETo (mm/day)
     snow/snodas/extracts/swe_{year}.csv       SNODAS SWE (meters)
-    properties/{landcover,irr,ssurgo}_{label}.csv
+    properties/{landcover,irr,ssurgo,cdl}_{label}.csv
 
 GridMET parquets ({GFID}.parquet) live at [paths.conus] met; the UID->GFID
 mapping comes from [paths.conus] gridmet_mapping.
@@ -312,6 +312,9 @@ def main() -> int:
             lulc_csv=config.lulc_csv,
             soils_csv=config.ssurgo_csv,
             irr_csv=config.irr_csv,
+            # Optional: units built before swim_nwi exported CDL have no such
+            # file, and config.cdl_csv is then None, which the ingestor skips.
+            cdl_csv=config.cdl_csv,
             uid_column=uid,
         )
 

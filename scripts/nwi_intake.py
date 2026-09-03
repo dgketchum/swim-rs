@@ -228,7 +228,7 @@ def check_unit(label, data_root, por_start, por_end, strict_nulls):
     )
 
     # properties ------------------------------------------------------------
-    for kind in ("irr", "landcover"):
+    for kind in ("irr", "landcover", "cdl"):
         p = root / "properties" / f"{kind}_{label}.csv"
         if not p.exists():
             rep.add("properties", f"{kind} present", False, f"missing {p}")

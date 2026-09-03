@@ -62,6 +62,7 @@ class ProjectConfig:
         self.irr_csv = None
         self.ssurgo_csv = None
         self.lulc_csv = None
+        self.cdl_csv = None
         self.properties_json = None
         self.snodas_in_dir = None
         self.snodas_out_json = None
@@ -341,6 +342,7 @@ class ProjectConfig:
         self.irr_csv = paths_conus_conf.get("irr") or paths_conf.get("irr")
         self.ssurgo_csv = paths_conus_conf.get("ssurgo") or paths_conf.get("ssurgo")
         self.lulc_csv = paths_conf.get("lulc")
+        self.cdl_csv = paths_conus_conf.get("cdl") or paths_conf.get("cdl")
         self.properties_json = paths_conf.get("properties_json")
         # HWSD for international
         self.hwsd_csv = paths_conf.get("hwsd")
