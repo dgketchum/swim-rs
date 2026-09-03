@@ -43,6 +43,7 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+from shapely.geometry import box as shapely_box
 
 # gridMET CONUS grid geometry (south-origin, 1/24 degree, 1386 columns).
 GRIDMET_LAT0 = 25.066667
@@ -76,8 +77,14 @@ def latlon_to_gfid(lat, lon):
 
 
 def select_fields(shapefile, fips=None, partitions=None, data_root=DEFAULT_DATA_ROOT):
-    """Subset the statewide fields shapefile by FIPS code(s) or partition label(s)."""
+    """Subset the statewide fields shapefile by FIPS code(s) or partition label(s).
+
+    With neither filter, every field in the shapefile is returned — the
+    statewide case.
+    """
     gdf = gpd.read_file(shapefile, engine="fiona")
+    if not fips and not partitions:
+        return gdf
     if fips:
         codes = {str(f).strip() for f in fips}
         sub = gdf[gdf["FIPS"].astype(str).isin(codes)].copy()
@@ -134,6 +141,42 @@ def build_mapping(fields):
     cells["LAT"], cells["LON"] = gfid_to_latlon(cells["GFID"].values)
     print(f"{len(per_field)} fields -> {len(cells)} unique GridMET cells")
     return per_field, cells
+
+
+def intersecting_cells(fields):
+    """Every gridMET cell whose 4 km footprint intersects a field polygon.
+
+    ``build_mapping`` assigns one cell per field from its centroid, which is
+    what the model uses for forcing. This is the superset: a 4 km cell is
+    coarse enough that a field near a cell edge overlaps neighbours the
+    centroid rule never names. Fetching the superset costs little and makes
+    the store robust to a future change in the field-to-cell rule (e.g.
+    area-weighted rather than centroid).
+    """
+    wgs = fields.to_crs("EPSG:4326")
+    minx, miny, maxx, maxy = wgs.total_bounds
+    # One cell of slack each way so an edge-touching field cannot fall outside
+    # the candidate block.
+    c0 = int(np.floor((minx - GRIDMET_LON0) / GRIDMET_RES)) - 1
+    c1 = int(np.ceil((maxx - GRIDMET_LON0) / GRIDMET_RES)) + 1
+    r0 = int(np.floor((miny - GRIDMET_LAT0) / GRIDMET_RES)) - 1
+    r1 = int(np.ceil((maxy - GRIDMET_LAT0) / GRIDMET_RES)) + 1
+
+    half = GRIDMET_RES / 2.0
+    gfids, boxes = [], []
+    for row in range(r0, r1 + 1):
+        for col in range(c0, c1 + 1):
+            lon = GRIDMET_LON0 + col * GRIDMET_RES
+            lat = GRIDMET_LAT0 + row * GRIDMET_RES
+            gfids.append(row * GRIDMET_NCOLS + col)
+            boxes.append(shapely_box(lon - half, lat - half, lon + half, lat + half))
+
+    grid = gpd.GeoDataFrame({"GFID": gfids}, geometry=boxes, crs="EPSG:4326")
+    hit = gpd.sjoin(grid, wgs[["geometry"]], predicate="intersects", how="inner")
+    cells = pd.DataFrame({"GFID": np.unique(hit["GFID"].to_numpy())})
+    cells["LAT"], cells["LON"] = gfid_to_latlon(cells["GFID"].values)
+    print(f"{len(grid)} candidate cells over the field bbox -> {len(cells)} intersect a field")
+    return cells
 
 
 def write_cell_input(cells, path):
@@ -280,6 +323,19 @@ def main():
     ap.add_argument("--attempts", type=int, default=3, help="download passes before giving up")
     ap.add_argument("--sweep-only", action="store_true", help="verify, do not download")
     ap.add_argument(
+        "--statewide",
+        action="store_true",
+        help="every field in the shapefile; mutually exclusive with --fips/--partitions",
+    )
+    ap.add_argument(
+        "--intersecting",
+        action="store_true",
+        help=(
+            "fetch every cell whose 4 km footprint intersects a field, not just the "
+            "centroid-assigned cell for each field"
+        ),
+    )
+    ap.add_argument(
         "--copy-from",
         default="/project/handily/swim/data/32009/met_timeseries/gridmet",
         help="comma-separated precedent parquet dirs to copy from before downloading",
@@ -288,14 +344,35 @@ def main():
     ap.add_argument("--mapping-csv", default=None, help="optional path for the field->GFID table")
     args = ap.parse_args()
 
-    if not args.fips and not args.partitions:
-        raise SystemExit("one of --fips or --partitions is required")
+    if args.statewide and (args.fips or args.partitions):
+        raise SystemExit("--statewide is mutually exclusive with --fips/--partitions")
+    if not args.statewide and not args.fips and not args.partitions:
+        raise SystemExit("one of --statewide, --fips or --partitions is required")
 
     t0 = time.time()
     fips = [s for s in (args.fips or "").split(",") if s]
     partitions = [s for s in (args.partitions or "").split(",") if s]
     fields = select_fields(args.shapefile, fips, partitions, args.data_root)
+    # per_field is always centroid-based: that is the model's field-to-cell
+    # assignment, and the DRI cross-check is defined against it. --intersecting
+    # only widens the set of cells fetched.
     per_field, cells = build_mapping(fields)
+    if args.intersecting:
+        centroid_cells = set(cells["GFID"].astype(int))
+        cells = intersecting_cells(fields)
+        wider = set(cells["GFID"].astype(int))
+        missing = centroid_cells - wider
+        print(
+            f"--intersecting: {len(wider)} cells "
+            f"({len(wider) - len(centroid_cells):+d} vs centroid assignment)"
+        )
+        if missing:
+            # A centroid-assigned cell that no field polygon intersects means the
+            # two rules disagree about a field, which is worth failing on.
+            raise SystemExit(
+                f"{len(missing)} centroid-assigned cell(s) absent from the intersecting "
+                f"set: {sorted(missing)[:20]}"
+            )
     gfids = cells["GFID"].astype(int).tolist()
 
     dest = Path(args.dest)

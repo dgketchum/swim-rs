@@ -35,15 +35,28 @@ from swimrs.swim.config import ProjectConfig
 _ITER_RE = re.compile(r"\.(\d+)\.par\.csv$")
 
 
-def _best_par_csv(archive_dir: Path) -> Path | None:
-    """Best-phi iteration .par.csv from an archived batch (min mean measured phi)."""
+def _best_par_csv(archive_dir: Path, max_iteration: int | None = None) -> Path | None:
+    """Best-phi iteration .par.csv from an archived batch (min mean measured phi).
+
+    ``max_iteration`` caps the iterations considered, matching
+    ``batch_support.find_par_csv``. IES iterations are sequential, so a
+    ``noptmax N`` archive restricted to iterations <= M is exactly what a
+    ``noptmax M`` run would have produced — which is what makes the exported
+    ensemble describe the same iteration the container ingested. Without the
+    cap an archive from a longer run exports iteration 3 spread alongside
+    iteration 2 medians.
+    """
     par_files = [f for f in archive_dir.glob("*.par.csv") if _ITER_RE.search(f.name)]
+    if max_iteration is not None:
+        par_files = [f for f in par_files if int(_ITER_RE.search(f.name).group(1)) <= max_iteration]
     if not par_files:
         return None
     phi_files = list(archive_dir.glob("*.phi.meas.csv"))
     if phi_files:
         try:
             phi = pd.read_csv(phi_files[0]).dropna(subset=["mean"])
+            if max_iteration is not None:
+                phi = phi.loc[phi["iteration"] <= max_iteration]
             best = int(phi.loc[phi["mean"].idxmin(), "iteration"])
             for f in par_files:
                 if int(_ITER_RE.search(f.name).group(1)) == best:
@@ -87,6 +100,15 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", required=True)
     ap.add_argument("--out-dir", default=None, help="Default: {pest_run_dir}/posterior")
+    ap.add_argument(
+        "--max-iteration",
+        type=int,
+        default=None,
+        help=(
+            "cap the archived IES iteration exported, so the ensemble matches a "
+            "container ingested with the same cap (e.g. 2 for noptmax 2)"
+        ),
+    )
     args = ap.parse_args()
 
     config = ProjectConfig()
@@ -119,7 +141,7 @@ def main() -> int:
     archive_root = Path(config.pest_run_dir) / "pest_archive"
     frames = []
     for batch_dir in sorted(archive_root.glob("batch_*")):
-        par_csv = _best_par_csv(batch_dir)
+        par_csv = _best_par_csv(batch_dir, max_iteration=args.max_iteration)
         if par_csv is None:
             print(f"  WARNING: no .par.csv in {batch_dir}")
             continue
