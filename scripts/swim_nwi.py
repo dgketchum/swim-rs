@@ -31,6 +31,7 @@
 import argparse
 import math
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -79,6 +80,101 @@ CHUNK_SIZE = 900  # fields per export partition (EE payload limit)
 CHUNK_SUFFIXES = "abcdefghijklmnopqrstuvwxyz"
 WAIT_MINUTES = 10
 MAX_RETRIES = 6
+
+
+def list_existing(bucket, prefix):
+    """Object names already under the destination prefix, for --resume.
+
+    Shells out to gsutil rather than google-cloud-storage: gsutil picks up the
+    gcloud user credentials already configured here, while the storage client
+    wants application-default credentials that are not set up on this host.
+    """
+    uri = f"gs://{bucket}/{prefix}/**"
+    try:
+        out = subprocess.run(
+            ["gsutil", "ls", "-r", uri], capture_output=True, text=True, timeout=3600
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"WARNING: could not list {uri} ({exc}); resume disabled")
+        return set()
+    if out.returncode != 0:
+        tail = out.stderr.strip().splitlines()[-1:] or ["unknown error"]
+        print(f"WARNING: gsutil ls failed ({tail[0]}); resume disabled")
+        return set()
+    head = f"gs://{bucket}/"
+    return {
+        ln.strip()[len(head) :]
+        for ln in out.stdout.splitlines()
+        if ln.strip().endswith(".csv") and ln.strip().startswith(head)
+    }
+
+
+def pending_tasks():
+    """EE operations not yet finished. Returns None if the count is unavailable."""
+    try:
+        ops = ee.data.listOperations()
+    except Exception as exc:  # noqa: BLE001 - listOperations raises broadly
+        print(f"  WARNING: cannot read task list ({exc}); throttle skipped this round")
+        return None
+    return sum(1 for o in ops if o.get("metadata", {}).get("state") in ("PENDING", "RUNNING"))
+
+
+class Gate:
+    """Skip-existing and pending-task throttle for a many-thousand-task run.
+
+    Two failure modes this exists for. First, EE caps how many tasks may be
+    queued at once; a statewide run submits far more than that, and without
+    backpressure the overflow surfaces as errors that _retry can only stall
+    on (6 attempts x 10 min) before killing the run. Second, a run that dies
+    at task 20,000 has no way to pick up, because nothing records what was
+    already submitted -- so the destination prefix is used as the record.
+
+    An existing object means a *completed* export. Tasks still queued or
+    running have written nothing yet, so a resume started while the previous
+    run's tasks are still draining will resubmit them; wait for the queue to
+    empty before resuming.
+    """
+
+    def __init__(
+        self, bucket, prefix, resume=False, max_pending=2500, poll_every=50, poll_seconds=120
+    ):
+        self.bucket = bucket
+        self.prefix = prefix
+        self.max_pending = max_pending
+        self.poll_every = poll_every
+        self.poll_seconds = poll_seconds
+        self.submitted = 0
+        self.skipped = 0
+        self.empty = 0
+        self._since_poll = poll_every  # force a check before the first submission
+        self.existing = list_existing(bucket, prefix) if resume else set()
+        if resume:
+            print(f"resume: {len(self.existing)} CSVs already under gs://{bucket}/{prefix}/")
+
+    def done(self, name):
+        """True if this export's output is already in the bucket."""
+        if name in self.existing:
+            self.skipped += 1
+            return True
+        return False
+
+    def before_submit(self):
+        """Block until the pending-task count is under the cap."""
+        if not self.max_pending:
+            return
+        if self._since_poll < self.poll_every:
+            self._since_poll += 1
+            return
+        self._since_poll = 1
+        while True:
+            n = pending_tasks()
+            if n is None or n < self.max_pending:
+                return
+            print(
+                f"  {n} tasks pending >= cap {self.max_pending}; waiting {self.poll_seconds}s",
+                flush=True,
+            )
+            time.sleep(self.poll_seconds)
 
 
 def _retry(fn, desc):
@@ -180,15 +276,22 @@ def apply_mask(coll, mask_type, year, min_yr_mask):
     return coll.map(lambda img, _m=mask: img.updateMask(_m))
 
 
-def export_wide(coll, fc, feature_id, desc, fn_prefix, bucket, date_columns=False):
+def export_wide(coll, fc, feature_id, desc, fn_prefix, bucket, date_columns=False, gate=None):
     """Export one wide CSV: rows=fields, columns=sorted scene/date ids.
 
-    Returns 1 if an export task started, 0 if the collection was empty.
+    Returns 1 if an export task started, 0 if it was skipped or the collection
+    was empty.
     """
+    if gate is not None and gate.done(f"{fn_prefix}.csv"):
+        return 0
+    # The scene list costs a synchronous EE round trip, so the resume check
+    # goes first: a skipped export should cost nothing at all.
     scenes = _retry(lambda: coll.aggregate_histogram("system:index").getInfo(), desc)
     band_names = sorted(scenes.keys())
     if not band_names:
         print(f"  {desc}: no images, skipping")
+        if gate is not None:
+            gate.empty += 1
         return 0
 
     cols = band_names
@@ -199,6 +302,8 @@ def export_wide(coll, fc, feature_id, desc, fn_prefix, bucket, date_columns=Fals
 
     bands = coll.toBands().rename(cols)
     data = bands.reduceRegions(collection=fc, reducer=ee.Reducer.mean(), scale=30, tileScale=8)
+    if gate is not None:
+        gate.before_submit()
     _retry(
         lambda: export_table(
             data,
@@ -210,6 +315,8 @@ def export_wide(coll, fc, feature_id, desc, fn_prefix, bucket, date_columns=Fals
         ),
         desc,
     )
+    if gate is not None:
+        gate.submitted += 1
     return 1
 
 
@@ -244,7 +351,7 @@ def etf_collection(model, year, fc):
     return coll.map(lambda img, _m=model: _normalize_etf(_m, img))
 
 
-def run_etf(fc, label, args, min_yr_mask, years):
+def run_etf(fc, label, args, min_yr_mask, years, gate=None):
     n = 0
     for model in args.model_list:
         for mask_type in args.mask_list:
@@ -258,11 +365,12 @@ def run_etf(fc, label, args, min_yr_mask, years):
                     desc=f"{label}_{stem}",
                     fn_prefix=f"{args.file_prefix}/{label}/etf/{mask_type}/{stem}",
                     bucket=args.bucket,
+                    gate=gate,
                 )
     return n
 
 
-def run_ndvi(fc, label, args, min_yr_mask, years):
+def run_ndvi(fc, label, args, min_yr_mask, years, gate=None):
     n = 0
     for instrument in args.instrument_list:
         if instrument == "landsat":
@@ -287,11 +395,12 @@ def run_ndvi(fc, label, args, min_yr_mask, years):
                     desc=f"{label}_{stem}",
                     fn_prefix=f"{args.file_prefix}/{label}/{subdir}/{mask_type}/{stem}",
                     bucket=args.bucket,
+                    gate=gate,
                 )
     return n
 
 
-def run_eto(fc, label, args, years):
+def run_eto(fc, label, args, years, gate=None):
     n = 0
     for year in years:
         coll = ee.ImageCollection(REFET).filterDate(f"{year}-01-01", f"{year + 1}-01-01")
@@ -303,11 +412,12 @@ def run_eto(fc, label, args, years):
             fn_prefix=f"{args.file_prefix}/{label}/met/eto/eto_{year}",
             bucket=args.bucket,
             date_columns=True,
+            gate=gate,
         )
     return n
 
 
-def run_swe(fc, label, args, years):
+def run_swe(fc, label, args, years, gate=None):
     n = 0
     for year in years:
         coll = ee.ImageCollection(SNODAS).filterDate(f"{year}-01-01", f"{year + 1}-01-01")
@@ -319,11 +429,17 @@ def run_swe(fc, label, args, years):
             fn_prefix=f"{args.file_prefix}/{label}/snow/snodas/extracts/swe_{year}",
             bucket=args.bucket,
             date_columns=True,
+            gate=gate,
         )
     return n
 
 
-def run_soils(fc, label, args):
+def run_soils(fc, label, args, gate=None):
+    if gate is not None and gate.done(f"{args.file_prefix}/{label}/properties/ssurgo_{label}.csv"):
+        return 0
+    if gate is not None:
+        gate.before_submit()
+        gate.submitted += 1
     get_ssurgo(
         fc,
         desc=f"ssurgo_{label}",
@@ -335,16 +451,30 @@ def run_soils(fc, label, args):
     return 1
 
 
-def run_props(fc, label, args):
+def run_props(fc, label, args, gate=None):
     """Landcover (MODIS/GLC10 mode) and per-year IrrMapper irrigation fraction."""
-    get_landcover(
-        fc,
-        desc=f"landcover_{label}",
-        selector=args.feature_id,
-        dest="bucket",
-        bucket=args.bucket,
-        file_prefix=f"{args.file_prefix}/{label}",
-    )
+    n = 0
+    base = f"{args.file_prefix}/{label}/properties"
+    if gate is not None and gate.done(f"{base}/landcover_{label}.csv"):
+        pass
+    else:
+        if gate is not None:
+            gate.before_submit()
+            gate.submitted += 1
+        n += 1
+        get_landcover(
+            fc,
+            desc=f"landcover_{label}",
+            selector=args.feature_id,
+            dest="bucket",
+            bucket=args.bucket,
+            file_prefix=f"{args.file_prefix}/{label}",
+        )
+    if gate is not None and gate.done(f"{base}/irr_{label}.csv"):
+        return n
+    if gate is not None:
+        gate.before_submit()
+        gate.submitted += 1
     get_irrigation(
         fc,
         desc=f"irr_{label}",
@@ -356,7 +486,7 @@ def run_props(fc, label, args):
         start_year=IRR_START_YR,
         end_year=IRR_MAX_YEAR,
     )
-    return 2
+    return n + 1
 
 
 def export_min_yr_mask(shapefile, asset):
@@ -421,6 +551,24 @@ def main():
         action="store_true",
         help="Export the min-yr mask to --min-yr-asset and exit",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip exports whose CSV is already in the bucket (lists the prefix first). "
+        "Only completed exports leave objects, so let a previous run's queue drain first.",
+    )
+    parser.add_argument(
+        "--max-pending",
+        type=int,
+        default=2500,
+        help="Wait rather than submit when this many EE tasks are pending/running (0 disables)",
+    )
+    parser.add_argument(
+        "--poll-every",
+        type=int,
+        default=50,
+        help="Submissions between pending-task checks",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print the export plan and exit")
     args = parser.parse_args()
 
@@ -480,7 +628,11 @@ def main():
         "props": 2,
     }
     plan = {t: len(partitions) * per_partition[t] for t in targets}
-    print(f"{len(partitions)} partitions, {len(gdf)} fields -> {sum(plan.values())} export tasks")
+    # Count fields in the *selected* partitions: with --fips/--partitions the
+    # shapefile total is not what this run covers, and that header line is what
+    # a reader checks the request against.
+    n_fields = sum(len(f) for _, f in partitions)
+    print(f"{len(partitions)} partitions, {n_fields} fields -> {sum(plan.values())} export tasks")
     for t in targets:
         print(f"  {t}: {plan[t]}")
     if args.dry_run:
@@ -494,24 +646,34 @@ def main():
     if {"etf", "ndvi"} & set(targets):
         min_yr_mask = load_min_yr_mask(args.min_yr_asset)
 
+    gate = Gate(
+        args.bucket,
+        args.file_prefix,
+        resume=args.resume,
+        max_pending=args.max_pending,
+        poll_every=args.poll_every,
+    )
+
     started = 0
     for label, fids in partitions:
         print(f"\n=== {label} ({len(fids)} fields) ===", flush=True)
         fc = to_fc(gdf[gdf[args.feature_id].isin(fids)], args.feature_id)
         if "etf" in targets:
-            started += run_etf(fc, label, args, min_yr_mask, etf_years)
+            started += run_etf(fc, label, args, min_yr_mask, etf_years, gate=gate)
         if "ndvi" in targets:
-            started += run_ndvi(fc, label, args, min_yr_mask, years)
+            started += run_ndvi(fc, label, args, min_yr_mask, years, gate=gate)
         if "eto" in targets:
-            started += run_eto(fc, label, args, years)
+            started += run_eto(fc, label, args, years, gate=gate)
         if "swe" in targets:
-            started += run_swe(fc, label, args, swe_years)
+            started += run_swe(fc, label, args, swe_years, gate=gate)
         if "soils" in targets:
-            started += run_soils(fc, label, args)
+            started += run_soils(fc, label, args, gate=gate)
         if "props" in targets:
-            started += run_props(fc, label, args)
+            started += run_props(fc, label, args, gate=gate)
 
     print(f"\nStarted {started} export tasks to gs://{args.bucket}/{args.file_prefix}/")
+    print(f"  skipped (already in bucket): {gate.skipped}")
+    print(f"  skipped (collection empty):  {gate.empty}")
 
 
 if __name__ == "__main__":
