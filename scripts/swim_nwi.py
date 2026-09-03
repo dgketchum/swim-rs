@@ -637,6 +637,11 @@ def main():
     parser.add_argument(
         "--partitions", default=None, help="Run only these partition labels; overrides --fips"
     )
+    parser.add_argument(
+        "--exclude-fips",
+        default=None,
+        help="Drop these comma-separated FIPS codes, applied after --fips/--partitions",
+    )
     parser.add_argument("--min-yr-asset", default=IRR_MIN_YR_ASSET)
     parser.add_argument(
         "--uncovered",
@@ -718,6 +723,15 @@ def main():
     elif args.fips:
         keep = {f.strip() for f in args.fips.split(",")}
         partitions = [(lbl, fids) for lbl, fids in partitions if lbl.rstrip(CHUNK_SUFFIXES) in keep]
+
+    # Applied last so it composes with the include filters above, and so the
+    # remaining scope stays whatever the mask covers rather than a hand-kept
+    # list that goes stale when the mask is re-exported.
+    if args.exclude_fips:
+        drop = {f.strip() for f in args.exclude_fips.split(",")}
+        partitions = [
+            (lbl, fids) for lbl, fids in partitions if lbl.rstrip(CHUNK_SUFFIXES) not in drop
+        ]
 
     if {"etf", "ndvi"} & set(targets) and args.uncovered != "include":
         partitions, outside = check_mask_coverage(
