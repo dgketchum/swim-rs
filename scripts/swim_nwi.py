@@ -12,6 +12,7 @@
 #   {prefix}/{label}/properties/ssurgo_{label}.csv              SSURGO awc/ksat/clay/sand
 #   {prefix}/{label}/properties/landcover_{label}.csv           MODIS + FROM-GLC10 mode landcover
 #   {prefix}/{label}/properties/irr_{label}.csv                 IrrMapper irrigation fraction per year
+#   {prefix}/{label}/properties/cdl_{label}.csv                 USDA CDL crop class per year (2008+)
 #
 # Irrigation masks come from IrrMapper in EE (irr = irrigated this year AND
 # >=5 years over the full IrrMapper record; inv_irr = not irrigated this
@@ -45,7 +46,12 @@ except ImportError:  # running from a checkout without an installed package
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from swimrs.data_extraction.ee.common import export_table, load_shapefile
-from swimrs.data_extraction.ee.ee_props import get_irrigation, get_landcover, get_ssurgo
+from swimrs.data_extraction.ee.ee_props import (
+    get_cdl,
+    get_irrigation,
+    get_landcover,
+    get_ssurgo,
+)
 from swimrs.data_extraction.ee.ee_utils import landsat_masked, sentinel2_masked
 
 IRR = "projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp"
@@ -75,7 +81,7 @@ SWE_START_YR = 2004  # SNODAS coverage
 SENTINEL_START_YR = 2017  # S2 SR archive (Ex5 convention)
 IRR_START_YR = 1985  # IrrMapper record start (irrigation-fraction export)
 
-TARGETS = ["etf", "ndvi", "eto", "swe", "soils", "props"]
+TARGETS = ["etf", "ndvi", "eto", "swe", "soils", "props", "cdl"]
 CHUNK_SIZE = 900  # fields per export partition (EE payload limit)
 CHUNK_SUFFIXES = "abcdefghijklmnopqrstuvwxyz"
 WAIT_MINUTES = 10
@@ -545,6 +551,30 @@ def run_props(fc, label, args, gate=None):
     return n + 1
 
 
+def run_cdl(fc, label, args, gate=None):
+    """USDA CDL crop class per year, 2008 through the latest published year.
+
+    Feeds the cdl_cultivated override in the container exporter, which can
+    rescue a unit from perennial mechanics but never push one into them. Note
+    get_cdl resolves the year list with its own getInfo, so this costs one
+    extra round trip per partition.
+    """
+    if gate is not None and gate.done(f"{args.file_prefix}/{label}/properties/cdl_{label}.csv"):
+        return 0
+    if gate is not None:
+        gate.before_submit()
+        gate.submitted += 1
+    get_cdl(
+        fc,
+        desc=f"cdl_{label}",
+        selector=args.feature_id,
+        dest="bucket",
+        bucket=args.bucket,
+        file_prefix=f"{args.file_prefix}/{label}",
+    )
+    return 1
+
+
 def export_min_yr_mask(shapefile, asset):
     """One-time export of the IrrMapper min-yr mask over the shapefile bounds."""
     coll = ee.ImageCollection(IRR)
@@ -717,6 +747,7 @@ def main():
         "swe": len(swe_years),
         "soils": 1,
         "props": 2,
+        "cdl": 1,
     }
     plan = {t: len(partitions) * per_partition[t] for t in targets}
     # Count fields in the *selected* partitions: with --fips/--partitions the
@@ -761,6 +792,8 @@ def main():
             started += run_soils(fc, label, args, gate=gate)
         if "props" in targets:
             started += run_props(fc, label, args, gate=gate)
+        if "cdl" in targets:
+            started += run_cdl(fc, label, args, gate=gate)
 
     print(f"\nStarted {started} export tasks to gs://{args.bucket}/{args.file_prefix}/")
     print(f"  skipped (already in bucket): {gate.skipped}")
