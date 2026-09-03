@@ -404,6 +404,10 @@ def get_landcover(
 ) -> None:
     """Export dominant landcover from MODIS and FROM-GLC10 per feature.
 
+    ``modis_lc`` is the modal MCD12Q1 LC_Type1 class over the full annual
+    record (2001 onward), reduced again by spatial mode within each field.
+    ``glc10_lc`` is FROM-GLC10, a single 2017 epoch with no time dimension.
+
     Parameters
     - fields: ee.FeatureCollection asset path or object.
     - desc: filename prefix for the export.
@@ -421,7 +425,15 @@ def get_landcover(
     if select is not None:
         plots = plots.filter(ee.Filter.inList(selector, select))
 
-    vtype = ee.ImageCollection("MODIS/061/MCD12Q1").select("LC_Type1").first().rename("modis_lc")
+    # Modal class over the whole MCD12Q1 record. This was .first(), which
+    # pinned every export to the 2001 image -- one year, and the oldest one, of
+    # a 24-year annual series. The container stores a single integer per field
+    # at properties/land_cover/modis_lc, so the series has to collapse to one
+    # value: per-pixel temporal mode here, then spatial mode over the field in
+    # the reduceRegions below.
+    vtype = (
+        ee.ImageCollection("MODIS/061/MCD12Q1").select("LC_Type1").mode().rename("modis_lc")
+    )
     vtype = vtype.addBands(
         [ee.ImageCollection("projects/sat-io/open-datasets/FROM-GLC10").mosaic().rename("glc10_lc")]
     )
