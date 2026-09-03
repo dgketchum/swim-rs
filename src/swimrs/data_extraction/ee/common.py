@@ -203,14 +203,22 @@ def setup_irrigation_masks() -> tuple[ee.ImageCollection, ee.Image, ee.Image, ee
     """
     Initialize Earth Engine irrigation mask resources.
 
+    ``irr_min_yr_mask`` is the persistence filter: pixels IrrMapper classified
+    irrigated in >= 5 years of its full record. It carries no year of its own;
+    :func:`get_irrigation_mask` intersects it with the single-year mosaic.
+
     Returns
     -------
     tuple
         (irr_coll, irr_min_yr_mask, lanid, east_fc) - EE objects for irrigation masking.
     """
     irr_coll = ee.ImageCollection(IRR)
-    s, e = "1987-01-01", "2025-12-31"
-    remap = irr_coll.filterDate(s, e).select("classification").map(lambda img: img.lt(1))
+    # Full record, no date filter -- this must match how the deployed asset was
+    # built (scripts/swim_nwi.py::export_min_yr_mask, also unfiltered), or the
+    # live mask and the asset disagree. The old "1987-01-01"/"2025-12-31" window
+    # dropped IrrMapper's 1985 and 1986 images and hardcoded an end year that
+    # goes stale as soon as a new year is ingested.
+    remap = irr_coll.select("classification").map(lambda img: img.lt(1))
     irr_min_yr_mask = remap.sum().gte(5)
     east_fc = ee.FeatureCollection(EAST_STATES_FC)
     lanid = get_lanid()
