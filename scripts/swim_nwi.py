@@ -243,6 +243,62 @@ def load_min_yr_mask(asset):
         return coll.select("classification").map(lambda i: i.lt(1)).sum().gte(5)
 
 
+COVERAGE_SAMPLE = 40  # representative points probed per partition
+
+
+def check_mask_coverage(gdf, partitions, feature_id, asset, sample=COVERAGE_SAMPLE):
+    """Split partitions by whether the min-yr mask actually has data over them.
+
+    A bounding-box test is not enough. The deployed asset spans a rectangle
+    around Nevada, but that rectangle's eastern-California corner reads back
+    null -- three CA counties sit inside the bbox with no mask data at all.
+    Where the mask is defined it is 0/1 and never null, so probing a spread of
+    fields per partition separates the two cases cleanly in one round trip.
+
+    Fields outside the mask do not fail loudly: the collection is still
+    non-empty, so the irr export writes a CSV of nulls, which is
+    indistinguishable downstream from a genuinely dry field.
+    """
+    img = ee.Image(asset).rename("cov")
+    feats, probed = [], {}
+    for label, fids in partitions:
+        sub = gdf[gdf[feature_id].isin(fids)]
+        step = max(1, len(sub) // sample)
+        pts = list(sub.geometry.representative_point().iloc[::step])[:sample]
+        probed[label] = len(pts)
+        feats += [ee.Feature(ee.Geometry.Point([p.x, p.y]), {"part": label}) for p in pts]
+
+    try:
+        res = _retry(
+            lambda: img.reduceRegions(
+                collection=ee.FeatureCollection(feats),
+                # setOutputs, not the band name: a single-band reduceRegions
+                # writes its result to "first" regardless of what the band is
+                # called, and reading the wrong key looks exactly like no data.
+                reducer=ee.Reducer.first().setOutputs(["cov"]),
+                scale=30,
+            ).getInfo(),
+            "mask coverage probe",
+        )
+    except ee.ee_exception.EEException as exc:
+        print(f"WARNING: mask coverage probe failed ({exc}); coverage check skipped")
+        return partitions, []
+
+    hits = dict.fromkeys(probed, 0)
+    for f in res["features"]:
+        if f["properties"].get("cov") is not None:
+            hits[f["properties"]["part"]] += 1
+
+    inside, outside = [], []
+    for label, fids in partitions:
+        frac = hits[label] / probed[label] if probed[label] else 0.0
+        if frac == 1.0:
+            inside.append((label, fids))
+        else:
+            outside.append((label, fids, frac))
+    return inside, outside
+
+
 def detect_irr_max_year():
     """Set IRR_MAX_YEAR to the latest year present in the IrrMapper collection."""
     global IRR_MAX_YEAR
@@ -517,7 +573,13 @@ def main():
     parser.add_argument("--project", required=True, help="EE cloud project ID")
     parser.add_argument("--key-file", default=None, help="Optional EE service-account JSON key")
     parser.add_argument("--bucket", required=True, help="GCS bucket for exports")
-    parser.add_argument("--file-prefix", default="nv", help="Path prefix within the bucket")
+    parser.add_argument(
+        "--file-prefix",
+        default="nwi/data",
+        help="Path prefix within the bucket. The default is the canonical NWI "
+        "location that nwi_build_container.py reads; the older 'nv' prefix holds "
+        "a partial Feb 2026 pull whose chunk labels no longer match this shapefile",
+    )
     parser.add_argument(
         "--targets", default="all", help=f"Comma-separated from {TARGETS}, or 'all'"
     )
@@ -546,6 +608,13 @@ def main():
         "--partitions", default=None, help="Run only these partition labels; overrides --fips"
     )
     parser.add_argument("--min-yr-asset", default=IRR_MIN_YR_ASSET)
+    parser.add_argument(
+        "--uncovered",
+        choices=["skip", "fail", "include"],
+        default="skip",
+        help="What to do with partitions reaching outside the min-yr mask asset: "
+        "skip them (default), abort, or export them anyway and accept null irr rows",
+    )
     parser.add_argument(
         "--export-mask",
         action="store_true",
@@ -593,7 +662,10 @@ def main():
     swe_years = [y for y in years if y >= SWE_START_YR]
 
     sys.setrecursionlimit(5000)
-    if not args.dry_run or args.export_mask:
+    # Initialize even for --dry-run: the plan is only truthful if the mask
+    # coverage check has run, and that needs one read of the asset bounds.
+    # A dry run still submits nothing.
+    if True:
         if args.key_file:
             creds = ee.ServiceAccountCredentials(None, args.key_file)
             ee.Initialize(creds, project=args.project)
@@ -616,6 +688,25 @@ def main():
     elif args.fips:
         keep = {f.strip() for f in args.fips.split(",")}
         partitions = [(lbl, fids) for lbl, fids in partitions if lbl.rstrip(CHUNK_SUFFIXES) in keep]
+
+    if {"etf", "ndvi"} & set(targets) and args.uncovered != "include":
+        partitions, outside = check_mask_coverage(
+            gdf, partitions, args.feature_id, args.min_yr_asset
+        )
+        if outside:
+            n_out = sum(len(f) for _, f, _ in outside)
+            print(
+                f"{len(outside)} partitions ({n_out} fields) are not covered by the "
+                f"min-yr mask {args.min_yr_asset}:"
+            )
+            for label, fids, frac in sorted(outside, key=lambda r: r[2]):
+                print(f"  {label}: {len(fids)} fields, mask present at {frac:.0%} of probes")
+            if args.uncovered == "fail":
+                sys.exit(
+                    "Aborting: re-export the mask over the wider bounds "
+                    "(--export-mask --min-yr-asset ...), or pass --uncovered skip"
+                )
+            print("  skipped; their irr exports would be null-filled, not empty\n")
 
     sentinel_years = [y for y in years if y >= SENTINEL_START_YR]
     per_partition = {
