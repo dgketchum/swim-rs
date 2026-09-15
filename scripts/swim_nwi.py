@@ -8,6 +8,7 @@
 #   {prefix}/{label}/ndvi/{mask}/ndvi_{mask}_{year}.csv         harmonized Landsat NDVI
 #   {prefix}/{label}/ndvi/sentinel/{mask}/ndvi_sentinel_{mask}_{year}.csv  Sentinel-2 NDVI (2017+)
 #   {prefix}/{label}/met/eto/eto_{year}.csv                     OpenET bias-corrected GridMET ETo (mm)
+#   {prefix}/{label}/met/ppt/ppt_{year}.csv                     PRISM ANd daily precipitation (mm)
 #   {prefix}/{label}/snow/snodas/extracts/swe_{year}.csv        SNODAS SWE (meters)
 #   {prefix}/{label}/properties/ssurgo_{label}.csv              SSURGO awc/ksat/clay/sand
 #   {prefix}/{label}/properties/landcover_{label}.csv           MODIS + FROM-GLC10 mode landcover
@@ -75,13 +76,20 @@ ENSEMBLE_MODELS = {"ensemble"}  # band et_ensemble_mad / 10000
 # OpenET bias-corrected GridMET daily reference ET
 REFET = "projects/openet/assets/reference_et/conus/gridmet/daily/v1"
 SNODAS = "projects/earthengine-legacy/assets/projects/climate-engine/snodas/daily"
+# PRISM daily precipitation (band ppt, mm, ~4.6 km). ANd supersedes the deprecated
+# AN81d, which ends 2020-12-30; ANd runs 1981-01-01 to present and merges AN81 and
+# AN91 (the `dataset_type` image property). A PRISM day is the 24 h ending 12 UTC on
+# the labelled date, and the assets carry a noon-UTC start time, so a calendar-year
+# filterDate still returns exactly that year's labelled days.
+PRISM = "OREGONSTATE/PRISM/ANd"
 
 ETF_START_YR = 1999  # OpenET v2.1 coverage (disalexi 2001+; empty years skip)
 SWE_START_YR = 2004  # SNODAS coverage
+PRISM_START_YR = 1981  # PRISM ANd coverage
 SENTINEL_START_YR = 2017  # S2 SR archive (Ex5 convention)
 IRR_START_YR = 1985  # IrrMapper record start (irrigation-fraction export)
 
-TARGETS = ["etf", "ndvi", "eto", "swe", "soils", "props", "cdl"]
+TARGETS = ["etf", "ndvi", "eto", "ppt", "swe", "soils", "props", "cdl"]
 CHUNK_SIZE = 900  # fields per export partition (EE payload limit)
 CHUNK_SUFFIXES = "abcdefghijklmnopqrstuvwxyz"
 WAIT_MINUTES = 10
@@ -338,8 +346,23 @@ def apply_mask(coll, mask_type, year, min_yr_mask):
     return coll.map(lambda img, _m=mask: img.updateMask(_m))
 
 
-def export_wide(coll, fc, feature_id, desc, fn_prefix, bucket, date_columns=False, gate=None):
+def export_wide(
+    coll,
+    fc,
+    feature_id,
+    desc,
+    fn_prefix,
+    bucket,
+    date_columns=False,
+    strict_dates=False,
+    gate=None,
+):
     """Export one wide CSV: rows=fields, columns=sorted scene/date ids.
+
+    With ``date_columns`` the columns are the YYYYMMDD found in each image id;
+    if that parse fails the raw ids are kept, unless ``strict_dates`` is set,
+    in which case the export raises rather than write columns the container
+    ingest would silently read as all-NaN.
 
     Returns 1 if an export task started, 0 if it was skipped or the collection
     was empty.
@@ -361,6 +384,11 @@ def export_wide(coll, fc, feature_id, desc, fn_prefix, bucket, date_columns=Fals
         dates = [re.search(r"\d{8}", b) for b in band_names]
         if all(dates) and len({d.group() for d in dates}) == len(dates):
             cols = [d.group() for d in dates]
+        elif strict_dates:
+            raise ValueError(
+                f"{desc}: image ids do not carry unique YYYYMMDD dates "
+                f"(first: {band_names[:3]}); refusing to export raw ids"
+            )
 
     bands = coll.toBands().rename(cols)
     data = bands.reduceRegions(collection=fc, reducer=ee.Reducer.mean(), scale=30, tileScale=8)
@@ -474,6 +502,25 @@ def run_eto(fc, label, args, years, gate=None):
             fn_prefix=f"{args.file_prefix}/{label}/met/eto/eto_{year}",
             bucket=args.bucket,
             date_columns=True,
+            gate=gate,
+        )
+    return n
+
+
+def run_ppt(fc, label, args, years, gate=None):
+    """PRISM ANd daily precipitation, same wide layout as the ETo export."""
+    n = 0
+    for year in years:
+        coll = ee.ImageCollection(PRISM).filterDate(f"{year}-01-01", f"{year + 1}-01-01")
+        n += export_wide(
+            coll.select("ppt"),
+            fc,
+            args.feature_id,
+            desc=f"{label}_ppt_{year}",
+            fn_prefix=f"{args.file_prefix}/{label}/met/ppt/ppt_{year}",
+            bucket=args.bucket,
+            date_columns=True,
+            strict_dates=True,
             gate=gate,
         )
     return n
@@ -628,7 +675,7 @@ def main():
         "--start-yr",
         type=int,
         default=1985,
-        help="Landsat-NDVI/ETo start year (NWI POR; ETf/SWE/Sentinel clamp to "
+        help="Landsat-NDVI/ETo/PRISM-ppt start year (NWI POR; ETf/SWE/Sentinel clamp to "
         "their own coverage starts, so 1985 spawns no empty tasks)",
     )
     parser.add_argument("--end-yr", type=int, default=2025)
@@ -695,6 +742,7 @@ def main():
     )
     etf_years = [y for y in years if y >= ETF_START_YR]
     swe_years = [y for y in years if y >= SWE_START_YR]
+    ppt_years = [y for y in years if y >= PRISM_START_YR]
 
     sys.setrecursionlimit(5000)
     # Initialize even for --dry-run: the plan is only truthful if the mask
@@ -758,6 +806,7 @@ def main():
         "ndvi": len(args.mask_list)
         * sum(len(years) if i == "landsat" else len(sentinel_years) for i in args.instrument_list),
         "eto": len(years),
+        "ppt": len(ppt_years),
         "swe": len(swe_years),
         "soils": 1,
         "props": 2,
@@ -800,6 +849,8 @@ def main():
             started += run_ndvi(fc, label, args, min_yr_mask, years, gate=gate)
         if "eto" in targets:
             started += run_eto(fc, label, args, years, gate=gate)
+        if "ppt" in targets:
+            started += run_ppt(fc, label, args, ppt_years, gate=gate)
         if "swe" in targets:
             started += run_swe(fc, label, args, swe_years, gate=gate)
         if "soils" in targets:
