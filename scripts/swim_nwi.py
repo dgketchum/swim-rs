@@ -79,8 +79,23 @@ SNODAS = "projects/earthengine-legacy/assets/projects/climate-engine/snodas/dail
 # PRISM daily precipitation (band ppt, mm, ~4.6 km). ANd supersedes the deprecated
 # AN81d, which ends 2020-12-30; ANd runs 1981-01-01 to present and merges AN81 and
 # AN91 (the `dataset_type` image property). A PRISM day is the 24 h ending 12 UTC on
-# the labelled date, and the assets carry a noon-UTC start time, so a calendar-year
-# filterDate still returns exactly that year's labelled days.
+# the labelled date, so image 19850101 carries system:time_start 1984-12-31T12:00Z --
+# the *start* of that window, in the preceding year. A calendar-year filterDate
+# therefore returns 19850102..19860101, not the labelled year, which is why the
+# yearly export filters on the system:index prefix instead.
+#
+# That same convention puts PRISM a day behind GridMET in naming. The two windows:
+#
+#   GridMET day D   06Z(D)   -> 06Z(D+1)   labelled by the window START
+#   PRISM   day D   12Z(D-1) -> 12Z(D)     labelled by the window END
+#
+# so PRISM D overlaps GridMET D-1 by 18 h but GridMET D by only 6 h. PRISM's label
+# is the morning-after reading date of the COOP network; GridMET re-anchors to a
+# nominal local midnight. Measured over 226 Esmeralda fields (2018-2022), field-mean
+# daily r against GridMET prcp is 0.982 at a one-day lag versus 0.280 unshifted.
+# Anything ingesting these columns onto a calendar-day axis alongside GridMET must
+# shift them back a day first, or precipitation arrives one day late -- and the 25%
+# residual overlap makes that degrade quietly rather than fail.
 PRISM = "OREGONSTATE/PRISM/ANd"
 
 ETF_START_YR = 1999  # OpenET v2.1 coverage (disalexi 2001+; empty years skip)
@@ -508,10 +523,18 @@ def run_eto(fc, label, args, years, gate=None):
 
 
 def run_ppt(fc, label, args, years, gate=None):
-    """PRISM ANd daily precipitation, same wide layout as the ETo export."""
+    """PRISM ANd daily precipitation, same wide layout as the ETo export.
+
+    Selects by system:index prefix rather than filterDate: PRISM timestamps the
+    start of the 24 h window, which sits in the previous year for Jan 1, so a
+    calendar-year filterDate silently returns Jan 2 through Jan 1 of the next
+    year (see the PRISM comment above).
+    """
     n = 0
     for year in years:
-        coll = ee.ImageCollection(PRISM).filterDate(f"{year}-01-01", f"{year + 1}-01-01")
+        coll = ee.ImageCollection(PRISM).filter(
+            ee.Filter.stringStartsWith("system:index", str(year))
+        )
         n += export_wide(
             coll.select("ppt"),
             fc,
