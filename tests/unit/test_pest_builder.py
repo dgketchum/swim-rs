@@ -872,3 +872,71 @@ class TestParsePriorSpec:
     def test_inverted_bounds_raise(self):
         with pytest.raises(ValueError, match="lower >= upper"):
             PestBuilder._parse_prior_spec({"lower": 0.6, "upper": 0.45})
+
+
+class TestEtoFloorWeights:
+    """_write_etf_obs with etf_weighting_eto_floor (daily-ETo screen on the weight)."""
+
+    def _run(self, tmp_path, eto_floor, eto_values, with_aux=False):
+        b = _harness(tmp_path, with_aux)
+        b.config.etf_weighting_eto_floor = eto_floor
+        b._get_daily_eto = lambda fid: pd.Series(eto_values, index=_DATES, dtype=float)
+        b._write_etf_obs("ensemble", ["ssebop", "ptjpl"])
+        return b, b.pest.obs_dfs[0]
+
+    def test_disabled_floor_is_bit_for_bit_default(self, tmp_path):
+        """eto_floor None never touches ETo and reproduces the default weights."""
+        ctrl = _harness(tmp_path, False)
+        ctrl._write_etf_obs("ensemble", ["ssebop", "ptjpl"])
+        b = _harness(tmp_path, False)
+        b.config.etf_weighting_eto_floor = None
+        b._get_daily_eto = lambda fid: pytest.fail("ETo must not be read when floor is None")
+        b._write_etf_obs("ensemble", ["ssebop", "ptjpl"])
+        assert np.array_equal(ctrl.pest.obs_dfs[0]["weight"], b.pest.obs_dfs[0]["weight"])
+        audit = pd.DataFrame(b._weight_audit_rows)
+        assert "eto" not in audit.columns and "eto_floor_excluded" not in audit.columns
+
+    def test_low_eto_date_zero_weighted_obsval_kept(self, tmp_path):
+        """d0 (ETo 0.6) loses its weight; d4 (ETo 3.0) keeps the spread weight."""
+        eto = [0.6, 2.0, 2.0, 2.0, 3.0, 2.0, 2.0, 2.0, 2.0, 2.0]
+        b, d = self._run(tmp_path, 1.0, eto)
+        assert d["weight"].iloc[0] == 0.0
+        assert np.isclose(d["obsval"].iloc[0], 0.6)  # target still written
+        assert np.isclose(d["weight"].iloc[4], _spread_weight(0.6, [0.5, 0.7]))
+        audit = pd.DataFrame(b._weight_audit_rows).set_index("date")
+        assert audit.loc["2020-01-01", "eto_floor_excluded"]
+        assert not audit.loc["2020-01-01", "eligible"]
+        assert np.isclose(audit.loc["2020-01-01", "eto"], 0.6)
+        assert audit.loc["2020-01-01", "member_count"] == 2
+        assert not audit.loc["2020-01-05", "eto_floor_excluded"]
+        assert audit.loc["2020-01-05", "eligible"]
+        out = tmp_path / "weight_audit.csv"
+        b.export_weight_audit(str(out))
+        cols = list(pd.read_csv(out).columns)
+        assert cols.index("eligible") < cols.index("eto") < cols.index("eto_floor_excluded")
+
+    def test_floor_is_inclusive_at_the_threshold(self, tmp_path):
+        eto = [1.0] * 10
+        _, d = self._run(tmp_path, 1.0, eto)
+        assert np.isclose(d["weight"].iloc[0], _spread_weight(0.6, [0.5, 0.7]))
+
+    def test_floor_applies_to_auxiliary_dates(self, tmp_path):
+        """An ECOSTRESS-only date below the floor is zero-weighted too."""
+        eto = [3.0, 3.0, 0.5, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0]
+        b, d = self._run(tmp_path, 1.0, eto, with_aux=True)
+        assert d["weight"].iloc[2] == 0.0
+        assert np.isclose(d["obsval"].iloc[2], 0.8)
+        assert np.isclose(d["weight"].iloc[0], _spread_weight(0.6, [0.5, 0.7]))
+        audit = pd.DataFrame(b._weight_audit_rows).set_index("date")
+        assert audit.loc["2020-01-03", "eto_floor_excluded"]
+        assert not audit.loc["2020-01-03", "eligible"]
+        assert audit.loc["2020-01-03", "source"] == "auxiliary"
+
+    def test_missing_eto_on_capture_date_raises(self, tmp_path):
+        eto = [np.nan, 2.0, 2.0, 2.0, 3.0, 2.0, 2.0, 2.0, 2.0, 2.0]
+        with pytest.raises(ValueError, match="daily ETo missing"):
+            self._run(tmp_path, 1.0, eto)
+
+    def test_all_dates_below_floor_raises_zero_weight_error(self, tmp_path):
+        with pytest.raises(RuntimeError, match="zero weight"):
+            self._run(tmp_path, 1.0, [0.2] * 10)

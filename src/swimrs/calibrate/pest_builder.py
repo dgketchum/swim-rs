@@ -271,6 +271,26 @@ class PestBuilder:
 
         return result
 
+    def _get_daily_eto(self, fid: str) -> pd.Series:
+        """Daily reference ET (mm/day) for a field over the config date range.
+
+        Read from ``meteorology/{met_source}/eto`` — the same series the forward model
+        multiplies ETf by, so the ``etf_weighting_eto_floor`` rule screens the actual
+        denominator of the observation.
+        """
+        if self._container is None:
+            raise ValueError("No container available. Pass container to PestBuilder.__init__")
+        met_source = getattr(self.config, "met_source", "gridmet")
+        path = f"meteorology/{met_source}/eto"
+        if path not in self._container.state.root:
+            raise ValueError(
+                f"etf_weighting_eto_floor requires daily ETo at {path!r}, "
+                "which is not in the container."
+            )
+        df = self._container.query.dataframe(path, fields=[fid])
+        idx = pd.date_range(self.config.start_dt, self.config.end_dt, freq="D")
+        return df[fid].reindex(idx)
+
     def _discover_etf_models(self) -> list[str]:
         """Discover available ETf models in the container."""
         known_models = ["ssebop", "ptjpl", "sims", "geesebal", "eemetric", "disalexi"]
@@ -651,6 +671,8 @@ class PestBuilder:
             "weight_pre_pdc",
             "weight_final",
             "eligible",
+            "eto",
+            "eto_floor_excluded",
             "aux_overlap_excluded",
             "aux_raw_value",
         ]
@@ -1703,6 +1725,10 @@ if __name__ == "__main__":
         fixed_sd = getattr(self.config, "etf_weighting_fixed_sd", 0.33)
         spread_floor = getattr(self.config, "etf_weighting_spread_floor", 0.1)
         min_members = getattr(self.config, "etf_weighting_min_members", 2)
+        # Daily-ETo floor (mm/day): an ETf observation on a date whose daily ETo is
+        # below the floor carries zero weight whatever its member count or source.
+        # The obsval is still written; only the weight is zeroed. None = disabled.
+        eto_floor = getattr(self.config, "etf_weighting_eto_floor", None)
 
         # Auxiliary additional-date source (e.g. ECOSTRESS PT-JPL): fills only
         # dates with no primary retrieval at all. A date with any primary value
@@ -1854,6 +1880,27 @@ if __name__ == "__main__":
                 else:
                     eligible = np.ones(len(obsvals), dtype=bool)
 
+                # ETo-floor screen, applied to every capture date (primary and
+                # auxiliary alike). A missing ETo on a capture date is a container
+                # defect, not a date to drop silently.
+                if eto_floor is not None:
+                    eto_vals = self._get_daily_eto(fid).loc[capture_dates].to_numpy(dtype=float)
+                    if not np.isfinite(eto_vals).all():
+                        bad = [
+                            str(d)[:10]
+                            for d, ok in zip(capture_dates, np.isfinite(eto_vals))
+                            if not ok
+                        ]
+                        raise ValueError(
+                            f"Field {fid}: daily ETo missing on {len(bad)} ETf capture "
+                            f"date(s) (first: {bad[:5]}); cannot apply etf_weighting_eto_floor."
+                        )
+                    eto_ok = eto_vals >= eto_floor
+                else:
+                    eto_vals = np.full(len(obsvals), np.nan)
+                    eto_ok = np.ones(len(obsvals), dtype=bool)
+                eligible = eligible & eto_ok
+
                 if (
                     weighting_mode == "spread"
                     and self.etf_std is not None
@@ -1872,7 +1919,7 @@ if __name__ == "__main__":
                 # ineligible above; the fixed predefined error scale is their
                 # only weight path. Primary dates are never touched here.
                 if is_aux.any():
-                    weights = np.where(is_aux, obsvals / aux_fixed_sd, weights)
+                    weights = np.where(is_aux & eto_ok, obsvals / aux_fixed_sd, weights)
 
                 d.loc[captures_for_this_df, "weight"] = weights
 
@@ -1893,8 +1940,11 @@ if __name__ == "__main__":
                         "weight_mode": weighting_mode,
                         "weight_pre_pdc": weight_val,
                         "weight_final": weight_val,
-                        "eligible": aux_row or bool(eligible[j_cap]),
+                        "eligible": (aux_row and bool(eto_ok[j_cap])) or bool(eligible[j_cap]),
                     }
+                    if eto_floor is not None:
+                        row["eto"] = float(eto_vals[j_cap])
+                        row["eto_floor_excluded"] = not bool(eto_ok[j_cap])
                     if self.etf_std is not None and self.etf_std.get(fid) is not None:
                         std_df = self.etf_std[fid]
                         row["member_count"] = int(std_df.loc[dt, "ct"])
