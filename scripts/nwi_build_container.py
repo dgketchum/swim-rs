@@ -7,11 +7,22 @@ header and notes/nwi_ingest_plan.md):
     ndvi/{mask}/ndvi_{mask}_{year}.csv
     ndvi/sentinel/{mask}/ndvi_sentinel_{mask}_{year}.csv
     met/eto/eto_{year}.csv                    OpenET bias-corrected ETo (mm/day)
+    met/ppt/ppt_{year}.csv                    PRISM ANd daily precipitation (mm)
     snow/snodas/extracts/swe_{year}.csv       SNODAS SWE (meters)
     properties/{landcover,irr,ssurgo,cdl}_{label}.csv
 
 GridMET parquets ({GFID}.parquet) live at [paths.conus] met; the UID->GFID
 mapping comes from [paths.conus] gridmet_mapping.
+
+The NWI PI asked for PRISM precipitation, so by default this build makes PRISM
+the operative prcp (--prcp-source). PRISM lands at meteorology/prism/prcp on
+GridMET's day axis (Ingestor.prism does the one-day shift); the values are then
+copied over meteorology/gridmet/prcp, because the calculator, exporter and
+model input builder all resolve precipitation as meteorology/{met_source}/prcp
+from a single met_source and cannot be pointed at a second source. The GridMET
+series is preserved at meteorology/gridmet/prcp_gridmet first, so the swap is
+reversible and the two products stay comparable. Any cell PRISM cannot fill is
+backfilled from GridMET and reported, exactly as the OpenET ETo ingest does.
 
 The pre-computed OpenET "ensemble" CSVs are QC references and are NOT
 ingested: dynamics and the obs builder average every model present in the
@@ -116,6 +127,53 @@ def ingest_openet_eto(container_path: str, eto_dir: Path) -> None:
     print(f"  wrote {corr_path}: mean={np.nanmean(arr):.3f} mm/day")
 
     c.close()
+
+
+def activate_prism_prcp(container) -> None:
+    """Copy PRISM precipitation over meteorology/gridmet/prcp.
+
+    Downstream reads resolve prcp from one met_source namespace, so PRISM only
+    becomes operative by sitting in that namespace (see the module docstring).
+    GridMET is preserved at meteorology/gridmet/prcp_gridmet and used to
+    backfill anything PRISM is missing -- prcp is in REQUIRED_MET_BASE and is
+    not in ACCEPT_NAN_PARAMS, so a hole here would break the forward run.
+    """
+    root = container._root
+    prism = np.array(root["meteorology/prism/prcp"], dtype=np.float32)
+    gridmet = np.array(root["meteorology/gridmet/prcp"], dtype=np.float32)
+
+    keep_path = "meteorology/gridmet/prcp_gridmet"
+    if keep_path in root:
+        # A rebuild over an existing container: prcp already holds PRISM, so
+        # the pristine GridMET series is the one already set aside.
+        gridmet = np.array(root[keep_path], dtype=np.float32)
+    else:
+        root.create_array(keep_path, data=gridmet)
+
+    nan_mask = np.isnan(prism)
+    n_backfilled = int(nan_mask.sum())
+    merged = np.where(nan_mask, gridmet, prism)
+
+    if n_backfilled:
+        # The shift makes a year's Dec 31 come from the next year's CSV, so an
+        # export that stops at the container's last year leaves exactly one row
+        # short. Anything larger than that is a real export gap.
+        rows = np.nonzero(nan_mask.any(axis=1))[0]
+        print(
+            f"  WARNING: backfilled {n_backfilled:,} PRISM NaN cells from GridMET "
+            f"across {len(rows)} day(s); first={rows[0]} last={rows[-1]} "
+            f"(one trailing day is expected if ppt was not exported one year "
+            f"past the container period)"
+        )
+
+    root["meteorology/gridmet/prcp"][:] = merged
+
+    yrs = merged.shape[0] / 365.25
+    print(
+        f"  prcp now PRISM: mean annual {np.nansum(merged) / merged.shape[1] / yrs:.1f} mm/yr "
+        f"vs GridMET {np.nansum(gridmet) / gridmet.shape[1] / yrs:.1f} mm/yr "
+        f"({keep_path} retains GridMET)"
+    )
 
 
 def completeness_sweep(container_path: str) -> list[str]:
@@ -250,6 +308,23 @@ def completeness_sweep(container_path: str) -> list[str]:
         if var == "eto_corr" and holes:
             failures.append(f"met/eto_corr: {holes} NaN cells (export gap)")
 
+    # A PRISM build that quietly fell back to GridMET looks identical from the
+    # met/prcp line above, so check the substitution itself: prcp must equal
+    # PRISM everywhere PRISM has a value.
+    if "meteorology/prism/prcp" in c._root:
+        prism = np.array(c._root["meteorology/prism/prcp"])
+        active = np.array(c._root["meteorology/gridmet/prcp"])
+        counts = (~np.isnan(prism)).sum(axis=0)
+        zero = [fids[i] for i in np.nonzero(counts == 0)[0]]
+        print(f"  prcp/prism: obs/field min={counts.min()} zero-coverage={len(zero)}")
+        if zero:
+            failures.append(f"prcp/prism: zero coverage for {zero}")
+        if "meteorology/gridmet/prcp_gridmet" not in c._root:
+            failures.append("meteorology/prism/prcp present but GridMET prcp was never set aside")
+        have = ~np.isnan(prism)
+        if not np.allclose(active[have], prism[have], atol=1e-5, equal_nan=True):
+            failures.append("meteorology/gridmet/prcp does not match PRISM where PRISM has data")
+
     path = "snow/snodas/swe"
     if path in c._root:
         arr = np.array(c._root[path])
@@ -274,6 +349,14 @@ def main() -> int:
         help="Move an existing container aside to *.bak-<timestamp> and rebuild",
     )
     ap.add_argument("--workers", type=int, default=1, help="CSV parse workers")
+    ap.add_argument(
+        "--prcp-source",
+        choices=("prism", "gridmet"),
+        default="prism",
+        help="Which product backs meteorology/gridmet/prcp (default: prism, per the NWI PI). "
+        "Partitions extracted before swim_nwi grew the ppt target have no met/ppt "
+        "directory and need --prcp-source gridmet until the ppt backfill runs.",
+    )
     ap.add_argument("--skip-health", action="store_true")
     args = ap.parse_args()
 
@@ -283,6 +366,15 @@ def main() -> int:
     data_dir = Path(config.data_dir)
     container_path = config.container_path
     uid = config.feature_id_col
+
+    # Checked before anything is built: the ingest is an hour of work and the
+    # prcp source is not something to discover at the end of it.
+    ppt_dir = data_dir / "met" / "ppt"
+    if args.prcp_source == "prism" and not sorted(ppt_dir.glob("ppt_*.csv")):
+        print(f"No ppt_*.csv under {ppt_dir}, but --prcp-source is 'prism'.")
+        print("Run swim_nwi.py --targets ppt for this partition, or pass")
+        print("--prcp-source gridmet to build on GridMET precipitation instead.")
+        return 1
 
     if os.path.exists(container_path):
         if not args.overwrite:
@@ -359,6 +451,11 @@ def main() -> int:
 
         print("Ingesting SNODAS")
         container.ingest.snodas(config.snodas_in_dir, uid_column=uid)
+
+        if args.prcp_source == "prism":
+            print("Ingesting PRISM precipitation")
+            container.ingest.prism(ppt_dir, uid_column=uid)
+            activate_prism_prcp(container)
 
         print("Computing merged NDVI")
         container.compute.merged_ndvi(masks=MASKS, instruments=("landsat", "sentinel"))
