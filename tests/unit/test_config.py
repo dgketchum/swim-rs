@@ -818,6 +818,62 @@ end_date = "2020-12-31"
             cfg.read_config(str(self._write_toml(tmp_path, block)))
 
 
+class TestEtfSourceDirs:
+    """[paths.etf_sources]: explicit per-model ETf ingest directories (E2 grass-basis SSEBop)."""
+
+    def _write_toml(self, tmp_path, extra=""):
+        gis_dir = tmp_path / "gis"
+        gis_dir.mkdir(exist_ok=True)
+        shapefile = gis_dir / "fields.shp"
+        shapefile.touch()
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text(
+            f"""
+project = "test_project"
+root = "{tmp_path}"
+
+[paths]
+fields_shapefile = "{shapefile}"
+landsat = "{{root}}/remote_sensing/landsat"
+{extra}
+
+[ids]
+feature_id = "FID"
+
+[date_range]
+start_date = "2020-01-01"
+end_date = "2020-12-31"
+"""
+        )
+        return toml_file
+
+    def test_default_is_empty(self, tmp_path):
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path)))
+        assert cfg.etf_source_dirs == {}
+        assert ProjectConfig().etf_source_dirs == {}
+
+    def test_override_resolves_templates(self, tmp_path):
+        cfg = ProjectConfig()
+        cfg.read_config(
+            str(
+                self._write_toml(
+                    tmp_path,
+                    '[paths.etf_sources]\nssebop = "{landsat}/extracts/ssebop_etf_grass/no_mask"',
+                )
+            )
+        )
+        assert cfg.etf_source_dirs == {
+            "ssebop": f"{tmp_path}/remote_sensing/landsat/extracts/ssebop_etf_grass/no_mask"
+        }
+        assert cfg.landsat_dir == f"{tmp_path}/remote_sensing/landsat"
+
+    def test_non_string_value_raises(self, tmp_path):
+        cfg = ProjectConfig()
+        with pytest.raises(ValueError, match="etf_sources"):
+            cfg.read_config(str(self._write_toml(tmp_path, "[paths.etf_sources]\nssebop = 3")))
+
+
 class TestAuxiliaryEtfConfig:
     """E3 ECOSTRESS additional-date design: etf_auxiliary_* config parsing.
 
@@ -903,3 +959,57 @@ end_date = "2020-12-31"
         cfg = ProjectConfig()
         with pytest.raises(ValueError, match="overlap_policy"):
             cfg.read_config(str(self._write_toml(tmp_path, block)))
+
+
+class TestEtfWeightingEtoFloor:
+    """[calibration] etf_weighting_eto_floor parsing (E2 low-ETo observation rule)."""
+
+    def _write_toml(self, tmp_path, calib_block=""):
+        gis_dir = tmp_path / "gis"
+        gis_dir.mkdir(exist_ok=True)
+        shapefile = gis_dir / "fields.shp"
+        shapefile.touch()
+        toml_content = f"""
+project = "test_project"
+root = "{tmp_path}"
+
+[paths]
+fields_shapefile = "{shapefile}"
+
+[ids]
+feature_id = "FID"
+
+[date_range]
+start_date = "2020-01-01"
+end_date = "2020-12-31"
+
+[calibration]
+pest_run_dir = "{tmp_path}/pest"
+{calib_block}
+"""
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text(toml_content)
+        return toml_file
+
+    def test_default_is_none(self, tmp_path):
+        """Absent from TOML -> None (rule disabled; weights unchanged)."""
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path)))
+        assert cfg.etf_weighting_eto_floor is None
+        assert ProjectConfig().etf_weighting_eto_floor is None
+
+    @pytest.mark.parametrize("value, expected", [("1.0", 1.0), ("1", 1.0), ("0.5", 0.5)])
+    def test_reads_positive_number_as_float(self, tmp_path, value, expected):
+        cfg = ProjectConfig()
+        cfg.read_config(str(self._write_toml(tmp_path, f"etf_weighting_eto_floor = {value}\n")))
+        assert cfg.etf_weighting_eto_floor == expected
+        assert isinstance(cfg.etf_weighting_eto_floor, float)
+
+    @pytest.mark.parametrize("bad", ["0", "-1.0", "true", '"1.0"'])
+    def test_rejects_non_positive_or_non_numeric(self, tmp_path, bad):
+        cfg = ProjectConfig()
+        with pytest.raises(ValueError, match="etf_weighting_eto_floor"):
+            cfg.read_config(
+                str(self._write_toml(tmp_path, f"etf_weighting_eto_floor = {bad}\n")),
+                calibrate=True,
+            )

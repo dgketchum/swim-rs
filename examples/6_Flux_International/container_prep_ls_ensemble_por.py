@@ -68,9 +68,12 @@ def ingest_ndvi(container: SwimContainer, cfg: ProjectConfig):
 def ingest_etf(container: SwimContainer, cfg: ProjectConfig):
     print("\n=== Ingesting ETf (Landsat SSEBop + Landsat PT-JPL) ===")
     for model, subdir in [("ssebop", "ssebop_etf"), ("ptjpl", "ptjpl_etf")]:
-        etf_dir = os.path.join(cfg.landsat_dir, "extracts", subdir, "no_mask")
+        configured = cfg.etf_source_dirs.get(model)
+        if configured and not os.path.isdir(configured):
+            raise FileNotFoundError(f"[paths.etf_sources] {model} = {configured} does not exist")
+        etf_dir = configured or os.path.join(cfg.landsat_dir, "extracts", subdir, "no_mask")
         if os.path.isdir(etf_dir):
-            print(f"  Landsat {model} ETf (no_mask)...")
+            print(f"  Landsat {model} ETf (no_mask) from {etf_dir}...")
             container.ingest.etf(
                 source_dir=etf_dir,
                 uid_column=cfg.feature_id_col,

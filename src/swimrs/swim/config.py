@@ -51,6 +51,8 @@ class ProjectConfig:
         self.data_dir = None
         self.landsat_dir = None
         self.sentinel_dir = None
+        # Optional [paths.etf_sources] {model: dir}; absent -> {landsat}/extracts/{model}_etf/no_mask
+        self.etf_source_dirs = {}
         self.met_dir = None
         self.gis_dir = None
         self.fields_shapefile = None
@@ -105,6 +107,7 @@ class ProjectConfig:
         self.etf_weighting_fixed_sd = 0.33
         self.etf_weighting_spread_floor = 0.1
         self.etf_weighting_min_members = 2
+        self.etf_weighting_eto_floor = None
         # Opt-in auxiliary ETf source (E3 ECOSTRESS additional-date design).
         # OFF (None) by default so every existing calibration is byte-for-byte
         # unchanged. When model+instrument are both set, dates with no primary
@@ -308,6 +311,14 @@ class ProjectConfig:
         # Data roots
         self.landsat_dir = paths_conf.get("landsat")
         self.sentinel_dir = paths_conf.get("sentinel")
+        # Explicit per-model ETf ingest directories (e.g. a basis-corrected SSEBop tree); the
+        # container prep falls back to the conventional landsat extracts layout per model.
+        etf_sources_conf = paths_conf.get("etf_sources", {}) or {}
+        if not isinstance(etf_sources_conf, dict) or not all(
+            isinstance(v, str) for v in etf_sources_conf.values()
+        ):
+            raise ValueError("[paths.etf_sources] must map model name -> directory path")
+        self.etf_source_dirs = dict(etf_sources_conf)
         # Met dir: check nested sections first, then flat
         self.met_dir = (
             paths_conus_conf.get("met") or paths_era5_conf.get("met") or paths_conf.get("met")
@@ -467,6 +478,17 @@ class ProjectConfig:
         self.etf_weighting_fixed_sd = calib_toml_conf.get("etf_weighting_fixed_sd", 0.33)
         self.etf_weighting_spread_floor = calib_toml_conf.get("etf_weighting_spread_floor", 0.1)
         self.etf_weighting_min_members = calib_toml_conf.get("etf_weighting_min_members", 2)
+        # Daily reference-ET floor (mm/day) below which an ETf observation carries zero
+        # weight (all members): ETf = ET / ETo is unstable when the denominator is tiny.
+        # None (default) disables the rule.
+        self.etf_weighting_eto_floor = calib_toml_conf.get("etf_weighting_eto_floor")
+        if self.etf_weighting_eto_floor is not None:
+            floor = self.etf_weighting_eto_floor
+            if isinstance(floor, bool) or not isinstance(floor, int | float) or floor <= 0:
+                raise ValueError(
+                    f"etf_weighting_eto_floor must be a positive number of mm/day, got {floor!r}"
+                )
+            self.etf_weighting_eto_floor = float(floor)
         self.etf_auxiliary_model = calib_toml_conf.get("etf_auxiliary_model")
         self.etf_auxiliary_instrument = calib_toml_conf.get("etf_auxiliary_instrument")
         if bool(self.etf_auxiliary_model) != bool(self.etf_auxiliary_instrument):
