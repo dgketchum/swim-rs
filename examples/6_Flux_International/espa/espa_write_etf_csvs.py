@@ -11,9 +11,20 @@ format expected by the container ingestor. Output goes into the Landsat
 extracts tree so the legacy SSEBop container builder finds it when
 ``etf_target_model = "ssebop"``.
 
-Output format:
-    sid,ETF_YYYYMMDD,ETF_YYYYMMDD,...
-    US-Ro4,0.85,0.92,...
+Output format (scene-keyed JSON, written by ``espa_extract_etf.py`` since 2026-09-04): one
+column per delivered scene, named by the Landsat scene key exactly as the PT-JPL Earth Engine
+exports name theirs, so scene identity survives into the ingest CSV::
+
+    sid,LE07_112082_20130115,LE07_112083_20130115,LC08_112083_20130123,...
+    AU-Rgf,0.85,0.83,0.92,...
+
+Two columns on one date (adjacent rows of the same overpass) are collapsed **by the ingestor**,
+which parses the date from the last underscore token and takes the per-date ``max`` of
+same-date Landsat columns (``swimrs.container.components.ingestor._parse_single_csv``) — the
+same deterministic rule the PT-JPL member already receives. Nothing is overwritten here; a
+duplicate scene key (two product generations of one scene) is a hard error.
+
+Legacy date-keyed JSON (``{site: {YYYY-MM-DD: stats}}``) still writes ``ETF_YYYYMMDD`` columns.
 
 Filename convention:
     ssebop_etf_{site}_no_mask_{year}.csv
@@ -30,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -37,11 +49,41 @@ import pandas as pd
 DEFAULT_CSV_DIR = Path(
     "/data/ssd1/swim/6_Flux_International/data/remote_sensing/landsat/extracts/ssebop_etf/no_mask"
 )
+LEGACY_DATE_KEY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _date_key_to_column(date_key: str) -> str:
     """Convert '2020-07-15' to 'ETF_20200715'."""
     return "ETF_" + date_key.replace("-", "")
+
+
+def _scene_key(stats: dict) -> str:
+    """'LE07', '112082', '2013-01-15' -> 'LE07_112082_20130115' (PT-JPL export convention)."""
+    return f"{stats['sensor']}_{stats['pathrow']}_{stats['date'].replace('-', '')}"
+
+
+def site_row(site: str, site_data: dict) -> dict:
+    """Build the single CSV row for one site-year from either JSON schema."""
+    row: dict = {"sid": site}
+    legacy = all(LEGACY_DATE_KEY_RE.match(k) for k in site_data)
+    if legacy:
+        for date_key, stats in sorted(site_data.items()):
+            if stats.get("mean") is not None:
+                row[_date_key_to_column(date_key)] = round(stats["mean"], 6)
+        return row
+    seen: dict[str, str] = {}
+    for product_id, stats in sorted(site_data.items(), key=lambda kv: (kv[1]["date"], kv[0])):
+        if stats.get("mean") is None:
+            continue
+        key = _scene_key(stats)
+        if key in seen:
+            raise ValueError(
+                f"{site}: scene key {key} delivered twice ({seen[key]}, {product_id}); "
+                "keep one product generation before writing"
+            )
+        seen[key] = product_id
+        row[key] = round(stats["mean"], 6)
+    return row
 
 
 def write_csvs(manifest_path: Path, output_dir: Path | None = None) -> None:
@@ -89,15 +131,9 @@ def write_csvs(manifest_path: Path, output_dir: Path | None = None) -> None:
         if not site_data:
             continue
 
-        # Build row: sid + ETF columns sorted by date
-        row = {"sid": site}
-        for date_key, stats in sorted(site_data.items()):
-            mean_val = stats.get("mean")
-            if mean_val is not None:
-                col = _date_key_to_column(date_key)
-                row[col] = round(mean_val, 6)
-
-        etf_cols = sorted(k for k in row if k.startswith("ETF_"))
+        # Build row: sid + one column per date (legacy) or per scene (scene-keyed)
+        row = site_row(site, site_data)
+        etf_cols = [k for k in row if k != "sid"]
         if not etf_cols:
             continue
 
