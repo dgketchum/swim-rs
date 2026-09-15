@@ -36,6 +36,7 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import ee
@@ -766,6 +767,16 @@ def main():
     etf_years = [y for y in years if y >= ETF_START_YR]
     swe_years = [y for y in years if y >= SWE_START_YR]
     ppt_years = [y for y in years if y >= PRISM_START_YR]
+    # PRISM labels the END of its 24 h window, so the ingestor shifts every
+    # label back one day onto GridMET's axis (see the PRISM comment above and
+    # Ingestor.prism). That makes Dec 31 of the last requested year come from
+    # the NEXT year's file, so export one year past the container period or
+    # every container's final day arrives empty. Clamp to the current year:
+    # PRISM has no images for a year that has not started.
+    if ppt_years:
+        extra = min(max(ppt_years) + 1, datetime.now().year)
+        if extra not in ppt_years:
+            ppt_years = ppt_years + [extra]
 
     sys.setrecursionlimit(5000)
     # Initialize even for --dry-run: the plan is only truthful if the mask
