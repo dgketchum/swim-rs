@@ -49,6 +49,7 @@ class MetSource(str, Enum):
 
     GRIDMET = "gridmet"
     ERA5 = "era5"
+    PRISM = "prism"
 
 
 class SnowSource(str, Enum):

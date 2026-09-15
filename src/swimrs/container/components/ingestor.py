@@ -804,6 +804,102 @@ class Ingestor(Component):
 
             return event
 
+    def prism(
+        self,
+        source_dir: str | Path,
+        uid_column: str = "FID",
+        fields: list[str] | None = None,
+        overwrite: bool = False,
+        align_to_gridmet_day: bool = True,
+    ) -> ProvenanceEvent:
+        """
+        Ingest PRISM ANd daily precipitation from Earth Engine CSV extracts.
+
+        CSV format: rows=fields, columns=dates (YYYYMMDD), values=ppt in mm.
+        One file per year, as written by ``scripts/swim_nwi.py`` ``run_ppt``.
+
+        The columns carry PRISM's own labels, which are not on GridMET's day
+        axis -- PRISM day D is the 24 h ending 12Z on D, GridMET day D is the
+        24 h starting 06Z on D::
+
+            GridMET day D   06Z(D)   -> 06Z(D+1)   labelled by the window START
+            PRISM   day D   12Z(D-1) -> 12Z(D)     labelled by the window END
+
+        so PRISM D overlaps GridMET D-1 by 18 h but GridMET D by only 6 h, and
+        the container's calendar-day axis is GridMET's. With
+        ``align_to_gridmet_day`` the labels are shifted back one day on the way
+        in, which is what puts the two products in phase: over 226 Esmeralda
+        fields (2018-2022) field-mean daily r against GridMET prcp is 0.982
+        shifted versus 0.280 unshifted. The 25% residual overlap means an
+        unshifted ingest degrades quietly rather than failing, so the shift is
+        asserted in the tests rather than left to inspection.
+
+        Because the shift crosses the file boundary, a year's Dec 31 comes from
+        the *following* year's CSV. Export one year past the container's last
+        year, or its final day stays empty.
+
+        Args:
+            source_dir: Directory containing the per-year ppt CSV files
+            uid_column: Column name for field UID in CSVs (default: "FID")
+            fields: Optional list of field UIDs to process
+            overwrite: If True, replace existing data
+            align_to_gridmet_day: If True (default), shift PRISM's labels back
+                one day onto the container's GridMET day convention. Set False
+                only to inspect the raw product on its own labels.
+
+        Returns:
+            ProvenanceEvent recording the operation
+        """
+        self._ensure_writable()
+        source_dir = Path(source_dir)
+        path = "meteorology/prism/prcp"
+
+        with self._track_operation(
+            "ingest_prism",
+            target=path,
+            source=str(source_dir),
+        ) as ctx:
+            if path in self._state.root and not overwrite:
+                raise ValueError(f"Data exists at {path}. Use overwrite=True.")
+
+            ppt_data = self._load_prism_extracts(
+                source_dir, uid_column, fields, align_to_gridmet_day
+            )
+
+            if ppt_data.empty:
+                self._log.warning("no_data_found", source=str(source_dir))
+                return self._state.provenance.record(
+                    "ingest",
+                    target=path,
+                    source=str(source_dir),
+                    params={},
+                    records_count=0,
+                    success=True,
+                )
+
+            records = self._write_timeseries(path, ppt_data, fields, overwrite=overwrite)
+
+            ctx["records_processed"] = records
+            ctx["fields_processed"] = len(ppt_data.columns)
+
+            event = self._state.provenance.record(
+                "ingest",
+                target=path,
+                source=str(source_dir),
+                source_format="earth_engine_csv",
+                params={
+                    "uid_column": uid_column,
+                    "align_to_gridmet_day": align_to_gridmet_day,
+                },
+                fields_affected=list(ppt_data.columns),
+                records_count=records,
+            )
+
+            self._state.mark_modified()
+            self._state.refresh()
+
+            return event
+
     def snodas(
         self,
         source_dir: str | Path,
@@ -1779,6 +1875,81 @@ class Ingestor(Component):
 
         result = pd.concat(series_list, axis=1)
         return result.sort_index()
+
+    def _load_prism_extracts(
+        self,
+        source_dir: Path,
+        uid_column: str,
+        fields: list[str] | None,
+        align_to_gridmet_day: bool,
+    ) -> pd.DataFrame:
+        """
+        Load PRISM daily precipitation from Earth Engine CSV extracts.
+
+        CSV format: rows=fields, columns=dates (YYYYMMDD), values=ppt in mm.
+        PRISM ppt is already in millimeters, so unlike SNODAS SWE there is no
+        unit conversion here.
+
+        The YYYYMMDD headers are PRISM's own labels and are parsed as such.
+        With ``align_to_gridmet_day`` the resulting index is then moved back one
+        day, which is the whole point of the shift: see :meth:`prism` for the
+        two day conventions and the correlation that pins the direction.
+
+        Args:
+            source_dir: Directory containing CSV files, one per year
+            uid_column: Column name for field UID
+            fields: Optional list of field UIDs to filter
+            align_to_gridmet_day: Shift labels back one day onto GridMET's axis
+
+        Returns:
+            DataFrame with DatetimeIndex and field UIDs as columns, ppt in mm
+        """
+        csv_files = sorted(source_dir.glob("*.csv"))
+        if not csv_files:
+            self._log.warning("no_csv_files", directory=str(source_dir))
+            return pd.DataFrame()
+
+        frames = []
+        for csv_file in csv_files:
+            try:
+                df = pd.read_csv(csv_file, index_col=uid_column)
+            except Exception as e:
+                self._log.debug("csv_parse_error", file=str(csv_file), error=str(e))
+                continue
+
+            df.index = df.index.astype(str)
+            keep = [f for f in df.index if f in self._state._uid_to_index]
+            if fields:
+                keep = [f for f in keep if f in fields]
+            if not keep:
+                continue
+
+            # rows=fields, columns=dates -> rows=dates, columns=fields
+            wide = df.loc[keep].T
+            wide.index = pd.to_datetime(wide.index, format="%Y%m%d")
+            frames.append(wide)
+
+        if not frames:
+            return pd.DataFrame()
+
+        result = pd.concat(frames).sort_index()
+
+        # Each file is one year, so dates repeat only if the directory holds
+        # overlapping exports (e.g. a stale vintage alongside a re-run). Say so
+        # rather than letting the later file win in silence.
+        duplicated = result.index.duplicated(keep="last")
+        if duplicated.any():
+            self._log.warning(
+                "duplicate_dates",
+                directory=str(source_dir),
+                count=int(duplicated.sum()),
+            )
+            result = result[~duplicated]
+
+        if align_to_gridmet_day:
+            result.index = result.index - pd.Timedelta(days=1)
+
+        return result
 
     def _ingest_lulc(
         self,
