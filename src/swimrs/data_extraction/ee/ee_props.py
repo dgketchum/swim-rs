@@ -431,9 +431,7 @@ def get_landcover(
     # at properties/land_cover/modis_lc, so the series has to collapse to one
     # value: per-pixel temporal mode here, then spatial mode over the field in
     # the reduceRegions below.
-    vtype = (
-        ee.ImageCollection("MODIS/061/MCD12Q1").select("LC_Type1").mode().rename("modis_lc")
-    )
+    vtype = ee.ImageCollection("MODIS/061/MCD12Q1").select("LC_Type1").mode().rename("modis_lc")
     vtype = vtype.addBands(
         [ee.ImageCollection("projects/sat-io/open-datasets/FROM-GLC10").mosaic().rename("glc10_lc")]
     )
