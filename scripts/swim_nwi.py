@@ -406,6 +406,12 @@ def export_wide(
                 f"(first: {band_names[:3]}); refusing to export raw ids"
             )
 
+    # band_names is a client-side snapshot, but toBands() is evaluated when the
+    # task RUNS. For a collection that is still growing -- any in-progress year
+    # -- an image published in between makes rename fail server side with
+    # "The number of names (N) must match the number of bands (N+1)", long
+    # after submission reported success. Pin the image to the ids we named.
+    coll = coll.filter(ee.Filter.inList("system:index", ee.List(band_names)))
     bands = coll.toBands().rename(cols)
     data = bands.reduceRegions(collection=fc, reducer=ee.Reducer.mean(), scale=30, tileScale=8)
     if gate is not None:
