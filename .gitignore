@@ -228,3 +228,6 @@ examples/diagnostics/
 # Google Docs MCP credentials
 credentials.json
 token.json
+
+# Example 6 retired scripts (ECOSTRESS ablation, pilots, diagnostics not reported in the paper)
+/examples/6_Flux_International/legacy/
