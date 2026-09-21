@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
 
 @dataclass(frozen=True, slots=True)
 class UnitSpec:
@@ -59,6 +61,44 @@ PROCESS_CANONICAL_UNITS: dict[str, str] = {
     "awc": "mm/m",
     "ksat": "mm/day",
 }
+
+
+# -----------------------------------------------------------------------------
+# Guards
+# -----------------------------------------------------------------------------
+
+# The container convention for available water capacity is m/m (a volumetric
+# fraction, e.g. SSURGO 0.06-0.42). The process model consumes mm/m and does the
+# x1000 conversion itself. Sources delivered in mm/m (e.g. the HWSD v2 `AWC`
+# band, 10-214) must be declared at ingest with `awc_units="mm/m"` so they are
+# converted on the way in; otherwise every downstream prior is 1000x too large.
+AWC_CONTAINER_UNITS = "m/m"
+
+
+def assert_awc_m_per_m(values, where: str) -> None:
+    """Raise if any finite AWC value is outside the m/m range (0, 1].
+
+    Args:
+        values: Array-like of AWC values that should be in m/m.
+        where: Short description of the call site, used in the error message.
+
+    Raises:
+        ValueError: If any finite value is <= 0 or > 1.
+    """
+    arr = np.asarray(values, dtype=float).ravel()
+    finite = arr[np.isfinite(arr)]
+    if finite.size == 0:
+        return
+
+    bad = finite[(finite <= 0.0) | (finite > 1.0)]
+    if bad.size:
+        raise ValueError(
+            f"AWC must be m/m in the container; got {bad.size} value(s) outside (0, 1] "
+            f"at {where} (observed range {float(finite.min()):.6g} to "
+            f"{float(finite.max()):.6g}). Values near 10-400 are mm/m (e.g. HWSD): "
+            "re-ingest with SwimContainer.ingest.properties(..., awc_units='mm/m') so "
+            "they are converted to m/m on the way in."
+        )
 
 
 # -----------------------------------------------------------------------------

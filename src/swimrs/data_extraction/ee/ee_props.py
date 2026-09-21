@@ -329,6 +329,11 @@ def get_hwsd(
 ) -> None:
     """Export or save HWSD v2 soil property (AWC) per feature.
 
+    Units: the exported `awc` column is in mm/m (the HWSD v2 `AWC` band's
+    native unit, values roughly 10-400), NOT the m/m of SSURGO exports. It must
+    be ingested with `SwimContainer.ingest.properties(..., awc_units="mm/m")`
+    so it is converted to the container's canonical m/m.
+
     Parameters
     - fields: ee.FeatureCollection asset path or object.
     - desc: export description/prefix.

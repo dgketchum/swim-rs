@@ -27,6 +27,7 @@ from swimrs.process.state import (
     FieldProperties,
     WaterBalanceState,
 )
+from swimrs.units import assert_awc_m_per_m
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -1036,8 +1037,14 @@ def _write_properties_from_container(
     props = container_data["props"]
     dynamics = container_data["dynamics"]
 
-    # AWC: calibrated (masked) or from container
-    awc = np.array([props.get(fid, {}).get("awc", 0.15) * 1000 for fid in fids])
+    # AWC: calibrated (masked) or from container.
+    # Container convention is m/m (see `src/swimrs/units.py`); the process model
+    # wants mm/m, hence the x1000. Guard first so a container ingested from an
+    # mm/m source (e.g. HWSD) without awc_units="mm/m" fails loudly instead of
+    # producing 1000x soil water capacity.
+    awc_m_per_m = np.array([props.get(fid, {}).get("awc", 0.15) for fid in fids], dtype=float)
+    assert_awc_m_per_m(awc_m_per_m, where="build_swim_input container properties/soils/awc")
+    awc = awc_m_per_m * 1000
     if calibrated_params is not None and "aw" in calibrated_params:
         mask = ~np.isnan(calibrated_params["aw"])
         awc[mask] = calibrated_params["aw"][mask]

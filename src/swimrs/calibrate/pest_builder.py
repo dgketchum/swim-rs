@@ -27,6 +27,7 @@ from swimrs.process.kcb_modes import (
     kcb_mode_parameters,
     resolve_kcb_mode,
 )
+from swimrs.units import assert_awc_m_per_m
 
 
 class PestBuilder:
@@ -397,6 +398,10 @@ class PestBuilder:
 
         # Some projects (international) may not have SSURGO; allow missing AWC
         aw = [self.plot_properties.get(t, {}).get("awc", np.nan) for t in targets]
+        # Container convention is m/m; the x1000 below makes it mm/m. A source
+        # delivered in mm/m (e.g. HWSD) that was ingested without
+        # awc_units="mm/m" would silently produce 1000x priors.
+        assert_awc_m_per_m(np.asarray(aw, dtype=float), where="PestBuilder AWC priors")
         ke_max = [self.ke_max.get(t, 1.0) for t in targets]
 
         et_ins = [f"etf_{fid}.ins" for fid in targets]

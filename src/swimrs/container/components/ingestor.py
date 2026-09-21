@@ -10,10 +10,12 @@ from __future__ import annotations
 import json
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
+
+from swimrs.units import assert_awc_m_per_m
 
 from .base import Component
 
@@ -982,6 +984,7 @@ class Ingestor(Component):
         uid_column: str = "FID",
         lulc_column: str = "modis_lc",
         extra_lulc_column: str | None = "glc10_lc",
+        awc_units: Literal["m/m", "mm/m"] = "m/m",
         overwrite: bool = False,
     ) -> ProvenanceEvent:
         """
@@ -1001,6 +1004,10 @@ class Ingestor(Component):
             uid_column: Column name for field UID in CSVs
             lulc_column: Column name for LULC code (default: modis_lc)
             extra_lulc_column: Column for secondary LULC (default: glc10_lc)
+            awc_units: Units of the `awc` column in `soils_csv`. The container
+                convention is m/m; SSURGO exports are already m/m, while HWSD
+                v2 exports are mm/m and must be declared as such so they are
+                divided by 1000 on the way in. Never auto-detected.
             overwrite: If True, replace existing data
 
         Returns:
@@ -1032,7 +1039,7 @@ class Ingestor(Component):
             if soils_csv:
                 soils_csv = Path(soils_csv)
                 sources.append(str(soils_csv))
-                self._ingest_soils(soils_csv, uid_column, overwrite)
+                self._ingest_soils(soils_csv, uid_column, overwrite, awc_units=awc_units)
                 properties_ingested.append("soils")
 
             # Process irrigation
@@ -1067,6 +1074,7 @@ class Ingestor(Component):
                 params={
                     "uid_column": uid_column,
                     "properties": properties_ingested,
+                    "awc_units": awc_units,
                 },
                 fields_affected=self._state.field_uids,
             )
@@ -2075,15 +2083,33 @@ class Ingestor(Component):
         soils_csv: Path,
         uid_column: str,
         overwrite: bool,
+        awc_units: Literal["m/m", "mm/m"] = "m/m",
     ) -> None:
         """Ingest soil properties.
 
         Expected units (canonical SWIM-RS):
-        - `awc`: meters of water per meter soil (m/m) in source CSV; stored as-is
-          in the container and converted to mm/m when building SwimInput.
+        - `awc`: stored in the container as meters of water per meter soil
+          (m/m), and converted to mm/m when building SwimInput. The units of
+          the *source CSV* must be declared by the caller via `awc_units`:
+          "m/m" (the default; SSURGO exports) or "mm/m" (HWSD v2 exports,
+          values ~10-400), which is divided by 1000 before storage. The units
+          are never inferred from magnitude. The declared and stored units are
+          recorded in the `properties/soils` group attrs as `awc_units_source`
+          and `awc_units_stored`.
         - `ksat`: mm/day. This is converted to mm/hr internally for IER runoff.
           See `src/swimrs/units.py` (PROCESS_CANONICAL_UNITS).
+
+        Raises:
+            ValueError: If `awc_units` is not "m/m" or "mm/m", or if the stored
+                AWC values are not a valid m/m fraction.
         """
+        if awc_units not in ("m/m", "mm/m"):
+            raise ValueError(
+                f"awc_units must be 'm/m' or 'mm/m', got {awc_units!r}. "
+                "SSURGO soils CSVs are 'm/m'; HWSD v2 soils CSVs are 'mm/m'."
+            )
+        awc_scale = 1.0 if awc_units == "m/m" else 1e-3
+
         df = pd.read_csv(soils_csv)
         df = df.set_index(uid_column)
         df.index = df.index.astype(str)
@@ -2121,7 +2147,19 @@ class Ingestor(Component):
                     idx = self._state.get_field_index(uid)
                     value = df.loc[uid, col]
                     if pd.notna(value):
-                        arr[idx] = float(value)
+                        value = float(value)
+                        if prop == "awc":
+                            value *= awc_scale
+                        arr[idx] = value
+
+            if prop == "awc":
+                soils_group = self._state.ensure_group("properties/soils")
+                soils_group.attrs["awc_units_source"] = awc_units
+                soils_group.attrs["awc_units_stored"] = "m/m"
+                assert_awc_m_per_m(
+                    np.asarray(arr[:]),
+                    where=f"ingest of {Path(soils_csv).name} (awc_units={awc_units!r})",
+                )
 
     def _ingest_irrigation(
         self,

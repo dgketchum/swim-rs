@@ -33,7 +33,7 @@ def _build_irrigation_ndvi_container(
     )
 
     awc = container._create_property_array("properties/soils/awc")
-    awc[:] = np.array([150.0], dtype=np.float32)
+    awc[:] = np.array([0.15], dtype=np.float32)
 
     ksat = container._create_property_array("properties/soils/ksat")
     ksat[:] = np.array([10.0], dtype=np.float32)
