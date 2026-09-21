@@ -34,7 +34,7 @@ import zarr
 from swimrs.swim.config import ProjectConfig
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-EX6 = os.path.dirname(HERE)
+EX6 = os.path.dirname(os.path.dirname(HERE))
 DATA = "/data/ssd1/swim/6_Flux_International/data"
 QA_ROOT = os.path.join(DATA, "e2_etf_refooting")
 CONFIG = os.path.join(EX6, "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml")

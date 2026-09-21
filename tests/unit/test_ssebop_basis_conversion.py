@@ -1,7 +1,7 @@
 """Unit tests for the E2 SSEBop alfalfa-to-grass basis converter (Phase 2, Gate G2).
 
 Exercises the pure pieces of
-``examples/6_Flux_International/e2_refooting/phase2_convert_ssebop_basis.py``: exact joins,
+``examples/6_Flux_International/container_build/e2_refooting/phase2_convert_ssebop_basis.py``: exact joins,
 hand-calculated corrections, the fixed-scalar regression, the missing/invalid statuses, the
 no-cap rule, input-hash preservation, and deterministic CSV output.
 """
@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "e2_refooting"
+E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "container_build" / "e2_refooting"
 
 
 @pytest.fixture(scope="module")

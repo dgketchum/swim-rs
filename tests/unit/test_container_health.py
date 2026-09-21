@@ -1,5 +1,5 @@
 """Unit tests for the E2 Phase 8 container health check
-(``examples/6_Flux_International/e2_refooting/phase8_container_health.py``).
+(``examples/6_Flux_International/container_build/e2_refooting/phase8_container_health.py``).
 
 Uses small in-memory zarr groups shaped like a SwimContainer to exercise the pure checks:
 NaN-aware equality, the grass-CSV replay of the ingestor (bounds, date columns, float32),
@@ -18,7 +18,7 @@ import pytest
 import zarr
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "e2_refooting"
+E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "container_build" / "e2_refooting"
 
 
 @pytest.fixture(scope="module")

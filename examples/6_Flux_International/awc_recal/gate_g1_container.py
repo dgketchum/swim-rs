@@ -30,7 +30,7 @@ import pandas as pd
 import zarr
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "e2_refooting"))
+sys.path.insert(0, str(HERE.parent / "container_build" / "e2_refooting"))
 from phase8_container_health import check_no_calibration_state  # noqa: E402
 
 E2 = Path("/data/ssd1/swim/6_Flux_International")

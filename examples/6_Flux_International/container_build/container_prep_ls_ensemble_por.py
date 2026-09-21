@@ -14,7 +14,7 @@ from pathlib import Path
 from swimrs.container import SwimContainer, create_container, open_container
 from swimrs.swim.config import ProjectConfig
 
-TOML = Path(__file__).resolve().parent / "6_Flux_International_LSEnsemble_POR.toml"
+TOML = Path(__file__).resolve().parent.parent / "6_Flux_International_LSEnsemble_POR.toml"
 
 
 def _load_config(config_path: str | None = None) -> ProjectConfig:

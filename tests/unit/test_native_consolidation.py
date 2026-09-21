@@ -1,5 +1,5 @@
 """Unit tests for the E2 Phase 7 native-record consolidation
-(``examples/6_Flux_International/e2_refooting/phase7_consolidate_native.py``).
+(``examples/6_Flux_International/container_build/e2_refooting/phase7_consolidate_native.py``).
 
 Rules under test: ingested values are preserved exactly, JSON-only dates are added, tree
 conflicts resolve to the ingested value (or ``max`` when never ingested), repair scenes become
@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "e2_refooting"
+E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "container_build" / "e2_refooting"
 
 
 @pytest.fixture(scope="module")

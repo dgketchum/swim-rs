@@ -10,7 +10,7 @@ from swimrs.swim.config import ProjectConfig
 
 
 def _load_config(config_path: str | None = None) -> ProjectConfig:
-    project_dir = Path(__file__).resolve().parent
+    project_dir = Path(__file__).resolve().parent.parent
     conf_path = Path(config_path) if config_path else project_dir / "6_Flux_International.toml"
     config = ProjectConfig()
 

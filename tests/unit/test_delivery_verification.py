@@ -1,5 +1,5 @@
 """Unit tests for the E2 Gate G6 delivery verification
-(``examples/6_Flux_International/e2_refooting/phase6_verify_delivery.py``).
+(``examples/6_Flux_International/container_build/e2_refooting/phase6_verify_delivery.py``).
 
 Covers the pure pieces: product-ID parsing, expected EPSG from the payload projection block,
 MTL parsing (first occurrence wins), chip-bounds tolerance, terminal categories and identity
@@ -17,7 +17,7 @@ import pytest
 from rasterio.coords import BoundingBox
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "e2_refooting"
+E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "container_build" / "e2_refooting"
 
 
 @pytest.fixture(scope="module")

@@ -1,7 +1,7 @@
 """Unit tests for the E2 missing-only ESPA manifest builder (Phase 5, Gate G5).
 
 Covers the pure pieces of
-``examples/6_Flux_International/e2_refooting/phase5_build_missing_only_manifest.py``: tier-ranked
+``examples/6_Flux_International/container_build/e2_refooting/phase5_build_missing_only_manifest.py``: tier-ranked
 product-ID selection, the delivery/order classification, the request rule (never-ordered,
 cancelled-only, and ordered-not-delivered scenes for both sensors), and payload construction
 (ETM+ ``et`` retained, extents copied verbatim).
@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "e2_refooting"
+E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "container_build" / "e2_refooting"
 
 
 @pytest.fixture(scope="module")

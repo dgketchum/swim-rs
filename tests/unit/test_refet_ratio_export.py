@@ -1,6 +1,6 @@
 """Unit tests for the E2 reference-ET sidecar exporter.
 
-Covers the pure pieces of ``examples/6_Flux_International/espa/export_refet_ratio.py``:
+Covers the pure pieces of ``examples/6_Flux_International/container_build/espa/export_refet_ratio.py``:
 manifest construction from a local vector file, UTC-offset rounding, deterministic
 selectors, the one-Daily-object-per-day contract for ETo/ETr, and the dry-run path
 never starting an Earth Engine task.
@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ESPA_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "espa"
+ESPA_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "container_build" / "espa"
 
 
 @pytest.fixture(scope="module")

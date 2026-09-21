@@ -1,7 +1,7 @@
 """Unit tests for the E2 ERA5-Land ETo/ETr sidecar validator (Phase 1, Gate G1).
 
 Covers the gate logic in
-``examples/6_Flux_International/e2_refooting/phase1_validate_sidecar.py``: the ETo agreement
+``examples/6_Flux_International/container_build/e2_refooting/phase1_validate_sidecar.py``: the ETo agreement
 thresholds and the sign-agreement rule for the few mid-winter days where ERA5-Land hourly
 Penman-Monteith integrates to a non-positive daily ETo in both the sidecar and the container.
 """
@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "e2_refooting"
+E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "container_build" / "e2_refooting"
 
 
 @pytest.fixture(scope="module")

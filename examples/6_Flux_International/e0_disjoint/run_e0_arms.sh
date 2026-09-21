@@ -27,7 +27,7 @@ for ARM in fao56_sig fao56; do
   echo "================ ARM $ARM  $(date -Is) ================"
 
   # Cat 2 input audit on the arm container (hash-identical copy of the canonical inputs)
-  $PY $EX6/e2_refooting/phase8_container_health.py --config "$CFG" --out-dir "$QA"
+  $PY $EX6/container_build/e2_refooting/phase8_container_health.py --config "$CFG" --out-dir "$QA"
   for f in irrigation_classifier_transition.csv daily_basis_gate_summary.json daily_basis_gate_by_site.csv \
            ssebop_conversion_summary.json ssebop_native_consolidation_summary.json le07_delivery_summary.json; do
     [ -f "$QA_CANON/$f" ] && cp "$QA_CANON/$f" "$QA/"

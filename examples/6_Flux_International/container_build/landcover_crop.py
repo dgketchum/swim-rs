@@ -31,7 +31,7 @@ import pandas as pd
 from swimrs.swim.config import ProjectConfig
 
 DEFAULT_TOML = (
-    Path(__file__).resolve().parent / "6_Flux_International_LSEnsemble_POR_annual2yr.toml"
+    Path(__file__).resolve().parent.parent / "6_Flux_International_LSEnsemble_POR_annual2yr.toml"
 )
 
 

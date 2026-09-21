@@ -33,7 +33,8 @@ import zarr
 from swimrs.swim.config import ProjectConfig
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE / "e2_refooting"))
+sys.path.insert(0, str(HERE / "e2_refooting"))  # phase8 (container build)
+sys.path.insert(0, str(HERE.parent / "e2_refooting"))  # phase9 (calibration archive)
 from phase8_container_health import check_no_calibration_state  # noqa: E402
 from phase9_archive_prelaunch import compare_hashes, container_manifest  # noqa: E402
 

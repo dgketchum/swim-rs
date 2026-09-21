@@ -1,7 +1,7 @@
 """Unit tests for the redefined E2 Gate G3 (daily ET consistency and low-ETo stability).
 
 Covers the pure pieces of
-``examples/6_Flux_International/e2_refooting/phase3_daily_basis_gate.py``: the ET-identity
+``examples/6_Flux_International/container_build/e2_refooting/phase3_daily_basis_gate.py``: the ET-identity
 read-back against written CSVs, the ingest-rule filter, the reproduction of the pest_builder
 "spread" ensemble weights (two-member sample SD, spread floor, min-member rule), sum(w**2) shares,
 and the threshold evaluation.
@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "e2_refooting"
+E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "container_build" / "e2_refooting"
 
 
 @pytest.fixture(scope="module")

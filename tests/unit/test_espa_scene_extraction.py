@@ -1,6 +1,6 @@
 """Unit tests for scene-identity preservation in the ESPA ETF extraction and CSV writing.
 
-Covers ``examples/6_Flux_International/espa/espa_extract_etf.py`` (product-ID parsing and
+Covers ``examples/6_Flux_International/container_build/espa/espa_extract_etf.py`` (product-ID parsing and
 ordering, legacy-schema detection) and ``espa_write_etf_csvs.py`` (legacy ``ETF_`` columns vs
 scene-key columns, duplicate scene key is a hard error), and checks that the container ingestor
 collapses two same-date scene-key columns deterministically (landsat: max), so same-overpass
@@ -18,7 +18,7 @@ import pytest
 from swimrs.container.components.ingestor import _parse_single_csv
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ESPA_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "espa"
+ESPA_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "container_build" / "espa"
 
 
 def _load(name):

@@ -145,7 +145,7 @@ def build_pub66(gis_dir: Path) -> Path:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Build Example 6 publication shapefiles")
-    default_gis = str(Path(__file__).resolve().parent / "data" / "gis")
+    default_gis = str(Path(__file__).resolve().parent.parent / "data" / "gis")
     parser.add_argument(
         "--gis-dir",
         type=str,
