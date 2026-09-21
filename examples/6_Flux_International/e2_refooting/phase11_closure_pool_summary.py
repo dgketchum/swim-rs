@@ -635,19 +635,71 @@ def main():
     )
 
     # ---- uncalibrated default-parameter baseline ----
+    # Two forward runs of the default-parameter model exist in the archive, scored on different
+    # day sets: transfer_ex5_params.py (``e3_uncal``, the rs-gated mask shared with every other
+    # row of the closure pool: flux, SWIM and the Landsat-ensemble benchmark all finite) and
+    # derived_metrics.py (``derived_uncal_baseline_persite.csv``, flux + SWIM finite only). The
+    # CANONICAL row is the rs-gated one, so the uncalibrated model is scored on exactly the days
+    # as the calibrated model, the benchmark and the transfers it is compared with (HANDOFF
+    # HWSD_AWC_UNITS_RECAL section 6.5). The flux+SWIM-mask summary is kept as a secondary file.
+    unc_rows = []
+    for state, key in (("cal", "e3_cal"), ("uncal", "e3_uncal")):
+        cols = {k: f"{key}_{k}" for k in ("r2", "rmse", "bias", "kge")}
+        row = {
+            "series": state,
+            "forward_run": "transfer_ex5_params.py",
+            "mask": "rs_gated_paired_days",
+            "n_sites": int(persite[cols["kge"]].notna().sum()),
+        }
+        for k, c in cols.items():
+            row[f"{k}_median"] = float(persite[c].median())
+        unc_rows.append(row)
+    row = {
+        "series": "cal_minus_uncal_paired",
+        "forward_run": "transfer_ex5_params.py",
+        "mask": "rs_gated_paired_days",
+        "n_sites": int(len(persite)),
+    }
+    for k in ("r2", "rmse", "bias", "kge"):
+        row[f"{k}_median"] = float((persite[f"e3_cal_{k}"] - persite[f"e3_uncal_{k}"]).median())
+    unc_rows.append(row)
+    pd.DataFrame(unc_rows).to_csv(out / "uncalibrated_baseline_summary.csv", index=False)
+
     unc = pd.read_csv(cat6 / "derived_uncal_baseline_persite.csv", index_col="fid")
     unc = unc.loc[unc.index.intersection(pool)]
     unc_rows = []
     for state in ("cal", "uncal"):
-        row = {"series": state, "n_sites": int(unc[f"kge_{state}"].notna().sum())}
+        row = {
+            "series": state,
+            "forward_run": "derived_metrics.py",
+            "mask": "flux_and_swim_finite",
+            "n_sites": int(unc[f"kge_{state}"].notna().sum()),
+        }
         for k in ("r2", "rmse", "bias", "kge"):
             row[f"{k}_median"] = float(unc[f"{k}_{state}"].median())
         unc_rows.append(row)
-    row = {"series": "cal_minus_uncal_paired", "n_sites": int(len(unc))}
+    row = {
+        "series": "cal_minus_uncal_paired",
+        "forward_run": "derived_metrics.py",
+        "mask": "flux_and_swim_finite",
+        "n_sites": int(len(unc)),
+    }
     for k in ("r2", "rmse", "bias", "kge"):
         row[f"{k}_median"] = float((unc[f"{k}_cal"] - unc[f"{k}_uncal"]).median())
     unc_rows.append(row)
-    pd.DataFrame(unc_rows).to_csv(out / "uncalibrated_baseline_summary.csv", index=False)
+    pd.DataFrame(unc_rows).to_csv(
+        out / "uncalibrated_baseline_summary_flux_swim_mask.csv", index=False
+    )
+    both = persite.join(unc, how="inner")
+    uncal_mask_delta = {
+        k: float((both[f"e3_uncal_{k}"] - both[f"{k}_uncal"]).abs().max())
+        for k in ("r2", "rmse", "bias", "kge")
+    }
+    if (persite["e3_uncal_kge"].notna().sum()) != len(pool):
+        problems.append(
+            f"canonical uncalibrated row scored {int(persite['e3_uncal_kge'].notna().sum())} "
+            f"sites, pool has {len(pool)}"
+        )
 
     # ---- classifier transitions ----
     trv = pd.read_csv(cat6 / "classifier_transition_vs_metrics.csv", index_col="site")
@@ -714,6 +766,20 @@ def main():
             "rng_scope": "one RNG per (basis, tier) block",
         },
         "member_benchmark_sites": n_member_sites,
+        "uncalibrated_baseline": {
+            "canonical_file": "uncalibrated_baseline_summary.csv",
+            "canonical_forward_run": (
+                "transfer_ex5_params.py e3_uncal (default parameters, container AWC), scored on "
+                "the rs-gated paired days shared with E3 calibrated, the transfers and the "
+                "LS ensemble"
+            ),
+            "secondary_file": "uncalibrated_baseline_summary_flux_swim_mask.csv",
+            "secondary_forward_run": (
+                "derived_metrics.py run_uncalibrated_model, scored on flux + SWIM finite days "
+                "(no benchmark gate); differs from the canonical row only by the day mask"
+            ),
+            "max_abs_persite_delta_between_masks": uncal_mask_delta,
+        },
         "verify_all_sites": verify,
         "inputs_sha256": {str(f): sha256_file(f) for f in inputs if f.exists()},
         "problems": problems,

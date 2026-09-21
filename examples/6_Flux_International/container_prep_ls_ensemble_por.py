@@ -85,6 +85,9 @@ def ingest_etf(container: SwimContainer, cfg: ProjectConfig):
 
 def ingest_properties(container: SwimContainer, cfg: ProjectConfig, overwrite: bool = False):
     print("\n=== Ingesting Properties ===")
+    # HWSD v2 delivers AWC in mm/m; SSURGO delivers m/m. The container stores
+    # m/m, so the source units must be declared here.
+    awc_units = "mm/m" if cfg.soil_source == "hwsd" else "m/m"
     container.ingest.properties(
         soils_csv=cfg.hwsd_csv,
         lulc_csv=cfg.lulc_csv,
@@ -92,6 +95,7 @@ def ingest_properties(container: SwimContainer, cfg: ProjectConfig, overwrite: b
         uid_column=cfg.feature_id_col,
         lulc_column="modis_lc",
         extra_lulc_column="glc10_lc",
+        awc_units=awc_units,
         overwrite=overwrite,
     )
 

@@ -178,6 +178,7 @@ def ingest_properties(container: SwimContainer, cfg: ProjectConfig):
         uid_column=cfg.feature_id_col,
         lulc_column="modis_lc",
         extra_lulc_column="glc10_lc",
+        awc_units="mm/m",  # HWSD v2 AWC is mm/m; container stores m/m
     )
 
 

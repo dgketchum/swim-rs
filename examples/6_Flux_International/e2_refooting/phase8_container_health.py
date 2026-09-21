@@ -92,7 +92,7 @@ def array_paths(group: zarr.Group, prefix: str = "") -> list[str]:
     return out
 
 
-def nan_equal(a: np.ndarray, b: np.ndarray) -> tuple[bool, float]:
+def nan_equal(a: np.ndarray, b: np.ndarray, atol: float = 0.0) -> tuple[bool, float]:
     if a.shape != b.shape:
         return False, float("inf")
     if a.dtype.kind in "fc" or b.dtype.kind in "fc":
@@ -101,7 +101,7 @@ def nan_equal(a: np.ndarray, b: np.ndarray) -> tuple[bool, float]:
         both = np.isfinite(a) & np.isfinite(b)
         same_mask = np.array_equal(np.isfinite(a), np.isfinite(b))
         diff = float(np.max(np.abs(a[both] - b[both]))) if both.any() else 0.0
-        return same_mask and diff == 0.0, diff
+        return same_mask and diff <= atol, diff
     return bool(np.array_equal(a, b)), 0.0
 
 
@@ -327,6 +327,22 @@ def check_regression(root: zarr.Group, base: zarr.Group) -> dict:
         b = b[:, jb] if b.ndim == 2 else b[jb]
         same, diff = nan_equal(a, b)
         out["arrays"][path] = {"present_in_both": True, "identical": same, "max_abs_diff": diff}
+        if path == "properties/soils/awc" and not same:
+            # The baseline container stored HWSD AWC as delivered (mm/m); the container
+            # convention is m/m (HANDOFF_HWSD_AWC_UNITS_RECAL 2026-09-21). The refreshed
+            # container must reproduce the baseline exactly after the x1000 conversion.
+            same_units, diff_units = nan_equal(a.astype(float) * 1000.0, b.astype(float), atol=1e-3)
+            out["arrays"][path].update(
+                {
+                    "identical_after_mm_per_m_conversion": same_units,
+                    "max_abs_diff_after_conversion": diff_units,
+                    "awc_units_stored": root["properties/soils"].attrs.get("awc_units_stored"),
+                    "awc_units_source": root["properties/soils"].attrs.get("awc_units_source"),
+                }
+            )
+            if same_units and root["properties/soils"].attrs.get("awc_units_stored") == "m/m":
+                out["arrays"][path]["identical"] = True
+                out["arrays"][path]["note"] = REGRESSION_AWC_NOTE
     for path in array_paths(root["meteorology"], "meteorology/"):
         if path in base:
             a = np.asarray(root[path][:])[:, ji]
@@ -351,6 +367,11 @@ def check_regression(root: zarr.Group, base: zarr.Group) -> dict:
 # Arrays allowed to differ from the baseline, each with the tracked cause. Any difference in an
 # array not listed here fails the regression check; the Sentinel entry must additionally be
 # reproduced by ``replay_sentinel_ndvi`` (both rules) before the check passes.
+REGRESSION_AWC_NOTE = (
+    "baseline stores HWSD AWC in mm/m as delivered; the refreshed container stores m/m "
+    "(awc_units='mm/m' declared at ingest, 2026-09-21 HWSD AWC units recal); accepted only when "
+    "new*1000 reproduces the baseline within 1e-3 mm/m"
+)
 REGRESSION_EXPLAINED = {
     "remote_sensing/ndvi/sentinel/no_mask": (
         "ingestor same-date Sentinel tile collapse changed max -> mean in c16263c (2026-08-13), "
