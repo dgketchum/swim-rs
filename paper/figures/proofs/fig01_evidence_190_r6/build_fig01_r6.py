@@ -3,12 +3,14 @@
 2026-08-27 data swap: the frozen package moved to architecture 3.3.0 — the
 example record is now S2 (2018), Harney Basin irrigated alfalfa, under the
 user-directed override recorded in `fig03_example_selection.json` (8
-calibration captures; member ETf to 1.665). Render-level consequences here:
-the ETf, NDVI and forcing display domains re-derive from the new extrema,
+calibration captures; member EToF to 1.665). Render-level consequences here:
+the EToF, NDVI and forcing display domains re-derive from the new extrema,
 the NDVI and forcing marker keys move to stretches of the S2 record that are
 actually clear, and the E1 map gains a caption-keyed callout ring at the
 example site. Text rulings the same day: bare "(a)" panel label, one
-equal-weight "E0–E1 · CONUS" heading (both in `fig01_r6_common.py`).
+equal-weight E0-bearing map heading (both in `fig01_r6_common.py`); since
+2026-09-20 that heading is "E0–E2 · eight countries", because E0 ran at 37
+of the E2 sites, none of which occur in E1.
 
 Three structural changes against the frozen data; every mark, colour, and
 datum otherwise inherits from `build_fig01_r5_selected.py`:
@@ -32,9 +34,8 @@ datum otherwise inherits from `build_fig01_r5_selected.py`:
     field 127.3 -> 164.7 mm); the row bands, gutters, marker keys, and
     label treatment are unchanged from r5.
 
-Panel (a)'s render overrides carry over verbatim: orthogonal E1->E3 route,
-symmetric E2 latitude bounds, USGS NAIP orthoimagery under the E3 fields
-(public domain, provenance in `assets/`), and the E1 locator.
+Panel (a) uses an equal-area E2 map, a clean vector E3 context, the orthogonal
+E1-to-E3 route, and the E1 locator.
 
 Run:
   uv run python paper/figures/proofs/fig01_evidence_190_r6/build_fig01_r6.py
@@ -42,14 +43,11 @@ Run:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import fig01_r6_common as K
 import numpy as np
 import pandas as pd
 from fig01_r6_common import (
     C_AXIS,
-    C_DATUM,
     C_ETO,
     C_GUIDE,
     C_HELD,
@@ -66,7 +64,6 @@ from fig01_r6_common import (
     H_MM,
     LW_AXIS,
     LW_DATA,
-    LW_DATUM,
     LW_GUIDE,
     LW_SPINE,
     MARGIN_MM,
@@ -106,7 +103,7 @@ ROWS: dict[str, tuple[float, float]] = {  # r5 bands shifted down 40.8 mm
     "et_comparison": (10.2, 18.0),
 }
 ROW_LABEL = {
-    "etf_ensemble": ("ETf", "ensemble"),
+    "etf_ensemble": ("EToF", "ensemble"),
     "ndvi_captures": ("NDVI", "captures"),
     "daily_forcing": ("Daily", "forcing"),
     "rz_depletion": ("Root-zone", "depletion"),
@@ -119,8 +116,8 @@ UNITS = {
     "irrigation": "(mm)",
     "et_comparison": "(mm d$^{-1}$)",
 }
-# Render domains re-derived 2026-08-27 for the S2 record (member ETf max
-# 1.665, NDVI max 0.94, forcing max 8.1): the ETf and forcing rows follow the
+# Render domains re-derived 2026-08-27 for the S2 record (member EToF max
+# 1.665, NDVI max 0.94, forcing max 8.1): the EToF and forcing rows follow the
 # recorded contract domains (0-1.8 / 0-10) widened only where the Sec. 5.2
 # headroom guard (>= 5% and >= 0.55 mm) requires it; the NDVI ceiling carries
 # render headroom above 1.0 (unlabelled -- ticks stop at 1.0).
@@ -146,14 +143,6 @@ DATE_LABEL_Y = 5.6
 GUIDE_TOP = 66.2
 GUIDE_BOT = 10.2
 
-ASSETS = Path(__file__).resolve().parent / "assets"
-E3_BASEMAP = {
-    "path": str(ASSETS / "e3_basemap_usgs_naip_5070.png"),
-    "source": "USGS The National Map, USGSImageryOnly (NAIP), public domain",
-    "provenance": "assets/e3_basemap_usgs_naip_5070.json",
-    "wash": 0.10,
-}
-
 XLIM = (-1.5, 120.5)
 MEMBER_MS = 2.6
 DIAMOND_MS = 4.6
@@ -173,7 +162,7 @@ def main() -> None:
     bg.set_ylim(0, H_MM)
     bg.set_facecolor("none")
     bg.axis("off")
-    tag(bg, "background-guides-and-datums")
+    tag(bg, "background-month-guides")
 
     ts, cap, day, cap_day = F.ts, F.cap, F.day, F.cap_day
     AXIS: dict[str, dict] = {}
@@ -252,9 +241,17 @@ def main() -> None:
                 f"the {rid!r} label line {s!r} overruns the margin ({LABEL_R - w:.2f} mm)"
             )
 
-        ln = Line2D([PA_X0, PA_X0], [y0, y1], color=C_AXIS, lw=LW_SPINE, zorder=6)
-        ov.add_line(ln)
-        tag(ln, f"axis-spine-{K._slug(rid)}")
+        frame = Rectangle(
+            (PA_X0, y0),
+            PA_X1 - PA_X0,
+            y1 - y0,
+            facecolor="none",
+            edgecolor=C_AXIS,
+            linewidth=LW_SPINE,
+            joinstyle="miter",
+            zorder=6,
+        )
+        ov.add_patch(tag(frame, f"axis-frame-{K._slug(rid)}"))
 
         # study B: every numeral is CENTRED on its tick
         for v, s in TICKS[rid]:
@@ -264,16 +261,9 @@ def main() -> None:
             )
             ticktext(ov, TICKNUM_R, ty, s, pt=FS_TICK, ha="right", va="center")
 
-        bg.add_line(
-            tag(
-                Line2D([PA_X0, PA_X1], [y0, y0], color=C_DATUM, lw=LW_DATUM, zorder=2),
-                f"datum-{K._slug(rid)}",
-            )
-        )
-
     def key_frame(x0, y0, x1, y1, gid):
         # guide sec. 8 framed key: 0.5 pt black rule, square corners, opaque
-        # white fill; the fill knocks out data, guides, and datums beneath it
+        # white fill; the fill knocks out data and guides beneath it
         r = Rectangle(
             (x0, y0),
             x1 - x0,
@@ -348,7 +338,7 @@ def main() -> None:
     # whisker-with-dots glyph defines members and their min-max span together.
     kgx, klx = 24.6, 26.4
     etf_key_right = (
-        klx + max(text_w_mm("Ensemble mean", FS_ROW), text_w_mm("Members", FS_ROW)) + 1.2
+        klx + max(text_w_mm("Ensemble mean", FS_ROW), text_w_mm("Six members", FS_ROW)) + 1.2
     )
     key_frame(23.2, 60.0, etf_key_right, 66.0, "key-frame-etf")
     tag(
@@ -401,7 +391,7 @@ def main() -> None:
         ov,
         klx,
         61.9,
-        "Members",
+        "Six members",
         cls="direct_label",
         pt=FS_ROW,
         color=C_TEXT,
@@ -411,10 +401,10 @@ def main() -> None:
     )
     first_cap_x = float(xmm(cap_day.min()))
     assert etf_key_right + 1.5 <= first_cap_x, (
-        f"the ETf marker key ({etf_key_right:.2f} mm) crowds the first capture ({first_cap_x:.2f} mm)"
+        f"the EToF marker key ({etf_key_right:.2f} mm) crowds the first capture ({first_cap_x:.2f} mm)"
     )
     y0, y1 = ROWS[rid]
-    assert y0 <= 60.0 and 66.0 <= y1, "the ETf key frame leaves its row band"
+    assert y0 <= 60.0 and 66.0 <= y1, "the EToF key frame leaves its row band"
 
     rid = "ndvi_captures"
     ax = row_axes(rid)
@@ -705,10 +695,7 @@ def main() -> None:
         ov,
         F,
         text_w_mm,
-        e2_mode="symmetric",
         e3_route="orthogonal",
-        e3_basemap=E3_BASEMAP,
-        e3_hull=False,
         e1_e3_locator=True,
     )
 
@@ -739,13 +726,15 @@ def main() -> None:
     assert RECORD_Y + K.ink_h_mm(FS_ROW) * 0.78 <= B_TS_HEAD_Y - 0.65 - 0.6, (
         "the record label collides with the panel (b) heading"
     )
-    assert GUIDE_TOP <= RECORD_Y - 0.65 - 0.8, "the ETf row rises into the record label"
+    assert GUIDE_TOP <= RECORD_Y - 0.65 - 0.8, "the EToF row rises into the record label"
     assert DATE_LABEL_Y - 0.65 >= MARGIN_MM - 0.05, "the month labels drop below the margin"
 
     # panel (a) render overrides actually applied and recorded
-    assert abs(pb["e2_lat_bound_deg"] - 56.0997) < 0.01, pb["e2_lat_bound_deg"]
+    assert pb["e2_projection_epsg"] == 8857
+    assert pb["e2_n_sites"] == 47
+    assert pb["e2_class_counts"] == {"irrigation_equipped": 11, "other_cropland": 36}
     assert "e3_route_vertices_mm" in pb, "the orthogonal E1->E3 route was not drawn"
-    assert "e3_basemap" in pb, "the E3 basemap was not drawn"
+    assert "e3_basemap" not in pb, "the E3 map must remain imagery-free"
     assert "e1_e3_locator_epsg5070" in pb, "the E3 locator was not drawn on the E1 map"
     assert pb["e1_example_callout"]["site_id"] == F.arch["example_record"]["site_id"], (
         "the E1 example callout does not ring the frozen example site"
@@ -781,7 +770,7 @@ def main() -> None:
                 "glyph_x_mm": 24.6,
                 "label_x_mm": 26.4,
                 "Ensemble mean": 64.6,
-                "Members": 61.9,
+                "Six members": 61.9,
             },
             "ndvi_captures": {
                 "glyph_x_mm": round(nkgx, 2),
@@ -819,11 +808,31 @@ def main() -> None:
             "measured": meas,
             "architecture_sha256": F.arch_sha,
             "example_csv_sha256": F.csv_sha,
+            # figures_update_01092026.md section 3.1: the example-window
+            # selection rule predates the 2026-08-31 E1 benchmark rebuild and
+            # is intentionally NOT re-footed on it.
+            "selection_rule_provenance": {
+                "disclosure": (
+                    "The frozen example-window selection rule "
+                    "(fig03_example_selection.json steps 1-6, with the recorded "
+                    "2026-08-27 directed-site override) was evaluated against the "
+                    "superseded January direct-interpolation OpenET benchmark and "
+                    "is intentionally kept frozen for byte-compatibility with the "
+                    "original derivation. It is not re-footed on the 2026-08-31 "
+                    "ETf-first v2.1 rebuild (paper/data/final/e1_openet_benchmark/): "
+                    "a re-selection could silently move the example window and "
+                    "invalidate the verified 120/120-finite S2 record. No "
+                    "benchmark-derived value is displayed anywhere in Figure 1; "
+                    "the displayed series and the optional skill values are "
+                    "flux-vs-SWIM quantities already on the v2.1 masters."
+                ),
+                "plan_ref": "paper/notes/figures_update_01092026.md section 3.1",
+            },
         },
     )
     print(
         f"[{STUDY}] data field {DATA_W:.1f} mm   label gutter {LABEL_R:.1f} mm   "
-        f"E2 bounds ±{pb['e2_lat_bound_deg']:.2f}°"
+        f"E2 {pb['e2_n_sites']} sites in EPSG:{pb['e2_projection_epsg']}"
     )
     print(f"[{STUDY}] E1->E3 route vertices: {pb['e3_route_vertices_mm']}")
     for k, v in AXIS.items():

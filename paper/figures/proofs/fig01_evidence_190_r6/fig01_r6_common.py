@@ -22,23 +22,24 @@ What this module owns
   there is no string-parity assertion anywhere in revision 5;
 * stable SVG element ids (Sec. 15.2), the markup channel;
 * mm-space primitives, the route ledger, and the map/route firewalls; and
-* panel (b), which Sec. 16.3 fixes for this round apart from the E3
+* panel (a), which contains the experiment-domain maps and transfer paths,
+  apart from the E3
   aggregation key, which moves out of the inter-panel strip to sit adjacent to
   the E3 map (Sec. 5.4.2).
 
 What each study owns
 --------------------
-Panel (a) entirely: row set, row heights, gutters, domains, ticks, datums,
-month guides, the inverse-loop form, and all wording.
+Panel (b) entirely: row set, row heights, gutters, domains, ticks, frames,
+month guides, keys, and all wording.
 
 Assertions retained (Sec. 13: machine checks confirm data integrity, dimensions,
 clipping and semantic edges -- they cannot certify composition):
 
 * page is exactly 190 x 120 mm;
-* cohort counts 60/66/50, classes 39/21 and 13/53, overlap 13, `MB_Pch` present;
-* the example is the frozen site and window, 120 rows and 15 captures;
+* cohort counts 60/47/50, E1 classes 39/21, E2 classes 11/36, `MB_Pch` present;
+* the example is the frozen site and window, 120 rows and 8 captures;
 * every plotted column has recorded provenance and no audit-only column is drawn;
-* ETf member marks reconcile to the frozen member count and target mean;
+* EToF member marks reconcile to six members per capture and the target mean;
 * no filled-NDVI column reaches the display;
 * every row's display domain contains every mark **with visible headroom**;
 * the ET/flux traces share one date mapping, one y mapping, one region;
@@ -75,7 +76,6 @@ import matplotlib.patches as mpatches  # noqa: E402
 from matplotlib import font_manager as fm  # noqa: E402
 from matplotlib import pyplot as plt  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
-from shapely.geometry import box as shp_box  # noqa: E402
 
 # ===========================================================================
 # canvas, type and colour  (handoff Sec. 9)
@@ -101,22 +101,20 @@ C_HELD = "#000000"  # held-out observations
 C_E1, C_E2, C_E3 = "#4477AA", "#228833", "#AA3377"
 
 C_TEXT = "#000000"  # full black: ALL reader-facing text (guide sec. 7)
-C_AXIS = "#9A9DA1"  # y-spines, tick stubs, date spine
-C_DATUM = "#C9CBCD"  # per-row lower-bound datum
+C_AXIS = "#000000"  # axes and ticks must survive final-size reproduction
 C_GUIDE = "#E2E4E6"  # shared April-July month guides
-C_MINMAX = "#6C7176"  # ETf min-max line
-C_MEMBER = "#4F5358"  # ETf member marks
+C_MINMAX = "#6C7176"  # EToF min-max line
+C_MEMBER = "#4F5358"  # EToF member marks
 C_SENSOR = "#3F4246"  # NDVI capture marks
 C_ETO = "#3F4246"  # ETo line
 C_PRECIP = "#8FA0AC"  # precipitation stems
-C_LAND = "#ECECE7"
+C_LAND = "#FFFFFF"
 C_BOUND = "#A9A9A3"
 C_HAIR = "#B6B6B0"
 C_CONTEXT = "#CBCBC5"
 
 LW_AXIS = 0.55
 LW_SPINE = 0.6
-LW_DATUM = 0.35
 LW_GUIDE = 0.4
 LW_DATA = 1.0
 LW_ROUTE = 0.8
@@ -137,7 +135,7 @@ MAP_TOP = 30.6 + PANEL_DY
 E2_TOP = 25.0 + PANEL_DY
 
 E1_FRAME = (3.0, MAP_BOT, 48.0, MAP_TOP - MAP_BOT)
-E2_FRAME = (85.0, MAP_BOT, 65.0, E2_TOP - MAP_BOT)
+E2_FRAME = (86.0, MAP_BOT, 60.0, E2_TOP - MAP_BOT)
 # Sec. 5.4.2: the aggregation key leaves the inter-panel strip and sits with
 # the E3 geography, so the E3 frame gives up its lower third to the key block.
 E3_FRAME = (152.0, 13.6 + PANEL_DY, 33.0, MAP_TOP - (13.6 + PANEL_DY))
@@ -161,6 +159,7 @@ RETAIN_CONUS_STATES = True
 RETAIN_SLV_BASIN = False
 
 CRS_ALBERS = 5070
+CRS_EQUAL_EARTH = 8857
 MEMBER_COLS = [
     "etf_ssebop",
     "etf_ptjpl",
@@ -177,6 +176,7 @@ GPKG = PKG / "fig01_scope.gpkg"
 ARCH_PATH = PKG / "fig01_architecture.json"
 TS_PATH = PKG / "fig01_example_timeseries.csv"
 SEL_PATH = PKG / "fig01_example_selection.json"
+E2_COHORT_PATH = PKG / "fig01_e2_current_sites.csv"
 
 # ===========================================================================
 # drawn-string ledger -- review aid, NOT a parity gate (handoff Sec. 10)
@@ -501,14 +501,18 @@ class Frozen:
         assert prov["swe_audit"]["display_role"] == "audit_only_not_plotted"
         assert prov["capture_sensor"]["display_role"] == "audit_only"
 
-        # ETf member marks must reconcile to the frozen member count and mean
+        # EToF member marks must reconcile to six values per capture and the mean
         mem = cap[MEMBER_COLS].to_numpy(dtype=float)
         n_mem = np.isfinite(mem).sum(axis=1)
+        assert np.all(n_mem == len(MEMBER_COLS)), "each capture must have six finite EToF members"
         assert np.array_equal(n_mem, cap["etf_member_count"].to_numpy()), (
-            "plotted ETf member marks do not reconcile to the frozen member count"
+            "plotted EToF member marks do not reconcile to the frozen member count"
         )
         assert np.allclose(np.nanmean(mem, axis=1), cap["etf_target_mean"].to_numpy(), atol=1e-9), (
             "the plotted member marks do not reconcile to the frozen target mean"
+        )
+        assert ts[["swim_ET", "flux_ET"]].notna().all(axis=None), (
+            "the S2 example must contain 120 paired daily ET values"
         )
 
         self.ts = ts
@@ -518,23 +522,28 @@ class Frozen:
         self.members = mem
 
         self.e1 = gpd.read_file(GPKG, layer="e1_sites", engine="fiona")
-        self.e2 = gpd.read_file(GPKG, layer="e2_sites", engine="fiona")
+        e2_scope = gpd.read_file(GPKG, layer="e2_sites", engine="fiona")
+        e2_cohort = pd.read_csv(E2_COHORT_PATH)
+        assert len(e2_cohort) == 47 and e2_cohort["display_id"].is_unique
+        assert set(e2_cohort["display_id"]) <= set(e2_scope["display_id"])
+        self.e2 = e2_scope.merge(e2_cohort, on="display_id", validate="one_to_one")
         self.e3 = gpd.read_file(GPKG, layer="e3_display", engine="fiona")
         self.conus = gpd.read_file(GPKG, layer="conus_context", engine="fiona")
         self.world = gpd.read_file(GPKG, layer="world_context", engine="fiona")
         self.slv = gpd.read_file(GPKG, layer="slv_context", engine="fiona")
         self.states = gpd.read_file(GPKG, layer="conus_states_context", engine="fiona")
 
-        assert (len(self.e1), len(self.e2), len(self.e3)) == (60, 66, 50)
+        assert (len(self.e1), len(self.e2), len(self.e3)) == (60, 47, 50)
         assert self.e1["irrigation_class"].value_counts().to_dict() == {
             "irrigated": 39,
             "rainfed": 21,
         }
         assert self.e2["irrigation_class"].value_counts().to_dict() == {
-            "rainfed": 53,
-            "irrigated": 13,
+            "rainfed": 36,
+            "irrigated": 11,
         }
-        assert int(self.e2["in_e1"].sum()) == 13, "E1/E2 overlap is not 13"
+        assert self.e2["region"].value_counts().to_dict() == {"CONUS": 29, "ex-CONUS": 18}
+        assert self.e2["country"].nunique() == 8 and self.e2["continent"].nunique() == 3
         assert (self.e1["display_id"] == "MB_Pch").sum() == 1, "MB_Pch missing from E1 scope"
         assert set(self.e3.geom_type) == {"Point"}, "E3 public display must be points only"
         assert not any(
@@ -584,7 +593,7 @@ def measurer(fig):
 
 
 # ===========================================================================
-# panel (b) -- fixed this round (Sec. 16.3); only the E3 key relocates
+# panel (a) -- experiment domains and parameter transfer
 # ===========================================================================
 
 MS_TRI, MS_CIR = 9.5, 7.0
@@ -597,25 +606,20 @@ def draw_panel_b(
     F: Frozen,
     text_w_mm,
     *,
-    e2_mode="legacy",
     e3_route="spline",
     e3_basemap=None,
     e3_hull=True,
     e1_e3_locator=False,
 ) -> dict:
-    """Draw panel (b) exactly as accepted in revision 4, plus the E3 key.
+    """Draw the experiment-domain maps and parameter-transfer paths in panel (a).
 
     Two-pass marker rendering (all halos, then all fills) so co-located marks
     are never knocked out. No jitter, thinning or resampling: co-location is
     data truth.
 
-    The selected synthesis (handoff Sec. 6.1/6.5) passes two render-level
-    overrides; the defaults reproduce Studies A-C byte-for-byte:
+    The E2 site map uses Equal Earth (EPSG:8857), cropped to the occupied
+    domain. The selected synthesis also supports these render-level options:
 
-    * ``e2_mode="symmetric"``   E2 latitude bounds become +/-(max |site
-      latitude| + 5 deg), computed from the frozen ``e2_sites`` layer, with the
-      frame height derived so a degree of latitude and a degree of longitude
-      get equal millimetres (no stretch).
     * ``e3_route="orthogonal"`` the irrigated E1->E3 branch becomes the
       geometric up-and-over route (rise, over, short terminal) in place of the
       revision-4 spline. Source and destination are unchanged.
@@ -633,26 +637,7 @@ def draw_panel_b(
     """
     out: dict = {}
 
-    # E2 frame + graticule bounds, resolved before anything references them.
-    if e2_mode == "symmetric":
-        phi = float(F.e2.geometry.y.abs().max()) + 5.0
-        lon_pad = 10.0  # buffered a bit past the site envelope on both sides
-        lon0 = float(F.e2.geometry.x.min()) - lon_pad
-        lon1 = float(F.e2.geometry.x.max()) + lon_pad
-        e2_w = 60.0
-        e2_h = e2_w * (2.0 * phi) / (lon1 - lon0)  # 1 deg lat == 1 deg lon in mm
-        e2f = (86.0, MAP_BOT, e2_w, e2_h)
-        out["e2_lon_bounds_deg"] = [round(lon0, 4), round(lon1, 4)]
-        out["e2_lon_pad_deg"] = lon_pad
-        lat_c, lat_half = 0.0, phi
-        out["e2_max_abs_site_lat_deg"] = round(phi - 5.0, 4)
-        out["e2_lat_bound_deg"] = round(phi, 4)
-        out["e2_frame_mm"] = [round(v, 3) for v in e2f]
-    else:
-        assert e2_mode == "legacy", e2_mode
-        lon0, lon1, lat_c, lat_span = -127.0, 157.0, 7.2, 91.0
-        lat_half = lat_span / 2.0
-        e2f = E2_FRAME
+    e2f = E2_FRAME
 
     # Bare "(a)" panel label (user ruling 2026-08-27): the three map headings
     # carry the identification, so a descriptive title here duplicated them
@@ -784,30 +769,46 @@ def draw_panel_b(
         ax_e1.add_patch(loc)
         tag(loc, "locator-e3-in-e1")
         out["e1_e3_locator_epsg5070"] = [round(v, 1) for v in slv_ext]
-    # One heading at equal weight, E0 first (user ruling 2026-08-27): E0 and
-    # E1 share this cohort and map, so neither gets a smaller side label
-    maphead(E1_FRAME, "E0–E1 · CONUS", "60 cropland sites")
-    assert E1_FRAME[0] + text_w_mm("E0–E1 · CONUS", FS_STRUCT) < e2f[0] - 2.0
+    maphead(E1_FRAME, "E1 · CONUS", "60 cropland sites")
+    assert E1_FRAME[0] + text_w_mm("E1 · CONUS", FS_STRUCT) < e2f[0] - 2.0
 
     # ------------------------------ E2 ------------------------------
     ax_e2 = mapax(e2f, "map-e2-axes")
-    k = (2.0 * lat_half) * e2f[2] / (e2f[3] * (lon1 - lon0))
-    assert k <= 1.0 + 1e-9, f"the E2 frame would stretch longitude ({k:.3f} > 1)"
-    assert F.e2.geometry.y.min() > lat_c - lat_half and F.e2.geometry.y.max() < lat_c + lat_half
-    assert F.e2.geometry.x.min() > lon0 and F.e2.geometry.x.max() < lon1
-    w2 = F.world.clip(shp_box(lon0, lat_c - lat_half, lon1, lat_c + lat_half)).copy()
-    w2 = w2[w2.geometry.notna() & ~w2.geometry.is_empty]
+    w2 = F.world.to_crs(CRS_EQUAL_EARTH)
+    e2 = F.e2.to_crs(CRS_EQUAL_EARTH)
+    ext2 = fit_extent(e2.total_bounds, e2f[2], e2f[3], pad_frac=0.05)
     w2.plot(ax=ax_e2, facecolor=C_LAND, edgecolor=C_BOUND, linewidth=0.25, zorder=1)
-    ax_e2.set_xlim(lon0, lon1)
-    ax_e2.set_ylim(lat_c - lat_half, lat_c + lat_half)
-    e2 = F.e2.assign(_x=F.e2.geometry.x, _y=F.e2.geometry.y)
+    ax_e2.set_xlim(ext2[0], ext2[2])
+    ax_e2.set_ylim(ext2[1], ext2[3])
+    ax_e2.set_aspect("equal")
+    e2 = e2.assign(_x=e2.geometry.x, _y=e2.geometry.y)
     n2t, n2c = sites(ax_e2, e2, C_E2, "_x", "_y", "e2-sites")
-    assert (n2t, n2c) == (13, 53), (n2t, n2c)
-    assert e2["country"].nunique() == 10 and e2["continent"].nunique() == 4
-    maphead(e2f, "E2 · 10 countries", "66 cropland sites")
+    assert (n2t, n2c) == (11, 36), (n2t, n2c)
+    assert e2["country"].nunique() == 8 and e2["continent"].nunique() == 3
+    # One heading at equal weight, E0 first (user ruling 2026-08-27 on heading
+    # weight): E0 ran at 37 of these E2 sites, none in E1, so E0 shares this
+    # map and gets no smaller side label; the 37 count is a caption fact
+    maphead(e2f, "E0–E2 · eight countries", "47 cropland sites")
+    assert e2f[0] + text_w_mm("E0–E2 · eight countries", FS_STRUCT) < e2f[0] + e2f[2]
+    out["e2_projection_epsg"] = CRS_EQUAL_EARTH
+    out["e2_extent_epsg8857"] = [round(v, 1) for v in ext2]
+    out["e2_n_sites"] = len(e2)
+    out["e2_class_counts"] = {"irrigation_equipped": n2t, "other_cropland": n2c}
 
     # ------------------------------ E3 ------------------------------
     ax_e3 = mapax(E3_FRAME, "map-e3-axes")
+    if e1_e3_locator:
+        # User ruling 2026-09-01: the E3 frame carries the locator's accent —
+        # the same C_E3 0.6 pt stroke as the CONUS locator rectangle — so the
+        # inset and its extent read as a pair without map text.
+        for spine in ax_e3.spines.values():
+            spine.set_color(C_E3)
+            spine.set_linewidth(0.6)
+        out["e3_frame_accent"] = {
+            "color": C_E3,
+            "linewidth_pt": 0.6,
+            "matches": "locator-e3-in-e1",
+        }
     slv_a = F.slv.to_crs(CRS_ALBERS)
     e3_a = F.e3.to_crs(CRS_ALBERS)
     ext3 = fit_extent(slv_a.total_bounds, E3_FRAME[2], E3_FRAME[3], pad_frac=0.05)
@@ -1041,7 +1042,7 @@ def audit_scientific(F: Frozen, axis_audit: dict | None, obs_ink: list, cycle: d
     assert min(pts) >= FS_MIN - 1e-9, f"reader-facing text below {FS_MIN} pt: {min(pts)}"
     m["min_font_pt"] = min(pts)
 
-    scaffolding = {C_AXIS, C_DATUM, C_GUIDE, C_HAIR, C_CONTEXT, C_LAND, C_BOUND}
+    scaffolding = {C_AXIS, C_GUIDE, C_HAIR, C_CONTEXT, C_LAND, C_BOUND} - {C_TEXT}
     stray = [d for d in DRAWN if d["color"] in scaffolding]
     assert not stray, f"scaffolding gray used as text colour: {stray[:3]}"
 
