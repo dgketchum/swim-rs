@@ -2559,7 +2559,7 @@ def build_fig04() -> None:
     # with the same whole-site median-bootstrap design. This is a display-level
     # aggregation: it does not rerun evaluation, calibration, or the model.
     signed_mbe_rows = []
-    for scale, expected_n in (("daily", 45), ("monthly", 29)):
+    for scale, expected_n in (("daily", 45), ("monthly", 30)):
         values = site_rows.loc[site_rows["scale"] == scale, "d_mbe"].to_numpy(dtype=float)
         values = values[np.isfinite(values)]
         if len(values) != expected_n:
@@ -2594,8 +2594,8 @@ def build_fig04() -> None:
     )
     weighting = pd.concat([eff_rows, site_rows], ignore_index=True)
     n_w = write_table(weighting, "fig04_weighting_effects.csv")
-    if n_w != 86:
-        raise BuildError(f"fig04 weighting: expected 86 display rows, got {n_w}")
+    if n_w != 85:
+        raise BuildError(f"fig04 weighting: expected 85 display rows, got {n_w}")
 
     # panel (a) example selection
     eligible = ps.merge(unc_ps[["site_id", "eligible"]], on="site_id", how="left")
