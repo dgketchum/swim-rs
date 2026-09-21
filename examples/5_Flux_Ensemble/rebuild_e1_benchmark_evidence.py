@@ -27,8 +27,9 @@ Gates (fail-not-warn): G-SOURCE (May allowlist by path, per-file sha256,
 per-site values verified against the May master), G-FLUX (archived flux_ET
 ≡ master Closed on the frozen calendar), G-EPOCH (captures and scored dates
 inside the extracted-ETo support), and per site × series G-ANCHORS /
-G-IDENT / G-SUPPORT / G-PARTITION / G-PAIR. ``--verify`` recomputes and
-compares against the pinned metadata (G-VALUES).
+G-IDENT / G-SUPPORT / G-PARTITION / G-PAIR, and G-ABLATION (the rescored
+weighting-ablation spread arm equals the primary site metrics). ``--verify``
+recomputes and compares against the pinned metadata (G-VALUES).
 
 Usage:
     uv run python rebuild_e1_benchmark_evidence.py \
@@ -79,7 +80,7 @@ ETO_EE_ASSET = "projects/openet/assets/reference_et/conus/gridmet/daily/v1"
 IDENTITY_TOL = 1e-10
 VALUE_TOL = 1e-12
 ETO_IDENTITY_TOL = 1e-9
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 
 DATA_DIR_DEFAULT = "/data/ssd1/swim/5_Flux_Ensemble/data"
 RUN_DIR_DEFAULT = "/data/ssd1/swim/5_Flux_Ensemble/results/run22"
@@ -96,19 +97,30 @@ SUPERSEDED_FILES = [
     "e2_evidence_metadata.json",
 ]
 # Model-side E1 artifacts untouched by both benchmark defects: their inputs
-# are SWIM outputs and flux ET only (flux verified identical by G-FLUX)
+# are SWIM outputs and flux ET only (flux verified identical by G-FLUX), and
+# they score on a flux ∧ SWIM mask that never touches the OpenET record
 UNAFFECTED_E1_FILES = [
     "e2_spread_error_persite.csv",
     "e2_spread_error_quintiles.csv",
     "e2_spread_error_summary.csv",
-    "e2_weighting_ablation_daily_site_deltas.csv",
-    "e2_weighting_ablation_monthly_site_deltas.csv",
-    "e2_weighting_ablation_paired_deltas.csv",
-    "e2_weighting_ablation_summary.csv",
     "e2_within_transfer_daily_site_metrics.csv",
     "e2_within_transfer_monthly_site_metrics.csv",
     "e2_within_transfer_paired_deltas.csv",
 ]
+# Observation-weighting ablation (Table S6 / Fig. 4d). SWIM-only metrics, but
+# evaluate.py scores on the flux ∧ SWIM ∧ benchmark-finite mask, so the
+# benchmark's temporal support sets the scored days. These were wrongly
+# carried as "unaffected" until 2026-09-21; both arms are now rescored on
+# the frozen record and gated below (G-ABLATION): the spread arm is Run 22,
+# so its per-site metrics and paired-day counts must equal the primary
+# daily/monthly site metrics exactly.
+RESCORED_ABLATION_FILES = [
+    "e2_weighting_ablation_daily_site_deltas.csv",
+    "e2_weighting_ablation_monthly_site_deltas.csv",
+    "e2_weighting_ablation_paired_deltas.csv",
+    "e2_weighting_ablation_summary.csv",
+]
+ABLATION_GATE_METRICS = ("r2", "rmse", "bias", "kge")
 # Corrected temporal products frozen alongside the primary evidence, copied
 # from the canonical overpass_decomposition output dir under the established
 # e2_temporal_* names (plan §freeze; manuscript claims ledger)
@@ -154,6 +166,67 @@ def sha256_file(path):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def check_rescored_ablation(final_dir, daily_df, monthly_df, tol=1e-9):
+    """G-ABLATION: the weighting-ablation spread arm must equal the primary.
+
+    ``daily_df``/``monthly_df`` are the rebuilt primary site metrics (rows
+    with NaN ``r2_swim`` are excluded sites). For each scale the ablation
+    site-delta file must cover exactly the primary cohort, its ``n_paired``
+    must equal the primary ``n`` at every site, and the spread-arm metrics
+    (``e1_<metric>_swim``) must match the primary ``<metric>_swim`` to
+    ``tol``. Returns the metadata block; raises on any mismatch.
+    """
+    final_dir = Path(final_dir)
+    hashes = {}
+    for name in RESCORED_ABLATION_FILES:
+        path = final_dir / name
+        if not path.exists():
+            raise BenchmarkConstructionError(f"G-ABLATION: {path} missing")
+        hashes[name] = sha256_file(path)
+    gate = {}
+    for scale, primary in (("daily", daily_df), ("monthly", monthly_df)):
+        if "fid" not in primary.columns:
+            primary = primary.reset_index()
+        cohort = primary.loc[primary["r2_swim"].notna()]
+        deltas = pd.read_csv(final_dir / f"e2_weighting_ablation_{scale}_site_deltas.csv")
+        if set(deltas["fid"]) != set(cohort["fid"]):
+            raise BenchmarkConstructionError(
+                f"G-ABLATION: {scale} ablation sites != primary cohort "
+                f"({len(deltas)} vs {len(cohort)})"
+            )
+        merged = cohort.merge(deltas, on="fid", how="inner")
+        if not (merged["n"].astype(int) == merged["n_paired"].astype(int)).all():
+            bad = merged.loc[merged["n"] != merged["n_paired"], "fid"].tolist()
+            raise BenchmarkConstructionError(
+                f"G-ABLATION: {scale} paired-day counts differ from primary at {bad}"
+            )
+        max_diff = 0.0
+        for metric in ABLATION_GATE_METRICS:
+            diff = (merged[f"{metric}_swim"] - merged[f"e1_{metric}_swim"]).abs()
+            if diff.isna().any():
+                raise BenchmarkConstructionError(
+                    f"G-ABLATION: {scale} {metric} has NaN in primary or spread arm"
+                )
+            max_diff = max(max_diff, float(diff.max()))
+        if max_diff > tol:
+            raise BenchmarkConstructionError(
+                f"G-ABLATION: {scale} spread arm differs from primary (max |Δ| {max_diff:.3e})"
+            )
+        gate[scale] = {"n_sites": int(len(merged)), "max_abs_metric_diff": max_diff}
+    print(
+        f"G-ABLATION: PASS (spread arm == primary at {gate['daily']['n_sites']} daily / "
+        f"{gate['monthly']['n_sites']} monthly sites, max |Δ| "
+        f"{max(g['max_abs_metric_diff'] for g in gate.values()):.3e})"
+    )
+    return {
+        "status": "rescored on the frozen ETf-first benchmark 2026-09-21; both "
+        "weighting arms re-evaluated against the frozen record, spread arm "
+        "verified equal to the primary site metrics (G-ABLATION)",
+        "gate": gate,
+        "files_sha256": hashes,
+    }
 
 
 def git_state(repo_dir):
@@ -885,6 +958,7 @@ def build_metadata(
     for name in UNAFFECTED_E1_FILES:
         p = SUPERSEDED_FINAL_DIR / name
         unaffected[name] = sha256_file(p) if p.exists() else None
+    rescored = check_rescored_ablation(SUPERSEDED_FINAL_DIR, daily_df, monthly_df)
     manifest_path = run_dir / "archive" / "1_provenance" / "container_manifest.json"
     per_series_counts = support_df.groupby("series")["n_scored"].sum().astype(int).to_dict()
     temporal = None
@@ -1050,6 +1124,7 @@ def build_metadata(
             "May master by G-FLUX",
             "files_sha256": unaffected,
         },
+        "rescored_artifacts": rescored,
         "pending_downstream_consumers": [
             "paper Figure 3 package (build_figure_data.py fig03 — also consumed "
             "the erroneous archived raw-gridMET eto)",
@@ -1150,6 +1225,25 @@ def compare_to_pinned(pinned, metadata, out_dir):
         elif sha256_file(p) != sha:
             failures.append(f"frozen_artifacts: {name} hash differs from pinned")
 
+    # pinned hashes of the carried-over model-side artifacts vs the files on
+    # disk; a change here means a consumer was regenerated without re-pinning
+    for block in ("unaffected_artifacts", "rescored_artifacts"):
+        for name, sha in pinned.get(block, {}).get("files_sha256", {}).items():
+            p = Path(out_dir) / name
+            if not p.exists():
+                failures.append(f"{block}: {name} missing from {out_dir}")
+            elif sha256_file(p) != sha:
+                failures.append(f"{block}: {name} hash differs from pinned")
+    pinned_gate = pinned.get("rescored_artifacts", {}).get("gate")
+    if pinned_gate is not None:
+        new_gate = metadata.get("rescored_artifacts", {}).get("gate")
+        for scale, block in pinned_gate.items():
+            nv = (new_gate or {}).get(scale, {}).get("n_sites")
+            if nv != block["n_sites"]:
+                failures.append(
+                    f"rescored_artifacts.gate.{scale}.n_sites: {nv!r} != pinned {block['n_sites']!r}"
+                )
+
     # pinned temporal artifact hashes vs the canonical temporal directory
     temporal = pinned.get("temporal_artifacts")
     if temporal:
@@ -1186,8 +1280,8 @@ def verify(out_dir, metadata):
         raise BenchmarkConstructionError(f"G-VALUES: {len(failures)} mismatches")
     print(
         "G-VALUES: PASS (headline values, configuration counts, per-series "
-        "support counts, input hashes, output hashes, and temporal artifact "
-        "hashes all match the pinned metadata)"
+        "support counts, input hashes, output hashes, carried-over and rescored "
+        "artifact hashes, and temporal artifact hashes all match the pinned metadata)"
     )
 
 

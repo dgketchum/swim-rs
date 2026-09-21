@@ -256,3 +256,129 @@ def test_write_outputs_missing_temporal_source_raises(reb, tmp_path):
     metadata = {"temporal_artifacts": {"canonical_dir": str(tdir)}}
     with pytest.raises(reb.BenchmarkConstructionError, match="temporal freeze"):
         reb.write_outputs(out_dir, {}, metadata)
+
+
+# ------------------------------------------------- rescored ablation (G-ABLATION)
+
+
+def _ablation_final_dir(tmp_path):
+    """Primary site metrics + ablation site deltas that satisfy G-ABLATION."""
+    import pandas as pd
+
+    final = tmp_path / "final"
+    final.mkdir()
+    daily = pd.DataFrame(
+        {
+            "fid": ["A", "B", "C"],
+            "n": [100, 200, 300],
+            "r2_swim": [0.7, 0.6, 0.5],
+            "rmse_swim": [1.0, 1.1, 1.2],
+            "bias_swim": [0.1, -0.1, 0.0],
+            "kge_swim": [0.8, 0.7, 0.6],
+        }
+    )
+    # site C has no monthly metrics (excluded); its row stays with NaN r2
+    monthly = daily.copy()
+    monthly.loc[monthly["fid"] == "C", ["r2_swim", "rmse_swim", "bias_swim", "kge_swim"]] = float(
+        "nan"
+    )
+    for scale, primary in (("daily", daily), ("monthly", monthly)):
+        cohort = primary.loc[primary["r2_swim"].notna()]
+        deltas = pd.DataFrame({"fid": cohort["fid"], "n_paired": cohort["n"]})
+        for metric in ("r2", "rmse", "bias", "kge"):
+            deltas[f"e1_{metric}_swim"] = cohort[f"{metric}_swim"].to_numpy()
+            deltas[f"e2_{metric}_swim"] = cohort[f"{metric}_swim"].to_numpy() - 0.01
+        deltas.to_csv(final / f"e2_weighting_ablation_{scale}_site_deltas.csv", index=False)
+    (final / "e2_weighting_ablation_paired_deltas.csv").write_text("scale,metric\ndaily,nse\n")
+    (final / "e2_weighting_ablation_summary.csv").write_text("experiment_id\ne1_spread\n")
+    return final, daily, monthly
+
+
+def test_check_rescored_ablation_pass(reb, tmp_path):
+    final, daily, monthly = _ablation_final_dir(tmp_path)
+    block = reb.check_rescored_ablation(final, daily, monthly)
+    assert block["gate"]["daily"]["n_sites"] == 3
+    assert block["gate"]["monthly"]["n_sites"] == 2
+    assert set(block["files_sha256"]) == set(reb.RESCORED_ABLATION_FILES)
+    for name, sha in block["files_sha256"].items():
+        assert sha == _sha(final / name)
+
+
+def test_check_rescored_ablation_accepts_fid_index(reb, tmp_path):
+    final, daily, monthly = _ablation_final_dir(tmp_path)
+    block = reb.check_rescored_ablation(final, daily.set_index("fid"), monthly.set_index("fid"))
+    assert block["gate"]["daily"]["n_sites"] == 3
+
+
+def test_check_rescored_ablation_missing_file_raises(reb, tmp_path):
+    final, daily, monthly = _ablation_final_dir(tmp_path)
+    (final / "e2_weighting_ablation_summary.csv").unlink()
+    with pytest.raises(reb.BenchmarkConstructionError, match="G-ABLATION: .* missing"):
+        reb.check_rescored_ablation(final, daily, monthly)
+
+
+def test_check_rescored_ablation_site_set_mismatch_raises(reb, tmp_path):
+    import pandas as pd
+
+    final, daily, monthly = _ablation_final_dir(tmp_path)
+    path = final / "e2_weighting_ablation_daily_site_deltas.csv"
+    pd.read_csv(path).iloc[:-1].to_csv(path, index=False)
+    with pytest.raises(reb.BenchmarkConstructionError, match="daily ablation sites"):
+        reb.check_rescored_ablation(final, daily, monthly)
+
+
+def test_check_rescored_ablation_paired_count_mismatch_raises(reb, tmp_path):
+    """The old direct-interpolation footing scored a different day set."""
+    import pandas as pd
+
+    final, daily, monthly = _ablation_final_dir(tmp_path)
+    path = final / "e2_weighting_ablation_daily_site_deltas.csv"
+    df = pd.read_csv(path)
+    df.loc[0, "n_paired"] += 7
+    df.to_csv(path, index=False)
+    with pytest.raises(reb.BenchmarkConstructionError, match="paired-day counts differ"):
+        reb.check_rescored_ablation(final, daily, monthly)
+
+
+def test_check_rescored_ablation_metric_drift_raises(reb, tmp_path):
+    import pandas as pd
+
+    final, daily, monthly = _ablation_final_dir(tmp_path)
+    path = final / "e2_weighting_ablation_monthly_site_deltas.csv"
+    df = pd.read_csv(path)
+    df.loc[0, "e1_kge_swim"] += 1e-6
+    df.to_csv(path, index=False)
+    with pytest.raises(reb.BenchmarkConstructionError, match="monthly spread arm differs"):
+        reb.check_rescored_ablation(final, daily, monthly)
+
+
+def test_compare_unaffected_hash_drift_fails(reb, pinned_state):
+    pinned, out_dir, artifact, _ = pinned_state
+    carried = out_dir / "e2_spread_error_summary.csv"
+    carried.write_text("q,rmse\n1,0.2\n")
+    pinned["unaffected_artifacts"] = {"files_sha256": {carried.name: _sha(carried)}}
+    assert reb.compare_to_pinned(pinned, copy.deepcopy(pinned), out_dir) == []
+    carried.write_text("q,rmse\n1,0.3\n")
+    failures = reb.compare_to_pinned(pinned, copy.deepcopy(pinned), out_dir)
+    assert any(
+        "unaffected_artifacts: e2_spread_error_summary.csv hash differs" in f for f in failures
+    )
+
+
+def test_compare_rescored_hash_and_gate_fail(reb, pinned_state):
+    pinned, out_dir, artifact, _ = pinned_state
+    rescored = out_dir / "e2_weighting_ablation_summary.csv"
+    rescored.write_text("experiment_id\ne1_spread\n")
+    pinned["rescored_artifacts"] = {
+        "gate": {"daily": {"n_sites": 45}, "monthly": {"n_sites": 30}},
+        "files_sha256": {rescored.name: _sha(rescored)},
+    }
+    assert reb.compare_to_pinned(pinned, copy.deepcopy(pinned), out_dir) == []
+    new = copy.deepcopy(pinned)
+    new["rescored_artifacts"]["gate"]["monthly"]["n_sites"] = 29
+    rescored.unlink()
+    failures = reb.compare_to_pinned(pinned, new, out_dir)
+    assert any(
+        "rescored_artifacts: e2_weighting_ablation_summary.csv missing" in f for f in failures
+    )
+    assert any("rescored_artifacts.gate.monthly.n_sites: 29 != pinned 30" in f for f in failures)
