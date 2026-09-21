@@ -104,23 +104,26 @@ EXPERIMENT_MAP = {
 
 # Cohort counts asserted everywhere.  A mismatch stops the affected table.
 EXPECTED = {
-    "E0_configured": 60,
-    "E0_pooled_sites": 45,
-    "E0_pooled_daily": 63681,
-    "E0_pooled_monthly": 1435,
-    "E0_effect_daily_sites": 45,
-    "E0_effect_monthly_sites": 31,
-    "E0_iso_daily_wins": 43,
-    "E0_iso_monthly_wins": 27,
+    "E0_configured": 37,
+    "E0_container_fields": 66,
+    "E0_pooled_sites": 37,
+    "E0_pooled_daily": 49289,
+    "E0_pooled_monthly": 1514,
+    "E0_effect_daily_sites": 37,
+    "E0_effect_monthly_sites": 33,
+    "E0_iso_daily_wins": 32,
+    "E0_iso_monthly_wins": 29,
+    "E0_whole_daily_wins": 34,
+    "E0_whole_monthly_wins": 30,
     "E1_configured": 60,
     "E1_daily": 45,
     "E1_monthly_finite": 29,
     "E1_transfer_daily": 45,
     "E1_transfer_monthly": 31,
     "E1_split_common": 43,
-    "E1_pool_acquisition": 4751,
-    "E1_pool_between": 55584,
-    "E1_pool_total": 60335,
+    "E1_pool_retrieval": 4972,
+    "E1_pool_between_retrieval": 54300,
+    "E1_pool_temporal_common": 59272,
     "E2_configured": 66,
     "E2_daily": 63,
     "E2_monthly_support": 56,
@@ -549,71 +552,105 @@ def e3_configured() -> pd.DataFrame:
 # Figure 2 -- cover scaling makes the vegetation formulation coherent (E0)
 # --------------------------------------------------------------------------
 
-# E0 vegetation-formulation trio (six_figure_plan.md section 6, redesigned
-# 2026-08-27; provenance in
-# examples/5_Flux_Ensemble/notes/e0_ex5_native_results.md).  Three arms
-# calibrated on the identical E1 container, ETf-ensemble target, IES budget,
-# and prior families; only the vegetation formulation (and, for the linear
-# arm, its formulation-specific slope/intercept priors) differs.  Internal
-# run labels are provenance only and never appear in a reader-facing field.
-E0_RESULTS = Path("/data/ssd1/swim/5_Flux_Ensemble/results")
+# E0 vegetation-formulation trio: three formulations calibrated with the
+# identical E2 inputs (ERA5-Land meteorology, HWSD soils, Landsat ETf-ensemble
+# target), IES budget, and prior families, and evaluated against withheld
+# flux-tower ET at the 37 E2 cropland sites that are not in E1
+# (examples/6_Flux_International/e0_disjoint; rationale and checked results in
+# examples/6_Flux_International/notes/e0_disjoint_confirmation.md).  Only the
+# vegetation formulation (and, for the linear arm, its formulation-specific
+# slope/intercept priors) differs between arms.  Internal run labels are
+# provenance only and never appear in a reader-facing field.
+E0_RESULTS = Path("/data/ssd1/swim/6_Flux_International/results")
+E0_DATA = Path("/data/ssd1/swim/6_Flux_International/data")
+E0_EXAMPLE = "examples/6_Flux_International"
+E0_SITES_FILE = REPO / E0_EXAMPLE / "e0_disjoint" / "disjoint_sites.txt"
+E0_MERGED_POSTERIOR = Path("archive/4_pest_outputs/merged/merged_posterior.csv")
 
 E0_ARMS = {
     "cover_scaled_sigmoid": {
         "display_label": "Cover-scaled sigmoid",
-        "run_label": "run22",
-        "par_csv": E0_RESULTS / "run22" / "5_Flux_Ensemble.3.par.csv",
+        "run_label": "grassbasis",
+        "par_csv": E0_RESULTS
+        / "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
+        / E0_MERGED_POSTERIOR,
+        "container": E0_DATA / "6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim",
         "kcb_ndvi_mode": "sigmoid",
         "transpiration_cover_mode": "kcb",
         "veg_params": ("ndvi_k", "ndvi_0"),
-        "config": "examples/5_Flux_Ensemble/5_Flux_Ensemble.toml",
+        "config": f"{E0_EXAMPLE}/6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml",
     },
     "unscaled_linear": {
         "display_label": "Unscaled linear",
-        "run_label": "RunFAO56",
-        "par_csv": E0_RESULTS / "RunFAO56" / "5_Flux_Ensemble.3.par.csv",
+        "run_label": "fao56",
+        "par_csv": E0_RESULTS
+        / "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr_fao56"
+        / E0_MERGED_POSTERIOR,
+        "container": E0_DATA
+        / "6_Flux_International_ls_ensemble_grassbasis_por_annual2yr_fao56.swim",
         "kcb_ndvi_mode": "linear",
         "transpiration_cover_mode": "none",
         "veg_params": ("ndvi_alpha", "ndvi_beta"),
-        "config": "examples/5_Flux_Ensemble/5_Flux_Ensemble_fao56.toml",
+        "config": (
+            f"{E0_EXAMPLE}/6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr_fao56.toml"
+        ),
     },
     "unscaled_sigmoid": {
         "display_label": "Unscaled sigmoid",
         "run_label": "fao56_sig",
-        "par_csv": E0_RESULTS / "fao56_sig" / "5_Flux_Ensemble.3.par.csv",
+        "par_csv": E0_RESULTS
+        / "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr_fao56_sig"
+        / E0_MERGED_POSTERIOR,
+        "container": E0_DATA
+        / "6_Flux_International_ls_ensemble_grassbasis_por_annual2yr_fao56_sig.swim",
         "kcb_ndvi_mode": "sigmoid",
         "transpiration_cover_mode": "none",
         "veg_params": ("ndvi_k", "ndvi_0"),
-        "config": "examples/5_Flux_Ensemble/5_Flux_Ensemble_fao56_sig.toml",
+        "config": (
+            f"{E0_EXAMPLE}/6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr_fao56_sig.toml"
+        ),
     },
 }
 
-# Paired-arm comparison archives (examples/5_Flux_Ensemble/pooled_arm_compare
-# output).  The cover-scaled arm is arm A in the two reader-facing contrasts;
-# the shape-only pair closes the triangle for cross-file consistency checks
-# and never reaches a display table on its own.
+# Panel (a) NDVI source and the E1-container check share the cover-scaled
+# arm's container; the per-arm calibrated containers are what
+# pooled_arm_compare ran each forecast-mode arm from.  Zarr directories cannot
+# be single-file hashed; their content is pinned by the Table 3 reproduction
+# assert in build_fig02_bootstrap.
+E0_CONTAINER = E0_ARMS["cover_scaled_sigmoid"]["container"]
+E0_ARM_CONTAINERS = {key: arm["container"] for key, arm in E0_ARMS.items()}
+
+# Paired-arm comparison archives (examples/6_Flux_International/
+# pooled_arm_compare.py output, --sites-file e0_disjoint/disjoint_sites.txt).
+# The cover-scaled arm is arm A in the two reader-facing contrasts; the
+# shape-only pair closes the triangle for cross-file consistency checks and
+# never reaches a display table on its own.
+E0_COMPARISON_ROOT = E0_RESULTS / "e0_disjoint"
 E0_COMPARISONS = {
     "isolated_cover": {
-        "dir": E0_RESULTS / "fao56_sig" / "comparison",
+        "dir": E0_COMPARISON_ROOT / "grassbasis_vs_fao56_sig" / "disjoint37",
         "arm_a": "cover_scaled_sigmoid",
         "arm_b": "unscaled_sigmoid",
     },
     "whole_formulation": {
-        "dir": E0_RESULTS / "RunFAO56" / "comparison",
+        "dir": E0_COMPARISON_ROOT / "grassbasis_vs_fao56" / "disjoint37",
         "arm_a": "cover_scaled_sigmoid",
         "arm_b": "unscaled_linear",
     },
     "shape_only": {
-        "dir": E0_RESULTS / "fao56_sig" / "comparison_vs_fao56std",
+        "dir": E0_COMPARISON_ROOT / "fao56_sig_vs_fao56" / "disjoint37",
         "arm_a": "unscaled_sigmoid",
         "arm_b": "unscaled_linear",
     },
 }
 
-# Fixed coefficients shared by every E0 arm, verified against
-# src/swimrs/process/input.py (kc_max = np.full(n, 1.35) with empirical_kc_max
-# unset in all three configs; kc_min = np.full(n, 0.15)) and the clip
-# semantics in src/swimrs/process/loop_fast.py / cover_modes.py.
+# Fixed coefficients shared by every E0 arm.  examples/6_Flux_International/
+# evaluate.py::run_calibrated_model requests the container's empirical kc_max,
+# which src/swimrs/process/input.py::_resolve_kc_max floors at 1.35; the arm
+# containers store derived/dynamics/kc_max = 1.35 at every E0 site (asserted in
+# build_fig02), so the fixed 1.35 governs every arm.  kc_min is fixed at 0.15
+# (input.py) and the clip semantics follow src/swimrs/process/loop_fast.py /
+# cover_modes.py.
 E0_KC_MAX = 1.35
 E0_KC_MIN = 0.15
 E0_FC_MAX = 0.99
@@ -624,59 +661,84 @@ E0_SHARED_PARAMS = ("aw", "ks_alpha", "kr_alpha", "mad", "swe_alpha", "swe_beta"
 
 E0_NDVI_GRID = np.round(np.linspace(0.0, 1.0, 101), 2)
 E0_SUPPORT_BINS = np.round(np.linspace(0.0, 1.0, 51), 2)
-E0_MASK_ID = "e0_arm_paired_flux_mask_45sites_63681d_1435mo"
+E0_MASK_ID = "e0_arm_paired_flux_mask_37sites_49289d_1514mo"
+E0_EXPERIMENT_LABEL = (
+    "E0 (vegetation-formulation comparison at the 37 E2 sites not in E1; "
+    "examples/6_Flux_International/e0_disjoint)"
+)
 
 E0_SUPPORT_RULE = (
     "site-equal weighting: every finite merged-NDVI observation carries weight 1/n_site so "
-    "each of the 60 E0 sites contributes equal total weight; density integrates to 1 over NDVI"
+    "each of the 37 E0 sites contributes equal total weight; density integrates to 1 over NDVI"
 )
 
-# Table 3 (paper/text/main.md) at manuscript precision.  The build fails when
-# a frozen pooled value does not reproduce its manuscript string exactly.
+# The previous Figure 2 data package, kept as history outside the active
+# manifest (copied there on 2026-09-20 before this build replaced it).
+E0_PRIOR_PACKAGE_DIR = "superseded_fig02_2026-09-01"
+
+# Table 3 (paper/text/main.md) at manuscript precision: daily values and KGE
+# to three decimals, monthly RMSE/MBE to one.  Signs are plain ASCII here;
+# main.md prints a typographic minus and an explicit plus.  The build fails
+# when a frozen pooled value does not reproduce its manuscript string exactly.
+# The cover-scaled daily RMSE is 1.11846 mm d-1, which prints as 1.118; the
+# 1.119 carried by the 2026-09-18 confirmation note (and from there into
+# main.md) is a double-rounding slip and is not asserted here.
 E0_TABLE3 = {
-    ("cover_scaled_sigmoid", "daily", "rmse"): "1.097",
-    ("cover_scaled_sigmoid", "daily", "mbe"): "0.000",
-    ("cover_scaled_sigmoid", "daily", "kge"): "0.860",
-    ("cover_scaled_sigmoid", "monthly", "rmse"): "19.21",
-    ("cover_scaled_sigmoid", "monthly", "mbe"): "0.31",
-    ("cover_scaled_sigmoid", "monthly", "kge"): "0.945",
-    ("unscaled_linear", "daily", "rmse"): "1.212",
-    ("unscaled_linear", "daily", "mbe"): "0.075",
-    ("unscaled_linear", "daily", "kge"): "0.846",
-    ("unscaled_linear", "monthly", "rmse"): "22.10",
-    ("unscaled_linear", "monthly", "mbe"): "2.39",
-    ("unscaled_linear", "monthly", "kge"): "0.934",
-    ("unscaled_sigmoid", "daily", "rmse"): "1.270",
-    ("unscaled_sigmoid", "daily", "mbe"): "0.209",
-    ("unscaled_sigmoid", "daily", "kge"): "0.818",
-    ("unscaled_sigmoid", "monthly", "rmse"): "25.12",
-    ("unscaled_sigmoid", "monthly", "mbe"): "7.24",
-    ("unscaled_sigmoid", "monthly", "kge"): "0.862",
+    ("cover_scaled_sigmoid", "daily", "rmse"): "1.118",
+    ("cover_scaled_sigmoid", "daily", "mbe"): "-0.056",
+    ("cover_scaled_sigmoid", "daily", "kge"): "0.707",
+    ("cover_scaled_sigmoid", "monthly", "rmse"): "23.2",
+    ("cover_scaled_sigmoid", "monthly", "mbe"): "-2.6",
+    ("cover_scaled_sigmoid", "monthly", "kge"): "0.746",
+    ("unscaled_linear", "daily", "rmse"): "1.401",
+    ("unscaled_linear", "daily", "mbe"): "0.235",
+    ("unscaled_linear", "daily", "kge"): "0.681",
+    ("unscaled_linear", "monthly", "rmse"): "32.4",
+    ("unscaled_linear", "monthly", "mbe"): "5.8",
+    ("unscaled_linear", "monthly", "kge"): "0.744",
+    ("unscaled_sigmoid", "daily", "rmse"): "1.444",
+    ("unscaled_sigmoid", "daily", "mbe"): "-0.191",
+    ("unscaled_sigmoid", "daily", "kge"): "0.607",
+    ("unscaled_sigmoid", "monthly", "rmse"): "35.1",
+    ("unscaled_sigmoid", "monthly", "mbe"): "-7.0",
+    ("unscaled_sigmoid", "monthly", "kge"): "0.621",
 }
 
-# calc_metrics (examples/5_Flux_Ensemble/evaluate.py) returns NaN below ten
-# paired values, so per-site monthly metrics exist only for sites with at
-# least ten qualifying months even though pooled monthly totals admit sites
-# from six months up.
+# calc_metrics (examples/6_Flux_International/evaluate.py) returns NaN below
+# ten paired values, so per-site monthly metrics exist only for sites with at
+# least ten qualifying months even though pooled monthly sums admit sites from
+# six months up.
 E0_SITE_METRIC_MIN_MONTHS = 10
+E0_POOLED_MIN_MONTHS = 6
+E0_MONTH_MIN_PAIRED_DAYS = 20
+
+
+def _e0_sites() -> list[str]:
+    """The E0 site list in file order (the order pooled_arm_compare pooled them)."""
+    sites = [ln.strip() for ln in E0_SITES_FILE.read_text().splitlines() if ln.strip()]
+    require_count(len(sites), EXPECTED["E0_configured"], "fig02 E0 site list")
+    if len(set(sites)) != len(sites):
+        raise BuildError("fig02: duplicate site in the E0 site list")
+    return sites
 
 
 def _e0_table3_format(scale: str, metric: str, value: float) -> str:
     """Format a pooled value exactly as Table 3 prints it (sign retained)."""
-    nd = 3 if (scale == "daily" or metric == "kge") else 2
+    nd = 3 if (scale == "daily" or metric == "kge") else 1
     s = f"{value:.{nd}f}"
     if s == "-" + f"{0.0:.{nd}f}":
         s = s[1:]
     return s
 
 
-def _e0_par_medians(arm_key: str, uids: list[str]):
-    """Posterior-median parameter vector per site for one E0 arm.
+def _e0_par_medians(arm_key: str, container_uids: list[str], sites: list[str]):
+    """Posterior-median parameter vector per E0 site for one arm.
 
-    Mirrors examples/5_Flux_Ensemble/evaluate.py::parse_pest_params: the median
-    is taken across IES realizations excluding the ``base`` row, and parameter
-    columns are matched to sites by lowercase suffix.  Returns
-    ``({uid: {param: median}}, n_realizations)``.
+    Mirrors examples/6_Flux_International/evaluate.py::parse_pest_params: the
+    median is taken across IES realizations excluding the ``base`` row, and
+    parameter columns are matched to sites by lowercase suffix.  Every column
+    must match one of the container's fields; the result is then restricted
+    to ``sites``.  Returns ``({site: {param: median}}, n_realizations)``.
     """
     arm = E0_ARMS[arm_key]
     df = pd.read_csv(arm["par_csv"], index_col=0)
@@ -685,8 +747,8 @@ def _e0_par_medians(arm_key: str, uids: list[str]):
     if n_real < 50:
         raise BuildError(f"fig02 {arm_key}: only {n_real} IES realizations in {arm['par_csv']}")
     med = reals.median()
-    by_len = sorted(uids, key=len, reverse=True)
-    by_site: dict[str, dict[str, float]] = {u: {} for u in uids}
+    by_len = sorted(container_uids, key=len, reverse=True)
+    by_site: dict[str, dict[str, float]] = {u: {} for u in container_uids}
     for col in df.columns:
         core = col.split("_ptype:")[0].replace("pname:p_", "").rsplit("_:0", 1)[0]
         site = next((u for u in by_len if core.lower().endswith("_" + u.lower())), None)
@@ -697,13 +759,13 @@ def _e0_par_medians(arm_key: str, uids: list[str]):
             raise BuildError(f"fig02 {arm_key}: duplicate parameter {pname} for {site}")
         by_site[site][pname] = float(med[col])
     expected = set(E0_SHARED_PARAMS) | set(arm["veg_params"])
-    for u in uids:
+    for u in sites:
         if set(by_site[u]) != expected:
             raise BuildError(
                 f"fig02 {arm_key}: site {u} carries {sorted(by_site[u])}, "
                 f"expected {sorted(expected)}"
             )
-    return by_site, n_real
+    return {u: by_site[u] for u in sites}, n_real
 
 
 def _e0_kt(arm_key: str, ndvi: np.ndarray, p: dict[str, float]) -> np.ndarray:
@@ -731,49 +793,61 @@ def _e0_kt(arm_key: str, ndvi: np.ndarray, p: dict[str, float]) -> np.ndarray:
 def build_fig02() -> None:
     import zarr
 
-    srcs: dict[str, Path] = {"container": E1_CONTAINER}
+    srcs: dict[str, Path] = {"container": E0_CONTAINER, "sites": E0_SITES_FILE}
     for key, arm in E0_ARMS.items():
         srcs[f"par:{key}"] = arm["par_csv"]
         srcs[f"config:{key}"] = REPO / arm["config"]
+        srcs[f"container:{key}"] = arm["container"]
     for key, comp in E0_COMPARISONS.items():
         srcs[f"gate:{key}"] = comp["dir"] / "pooled_gate.json"
         srcs[f"per_site:{key}"] = comp["dir"] / "pooled_per_site.csv"
+        srcs[f"excluded:{key}"] = comp["dir"] / "sites_excluded.csv"
     for k, p in srcs.items():
         if not p.exists():
             raise BuildError(f"fig02 source missing: {k} -> {p}")
 
-    # ---- cohort and observed-NDVI support (panel a underlay) ----
-    z = zarr.open(str(E1_CONTAINER), mode="r")
+    # ---- E0 sites and their observed-NDVI distribution (panel a underlay) ----
+    sites = _e0_sites()
+    z = zarr.open(str(E0_CONTAINER), mode="r")
     uids = [str(x) for x in z["geometry/uid"][:]]
-    require_count(len(uids), EXPECTED["E0_configured"], "fig02 E0 configured cohort")
-    ndvi = np.asarray(z["derived/merged_ndvi/no_mask"])
-    if ndvi.ndim != 2 or ndvi.shape[1] != len(uids):
-        raise BuildError(f"fig02 support: merged NDVI shape {ndvi.shape} != (time, {len(uids)})")
-    ndvi_hash = hashlib.sha256(
-        np.ascontiguousarray(ndvi).tobytes() + "|".join(uids).encode()
-    ).hexdigest()
+    require_count(len(uids), EXPECTED["E0_container_fields"], "fig02 E0 container fields")
+    missing = sorted(set(sites) - set(uids))
+    if missing:
+        raise BuildError(f"fig02: E0 sites absent from the container: {missing}")
+    cols = [uids.index(s) for s in sites]
+    kc_max_store = np.asarray(z["derived/dynamics/kc_max"])[cols]
+    if not np.all(kc_max_store == E0_KC_MAX):
+        raise BuildError(
+            f"fig02: container kc_max at an E0 site is not {E0_KC_MAX}: "
+            f"{sorted(set(kc_max_store.tolist()))}"
+        )
+    ndvi_all = np.asarray(z["derived/merged_ndvi/no_mask"])
+    if ndvi_all.ndim != 2 or ndvi_all.shape[1] != len(uids):
+        raise BuildError(f"fig02 NDVI: merged NDVI shape {ndvi_all.shape} != (time, {len(uids)})")
+    ndvi = np.ascontiguousarray(ndvi_all[:, cols])
+    ndvi_hash = hashlib.sha256(ndvi.tobytes() + "|".join(sites).encode()).hexdigest()
     finite = np.isfinite(ndvi)
     per_site_obs = finite.sum(axis=0)
     if int(per_site_obs.min()) < 100:
-        raise BuildError("fig02 support: a site has fewer than 100 NDVI observations")
+        raise BuildError("fig02 NDVI: a site has fewer than 100 NDVI observations")
     lo, hi = float(np.nanmin(ndvi)), float(np.nanmax(ndvi))
     if lo < 0.0 or hi > 1.0:
-        raise BuildError(f"fig02 support: merged NDVI outside [0, 1] ({lo:.3f}, {hi:.3f})")
+        raise BuildError(f"fig02 NDVI: merged NDVI outside [0, 1] ({lo:.3f}, {hi:.3f})")
 
     width = float(E0_SUPPORT_BINS[1] - E0_SUPPORT_BINS[0])
     dens = np.zeros(len(E0_SUPPORT_BINS) - 1)
     n_obs = np.zeros(len(E0_SUPPORT_BINS) - 1, dtype=int)
     n_sites_bin = np.zeros(len(E0_SUPPORT_BINS) - 1, dtype=int)
-    for j in range(len(uids)):
+    for j in range(len(sites)):
         h, _ = np.histogram(ndvi[finite[:, j], j], bins=E0_SUPPORT_BINS)
         dens += h / float(per_site_obs[j])
         n_obs += h
         n_sites_bin += (h > 0).astype(int)
-    dens /= len(uids) * width
+    dens /= len(sites) * width
     if abs(float(dens.sum()) * width - 1.0) > 1e-9:
-        raise BuildError("fig02 support: site-equal density does not integrate to 1")
+        raise BuildError("fig02 NDVI: site-equal density does not integrate to 1")
     if int(n_obs.sum()) != int(finite.sum()):
-        raise BuildError("fig02 support: binned observation count mismatch")
+        raise BuildError("fig02 NDVI: binned observation count mismatch")
     support = pd.DataFrame(
         {
             "bin_left": E0_SUPPORT_BINS[:-1],
@@ -792,14 +866,12 @@ def build_fig02() -> None:
     n_reals: dict[str, int] = {}
     resp_frames = []
     for key, arm in E0_ARMS.items():
-        by_site, n_real = _e0_par_medians(key, uids)
+        by_site, n_real = _e0_par_medians(key, uids, sites)
         par_hashes[key] = sha256(arm["par_csv"])
         n_reals[key] = n_real
-        veg_medians[key] = {u: {p: by_site[u][p] for p in arm["veg_params"]} for u in uids}
-        src_label = (
-            f"posterior median over {n_real} IES realizations (iteration 3) of {arm['par_csv']}"
-        )
-        for u in uids:
+        veg_medians[key] = {u: {p: by_site[u][p] for p in arm["veg_params"]} for u in sites}
+        src_label = f"posterior median over {n_real} IES realizations of {arm['par_csv']}"
+        for u in sites:
             kt = _e0_kt(key, E0_NDVI_GRID, by_site[u])
             if not np.isfinite(kt).all() or kt.min() < 0.0 or kt.max() > E0_KC_MAX:
                 raise BuildError(f"fig02 response: K_T out of [0, kc_max] for {key}/{u}")
@@ -816,10 +888,10 @@ def build_fig02() -> None:
                 )
             )
     resp = pd.concat(resp_frames, ignore_index=True)
-    require_count(len(resp), 3 * len(uids) * len(E0_NDVI_GRID), "fig02 response rows")
+    require_count(len(resp), 3 * len(sites) * len(E0_NDVI_GRID), "fig02 response rows")
     require_unique(resp, ["formulation", "site_id", "ndvi"], "fig02 response")
 
-    # ---- pooled held-out agreement on the Table 3 mask (panel b) ----
+    # ---- pooled flux-ET agreement on the Table 3 mask (panel b) ----
     gates = {
         key: json.loads((comp["dir"] / "pooled_gate.json").read_text())
         for key, comp in E0_COMPARISONS.items()
@@ -827,7 +899,8 @@ def build_fig02() -> None:
     for key, g in gates.items():
         comp = E0_COMPARISONS[key]
         for side in ("a", "b"):
-            arm = E0_ARMS[comp[f"arm_{side}"]]
+            form = comp[f"arm_{side}"]
+            arm = E0_ARMS[form]
             if g[f"arm_{side}"] != arm["run_label"]:
                 raise BuildError(f"fig02 gate {key}: arm_{side} is not {arm['run_label']}")
             want_phys = {
@@ -836,10 +909,17 @@ def build_fig02() -> None:
             }
             if g[f"{side}_physics"] != want_phys:
                 raise BuildError(f"fig02 gate {key}: {side}_physics != stated formulation")
-            if Path(g[f"par_{side}"]) != arm["par_csv"]:
-                raise BuildError(f"fig02 gate {key}: par_{side} != panel-(a) parameter source")
-            if Path(g[f"{side}_config"]).name != Path(arm["config"]).name:
+            if Path(g[f"{side}_params"]) != arm["par_csv"]:
+                raise BuildError(f"fig02 gate {key}: {side}_params != panel-(a) parameter source")
+            if Path(g[f"{side}_config"]) != REPO / arm["config"]:
                 raise BuildError(f"fig02 gate {key}: {side}_config != stated arm config")
+            if Path(g[f"{side}_container"]) != arm["container"]:
+                raise BuildError(f"fig02 gate {key}: {side}_container != stated arm container")
+        if list(g["sites_requested"]) != sites:
+            raise BuildError(f"fig02 gate {key}: sites_requested != the E0 site list")
+        excluded = pd.read_csv(comp["dir"] / "sites_excluded.csv")
+        if len(excluded):
+            raise BuildError(f"fig02 gate {key}: {len(excluded)} E0 sites were excluded")
         require_count(g["n_sites"], EXPECTED["E0_pooled_sites"], f"fig02 gate {key} sites")
         require_count(g["n_daily"], EXPECTED["E0_pooled_daily"], f"fig02 gate {key} site-days")
         require_count(g["n_monthly"], EXPECTED["E0_pooled_monthly"], f"fig02 gate {key} months")
@@ -849,7 +929,7 @@ def build_fig02() -> None:
         comp = E0_COMPARISONS[key]
         for m in g["metrics"]:
             n_want = EXPECTED["E0_pooled_daily" if m["scale"] == "daily" else "E0_pooled_monthly"]
-            require_count(m["n"], n_want, f"fig02 gate {key} {m['scale']} {m['metric']} support")
+            require_count(m["n"], n_want, f"fig02 gate {key} {m['scale']} {m['metric']} n")
             for side in ("a", "b"):
                 form = comp[f"arm_{side}"]
                 run = E0_ARMS[form]["run_label"]
@@ -881,7 +961,7 @@ def build_fig02() -> None:
                         f"fig02 pooled: {form}/{scale}/{metric} = {v!r} formats to {got}, "
                         f"Table 3 says {want}"
                     )
-                if want != "0.000" and v <= 0.0:
+                if (v < 0.0) != want.startswith("-"):
                     raise BuildError(f"fig02 pooled: {form}/{scale}/{metric} sign flip")
                 table3_record[f"{form}|{scale}|{metric}"] = {"value": v, "manuscript": want}
                 unit = (
@@ -932,9 +1012,8 @@ def build_fig02() -> None:
         require_columns(ps, ps_cols, label)
         require_unique(ps, ["fid"], label)
         require_count(len(ps), EXPECTED["E0_effect_daily_sites"], f"{label} daily sites")
-        unknown = sorted(set(ps["fid"].astype(str)) - set(uids))
-        if unknown:
-            raise BuildError(f"{label}: fids not in the E0 container cohort: {unknown}")
+        if list(ps["fid"].astype(str)) != sites:
+            raise BuildError(f"{label}: fids are not the E0 site list in file order")
         if ps["rmse_a_daily"].isna().any() or ps["rmse_b_daily"].isna().any():
             raise BuildError(f"{label}: missing daily RMSE")
         per_site_hashes[comp_key] = sha256(ps_path)
@@ -974,16 +1053,13 @@ def build_fig02() -> None:
     for scale in ("daily", "monthly"):
         if scale_sets[("isolated_cover", scale)] != scale_sets[("whole_formulation", scale)]:
             raise BuildError(f"fig02 effects: {scale} site sets differ between comparators")
-    require_count(
-        win_counts[("isolated_cover", "daily")],
-        EXPECTED["E0_iso_daily_wins"],
-        "fig02 isolated-cover daily wins",
-    )
-    require_count(
-        win_counts[("isolated_cover", "monthly")],
-        EXPECTED["E0_iso_monthly_wins"],
-        "fig02 isolated-cover monthly wins",
-    )
+    for comp_key, tag in (("isolated_cover", "iso"), ("whole_formulation", "whole")):
+        for scale in ("daily", "monthly"):
+            require_count(
+                win_counts[(comp_key, scale)],
+                EXPECTED[f"E0_{tag}_{scale}_wins"],
+                f"fig02 {comp_key} {scale} wins",
+            )
     eff = pd.DataFrame(pd.concat(eff_frames, ignore_index=True))
     require_count(
         len(eff),
@@ -992,6 +1068,14 @@ def build_fig02() -> None:
     )
     if not eff["d_rmse"].notna().all():
         raise BuildError("fig02 effects: non-finite d_rmse")
+    n_d, n_m = EXPECTED["E0_effect_daily_sites"], EXPECTED["E0_effect_monthly_sites"]
+    win_text = {
+        comp_key: {
+            "daily": f"{win_counts[(comp_key, 'daily')]}/{n_d}",
+            "monthly": f"{win_counts[(comp_key, 'monthly')]}/{n_m}",
+        }
+        for comp_key in ("isolated_cover", "whole_formulation")
+    }
 
     # ---- quarantine the superseded External-ET-agreement package ----
     quarantined = []
@@ -1014,12 +1098,19 @@ def build_fig02() -> None:
     ne = write_table(eff, "fig02_site_rmse_effects.csv")
 
     meta_json = {
-        "figure": "Figure 2 -- cover scaling makes the vegetation formulation coherent",
+        "figure": "Figure 2 -- vegetation formulation and flux-tower ET performance",
         "role": (
-            "E0 model-development evidence: flux ET was excluded from calibration but used "
-            "to select model form; E0 is not an independent validation experiment and its "
-            "flux cohort is the E1 cohort"
+            "E0 vegetation-formulation comparison: three formulations calibrated to the "
+            "remote-sensing ETf target with the E2 inputs and processing, then evaluated "
+            "against withheld flux-tower ET at the 37 E2 cropland sites that are not in E1"
         ),
+        "sites": {
+            "n": len(sites),
+            "list_file": str(E0_SITES_FILE),
+            "list_sha256": sha256(E0_SITES_FILE),
+            "ids": sites,
+            "container_fields": len(uids),
+        },
         "formulations": {
             key: {
                 "display_label": arm["display_label"],
@@ -1029,6 +1120,7 @@ def build_fig02() -> None:
                 "run_label_provenance_only": arm["run_label"],
                 "par_csv": str(arm["par_csv"]),
                 "par_sha256": par_hashes[key],
+                "container": str(arm["container"]),
                 "config": arm["config"],
                 "n_ies_realizations": n_reals[key],
             }
@@ -1050,9 +1142,11 @@ def build_fig02() -> None:
             "fc_max": E0_FC_MAX,
             "sigmoid_exp_clip": E0_SIGMOID_EXP_CLIP,
             "provenance": (
-                "src/swimrs/process/input.py (fixed kc_max 1.35 / kc_min 0.15 in every E0 "
-                "arm; empirical_kc_max unset) and src/swimrs/process/loop_fast.py clip "
-                "semantics"
+                "src/swimrs/process/input.py::_resolve_kc_max floors the requested "
+                "empirical kc_max at 1.35 and the arm containers store "
+                "derived/dynamics/kc_max = 1.35 at every E0 site (asserted), so kc_max is "
+                "1.35 in every arm; kc_min is fixed at 0.15 (input.py); clip semantics "
+                "from src/swimrs/process/loop_fast.py"
             ),
         },
         "priors_note": (
@@ -1064,11 +1158,14 @@ def build_fig02() -> None:
         "ndvi_grid": {"start": 0.0, "stop": 1.0, "step": 0.01, "points": len(E0_NDVI_GRID)},
         "ndvi_support": {
             "rule": E0_SUPPORT_RULE,
-            "source": "derived/merged_ndvi/no_mask of " + str(E1_CONTAINER),
+            "source": "derived/merged_ndvi/no_mask of " + str(E0_CONTAINER),
+            "site_ids_source": "geometry/uid of the same container, restricted to the E0 sites",
             "sha256": ndvi_hash,
+            "n_sites": len(sites),
             "n_obs_total": int(finite.sum()),
             "per_site_obs_min": int(per_site_obs.min()),
             "per_site_obs_max": int(per_site_obs.max()),
+            "n_bins": len(E0_SUPPORT_BINS) - 1,
             "bin_width": width,
         },
         "evaluation_mask": {
@@ -1076,9 +1173,22 @@ def build_fig02() -> None:
             "n_sites": EXPECTED["E0_pooled_sites"],
             "n_daily": EXPECTED["E0_pooled_daily"],
             "n_monthly": EXPECTED["E0_pooled_monthly"],
+            "flux_source": (
+                "closure-corrected per-site flux ET from the (network, et_col) pair declared "
+                "in the E2 fields shapefile (examples/6_Flux_International/evaluate.py::"
+                "load_flux_sources / load_flux_et); site minimum 90 flux days and 3 months "
+                "with >= 20 flux days"
+            ),
+            "daily_rule": (
+                "days with finite flux ET and finite simulated ET in all three formulations "
+                "(three-arm common finite mask)"
+            ),
             "pooled_month_rule": (
-                "full calendar months with >= 28 paired flux days; a site contributes "
-                "monthly totals when it has >= 6 such months"
+                "paired-day monthly sums over flux-valid days with >= "
+                f"{E0_MONTH_MIN_PAIRED_DAYS} paired days per month "
+                "(swimrs.calibrate.flux_utils.paired_monthly_sums), not full-calendar-month "
+                f"totals; a site contributes monthly sums when it has >= {E0_POOLED_MIN_MONTHS} "
+                "such months"
             ),
             "site_metric_month_rule": (
                 f">= {E0_SITE_METRIC_MIN_MONTHS} qualifying months (calc_metrics minimum "
@@ -1095,16 +1205,7 @@ def build_fig02() -> None:
                 "isolated_cover": "cover_scaled_sigmoid minus unscaled_sigmoid",
                 "whole_formulation": "cover_scaled_sigmoid minus unscaled_linear",
             },
-            "win_counts": {
-                "isolated_cover": {
-                    "daily": f"{win_counts[('isolated_cover', 'daily')]}/45",
-                    "monthly": f"{win_counts[('isolated_cover', 'monthly')]}/31",
-                },
-                "whole_formulation": {
-                    "daily": f"{win_counts[('whole_formulation', 'daily')]}/45",
-                    "monthly": f"{win_counts[('whole_formulation', 'monthly')]}/31",
-                },
-            },
+            "win_counts": win_text,
         },
         "comparison_sources": {
             key: {
@@ -1117,8 +1218,19 @@ def build_fig02() -> None:
             for key, comp in E0_COMPARISONS.items()
         },
         "table3_reproduction": table3_record,
+        "table3_sign_note": (
+            "manuscript_value keeps plain ASCII signs; main.md prints a typographic minus "
+            "and an explicit plus on signed MBE"
+        ),
         "veg_param_site_medians": veg_medians,
         "builder_version": SCRIPT_VERSION,
+        "prior_package": {
+            "moved_to": str(OUT / E0_PRIOR_PACKAGE_DIR),
+            "note": (
+                "the previous Figure 2 data package and its manifest, retained as history "
+                "only and not part of the active manifest"
+            ),
+        },
         "superseded_package": {
             "moved_to": str(qdir),
             "files": quarantined,
@@ -1131,10 +1243,7 @@ def build_fig02() -> None:
     (OUT / "fig02_metadata.json").write_text(json.dumps(meta_json, indent=2))
 
     common_meta = dict(
-        experiment=(
-            "E0 (vegetation-formulation model development on the E1 cohort; "
-            "legacy e2_ / examples/5_Flux_Ensemble)"
-        ),
+        experiment=E0_EXPERIMENT_LABEL,
         evaluation_mask_id=E0_MASK_ID,
         sources={k: str(p) for k, p in srcs.items()},
         source_hashes={
@@ -1142,6 +1251,7 @@ def build_fig02() -> None:
             **{f"per_site:{k}": v for k, v in per_site_hashes.items()},
             "gates_combined": gates_hash,
             "merged_ndvi": ndvi_hash,
+            "sites": sha256(E0_SITES_FILE),
         },
     )
     MANIFEST.add(
@@ -1174,7 +1284,10 @@ def build_fig02() -> None:
         rows=ne,
         note=(
             "Paired per-site RMSE effects; d_rmse = cover-scaled minus unscaled (negative "
-            "favours cover scaling). Isolated-cover wins 43/45 daily and 27/31 monthly."
+            f"favours cover scaling). Isolated-cover wins {win_text['isolated_cover']['daily']} "
+            f"daily and {win_text['isolated_cover']['monthly']} monthly; whole-formulation "
+            f"wins {win_text['whole_formulation']['daily']} daily and "
+            f"{win_text['whole_formulation']['monthly']} monthly."
         ),
         **common_meta,
     )
@@ -1185,24 +1298,30 @@ def build_fig02() -> None:
         **common_meta,
     )
     print(
-        f"  fig02: response {nr} rows, support {ns} bins, pooled {np_} rows, "
-        f"effects {ne} rows; quarantined {quarantined or 'nothing'}"
+        f"  fig02: response {nr} rows, NDVI {ns} bins ({int(finite.sum())} obs.), "
+        f"pooled {np_} rows, effects {ne} rows; quarantined {quarantined or 'nothing'}"
     )
 
 
 # ---- fig02 whole-site bootstrap (panel b interval rules) -------------------
 
-# Per-arm calibrated containers, exactly the ones pooled_arm_compare ran the
-# forecast-mode arms from.  Zarr directories cannot be single-file hashed; their
-# content is pinned instead by the Table 3 reproduction assert below.
-E0_ARM_CONTAINERS = {
-    "cover_scaled_sigmoid": Path("/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run22.swim"),
-    "unscaled_linear": Path("/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_RunFAO56.swim"),
-    "unscaled_sigmoid": Path("/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_fao56_sig.swim"),
-}
-
 E0_BOOT_N = 10_000
 E0_BOOT_SEED = 42
+
+
+def _e0_evaluate_module():
+    """examples/6_Flux_International/evaluate.py under a collision-free module name.
+
+    Several example directories ship an ``evaluate.py``; loading the Example 6
+    one by path keeps it apart from any other already imported in this process.
+    """
+    import importlib.util
+
+    path = REPO / E0_EXAMPLE / "evaluate.py"
+    spec = importlib.util.spec_from_file_location("e0_flux_international_evaluate", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def _e0_suff(obs: np.ndarray, sim: np.ndarray) -> np.ndarray:
@@ -1243,36 +1362,31 @@ def _e0_pooled_from_suff(s: np.ndarray) -> dict[str, np.ndarray]:
 def build_fig02_bootstrap() -> None:
     """95% whole-site bootstrap intervals for the Figure 2 panel (b) pooled metrics.
 
-    Re-runs the three E0 arms in forecast mode (the pooled_arm_compare recipe),
-    rebuilds the arm-paired flux mask requiring all three arms jointly finite,
-    asserts exact reproduction of the frozen pooled point values and Table 3
-    strings, then resamples the 45 evaluation sites with replacement.  A drawn
-    site contributes all of its paired days and monthly totals; daily and
-    monthly statistics share the same site draw.  Design frozen before any
-    interval was inspected.
+    Re-runs the three E0 arms in forecast mode at the 37 E0 sites (the
+    examples/6_Flux_International/pooled_arm_compare.py recipe: closure-corrected
+    per-site flux sources from the E2 fields shapefile, paired-day monthly sums
+    with >= 20 paired days), rebuilds the arm-paired flux mask requiring all
+    three arms jointly finite, asserts exact reproduction of the frozen pooled
+    point values, the per-site RMSE table, and the Table 3 strings, then
+    resamples the 37 evaluation sites with replacement.  A drawn site
+    contributes all of its paired days and monthly sums; daily and monthly
+    statistics share the same site draw.  Design frozen before any interval
+    was inspected.
     """
-    sys.path.insert(0, str(REPO / "examples" / "5_Flux_Ensemble"))
-    from evaluate import (
-        apply_exclusions,
-        calc_metrics,
-        load_flux_et,
-        parse_pest_params,
-        resolve_flux_dir,
-        run_calibrated_model,
-    )
-
-    from swimrs.calibrate.flux_utils import full_month_paired_sums, passes_site_minimum
+    ev = _e0_evaluate_module()
+    from swimrs.calibrate.flux_utils import paired_monthly_sums, passes_site_minimum
     from swimrs.container import SwimContainer
     from swimrs.swim.config import ProjectConfig
 
     frozen_path = OUT / "fig02_pooled_metrics.csv"
-    srcs: dict[str, Path] = {"frozen_pooled": frozen_path}
+    srcs: dict[str, Path] = {"frozen_pooled": frozen_path, "sites": E0_SITES_FILE}
     for key, arm in E0_ARMS.items():
         srcs[f"par:{key}"] = arm["par_csv"]
         srcs[f"config:{key}"] = REPO / arm["config"]
-        srcs[f"container:{key}"] = E0_ARM_CONTAINERS[key]
+        srcs[f"container:{key}"] = arm["container"]
     for key, comp in E0_COMPARISONS.items():
         srcs[f"gate:{key}"] = comp["dir"] / "pooled_gate.json"
+        srcs[f"per_site:{key}"] = comp["dir"] / "pooled_per_site.csv"
     for k, p in srcs.items():
         if not p.exists():
             raise BuildError(f"fig02 bootstrap source missing: {k} -> {p}")
@@ -1283,16 +1397,13 @@ def build_fig02_bootstrap() -> None:
     frozen_vals = {
         (r["formulation"], r["scale"], r["metric"]): float(r["value"]) for _, r in frozen.iterrows()
     }
+    per_site_ref = {
+        key: pd.read_csv(E0_COMPARISONS[key]["dir"] / "pooled_per_site.csv").set_index("fid")
+        for key in ("isolated_cover", "whole_formulation")
+    }
 
     # ---- forward re-runs, exactly as pooled_arm_compare ran each arm ----
-    container = SwimContainer.open(str(E0_ARM_CONTAINERS["cover_scaled_sigmoid"]), mode="r")
-    try:
-        fids = sorted(container.field_uids)
-    finally:
-        container.close()
-    require_count(len(fids), EXPECTED["E0_configured"], "fig02 bootstrap configured cohort")
-    fids = apply_exclusions(fids)
-
+    fids = _e0_sites()
     forms = list(E0_ARMS)
     cfgs: dict[str, object] = {}
     series: dict[str, dict] = {}
@@ -1300,16 +1411,27 @@ def build_fig02_bootstrap() -> None:
         cfg = ProjectConfig()
         cfg.read_config(str(REPO / arm["config"]), calibrate=True)
         cfgs[key] = cfg
-        params = parse_pest_params(str(arm["par_csv"]), fids)
-        container = SwimContainer.open(str(E0_ARM_CONTAINERS[key]), mode="r")
+        params = ev.parse_pest_params(str(arm["par_csv"]), fids)
+        missing = [f for f in fids if f not in params]
+        if missing:
+            raise BuildError(f"fig02 bootstrap: {key} has no posterior for {missing}")
+        container = SwimContainer.open(str(arm["container"]), mode="r")
         try:
-            results = run_calibrated_model(cfg, container, fids, params)
+            results = ev.run_calibrated_model(cfg, container, fids, params)
         finally:
             container.close()
         series[key] = {fid: df["et_act"] for fid, df in results.items()}
+        if sorted(series[key]) != sorted(fids):
+            raise BuildError(f"fig02 bootstrap: {key} forward run did not return every site")
         print(f"  fig02 bootstrap: {key} forward run done ({len(results)} sites)")
 
-    flux_dir = resolve_flux_dir(cfgs["cover_scaled_sigmoid"])
+    shp = {k: (c.fields_shapefile, c.feature_id_col) for k, c in cfgs.items()}
+    if len(set(shp.values())) != 1:
+        raise BuildError(f"fig02 bootstrap: arms disagree on the fields shapefile: {shp}")
+    cfg0 = cfgs["cover_scaled_sigmoid"]
+    flux_sources = ev.load_flux_sources(cfg0.fields_shapefile, cfg0.feature_id_col)
+    if any(fid not in flux_sources for fid in fids):
+        raise BuildError("fig02 bootstrap: an E0 site has no declared flux source")
 
     # ---- arm-paired mask: flux and all three arms finite on the same day ----
     site_ids: list[str] = []
@@ -1319,47 +1441,55 @@ def build_fig02_bootstrap() -> None:
     m_sim: dict[str, list] = {k: [] for k in forms}
     d_suff: dict[str, list] = {k: [] for k in forms}
     m_suff: dict[str, list] = {k: [] for k in forms}
+    n_site_monthly: dict[str, int] = {}
+    et_cols: dict[str, str] = {}
     for fid in fids:
-        flux_et = load_flux_et(fid, flux_dir)
+        flux_et = ev.load_flux_et(fid, flux_sources[fid])
         if flux_et.empty or not passes_site_minimum(flux_et):
-            continue
-        if any(fid not in series[k] for k in forms):
-            continue
+            raise BuildError(f"fig02 bootstrap: {fid} fails the flux site minimum")
+        et_cols[fid] = str(flux_et.attrs.get("et_col"))
         common = flux_et.index
         for k in forms:
             common = common.intersection(series[k][fid].index)
-        if len(common) < 10:
-            continue
         obs = flux_et.loc[common].values
         sims = {k: series[k][fid].loc[common].values for k in forms}
+        for k in forms:
+            if not np.isfinite(sims[k]).all():
+                raise BuildError(f"fig02 bootstrap: {k} simulated ET is not finite at {fid}")
         mask = np.isfinite(obs)
         for k in forms:
             mask &= np.isfinite(sims[k])
         if mask.sum() < 10:
-            continue
+            raise BuildError(f"fig02 bootstrap: {fid} has only {int(mask.sum())} paired days")
         site_ids.append(fid)
         d_obs.append(obs[mask])
         for k in forms:
             d_sim[k].append(sims[k][mask])
             d_suff[k].append(_e0_suff(obs[mask], sims[k][mask]))
 
+        # E2 monthly basis: sums over flux-valid days, >= 20 paired days per
+        # month, every arm integrating the identical day set.
         flux_daily = flux_et.loc[common]
-        flux_mo = None
         mo_sums = {}
+        flux_mo = None
         for k in forms:
-            s_mo, f_mo = full_month_paired_sums(series[k][fid], flux_daily)
+            s_mo, f_mo, _ = paired_monthly_sums(
+                series[k][fid].loc[common], flux_daily, month_min_days=E0_MONTH_MIN_PAIRED_DAYS
+            )
             mo_sums[k] = s_mo
             if flux_mo is None:
                 flux_mo = f_mo
-        months = flux_mo.index
-        for k in forms:
-            months = months.intersection(mo_sums[k].index)
-        o_mo = flux_mo.reindex(months).values
-        sm_mo = {k: mo_sums[k].reindex(months).values for k in forms}
+            elif not flux_mo.index.equals(f_mo.index) or not np.array_equal(
+                flux_mo.values, f_mo.values, equal_nan=True
+            ):
+                raise BuildError(f"fig02 bootstrap: monthly flux sums differ by arm at {fid}")
+        o_mo = flux_mo.values
+        sm_mo = {k: mo_sums[k].reindex(flux_mo.index).values for k in forms}
         mmask = np.isfinite(o_mo)
         for k in forms:
             mmask &= np.isfinite(sm_mo[k])
-        if mmask.sum() >= 6:
+        n_site_monthly[fid] = int(mmask.sum())
+        if mmask.sum() >= E0_POOLED_MIN_MONTHS:
             m_obs.append(o_mo[mmask])
             for k in forms:
                 m_sim[k].append(sm_mo[k][mmask])
@@ -1372,7 +1502,37 @@ def build_fig02_bootstrap() -> None:
     n_daily = int(sum(len(v) for v in d_obs))
     require_count(n_daily, EXPECTED["E0_pooled_daily"], "fig02 bootstrap site-days")
     n_monthly = int(sum(len(v) for v in m_obs))
-    require_count(n_monthly, EXPECTED["E0_pooled_monthly"], "fig02 bootstrap monthly totals")
+    require_count(n_monthly, EXPECTED["E0_pooled_monthly"], "fig02 bootstrap monthly sums")
+    if any(c != "ET_corr" for c in et_cols.values()):
+        raise BuildError(f"fig02 bootstrap: non-closure-corrected flux column in {et_cols}")
+
+    # ---- per-site values must reproduce the panel (c) source tables ----
+    arm_side = {
+        "isolated_cover": {"cover_scaled_sigmoid": "a", "unscaled_sigmoid": "b"},
+        "whole_formulation": {"cover_scaled_sigmoid": "a", "unscaled_linear": "b"},
+    }
+    m_i = 0
+    for i, fid in enumerate(site_ids):
+        has_mo = n_site_monthly[fid] >= E0_POOLED_MIN_MONTHS
+        for comp_key, sides in arm_side.items():
+            ref = per_site_ref[comp_key].loc[fid]
+            if int(ref["n_daily"]) != len(d_obs[i]) or int(ref["n_monthly"]) != n_site_monthly[fid]:
+                raise BuildError(f"fig02 bootstrap: {fid} paired counts differ from {comp_key}")
+            for k, side in sides.items():
+                got = ev.calc_metrics(d_obs[i], d_sim[k][i])["rmse"]
+                if abs(float(got) - float(ref[f"rmse_{side}_daily"])) > 1e-9:
+                    raise BuildError(f"fig02 bootstrap: {fid} daily RMSE drift vs {comp_key}")
+                if has_mo:
+                    got_m = ev.calc_metrics(m_obs[m_i], m_sim[k][m_i])["rmse"]
+                    ref_m = float(ref[f"rmse_{side}_monthly"])
+                    if np.isfinite(ref_m) and abs(float(got_m) - ref_m) > 1e-9:
+                        raise BuildError(f"fig02 bootstrap: {fid} monthly RMSE drift vs {comp_key}")
+                    if np.isfinite(ref_m) != (n_site_monthly[fid] >= E0_SITE_METRIC_MIN_MONTHS):
+                        raise BuildError(f"fig02 bootstrap: {fid} monthly-metric rule mismatch")
+        if has_mo:
+            m_i += 1
+    if m_i != len(m_obs):
+        raise BuildError("fig02 bootstrap: monthly site bookkeeping mismatch")
 
     # ---- point values must reproduce the frozen package and Table 3 ----
     cat = {
@@ -1386,7 +1546,7 @@ def build_fig02_bootstrap() -> None:
     point: dict[tuple[str, str, str], float] = {}
     for scale, (obs_v, sims_v) in cat.items():
         for k in forms:
-            m = calc_metrics(obs_v, sims_v[k])
+            m = ev.calc_metrics(obs_v, sims_v[k])
             direct = {"kge": m["kge"], "rmse": m["rmse"], "mbe": m["bias"]}
             via_suff = _e0_pooled_from_suff(suff_arr[(scale, k)].sum(axis=0))
             for metric in ("kge", "rmse", "mbe"):
@@ -1418,7 +1578,7 @@ def build_fig02_bootstrap() -> None:
         for k in forms:
             sums = suff_arr[(scale, k)][draws].sum(axis=1)
             if scale == "monthly" and float(sums[:, 0].min()) < 60.0:
-                raise BuildError("fig02 bootstrap: a monthly resample has < 60 totals")
+                raise BuildError("fig02 bootstrap: a monthly resample has < 60 sums")
             met = _e0_pooled_from_suff(sums)
             for metric in ("kge", "rmse", "mbe"):
                 r = met[metric]
@@ -1442,7 +1602,7 @@ def build_fig02_bootstrap() -> None:
                         "n_resamples": E0_BOOT_N,
                         "seed": E0_BOOT_SEED,
                         "resample_unit": (
-                            "whole site (all paired days and monthly totals retained "
+                            "whole site (all paired days and monthly sums retained "
                             "per sampled site)"
                         ),
                         "n_sites": len(site_ids),
@@ -1461,14 +1621,12 @@ def build_fig02_bootstrap() -> None:
     MANIFEST.add(
         "fig02_pooled_bootstrap.csv",
         rows=n,
-        experiment=(
-            "E0 (vegetation-formulation model development on the E1 cohort; "
-            "legacy e2_ / examples/5_Flux_Ensemble)"
-        ),
+        experiment=E0_EXPERIMENT_LABEL,
         evaluation_mask_id=E0_MASK_ID,
         sources={k: str(p) for k, p in srcs.items()},
         source_hashes={
             "frozen_pooled": sha256(frozen_path),
+            "sites": sha256(E0_SITES_FILE),
             **{f"par:{k}": sha256(E0_ARMS[k]["par_csv"]) for k in forms},
             **{
                 f"gate:{k}": sha256(c["dir"] / "pooled_gate.json")
@@ -1476,13 +1634,17 @@ def build_fig02_bootstrap() -> None:
             },
         },
         inclusion_rule=(
-            "Arm-paired flux mask rebuilt with all three formulations required jointly "
-            "finite; asserted identical to the frozen Table 3 mask (45 sites, 63,681 "
-            "site-days, 1,435 monthly totals) and every pooled point value asserted to "
-            "reproduce fig02_pooled_metrics.csv and Table 3 at manuscript precision."
+            "Arm-paired flux mask rebuilt at the 37 E0 sites with all three formulations "
+            "required jointly finite; closure-corrected per-site flux sources and paired-day "
+            "monthly sums (>= 20 paired days per month, >= 6 months per site) as in "
+            "examples/6_Flux_International/pooled_arm_compare.py; asserted identical to the "
+            "frozen Table 3 mask (37 sites, 49,289 site-days, 1,514 monthly sums), every "
+            "pooled point value asserted to reproduce fig02_pooled_metrics.csv and Table 3 "
+            "at manuscript precision, and every per-site RMSE asserted to reproduce the "
+            "panel (c) source tables."
         ),
         bootstrap=(
-            "Whole-site resampling with replacement, all paired days and monthly totals "
+            "Whole-site resampling with replacement, all paired days and monthly sums "
             "retained for each sampled site, 10,000 resamples, numpy default_rng(42); "
             "daily and monthly statistics share the same site draw. Design frozen before "
             "any interval was inspected."
@@ -1507,92 +1669,61 @@ def build_fig02_bootstrap() -> None:
 # Figure 3 -- pooled daily ET agreement and temporal-support effects
 # --------------------------------------------------------------------------
 #
-# Contract: paper/notes/fig03_production_handoff.md (2026-08-27). Supersedes
-# the seasonal-example Figure 3 and the direct-ET-interpolation display
-# package. The daily OpenET benchmark is reconstructed through ETf, never by
-# interpolating ET directly: capture ETf = raw ensemble_mean_3x3 / same-day
-# bias-corrected ETo; ETf is linearly interpolated in time strictly inside the
-# first-to-last raw capture support; daily benchmark ET = interpolated ETf x
-# daily ETo. Temporal classes come only from raw OpenET availability -- the
-# archived is_overpass calibration-capture flag never classifies dates.
+# Contract: paper/notes/fig03_production_handoff.md (2026-09-01).
+# Figure 3 is a display-only transformation of the promoted E1 benchmark
+# package. It never reconstructs OpenET independently and never reads a model
+# archive, container, or legacy e2_* metric table. The promoted evaluator-owned
+# paired record supplies every plotted daily value and temporal class; grouped
+# contrasts and interactions are copied only after exact recomputation checks.
 #
-# The fig03_example_* files are Figure 1 example-source artifacts only
-# (build_fig01 regenerates and consumes them via its resurrected example-source
-# generator; historical filenames retained). This builder re-registers their
-# manifest records but never touches their content.
+# The fig03_example_* files remain Figure 1 example-source artifacts only
+# (historical filenames retained). This builder re-registers their manifest
+# records but never touches their content.
 
-E1_OPENET_DAILY = Path("/data/ssd1/swim/5_Flux_Ensemble/data/openet_flux/daily_data")
-
-FIG03_SUPPORTS = {"overpass": "acquisition", "non_overpass": "between_acquisitions"}
-FIG03_SUPPORT_ORDER = ["acquisition", "between_acquisitions", "all_dates"]
-FIG03_METHODS = [("openet", "OpenET"), ("swim", "SWIM-RS")]
-FIG03_EFFECT_METRICS = ["kge", "rmse", "mbe"]
-FIG03_IDENTITY_TOL = 1e-10
+FIG03_SOURCE = FINAL / "e1_openet_benchmark"
+FIG03_SOURCE_MANIFEST = FIG03_SOURCE / "MANIFEST.json"
+FIG03_SOURCE_FILES = {
+    "daily_record": "daily/evaluation_paired_daily_records.csv",
+    "temporal_metrics": "temporal/evaluation_temporal_grouped_metrics.csv",
+    "temporal_contrasts": "temporal/evaluation_temporal_grouped_contrasts.csv",
+    "temporal_interactions": "temporal/evaluation_temporal_interactions.csv",
+    "temporal_eligibility": "temporal/evaluation_temporal_site_eligibility.csv",
+}
+FIG03_TEMPORAL_CLASSES = ["retrieval", "between_retrieval"]
+FIG03_AGGREGATIONS = ["sqrt_n_weighted_site_metric", "pooled_observations"]
+FIG03_AGGREGATION_LABELS = {
+    "sqrt_n_weighted_site_metric": "Station-weighted",
+    "pooled_observations": "Pooled",
+}
+FIG03_METHODS = [
+    ("openet_ensemble", "OpenET", "openet_et"),
+    ("swim", "SWIM-RS", "swim_et"),
+]
+FIG03_METRICS = ["kge", "rmse", "mbe"]
 FIG03_MIN_PAIRED = 10
 FIG03_BOOTSTRAP_SEED = 42
 FIG03_BOOTSTRAP_REPS = 10_000
 FIG03_AXIS_LO = -2.0
 FIG03_AXIS_HI = 16.0
 FIG03_AXIS_TICKS = [0, 4, 8, 12, 16]
-FIG03_DRAW_ORDER_SEED = 27082026  # panel (a) deterministic point-shuffle seed
-FIG03_COMPOSITION_ID = "fig03_rewrite_concept_v3 (2026-08-27)"
-
-# Section 5.3 audit anchors from the accepted v3 concept: (n_site_days,
-# pearson_r, bias, rmse, display_r, display_bias, display_rmse). The builder
-# hard-fails if the frozen package does not reproduce them.
-FIG03_ANCHORS = {
-    ("OpenET", "acquisition"): (
-        4751,
-        0.90491714,
-        -0.31883530,
-        1.09618034,
-        "0.90",
-        "−0.32",
-        "1.10",
-    ),
-    ("OpenET", "between_acquisitions"): (
-        55584,
-        0.86666289,
-        -0.23775368,
-        1.12664810,
-        "0.87",
-        "−0.24",
-        "1.13",
-    ),
-    ("SWIM-RS", "acquisition"): (
-        4751,
-        0.87677143,
-        -0.04587095,
-        1.18738151,
-        "0.88",
-        "−0.05",
-        "1.19",
-    ),
-    ("SWIM-RS", "between_acquisitions"): (
-        55584,
-        0.87015031,
-        -0.00953528,
-        1.09528709,
-        "0.87",
-        "−0.01",
-        "1.10",
-    ),
-}
+FIG03_DRAW_ORDER_SEED = 27082026
+FIG03_COMPOSITION_ID = "fig03_temporal_grouped_v2 (2026-09-01)"
 
 
 def _fig03_signed_display(value: float) -> str:
     """Two-decimal display with an explicit sign and a true minus (U+2212)."""
-    if value >= 0:
-        return f"+{value:.2f}"
-    return f"−{abs(value):.2f}"
+    rounded = round(value, 2)
+    if rounded == 0:
+        return "0.00"
+    if rounded > 0:
+        return f"+{rounded:.2f}"
+    return f"−{abs(rounded):.2f}"
 
 
 def _fig03_metrics(obs: np.ndarray, mod: np.ndarray, label: str) -> dict[str, float]:
-    """Pearson r, KGE (Gupta 2009), RMSE, and signed MBE on paired vectors.
-
-    Same arithmetic as the archived evaluator (np.std with ddof=0); hard-fails
-    on degenerate support instead of returning NaN.
-    """
+    """Pearson r, KGE (Gupta 2009), RMSE, and signed MBE on paired vectors."""
+    obs = np.asarray(obs, dtype=float)
+    mod = np.asarray(mod, dtype=float)
     if len(obs) != len(mod) or len(obs) < FIG03_MIN_PAIRED:
         raise BuildError(f"fig03 metrics {label}: n={len(obs)} below minimum {FIG03_MIN_PAIRED}")
     if not (np.isfinite(obs).all() and np.isfinite(mod).all()):
@@ -1605,550 +1736,593 @@ def _fig03_metrics(obs: np.ndarray, mod: np.ndarray, label: str) -> dict[str, fl
     alpha = float(np.std(mod) / np.std(obs))
     beta = float(np.mean(mod) / np.mean(obs))
     kge = float(1.0 - np.sqrt((r - 1.0) ** 2 + (alpha - 1.0) ** 2 + (beta - 1.0) ** 2))
-    return {"pearson_r": r, "kge": kge, "rmse": rmse, "mbe": mbe}
+    return {"r": r, "kge": kge, "rmse": rmse, "mbe": mbe}
 
 
-def _fig03_bootstrap_ci(values: np.ndarray) -> tuple[float, float, float]:
-    """Median and whole-site bootstrap 95% CI (10,000 resamples, seed 42).
-
-    default_rng is re-seeded per call, so the resample index matrix is
-    identical for every metric and support at fixed n -- the same convention
-    as the archived run22 decomposition.
-    """
-    values = np.asarray(values, dtype=float)
-    if not np.isfinite(values).all():
-        raise BuildError("fig03 bootstrap: nonfinite site effect")
-    rng = np.random.default_rng(FIG03_BOOTSTRAP_SEED)
-    idx = rng.integers(0, len(values), size=(FIG03_BOOTSTRAP_REPS, len(values)))
-    medians = np.median(values[idx], axis=1)
-    return (
-        float(np.median(values)),
-        float(np.percentile(medians, 2.5)),
-        float(np.percentile(medians, 97.5)),
-    )
-
-
-def _fig03_reconstruct_site(fid: str) -> tuple[pd.DataFrame, float]:
-    """ETf-based daily benchmark reconstruction for one site.
-
-    Returns the paired daily frame (index=date; flux/swim/openet/eto/etf/raw
-    columns plus temporal_support) and the max acquisition-date absolute
-    difference between raw and reconstructed OpenET ET.
-    """
-    frozen_path = E1_ARCHIVE / "6_evaluation" / "site_daily_timeseries" / f"{fid}.csv"
-    raw_path = E1_OPENET_DAILY / f"{fid}.csv"
-    for p in (frozen_path, raw_path):
-        if not p.exists():
-            raise BuildError(f"fig03 source missing: {p}")
-    frozen = pd.read_csv(frozen_path, index_col="date", parse_dates=True)
-    raw = pd.read_csv(raw_path, index_col="DATE", parse_dates=True)
-    if frozen.index.duplicated().any() or raw.index.duplicated().any():
-        raise BuildError(f"fig03 {fid}: duplicate daily dates in a source series")
-    require_columns(frozen.reset_index(), ["flux_ET", "swim_ET", "eto"], f"fig03 frozen {fid}")
-    require_columns(raw.reset_index(), ["ensemble_mean_3x3"], f"fig03 raw benchmark {fid}")
-
-    raw_et = pd.to_numeric(raw["ensemble_mean_3x3"], errors="coerce").dropna()
-    if raw_et.empty:
-        raise BuildError(f"fig03 {fid}: no finite raw benchmark value")
-    eto = pd.to_numeric(frozen["eto"], errors="coerce")
-    capture_eto = eto.reindex(raw_et.index)
-    bad_eto = ~np.isfinite(capture_eto.values) | (capture_eto.values <= 0)
-    if bad_eto.any():
-        dates = ", ".join(d.date().isoformat() for d in capture_eto.index[bad_eto][:5])
+def _fig03_source_artifacts() -> tuple[dict, dict[str, Path]]:
+    """Load the promoted manifest and hash-verify every Figure 3 source."""
+    if not FIG03_SOURCE_MANIFEST.exists():
+        raise BuildError(f"fig03 promoted manifest missing: {FIG03_SOURCE_MANIFEST}")
+    manifest = json.loads(FIG03_SOURCE_MANIFEST.read_text())
+    if manifest.get("status") != "frozen_for_results_reporting":
         raise BuildError(
-            f"fig03 {fid}: ETo missing or nonpositive on OpenET captures ({dates}); "
-            "investigate the frozen daily record -- do not fill"
+            f"fig03 source package is not frozen_for_results_reporting: {manifest.get('status')!r}"
         )
+    paths = {key: FIG03_SOURCE / rel for key, rel in FIG03_SOURCE_FILES.items()}
+    frozen_hashes = manifest.get("artifact_sha256", {})
+    for key, path in paths.items():
+        if not path.exists():
+            raise BuildError(f"fig03 promoted source missing: {path}")
+        rel = FIG03_SOURCE_FILES[key]
+        want = frozen_hashes.get(rel)
+        if not want:
+            raise BuildError(f"fig03 promoted manifest has no hash for {rel}")
+        got = sha256(path)
+        if got != want:
+            raise BuildError(f"fig03 promoted source drift for {rel}: {got[:12]} != {want[:12]}")
+    return manifest, paths
 
-    capture_etf = raw_et / capture_eto
-    daily_index = pd.date_range(capture_etf.index.min(), capture_etf.index.max(), freq="D")
-    daily_etf = capture_etf.reindex(daily_index).interpolate(method="time", limit_area="inside")
-    daily_openet = daily_etf.reindex(frozen.index) * eto
 
-    site = pd.DataFrame(
-        {
-            "flux_et": pd.to_numeric(frozen["flux_ET"], errors="coerce"),
-            "swim_et": pd.to_numeric(frozen["swim_ET"], errors="coerce"),
-            "openet_et": daily_openet,
-            "eto": eto,
-            "openet_etf_daily": daily_etf.reindex(frozen.index),
-            "openet_et_raw": raw_et.reindex(frozen.index),
-        },
-        index=frozen.index,
+def _fig03_grouped_estimate(
+    pooled: pd.DataFrame,
+    site_metrics: pd.DataFrame,
+    temporal_class: str,
+    aggregation: str,
+    model: str,
+    metric: str,
+) -> float:
+    """Recompute one canonical grouped estimate from the plotted record."""
+    if aggregation == "pooled_observations":
+        sub = pooled[pooled["temporal_support"] == temporal_class]
+        col = "swim_et" if model == "swim" else "openet_et"
+        return _fig03_metrics(
+            sub["flux_et"].to_numpy(),
+            sub[col].to_numpy(),
+            f"{temporal_class}/{aggregation}/{model}",
+        )[metric]
+    sub = site_metrics[
+        (site_metrics["temporal_support"] == temporal_class) & (site_metrics["model"] == model)
+    ]
+    require_count(
+        len(sub),
+        EXPECTED["E1_split_common"],
+        f"fig03 station metrics {temporal_class}/{model}/{metric}",
     )
-    paired = site[np.isfinite(site[["flux_et", "swim_et", "openet_et"]].values).all(axis=1)].copy()
-    paired["temporal_support"] = np.where(
-        paired.index.isin(capture_etf.index), "acquisition", "between_acquisitions"
-    )
+    weights = np.sqrt(sub["n_paired"].to_numpy(dtype=float))
+    return float(np.average(sub[metric].to_numpy(dtype=float), weights=weights))
 
-    # Gate: everything plotted is finite and inside raw benchmark support.
-    if not np.isfinite(paired[["eto", "openet_etf_daily"]].values).all():
-        raise BuildError(f"fig03 {fid}: nonfinite ETo or daily ETf on a paired row")
-    if (paired.index < capture_etf.index.min()).any() or (
-        paired.index > capture_etf.index.max()
-    ).any():
-        raise BuildError(f"fig03 {fid}: paired date outside raw benchmark support")
 
-    acq = paired[paired["temporal_support"] == "acquisition"]
-    btw = paired[paired["temporal_support"] == "between_acquisitions"]
-    if not np.isfinite(acq["openet_et_raw"].values).all():
-        raise BuildError(f"fig03 {fid}: acquisition row without a finite raw benchmark value")
-    if btw["openet_et_raw"].notna().any():
-        raise BuildError(f"fig03 {fid}: between-acquisition row carries a raw benchmark value")
-    if len(acq) + len(btw) != len(paired):
-        raise BuildError(f"fig03 {fid}: temporal classes do not partition the paired days")
+def _fig03_quarantine_legacy_package() -> list[str]:
+    """Move the pre-openet-core display package aside once, before replacement."""
+    meta_path = OUT / "fig03_metadata.json"
+    if not meta_path.exists():
+        return []
+    try:
+        current = json.loads(meta_path.read_text())
+    except json.JSONDecodeError as exc:
+        raise BuildError(f"fig03 existing metadata is unreadable: {exc}") from exc
+    if current.get("source_package") == "paper/data/final/e1_openet_benchmark":
+        return []
 
-    identity_err = float(np.max(np.abs(acq["openet_et"].values - acq["openet_et_raw"].values)))
-    return paired, identity_err
+    qdir = OUT / "superseded_fig03_pre_openet_core"
+    qdir.mkdir(exist_ok=True)
+    names = [
+        "fig03_pooled_daily_agreement.csv",
+        "fig03_scatter_metrics.csv",
+        "fig03_temporal_site_metrics.csv",
+        "fig03_temporal_site_effects.csv",
+        "fig03_temporal_cohort_effects.csv",
+        "fig03_metadata.json",
+    ]
+    moved = []
+    for name in names:
+        src = OUT / name
+        if not src.exists():
+            continue
+        dst = qdir / name
+        if dst.exists():
+            raise BuildError(
+                f"fig03 quarantine target already exists: {dst}; inspect before replacing"
+            )
+        src.rename(dst)
+        moved.append(name)
+    return moved
 
 
 def build_fig03() -> None:
-    """Frozen Figure 3 display package: pooled agreement + temporal effects."""
-    src_cohort = E1_ARCHIVE / "6_evaluation" / "overpass_split_metrics.csv"
-    ts_dir = E1_ARCHIVE / "6_evaluation" / "site_daily_timeseries"
-    for p in (src_cohort, ts_dir, E1_OPENET_DAILY):
-        if not p.exists():
-            raise BuildError(f"fig03 source missing: {p}")
+    """Freeze Figure 3 directly from the promoted E1 reporting package."""
+    source_manifest, paths = _fig03_source_artifacts()
 
-    # ---- cohort: 43 sites eligible (>=10 paired days) in BOTH classes ----
-    # The archived split-metrics file is used only for the cohort definition
-    # and per-site paired-count cross-checks (sanctioned audit inputs); its
-    # direct-ET-interpolation metric values are never read.
-    cohort_rec = pd.read_csv(src_cohort)
-    require_columns(cohort_rec, ["fid", "subset", "n_paired", "eligible"], "fig03 cohort record")
-    require_unique(cohort_rec, ["fid", "subset"], "fig03 cohort record")
-    elig = cohort_rec.pivot_table(index="fid", columns="subset", values="eligible", aggfunc="first")
-    sites = sorted(
-        elig.index[
-            elig.get("overpass", False).astype(bool) & elig.get("non_overpass", False).astype(bool)
-        ]
+    record = pd.read_csv(paths["daily_record"], float_precision="round_trip")
+    eligibility = pd.read_csv(paths["temporal_eligibility"])
+    grouped_metrics = pd.read_csv(paths["temporal_metrics"], float_precision="round_trip")
+    grouped_contrasts = pd.read_csv(paths["temporal_contrasts"], float_precision="round_trip")
+    interactions = pd.read_csv(paths["temporal_interactions"], float_precision="round_trip")
+
+    require_columns(
+        record,
+        [
+            "fid",
+            "date",
+            "flux_et_mm_d",
+            "swim_et_mm_d",
+            "openet_et_mm_d",
+            "openet_support_class",
+            "temporal_class",
+        ],
+        "fig03 promoted daily record",
     )
-    require_count(len(sites), EXPECTED["E1_split_common"], "fig03 common-cohort sites")
-    counts_rec = cohort_rec.pivot_table(
-        index="fid", columns="subset", values="n_paired", aggfunc="first"
+    require_unique(record, ["fid", "date"], "fig03 promoted daily record")
+    require_columns(
+        eligibility,
+        [
+            "fid",
+            "n_retrieval",
+            "n_between_retrieval",
+            "in_common_cohort",
+        ],
+        "fig03 temporal eligibility",
     )
+    require_unique(eligibility, ["fid"], "fig03 temporal eligibility")
+    common_sites = sorted(
+        eligibility.loc[eligibility["in_common_cohort"].astype(bool), "fid"].astype(str).tolist()
+    )
+    require_count(len(common_sites), EXPECTED["E1_split_common"], "fig03 common temporal cohort")
 
-    # ---- per-site ETf-based reconstruction ----
-    frames = []
-    max_identity_err = 0.0
-    src_hashes = {"overpass_split_metrics.csv": sha256(src_cohort)}
-    for fid in sites:
-        paired, err = _fig03_reconstruct_site(fid)
-        max_identity_err = max(max_identity_err, err)
-        for legacy, support in FIG03_SUPPORTS.items():
-            n_class = int((paired["temporal_support"] == support).sum())
-            n_want = int(counts_rec.loc[fid, legacy])
-            if n_class != n_want:
-                raise BuildError(
-                    f"fig03 {fid}: {support} count {n_class} != archived cohort record {n_want}"
-                )
-            if n_class < FIG03_MIN_PAIRED:
-                raise BuildError(f"fig03 {fid}: {support} support below {FIG03_MIN_PAIRED} days")
-        paired = paired.reset_index().rename(columns={"index": "date"})
-        paired.insert(0, "site_id", fid)
-        frames.append(paired)
-        src_hashes[f"site_daily_timeseries/{fid}.csv"] = sha256(ts_dir / f"{fid}.csv")
-        src_hashes[f"openet_daily/{fid}.csv"] = sha256(E1_OPENET_DAILY / f"{fid}.csv")
-    if max_identity_err > FIG03_IDENTITY_TOL:
-        raise BuildError(
-            f"fig03: acquisition-date raw/reconstructed identity {max_identity_err:.3e} "
-            f"exceeds {FIG03_IDENTITY_TOL:.0e}"
-        )
+    pooled = record[record["fid"].astype(str).isin(common_sites)].copy()
+    if set(pooled["temporal_class"]) != set(FIG03_TEMPORAL_CLASSES):
+        raise BuildError("fig03 temporal classes do not match retrieval/between_retrieval")
+    retrieval_support = pooled.loc[pooled["temporal_class"] == "retrieval", "openet_support_class"]
+    between_support = pooled.loc[
+        pooled["temporal_class"] == "between_retrieval", "openet_support_class"
+    ]
+    if set(retrieval_support) != {"capture"}:
+        raise BuildError("fig03 retrieval rows are not exactly OpenET capture rows")
+    if (between_support == "capture").any():
+        raise BuildError("fig03 between-retrieval rows include an OpenET capture")
 
-    pooled = pd.concat(frames, ignore_index=True)
+    pooled = pooled.rename(
+        columns={
+            "fid": "site_id",
+            "temporal_class": "temporal_support",
+            "flux_et_mm_d": "flux_et",
+            "swim_et_mm_d": "swim_et",
+            "openet_et_mm_d": "openet_et",
+        }
+    )
     pooled.insert(0, "experiment", "E1")
     pooled["date"] = pd.to_datetime(pooled["date"]).dt.strftime("%Y-%m-%d")
-    pooled["is_raw_openet_capture"] = pooled["temporal_support"] == "acquisition"
     pooled = pooled[
         [
             "experiment",
             "site_id",
             "date",
             "temporal_support",
+            "openet_support_class",
             "flux_et",
             "swim_et",
             "openet_et",
-            "eto",
-            "openet_etf_daily",
-            "openet_et_raw",
-            "is_raw_openet_capture",
         ]
     ].sort_values(["site_id", "date"])
     require_unique(pooled, ["site_id", "date"], "fig03 pooled daily agreement")
-    n_acq = int((pooled["temporal_support"] == "acquisition").sum())
-    n_btw = int((pooled["temporal_support"] == "between_acquisitions").sum())
-    require_count(n_acq, EXPECTED["E1_pool_acquisition"], "fig03 acquisition site-days")
-    require_count(n_btw, EXPECTED["E1_pool_between"], "fig03 between-acquisition site-days")
-    require_count(len(pooled), EXPECTED["E1_pool_total"], "fig03 total paired site-days")
+    if not np.isfinite(pooled[["flux_et", "swim_et", "openet_et"]].to_numpy(dtype=float)).all():
+        raise BuildError("fig03 plotted record contains nonfinite ET")
 
-    # ---- range gate: every plotted value inside the fixed -2..16 axes ----
-    plotted = pooled[["flux_et", "swim_et", "openet_et"]].values
+    n_retrieval = int((pooled["temporal_support"] == "retrieval").sum())
+    n_between = int((pooled["temporal_support"] == "between_retrieval").sum())
+    require_count(n_retrieval, EXPECTED["E1_pool_retrieval"], "fig03 retrieval site-days")
+    require_count(
+        n_between,
+        EXPECTED["E1_pool_between_retrieval"],
+        "fig03 between-retrieval site-days",
+    )
+    require_count(
+        len(pooled),
+        EXPECTED["E1_pool_temporal_common"],
+        "fig03 common temporal site-days",
+    )
+    per_site = pooled.groupby(["site_id", "temporal_support"]).size().unstack()
+    if (per_site[FIG03_TEMPORAL_CLASSES] < FIG03_MIN_PAIRED).any().any():
+        raise BuildError("fig03 common cohort contains a support class below 10 days")
+
+    plotted = pooled[["flux_et", "swim_et", "openet_et"]].to_numpy(dtype=float)
     v_lo, v_hi = float(np.min(plotted)), float(np.max(plotted))
     if v_lo < FIG03_AXIS_LO or v_hi > FIG03_AXIS_HI:
         raise BuildError(
-            f"fig03: plotted extrema [{v_lo:.3f}, {v_hi:.3f}] exceed fixed axes "
+            f"fig03 plotted extrema [{v_lo:.3f}, {v_hi:.3f}] exceed "
             f"[{FIG03_AXIS_LO}, {FIG03_AXIS_HI}]"
         )
 
-    # ---- panel (a) pooled scatter metrics: assert the Section 5.3 anchors ----
+    # Panel (a): descriptive pooled statistics from the exact plotted rows,
+    # cross-checked against the promoted grouped products.
     scatter_rows = []
-    for col, method in FIG03_METHODS:
-        for support in ["acquisition", "between_acquisitions"]:
-            sub = pooled[pooled["temporal_support"] == support]
-            obs = sub["flux_et"].to_numpy()
-            est = sub[f"{col}_et"].to_numpy()
-            resid = est - obs
-            r = float(np.corrcoef(obs, est)[0, 1])
-            bias = float(np.mean(resid))
-            rmse = float(np.sqrt(np.mean(resid**2)))
-            row = {
-                "temporal_support": support,
-                "method": method,
-                "n_sites": int(sub["site_id"].nunique()),
-                "n_site_days": len(sub),
-                "pearson_r": r,
-                "bias": bias,
-                "rmse": rmse,
-                "display_r": f"{r:.2f}",
-                "display_bias": _fig03_signed_display(bias),
-                "display_rmse": f"{rmse:.2f}",
-            }
-            want_n, want_r, want_b, want_rm, disp_r, disp_b, disp_rm = FIG03_ANCHORS[
-                (method, support)
-            ]
-            require_count(row["n_site_days"], want_n, f"fig03 scatter n {method}/{support}")
-            require_count(
-                row["n_sites"],
-                EXPECTED["E1_split_common"],
-                f"fig03 scatter sites {method}/{support}",
+    for model, label, col in FIG03_METHODS:
+        for temporal_class in FIG03_TEMPORAL_CLASSES:
+            sub = pooled[pooled["temporal_support"] == temporal_class]
+            metrics = _fig03_metrics(
+                sub["flux_et"].to_numpy(),
+                sub[col].to_numpy(),
+                f"scatter/{label}/{temporal_class}",
             )
-            for got, want, name in (
-                (r, want_r, "r"),
-                (bias, want_b, "bias"),
-                (rmse, want_rm, "rmse"),
-            ):
-                if abs(got - want) > 1e-8:
-                    raise BuildError(
-                        f"fig03 scatter {method}/{support}: {name} {got:.8f} does not "
-                        f"reproduce the v3 audit anchor {want:.8f}"
-                    )
-            for got, want, name in (
-                (row["display_r"], disp_r, "display_r"),
-                (row["display_bias"], disp_b, "display_bias"),
-                (row["display_rmse"], disp_rm, "display_rmse"),
-            ):
-                if got != want:
-                    raise BuildError(
-                        f"fig03 scatter {method}/{support}: {name} {got!r} != frozen {want!r}"
-                    )
-            scatter_rows.append(row)
-    scatter = pd.DataFrame(scatter_rows)
-
-    # ---- per-site metrics on all three supports, both methods ----
-    metric_rows = []
-    pooled_dt = pooled.assign(date=pd.to_datetime(pooled["date"]))
-    for fid in sites:
-        sdf = pooled_dt[pooled_dt["site_id"] == fid]
-        for support in FIG03_SUPPORT_ORDER:
-            sub = sdf if support == "all_dates" else sdf[sdf["temporal_support"] == support]
-            obs = sub["flux_et"].to_numpy()
-            for col, method in FIG03_METHODS:
-                m = _fig03_metrics(obs, sub[f"{col}_et"].to_numpy(), f"{fid}/{support}/{method}")
-                metric_rows.append(
-                    {
-                        "experiment": "E1",
-                        "site_id": fid,
-                        "temporal_support": support,
-                        "method": method,
-                        "n_paired": len(sub),
-                        "first_date": sub["date"].min().date().isoformat(),
-                        "last_date": sub["date"].max().date().isoformat(),
-                        "kge": m["kge"],
-                        "rmse": m["rmse"],
-                        "mbe": m["mbe"],
-                        "pearson_r": m["pearson_r"],
-                    }
+            for metric in ("r", "kge", "rmse", "mbe"):
+                source = grouped_metrics[
+                    (grouped_metrics["temporal_class"] == temporal_class)
+                    & (grouped_metrics["aggregation"] == "pooled_observations")
+                    & (grouped_metrics["model"] == model)
+                    & (grouped_metrics["metric"] == metric)
+                ]
+                require_count(
+                    len(source),
+                    1,
+                    f"fig03 source scatter {label}/{temporal_class}/{metric}",
                 )
-    site_metrics = pd.DataFrame(metric_rows)
-    require_unique(site_metrics, ["site_id", "temporal_support", "method"], "fig03 site metrics")
-    require_count(len(site_metrics), EXPECTED["E1_split_common"] * 3 * 2, "fig03 site-metric rows")
-
-    # ---- per-site paired effects (SWIM-RS minus OpenET; signed MBE) ----
-    wide = site_metrics.pivot_table(
-        index=["site_id", "temporal_support"],
-        columns="method",
-        values=["kge", "rmse", "mbe", "n_paired"],
-        aggfunc="first",
-    )
-    if (wide[("n_paired", "SWIM-RS")] != wide[("n_paired", "OpenET")]).any():
-        raise BuildError("fig03 effects: methods disagree on paired support within a stratum")
-    eff = pd.DataFrame(
-        {
-            "n_paired": wide[("n_paired", "SWIM-RS")].astype(int),
-            "kge_swim": wide[("kge", "SWIM-RS")],
-            "kge_openet": wide[("kge", "OpenET")],
-            "rmse_swim": wide[("rmse", "SWIM-RS")],
-            "rmse_openet": wide[("rmse", "OpenET")],
-            "mbe_swim": wide[("mbe", "SWIM-RS")],
-            "mbe_openet": wide[("mbe", "OpenET")],
-        }
-    ).reset_index()
-    eff["d_kge"] = eff["kge_swim"] - eff["kge_openet"]
-    eff["d_rmse"] = eff["rmse_swim"] - eff["rmse_openet"]
-    eff["d_mbe"] = eff["mbe_swim"] - eff["mbe_openet"]
-    order = (
-        eff[eff["temporal_support"] == "between_acquisitions"]
-        .sort_values(["d_kge", "site_id"])
-        .reset_index(drop=True)
-    )
-    rank = {fid: i + 1 for i, fid in enumerate(order["site_id"])}
-    eff["site_order_between_kge"] = eff["site_id"].map(rank)
-    eff.insert(0, "experiment", "E1")
-    eff = eff.sort_values(["site_id", "temporal_support"])
-    require_count(len(eff), EXPECTED["E1_split_common"] * 3, "fig03 site-effect rows")
-    if eff["site_order_between_kge"].isna().any():
-        raise BuildError("fig03 effects: a site lacks the between-acquisition ordering key")
-
-    # ---- cohort effects: median of 43 site effects + frozen bootstrap CI ----
-    cohort_rows = []
-    for support in FIG03_SUPPORT_ORDER:
-        sub = eff[eff["temporal_support"] == support]
-        require_count(len(sub), EXPECTED["E1_split_common"], f"fig03 cohort effects {support}")
-        for metric in FIG03_EFFECT_METRICS:
-            med, lo, hi = _fig03_bootstrap_ci(sub[f"d_{metric}"].to_numpy())
-            cohort_rows.append(
+                if abs(float(source.iloc[0]["estimate"]) - metrics[metric]) > 1e-12:
+                    raise BuildError(
+                        f"fig03 scatter {label}/{temporal_class}/{metric} "
+                        "does not reproduce promoted grouped metric"
+                    )
+            scatter_rows.append(
                 {
-                    "experiment": "E1",
-                    "temporal_support": support,
-                    "metric": metric,
-                    "n_sites": len(sub),
-                    "total_paired_site_days": int(sub["n_paired"].sum()),
-                    "median_delta": med,
-                    "ci95_lo": lo,
-                    "ci95_hi": hi,
-                    "seed": FIG03_BOOTSTRAP_SEED,
-                    "n_resamples": FIG03_BOOTSTRAP_REPS,
+                    "temporal_support": temporal_class,
+                    "method": label,
+                    "n_sites": int(sub["site_id"].nunique()),
+                    "n_site_days": int(len(sub)),
+                    "pearson_r": metrics["r"],
+                    "kge": metrics["kge"],
+                    "mbe": metrics["mbe"],
+                    "rmse": metrics["rmse"],
+                    "display_r": f"{metrics['r']:.2f}",
+                    "display_kge": f"{metrics['kge']:.2f}",
+                    "display_mbe": _fig03_signed_display(metrics["mbe"]),
+                    "display_rmse": f"{metrics['rmse']:.2f}",
                 }
             )
-    cohort_eff = pd.DataFrame(cohort_rows)
-    day_totals = dict(
-        cohort_eff.drop_duplicates("temporal_support")[
-            ["temporal_support", "total_paired_site_days"]
-        ].values
+    scatter = pd.DataFrame(scatter_rows)
+
+    # Site metrics are retained in memory to reproduce station weighting and to
+    # expose the direct per-site temporal interaction in panel (c).
+    site_metric_rows = []
+    pooled_dt = pooled.assign(date=pd.to_datetime(pooled["date"]))
+    for site_id in common_sites:
+        sdf = pooled_dt[pooled_dt["site_id"] == site_id]
+        for temporal_class in FIG03_TEMPORAL_CLASSES:
+            sub = sdf[sdf["temporal_support"] == temporal_class]
+            for model, _label, col in FIG03_METHODS:
+                metrics = _fig03_metrics(
+                    sub["flux_et"].to_numpy(),
+                    sub[col].to_numpy(),
+                    f"site/{site_id}/{temporal_class}/{model}",
+                )
+                site_metric_rows.append(
+                    {
+                        "site_id": site_id,
+                        "temporal_support": temporal_class,
+                        "model": model,
+                        "n_paired": int(len(sub)),
+                        **metrics,
+                    }
+                )
+    site_metrics = pd.DataFrame(site_metric_rows)
+    require_unique(
+        site_metrics,
+        ["site_id", "temporal_support", "model"],
+        "fig03 site metrics",
     )
-    if (
-        day_totals["acquisition"] != n_acq
-        or day_totals["between_acquisitions"] != n_btw
-        or day_totals["all_dates"] != len(pooled)
-    ):
-        raise BuildError("fig03 cohort effects: support day totals do not reconcile with pooled")
+    require_count(
+        len(site_metrics),
+        EXPECTED["E1_split_common"] * 2 * 2,
+        "fig03 site metric rows",
+    )
 
-    # ---- quarantine the superseded direct-ET-interpolation package ----
-    quarantined = []
-    qdir = OUT / "superseded_fig03_direct_interpolation"
-    old_deltas = OUT / "fig03_temporal_site_deltas.csv"
-    if old_deltas.exists():
-        qdir.mkdir(exist_ok=True)
-        old_deltas.rename(qdir / old_deltas.name)
-        quarantined.append(old_deltas.name)
-    old_cohort = OUT / "fig03_temporal_cohort_effects.csv"
-    if old_cohort.exists() and "record_type" in pd.read_csv(old_cohort, nrows=0).columns:
-        qdir.mkdir(exist_ok=True)
-        old_cohort.rename(qdir / old_cohort.name)
-        quarantined.append(old_cohort.name)
+    # Reproduce every promoted grouped estimate used by panels (b-c).
+    recomputed = {}
+    for temporal_class in FIG03_TEMPORAL_CLASSES:
+        for aggregation in FIG03_AGGREGATIONS:
+            for model, _label, _col in FIG03_METHODS:
+                for metric in FIG03_METRICS:
+                    value = _fig03_grouped_estimate(
+                        pooled,
+                        site_metrics,
+                        temporal_class,
+                        aggregation,
+                        model,
+                        metric,
+                    )
+                    recomputed[(temporal_class, aggregation, model, metric)] = value
+                    source = grouped_metrics[
+                        (grouped_metrics["temporal_class"] == temporal_class)
+                        & (grouped_metrics["aggregation"] == aggregation)
+                        & (grouped_metrics["model"] == model)
+                        & (grouped_metrics["metric"] == metric)
+                    ]
+                    require_count(
+                        len(source),
+                        1,
+                        f"fig03 grouped metric {temporal_class}/{aggregation}/{model}/{metric}",
+                    )
+                    if abs(float(source.iloc[0]["estimate"]) - value) > 1e-12:
+                        raise BuildError(
+                            "fig03 grouped estimate does not reproduce promoted value: "
+                            f"{temporal_class}/{aggregation}/{model}/{metric}"
+                        )
 
-    # ---- write tables ----
-    n_pool = write_table(pooled, "fig03_pooled_daily_agreement.csv")
-    n_scat = write_table(scatter, "fig03_scatter_metrics.csv")
-    n_sm = write_table(site_metrics, "fig03_temporal_site_metrics.csv")
-    n_eff = write_table(eff, "fig03_temporal_site_effects.csv")
-    n_ce = write_table(cohort_eff, "fig03_temporal_cohort_effects.csv")
+    contrast = grouped_contrasts[
+        grouped_contrasts["temporal_class"].isin(FIG03_TEMPORAL_CLASSES)
+        & grouped_contrasts["aggregation"].isin(FIG03_AGGREGATIONS)
+        & grouped_contrasts["metric"].isin(FIG03_METRICS)
+    ].copy()
+    require_count(len(contrast), 12, "fig03 grouped contrast rows")
+    require_unique(
+        contrast,
+        ["temporal_class", "aggregation", "metric"],
+        "fig03 grouped contrasts",
+    )
+    contrast["aggregation_label"] = contrast["aggregation"].map(FIG03_AGGREGATION_LABELS)
+    for row in contrast.itertuples(index=False):
+        expected = (
+            recomputed[(row.temporal_class, row.aggregation, "swim", row.metric)]
+            - recomputed[(row.temporal_class, row.aggregation, "openet_ensemble", row.metric)]
+        )
+        if abs(float(row.estimate) - expected) > 1e-12:
+            raise BuildError(
+                "fig03 grouped contrast does not reproduce promoted value: "
+                f"{row.temporal_class}/{row.aggregation}/{row.metric}"
+            )
+        if not (
+            np.isfinite([row.estimate, row.ci95_low, row.ci95_high]).all()
+            and row.ci95_low <= row.estimate <= row.ci95_high
+        ):
+            raise BuildError("fig03 grouped contrast has an invalid interval")
+        if (
+            int(row.n_sites) != EXPECTED["E1_split_common"]
+            or int(row.bootstrap_reps) != FIG03_BOOTSTRAP_REPS
+            or int(row.bootstrap_seed) != FIG03_BOOTSTRAP_SEED
+        ):
+            raise BuildError("fig03 grouped contrast metadata drifted")
+    contrast.insert(0, "experiment", "E1")
+    contrast = contrast.sort_values(["metric", "temporal_class", "aggregation"])
 
-    meta_json = {
-        "figure": "Figure 3 -- daily ET agreement and temporal reconstruction",
-        "contract": "paper/notes/fig03_production_handoff.md (2026-08-27)",
-        "composition_id": FIG03_COMPOSITION_ID,
-        "experiment_mapping": {"E1": "legacy e2_* / examples/5_Flux_Ensemble"},
-        "cohort": {
-            "rule": (
-                "43-site common temporal-support cohort: canonical run22 45-site daily "
-                "cohort restricted to sites with >=10 paired days in BOTH temporal "
-                "classes (JPL1_Smith5 and US-OF1 excluded); cohort membership and "
-                "per-site paired counts cross-checked against the archived "
-                "overpass_split_metrics.csv record"
+    interaction = interactions[
+        interactions["aggregation"].isin(FIG03_AGGREGATIONS)
+        & interactions["metric"].isin(FIG03_METRICS)
+    ].copy()
+    require_count(len(interaction), 6, "fig03 interaction rows")
+    require_unique(interaction, ["aggregation", "metric"], "fig03 interactions")
+    interaction["aggregation_label"] = interaction["aggregation"].map(FIG03_AGGREGATION_LABELS)
+    for row in interaction.itertuples(index=False):
+        between = (
+            recomputed[("between_retrieval", row.aggregation, "swim", row.metric)]
+            - recomputed[
+                (
+                    "between_retrieval",
+                    row.aggregation,
+                    "openet_ensemble",
+                    row.metric,
+                )
+            ]
+        )
+        retrieval = (
+            recomputed[("retrieval", row.aggregation, "swim", row.metric)]
+            - recomputed[("retrieval", row.aggregation, "openet_ensemble", row.metric)]
+        )
+        expected = between - retrieval
+        if abs(float(row.estimate) - expected) > 1e-12:
+            raise BuildError(
+                f"fig03 interaction does not reproduce promoted value: "
+                f"{row.aggregation}/{row.metric}"
+            )
+        if not (
+            np.isfinite([row.estimate, row.ci95_low, row.ci95_high]).all()
+            and row.ci95_low <= row.estimate <= row.ci95_high
+        ):
+            raise BuildError("fig03 interaction has an invalid interval")
+        if (
+            int(row.n_sites) != EXPECTED["E1_split_common"]
+            or int(row.bootstrap_reps) != FIG03_BOOTSTRAP_REPS
+            or int(row.bootstrap_seed) != FIG03_BOOTSTRAP_SEED
+        ):
+            raise BuildError("fig03 interaction metadata drifted")
+    interaction.insert(0, "experiment", "E1")
+    interaction = interaction.sort_values(["metric", "aggregation"])
+
+    # Direct site-level temporal interaction:
+    # (SWIM - OpenET)_between - (SWIM - OpenET)_retrieval.
+    site_interaction_rows = []
+    indexed = site_metrics.set_index(["site_id", "temporal_support", "model"])
+    for site_id in common_sites:
+        row = {
+            "experiment": "E1",
+            "site_id": site_id,
+            "n_retrieval": int(indexed.loc[(site_id, "retrieval", "swim"), "n_paired"]),
+            "n_between_retrieval": int(
+                indexed.loc[(site_id, "between_retrieval", "swim"), "n_paired"]
             ),
-            "sites": sites,
-            "n_sites": len(sites),
-            "acquisition_site_days": n_acq,
-            "between_acquisition_site_days": n_btw,
+        }
+        for metric in FIG03_METRICS:
+            retrieval_delta = float(
+                indexed.loc[(site_id, "retrieval", "swim"), metric]
+                - indexed.loc[(site_id, "retrieval", "openet_ensemble"), metric]
+            )
+            between_delta = float(
+                indexed.loc[(site_id, "between_retrieval", "swim"), metric]
+                - indexed.loc[(site_id, "between_retrieval", "openet_ensemble"), metric]
+            )
+            row[f"retrieval_d_{metric}"] = retrieval_delta
+            row[f"between_retrieval_d_{metric}"] = between_delta
+            row[f"interaction_{metric}"] = between_delta - retrieval_delta
+        site_interaction_rows.append(row)
+    site_interaction = pd.DataFrame(site_interaction_rows)
+    require_count(
+        len(site_interaction),
+        EXPECTED["E1_split_common"],
+        "fig03 site interaction rows",
+    )
+    require_unique(site_interaction, ["site_id"], "fig03 site interactions")
+    order = site_interaction.sort_values(["interaction_kge", "site_id"]).reset_index(drop=True)
+    rank = {site_id: idx + 1 for idx, site_id in enumerate(order["site_id"])}
+    site_interaction["site_order_interaction_kge"] = site_interaction["site_id"].map(rank)
+    if sorted(site_interaction["site_order_interaction_kge"]) != list(
+        range(1, EXPECTED["E1_split_common"] + 1)
+    ):
+        raise BuildError("fig03 site interaction order is not a 1..43 permutation")
+    site_interaction = site_interaction.sort_values("site_order_interaction_kge").reset_index(
+        drop=True
+    )
+
+    quarantined = _fig03_quarantine_legacy_package()
+
+    n_pool = write_table(pooled, "fig03_pooled_daily_agreement.csv")
+    n_scatter = write_table(scatter, "fig03_scatter_metrics.csv")
+    n_contrast = write_table(contrast, "fig03_grouped_contrasts.csv")
+    n_interaction = write_table(interaction, "fig03_interactions.csv")
+    n_site = write_table(site_interaction, "fig03_site_interactions.csv")
+
+    source_hashes = {FIG03_SOURCE_FILES[key]: sha256(path) for key, path in paths.items()}
+    metadata = {
+        "figure": "Figure 3 -- daily ET agreement by temporal support",
+        "contract": "paper/notes/fig03_production_handoff.md (2026-09-01)",
+        "composition_id": FIG03_COMPOSITION_ID,
+        "source_package": "paper/data/final/e1_openet_benchmark",
+        "source_manifest_sha256": sha256(FIG03_SOURCE_MANIFEST),
+        "source_status": source_manifest["status"],
+        "source_artifact_sha256": source_hashes,
+        "counts": {
+            "sites": EXPECTED["E1_split_common"],
+            "retrieval_site_days": n_retrieval,
+            "between_retrieval_site_days": n_between,
             "total_site_days": len(pooled),
         },
-        "benchmark_construction": {
-            "steps": [
-                "read raw finite OpenET v2.1 ensemble_mean_3x3 ET per site",
-                "read same-day bias-corrected GridMET ETo from the frozen E1 daily record",
-                "require finite, strictly positive ETo on every retained capture",
-                "capture ETf = raw ET / ETo",
-                "reindex ETf to a daily calendar spanning first-to-last finite capture",
-                "linear-in-time interpolation strictly inside that support (no extrapolation)",
-                "daily benchmark ET = interpolated ETf x daily ETo",
-                "pair flux ET, SWIM-RS ET, and reconstructed OpenET ET on identical dates",
-            ],
-            "never": "direct linear interpolation of ET",
-            "identity_tolerance_mm_day": FIG03_IDENTITY_TOL,
-            "max_acquisition_identity_error_mm_day": max_identity_err,
+        "temporal_support": {
+            "retrieval": "OpenET support class capture",
+            "between_retrieval": (
+                "OpenET support class interpolated or flat_fill; classification "
+                "comes from the evaluator-owned paired record"
+            ),
         },
-        "temporal_support_rule": (
-            "acquisition = paired date with a finite raw ensemble_mean_3x3 value before "
-            "interpolation; between_acquisitions = paired date inside first-to-last raw "
-            "support without a raw value. Classes derive only from the separately "
-            "extracted benchmark; the archived is_overpass calibration-capture flag is "
-            "never used."
-        ),
         "metrics": {
-            "pearson_r": "np.corrcoef on the exact plotted facet rows",
-            "bias": "mean(estimate - flux), mm d-1, sign retained",
-            "rmse": "sqrt(mean((estimate - flux)^2)), mm d-1",
-            "kge": "Gupta 2009, alpha = std ratio (ddof=0), beta = mean ratio",
-            "mbe": "mean(model - flux), mm d-1, signed; no absolute-value transform",
-            "effects": "SWIM-RS minus OpenET per site and support",
+            "pearson_r": "Pearson correlation on the exact plotted facet rows",
+            "kge": METRIC_DEFS["kge"]["definition"],
+            "rmse": "root mean square error against flux ET, mm d-1",
+            "mbe": "mean(model - flux), mm d-1, signed",
+            "model_contrast": "SWIM-RS minus OpenET",
+            "temporal_interaction": (
+                "(SWIM-RS minus OpenET) between retrievals minus "
+                "(SWIM-RS minus OpenET) on retrieval dates"
+            ),
+        },
+        "aggregation": {
+            "primary": {
+                "machine_name": "sqrt_n_weighted_site_metric",
+                "reader_label": "Station-weighted",
+            },
+            "complementary": {
+                "machine_name": "pooled_observations",
+                "reader_label": "Pooled",
+            },
+        },
+        "bootstrap": {
+            "kind": "whole-site resampling with replacement",
+            "n_resamples": FIG03_BOOTSTRAP_REPS,
+            "seed": FIG03_BOOTSTRAP_SEED,
+            "interval": "95% percentile",
         },
         "panel_a": {
             "axes_mm_day": [FIG03_AXIS_LO, FIG03_AXIS_HI],
             "ticks": FIG03_AXIS_TICKS,
             "plotted_extrema_mm_day": [v_lo, v_hi],
             "draw_order_seed": FIG03_DRAW_ORDER_SEED,
-            "display_rounding": "two decimals; explicit sign on Bias with true minus",
         },
-        "bootstrap": {
-            "kind": "whole-site resampling with replacement",
-            "n_resamples": FIG03_BOOTSTRAP_REPS,
-            "seed": FIG03_BOOTSTRAP_SEED,
-            "note": (
-                "default_rng re-seeded per call, so the resample index matrix is shared "
-                "across metrics and supports at fixed n=43"
-            ),
-        },
-        "site_order_between_kge": (
-            "panel (c) frozen ordering: rank 1..43 by between-acquisition d_kge ascending, "
-            "ties broken by site_id; identical across all metric facets"
+        "panel_b": (
+            "station-weighted and pooled SWIM-RS-minus-OpenET contrasts within "
+            "retrieval and between-retrieval classes"
         ),
-        "figure1_provenance_note": (
-            "fig03_example_timeseries.csv and fig03_example_selection.json are Figure 1 "
-            "example-source artifacts (historical filenames retained); they are not "
-            "Figure 3 inputs and are owned and regenerated by the fig01 builder"
+        "panel_c": (
+            "43 direct site-level temporal interactions plus promoted "
+            "station-weighted and pooled interactions"
         ),
-        "superseded": {
-            "directory": str(qdir),
-            "files": quarantined,
+        "superseded_display_package": {
+            "directory": str(OUT / "superseded_fig03_pre_openet_core"),
+            "files_moved": quarantined,
             "reason": (
-                "built from direct ET interpolation with d_abs_mbe; replaced by the "
-                "ETf x ETo reconstruction with signed MBE"
+                "the prior package used a pre-openet-core unbounded ETf interpolation "
+                "and secondary median site-effect summaries"
             ),
-        },
-        "sources": {
-            "site_daily_timeseries_dir": str(ts_dir),
-            "openet_daily_dir": str(E1_OPENET_DAILY),
-            "cohort_record": str(src_cohort),
-            "sha256": src_hashes,
         },
         "generator_script": "scripts/figures/build_figure_data.py",
         "generator_version": SCRIPT_VERSION,
         "frozen_utc": datetime.now(UTC).isoformat(),
     }
-    (OUT / "fig03_metadata.json").write_text(json.dumps(meta_json, indent=2))
+    (OUT / "fig03_metadata.json").write_text(json.dumps(metadata, indent=2))
 
     common_meta = {
-        "figure": "fig03",
-        "contract": "paper/notes/fig03_production_handoff.md (2026-08-27)",
-        "experiment_mapping": {"E1": "legacy e2_*"},
-        "cohort_key": "site_id",
-        "inclusion_rule": meta_json["cohort"]["rule"],
-        "temporal_support_rule": meta_json["temporal_support_rule"],
-        "units": {"et": "mm d-1", "eto": "mm d-1", "etf": "dimensionless"},
-        "deterministic_seed": FIG03_BOOTSTRAP_SEED,
-        "configured_counts": {"E1": EXPECTED["E1_configured"]},
-        "evaluated_counts": {
-            "sites": len(sites),
-            "acquisition_site_days": n_acq,
-            "between_acquisition_site_days": n_btw,
-            "total_site_days": len(pooled),
-        },
+        "experiment_mapping": {"E1": "examples/5_Flux_Ensemble"},
+        "source_package": "paper/data/final/e1_openet_benchmark",
+        "source_manifest_sha256": sha256(FIG03_SOURCE_MANIFEST),
+        "contract": "paper/notes/fig03_production_handoff.md (2026-09-01)",
     }
     MANIFEST.add(
         "fig03_pooled_daily_agreement.csv",
+        role="Panel (a) exact pooled daily plotting rows",
         rows=n_pool,
-        note=(
-            "Panel (a) pooled paired site-days; OpenET reconstructed through interpolated "
-            "ETf x daily ETo (acquisition identity max "
-            f"{max_identity_err:.3e} mm/d vs tolerance {FIG03_IDENTITY_TOL:.0e})."
-        ),
+        grain="site_id x date",
         **common_meta,
     )
     MANIFEST.add(
         "fig03_scatter_metrics.csv",
-        rows=n_scat,
-        note=(
-            "Frozen panel (a) facet statistics with display strings; asserted to "
-            "reproduce the v3 audit anchors at 8 decimals and 2-decimal display."
-        ),
+        role="Panel (a) Pearson r, signed MBE, and RMSE display values",
+        rows=n_scatter,
+        grain="method x temporal support",
         **common_meta,
     )
     MANIFEST.add(
-        "fig03_temporal_site_metrics.csv",
-        rows=n_sm,
-        note="Per-site KGE/RMSE/signed-MBE on identical paired support for both methods.",
+        "fig03_grouped_contrasts.csv",
+        role="Panel (b) promoted station-weighted and pooled model contrasts",
+        rows=n_contrast,
+        grain="temporal support x aggregation x metric",
         **common_meta,
     )
     MANIFEST.add(
-        "fig03_temporal_site_effects.csv",
-        rows=n_eff,
-        note=(
-            "Paired site effects (SWIM-RS minus OpenET) with component metrics and the "
-            "frozen panel (c) ordering key; signed MBE only, no d_abs_mbe."
-        ),
+        "fig03_interactions.csv",
+        role="Panel (c) promoted grouped temporal interactions",
+        rows=n_interaction,
+        grain="aggregation x metric",
         **common_meta,
     )
     MANIFEST.add(
-        "fig03_temporal_cohort_effects.csv",
-        rows=n_ce,
-        note=(
-            "Panel (b) medians of 43 site effects with 10,000-resample whole-site "
-            "bootstrap 95% intervals (seed 42), rebuilt from the corrected benchmark."
-        ),
+        "fig03_site_interactions.csv",
+        role="Panel (c) direct site-level temporal interactions",
+        rows=n_site,
+        grain="site_id",
         **common_meta,
     )
     MANIFEST.add(
         "fig03_metadata.json",
-        rows=None,
-        note="Reader-facing rules, construction record, anchors context, and provenance.",
+        role="Figure 3 source, estimand, count, and display contract",
         **common_meta,
     )
 
-    # ---- re-register the retained Figure 1 provenance files ----
-    prior_manifest = OUT / Manifest.MANIFEST_NAME
-    if not prior_manifest.exists():
-        raise BuildError("fig03: fig_manifest.json missing; cannot re-register example provenance")
-    prior_tables = json.loads(prior_manifest.read_text()).get("tables", {})
+    # Preserve historical fig03_* names that are owned by Figure 1.
+    prior_manifest_path = OUT / "fig_manifest.json"
+    if not prior_manifest_path.exists():
+        raise BuildError("fig03: fig_manifest.json missing; cannot re-register Figure 1 provenance")
+    prior_tables = json.loads(prior_manifest_path.read_text()).get("tables", {})
     for name in ("fig03_example_timeseries.csv", "fig03_example_selection.json"):
         if not (OUT / name).exists():
             raise BuildError(f"fig03: retained Figure 1 provenance file missing: {name}")
-        rec = dict(prior_tables.get(name) or MANIFEST.tables.get(name) or {})
-        if not rec:
-            raise BuildError(f"fig03: no prior manifest record for {name}")
+        rec = dict(prior_tables.get(name, {}))
         rec.pop("output_sha256", None)
         rec.pop("output_bytes", None)
         rec.setdefault(
             "role",
-            "Figure 1 example source (historical fig03_ filename retained); owned and "
-            "regenerated by the fig01 builder since 2026-08-27; not a Figure 3 input",
+            "Figure 1 example source (historical fig03_ filename retained); not a Figure 3 input",
         )
         MANIFEST.add(name, **rec)
 
     print(
-        f"  fig03: pooled {n_pool} rows ({n_acq} acquisition + {n_btw} between), "
-        f"scatter {n_scat}, site metrics {n_sm}, effects {n_eff}, cohort {n_ce}; "
-        f"identity {max_identity_err:.3e}; quarantined {quarantined or 'nothing'}"
+        f"  fig03: pooled {n_pool} rows ({n_retrieval} retrieval + "
+        f"{n_between} between), scatter {n_scatter}, grouped contrasts "
+        f"{n_contrast}, interactions {n_interaction}, site interactions {n_site}; "
+        f"quarantined {quarantined or 'nothing'}"
     )
 
 
@@ -3968,6 +4142,12 @@ FIG01_DISPLAY_DOMAINS = {
 # (US-Bi1); the window is S2's earliest qualifying window under the unchanged
 # step-2 rule and step-5 tiebreak.
 FIG01_EXAMPLE_SITE = "S2"
+# This relocated January delivery is used only to reproduce the already-frozen
+# Figure 1 example-window selection. Its benchmark columns are prohibited from
+# the Figure 1 display table and from every Figure 3 evaluation artifact.
+FIG01_LEGACY_OPENET_DAILY = Path(
+    "/data/ssd1/swim/5_Flux_Ensemble/data/_deprecated_january_delivery/openet_flux/daily_data"
+)
 FIG01_EXAMPLE_START = "2018-04-01"
 FIG01_EXAMPLE_END = "2018-07-29"
 FIG01_EXAMPLE_DAYS = 120
@@ -4042,7 +4222,7 @@ def _fig01_load_e1_site_series(fid: str):
     Figure 1 display table by FIG01_FORBIDDEN_EXAMPLE_COLUMNS.
     """
     p = E1_ARCHIVE / "6_evaluation" / "site_daily_timeseries" / f"{fid}.csv"
-    b = E1_OPENET_DAILY / f"{fid}.csv"
+    b = FIG01_LEGACY_OPENET_DAILY / f"{fid}.csv"
     if not p.exists() or not b.exists():
         return None
     df = pd.read_csv(p, parse_dates=["date"]).set_index("date")
@@ -4247,8 +4427,8 @@ def _build_fig01_example_source() -> None:
             ),
         },
         "raw_openet_benchmark": {
-            "path": str(E1_OPENET_DAILY / f"{FIG01_EXAMPLE_SITE}.csv"),
-            "sha256": sha256(E1_OPENET_DAILY / f"{FIG01_EXAMPLE_SITE}.csv"),
+            "path": str(FIG01_LEGACY_OPENET_DAILY / f"{FIG01_EXAMPLE_SITE}.csv"),
+            "sha256": sha256(FIG01_LEGACY_OPENET_DAILY / f"{FIG01_EXAMPLE_SITE}.csv"),
         },
         "observation_metadata": {
             "path": str(E1_ARCHIVE / "3_problem_definition" / "observation_metadata.csv"),
@@ -5138,21 +5318,21 @@ def build_fig01() -> None:
             {
                 "experiment": "E0",
                 "evidence_role": "model_development",
-                "configured_n": 60,
-                "configured_unit": "CONUS cropland flux sites (shared with E1)",
-                "domain": "CONUS cropland",
-                "primary_etf_target": "SSEBop ETf (matched across formulations)",
-                "primary_weighting": "spread-based",
-                "daily_evaluation_n": 45,
-                "monthly_supported_n": 31,
-                "monthly_finite_metric_n": 31,
+                "configured_n": 37,
+                "configured_unit": "E2 cropland flux sites not in E1",
+                "domain": "E2 sites in eight countries; E2 inputs and processing",
+                "primary_etf_target": "per-capture mean of coincident Landsat SSEBop and PT-JPL ETf (matched across formulations)",
+                "primary_weighting": "spread-based (sigma_ensemble + 0.1)",
+                "daily_evaluation_n": 37,
+                "monthly_supported_n": 37,
+                "monthly_finite_metric_n": 33,
                 "field_year_n": None,
-                "external_evaluation": "flux ET used AFTER satellite calibration to select the cover-scaled sigmoid formulation",
-                "parameter_source": "locally calibrated per formulation",
-                "scientific_roles": "vegetation-formulation selection",
-                "independence_statement": "model-development evidence, not independent validation",
-                "source_artifact": "paper/text/main.md Table 3; paper/text/supp.md S3",
-                "source_sha256": sha256(REPO / "paper" / "text" / "main.md"),
+                "external_evaluation": "flux ET withheld from calibration, then compared across the three vegetation formulations to select the cover-scaled sigmoid",
+                "parameter_source": "locally calibrated per formulation on E2 inputs",
+                "scientific_roles": "vegetation-formulation comparison",
+                "independence_statement": "model-development evidence on E2 sites not in E1, not independent validation",
+                "source_artifact": f"paper/text/main.md Table 3; {E0_SITES_FILE.relative_to(REPO)}",
+                "source_sha256": sha256(E0_SITES_FILE),
             },
             {
                 "experiment": "E1",
@@ -5169,7 +5349,7 @@ def build_fig01() -> None:
                 "external_evaluation": "Volk et al. (2024) v2.1 closure-corrected flux ET; separately extracted OpenET ensemble benchmark",
                 "parameter_source": "local calibration; source cohort for the fixed irrigation-class parameter sets",
                 "scientific_roles": "ET agreement; temporal reconstruction; ensemble reliability; held-out transfer",
-                "independence_statement": "external to parameter estimation but not fully independent of model development (E0 shares this cohort)",
+                "independence_statement": "external to parameter estimation; no E1 site was used in the E0 formulation comparison",
                 "source_artifact": "paper/data/final/e2_primary_daily_site_metrics.csv",
                 "source_sha256": sha256(FINAL / "e2_primary_daily_site_metrics.csv"),
             },
@@ -5188,7 +5368,7 @@ def build_fig01() -> None:
                 "external_evaluation": "AmeriFlux, FLUXNET, ICOS and OzFlux ET",
                 "parameter_source": "local calibration arm; fixed E1-derived irrigated/rainfed sets for the transfer arm",
                 "scientific_roles": "international evaluation; E1-to-E2 transfer under changed geography and inputs",
-                "independence_statement": "13 of 66 sites also occur in E1 and test changed inputs; 53 are unseen fields",
+                "independence_statement": "13 of 66 sites also occur in E1 and test changed inputs; 53 are unseen fields; 37 of the E2 sites not in E1 carry the E0 formulation comparison",
                 "source_artifact": str(E2_RESULTS / "evaluation_metrics.csv"),
                 "source_sha256": sha256(E2_RESULTS / "evaluation_metrics.csv"),
             },
@@ -6861,24 +7041,26 @@ def build_fig01() -> None:
             "id": "e0_tag",
             "label": "E0 · Model-Form Selection",
             "string_class": "direct_label",
-            "attached_to": "e1_map",
-            "placement": "adjacent_to_e1_heading_or_parameter_relay_origin",
+            "attached_to": "e2_map",
+            "placement": "adjacent_to_e2_heading",
             "placement_detail": (
-                "set the tag next to the 'E1 · CONUS' heading, or at the origin of the E1 "
-                "parameter relay, so its scope is immediate (handoff sections 6.4 and 7). "
-                "Architecture 3.0.0 allowed it to drift below the map, where it read as a "
-                "detached footnote."
+                "set the tag next to the E2 map heading, so its scope is immediate: E0 ran at "
+                "37 of the E2 sites, none of which occur in E1 (handoff sections 6.4 and 7). "
+                "The tag must not drift below the map, where it reads as a detached footnote. "
+                "A proof may fold the tag into the E2 heading itself at equal weight "
+                "(user ruling 2026-08-27 on heading weight)."
             ),
             "forbidden_placements": [
-                "below the E1 map as a detached footnote",
+                "beside the E1 heading or the E1 parameter-relay origin",
+                "below the E2 map as a detached footnote",
                 "in the lower page margin",
                 "as a fourth map or another geography",
                 "as a coequal evaluation branch",
             ],
             "rendering": (
-                "one small, subordinate tag beside the E1 heading or relay origin. E0 is not a "
-                "fourth map, not a coequal evaluation branch, and carries no flux-to-parameter "
-                "arrow."
+                "one small, subordinate tag beside the E2 heading, or folded into that heading "
+                "at equal weight. E0 is not a fourth map, not a coequal evaluation branch, and "
+                "carries no flux-to-parameter arrow."
             ),
         },
         "cartography": {
@@ -7483,12 +7665,12 @@ def build_fig01() -> None:
                 "13 sites shared with E1 under changed inputs plus 53 new fields."
             ),
             "item_7_e0_disclosure": (
-                "E0 and E1 share the 60-site CONUS cropland cohort. Flux ET did not enter "
-                "parameter estimation, but E0 used flux ET after satellite calibration to select "
-                "the cover-scaled sigmoid formulation carried into E1-E3. E1 flux evaluation is "
-                "therefore external to parameter estimation but not fully independent of model "
-                "development. E0 is model-development evidence, not independent validation, and "
-                "not a fourth geography."
+                "E0 compared three vegetation formulations at 37 of the E2 sites, none of which "
+                "occur in E1, using the E2 inputs and processing. Flux ET did not enter "
+                "parameter estimation; it was used after satellite calibration to compare the "
+                "formulations and select the cover-scaled sigmoid carried into E1-E3. E0 is "
+                "model-development evidence, not independent validation, and not a fourth "
+                "geography."
             ),
             "item_8_map_disclaimer": (
                 "Map lines delineate study areas and do not necessarily depict accepted national "
@@ -7508,15 +7690,15 @@ def build_fig01() -> None:
                 "Separately, E3 aggregates daily gross applied water from E3 simulations to "
                 "annual totals for comparison with meter records; the plotted E1 applied-water "
                 "record is not an E3 meter pair. Flux and meter observations were withheld from "
-                "parameter estimation and transferred-parameter construction. (b) The 60-site E1 "
-                "CONUS cohort supplies separate irrigated and rainfed parameter sets. Both are "
+                "parameter estimation and transferred-parameter construction. (b) The 60 E1 "
+                "CONUS sites supply separate irrigated and rainfed parameter sets. Both are "
                 "applied without field-specific calibration across the 66-site, ten-country E2 "
                 "experiment, whereas the irrigated set is applied to 50 metered fields in the "
-                "San Luis Valley. E0 used the E1 cohort's flux observations after satellite "
-                "calibration to select the vegetation formulation, so E1 flux evaluation is "
-                "external to parameter estimation but not fully independent of model "
-                "development. Map lines delineate study areas and do not necessarily depict "
-                "accepted national boundaries."
+                "San Luis Valley. E0 used 37 of the E2 sites, none of which occur in E1, to "
+                "compare three vegetation formulations against flux ET after satellite "
+                "calibration and select the formulation carried into E1-E3. Map lines "
+                "delineate study areas and do not necessarily depict accepted national "
+                "boundaries."
             ),
             "working_caption_source": (
                 "paper/notes/fig01_production_handoff.md section 12, revised 2026-08-24, "
@@ -7539,7 +7721,7 @@ def build_fig01() -> None:
             },
             "retrieval_members": {
                 "openet_v21_members": E1_MEMBERS,
-                "E0": "SSEBop ETf, matched across candidate formulations",
+                "E0": "per-capture mean of coincident Landsat SSEBop and PT-JPL ETf, matched across the three candidate formulations",
                 "E1": "per-capture mean of the six OpenET v2.1 ETf members",
                 "E2": "per-capture mean of coincident Landsat SSEBop and PT-JPL ETf",
                 "E2_sensitivity": "ECOSTRESS ETf on Landsat-gap dates at a fixed 0.33 scale",
@@ -7552,6 +7734,7 @@ def build_fig01() -> None:
                 "n_parameters": 8,
             },
             "paired_support": {
+                "E0": "37 daily sites; 33 finite-metric monthly sites (37 with paired months)",
                 "E1": "45 daily sites; 29 finite-metric monthly sites (31 supported)",
                 "E2": "63 daily sites; 50 finite-metric monthly sites (56 supported)",
                 "E3": "408 metered field-years across 50 fields",
@@ -7575,12 +7758,12 @@ def build_fig01() -> None:
                 "output into an observation."
             ),
             "e0_qualification": (
-                "E0 is a vegetation-formulation experiment on the same 60-site CONUS cropland "
-                "cohort as E1. Flux ET did not enter parameter estimation, but E0 used flux ET "
-                "after satellite calibration to select the cover-scaled sigmoid formulation "
-                "carried by E1-E3. E1 flux evaluation is therefore external to fitting but not "
-                "fully independent of model development. E0 is model-development evidence, not "
-                "independent validation, and is not a fourth geography."
+                "E0 is a vegetation-formulation comparison at 37 of the E2 sites, none of which "
+                "occur in E1, run on the E2 inputs and processing. Flux ET did not enter "
+                "parameter estimation, but E0 used flux ET after satellite calibration to "
+                "select the cover-scaled sigmoid formulation carried by E1-E3. E0 is "
+                "model-development evidence, not independent validation, and is not a fourth "
+                "geography."
             ),
             "transfer_definition": (
                 "The panel (b) tokens denote fixed E1-derived irrigation-class parameter sets: "
@@ -8131,11 +8314,13 @@ def build_fig01() -> None:
         )
 
     # ---- section 11 (2026-08-24): E0 placement, SWE inline, engine label ----
-    if arch["development_tag"]["placement"] != "adjacent_to_e1_heading_or_parameter_relay_origin":
+    if arch["development_tag"]["placement"] != "adjacent_to_e2_heading":
         raise BuildError(
-            "fig01: the E0 tag belongs beside the E1 heading or the parameter-relay origin, not "
-            "below the map as a detached footnote (handoff sections 6.4 and 7)"
+            "fig01: the E0 tag belongs beside the E2 heading (E0 ran at 37 E2 sites not in "
+            "E1), not below the map as a detached footnote (handoff sections 6.4 and 7)"
         )
+    if arch["development_tag"]["attached_to"] != "e2_map":
+        raise BuildError("fig01: the E0 tag attaches to the E2 map")
     if arch["swe_constraint"]["drawn_as_separate_node"] or arch["swe_constraint"]["drawn_as_edge"]:
         raise BuildError(
             "fig01: SWE is an inline label on the constraint route into 'Compare', not a "

@@ -1,11 +1,11 @@
-"""Figure 2 proof -- cover scaling makes the vegetation formulation coherent.
+"""Figure 2 proof -- vegetation formulation and flux-tower ET performance.
 
-Final-size (190 x 125 mm) render of the redesigned Figure 2
-(paper/notes/six_figure_plan.md section 6, 2026-08-27) from the frozen E0
-display package under paper/data/final/figures/:
+Final-size (190 x 125 mm) render of Figure 2 (layout of 2026-08-27; E0 at
+the 37 E2 sites not in E1 since 2026-09-20) from the frozen E0 display
+package under paper/data/final/figures/:
 
     fig02_formulation_response.csv   panel (a) fitted K_T distributions
-    fig02_ndvi_support.csv           panel (a) site-equal NDVI support
+    fig02_ndvi_support.csv           panel (a) site-equal observed-NDVI density
     fig02_pooled_metrics.csv         panel (b) Table 3 pooled values
     fig02_site_rmse_effects.csv      panel (c) paired site RMSE effects
     fig02_metadata.json              labels, rules, provenance
@@ -17,7 +17,7 @@ facet headings, 8 pt axis titles, 7-7.5 pt ticks/legends, SWIM blue
 #0072B2 = cover-scaled sigmoid, black square = unscaled linear,
 vermillion triangle = unscaled sigmoid; identities survive grayscale via
 marker shape and line pattern.  Machine checks assert the frozen-package
-hashes, the manuscript-precision pooled values, the 43/45 and 27/31
+hashes, the manuscript-precision pooled values, the 32/37 and 29/33
 isolated-cover win counts, the absence of internal run labels, and the
 minimum type size before anything is exported.
 
@@ -85,7 +85,15 @@ FS_ANNO = 6.5
 FS_LEGEND = 6.0
 FS_MIN = 6.0  # Elsevier floor; only the interior key sits below 6.5
 
-FORBIDDEN_STRINGS = ("run22", "RunFAO56", "fao56_sig", "NSE", "|MBE|")
+FORBIDDEN_STRINGS = (
+    "run22",
+    "RunFAO56",
+    "fao56",
+    "grassbasis",
+    "GrassBasis",
+    "NSE",
+    "|MBE|",
+)
 
 FONT_DIRS = [
     Path.home() / ".fonts" / "arial",
@@ -171,11 +179,11 @@ def load_package():
     eff = pd.read_csv(PKG / files["eff"])
     meta = json.loads((PKG / files["meta"]).read_text())
 
-    assert len(resp) == 3 * 60 * 101, "response table size"
-    assert len(supp) == 50, "support table size"
+    assert len(resp) == 3 * 37 * 101, "response table size"
+    assert len(supp) == 50, "NDVI density table size"
     assert len(pooled) == 18, "pooled table size"
     assert len(boot) == 18, "bootstrap table size"
-    assert len(eff) == 2 * (45 + 31), "effects table size"
+    assert len(eff) == 2 * (37 + 33), "effects table size"
 
     # Whole-site bootstrap intervals (10,000 resamples, seed 42) must bracket
     # and exactly reproduce the frozen pooled point values before display.
@@ -191,18 +199,18 @@ def load_package():
     ).all()
     pooled = merged.drop(columns=["value_boot"])
     assert sorted(resp["formulation"].unique()) == sorted(FORMS)
-    assert resp["site_id"].nunique() == 60
+    assert resp["site_id"].nunique() == 37
 
     # Manuscript-precision reproduction (Table 3) re-checked at proof time.
     for _, r in pooled.iterrows():
-        nd = 3 if (r["scale"] == "daily" or r["metric"] == "kge") else 2
+        nd = 3 if (r["scale"] == "daily" or r["metric"] == "kge") else 1
         s = f"{r['value']:.{nd}f}"
         if s == "-" + f"{0.0:.{nd}f}":
             s = s[1:]
         assert s == str(r["manuscript_value"]), f"pooled {r['formulation']} mismatch"
 
     iso = eff[eff["comparator"] == "isolated_cover"]
-    for scale, n_want, w_want in (("daily", 45, 43), ("monthly", 31, 27)):
+    for scale, n_want, w_want in (("daily", 37, 32), ("monthly", 33, 29)):
         sub = iso[iso["scale"] == scale]
         assert len(sub) == n_want, f"isolated-cover {scale} site count"
         assert int(sub["win_cover_scaled"].sum()) == w_want, f"isolated-cover {scale} wins"
@@ -251,10 +259,9 @@ def draw_panel_a(fig, resp, supp, meta):
     ax = ax_mm(fig, A_X0, A_RESP_Y0, A_X1, A_RESP_Y1)
     grid = np.sort(resp["ndvi"].unique())
     band_max = 0.0
-    end_val = {}
     for form in FORMS:
         sub = resp[resp["formulation"] == form].pivot(index="ndvi", columns="site_id", values="k_t")
-        assert sub.shape == (101, 60), f"pivot shape for {form}"
+        assert sub.shape == (101, 37), f"pivot shape for {form}"
         q25 = sub.quantile(0.25, axis=1).to_numpy()
         q50 = sub.quantile(0.50, axis=1).to_numpy()
         q75 = sub.quantile(0.75, axis=1).to_numpy()
@@ -262,7 +269,6 @@ def draw_panel_a(fig, resp, supp, meta):
         ax.fill_between(grid, q25, q75, color=st["color"], alpha=0.16, lw=0)
         ax.plot(grid, q50, color=st["color"], ls=st["ls"], lw=1.1)
         band_max = max(band_max, float(q75.max()))
-        end_val[form] = float(q50[-1])
     ymax = np.ceil(band_max * 10.0 + 0.5) / 10.0
     ax.set_xlim(0.0, 1.0)
     ax.set_ylim(0.0, ymax)
@@ -274,9 +280,9 @@ def draw_panel_a(fig, resp, supp, meta):
     # One figure legend (FIGURE_STYLE_GUIDE §8): framed — square corners,
     # 0.5 pt black rule, opaque white fill — because it sits inside the axes.
     # The line + marker samples key the panel (a) curves and the panel (b)
-    # point markers together, in the empty interior upper-left, entered in
-    # the curves' stacking order at their right edge.
-    order = sorted(FORMS, key=lambda f: end_val[f], reverse=True)
+    # point markers together, in the empty interior upper-left. Formulations
+    # follow the categorical order used in panel (b) and Table 3.
+    order = FORMS
     handles: list = [
         Line2D(
             [],
@@ -321,7 +327,7 @@ def draw_panel_a(fig, resp, supp, meta):
     for t in leg.get_texts():
         t.set_color(C_TEXT)
 
-    # Site-equal observed-NDVI support strip on the shared axis.
+    # Site-equal observed-NDVI density strip on the shared axis.
     axs = ax_mm(fig, A_X0, A_SUPP_Y0, A_X1, A_SUPP_Y1)
     width = float(supp["bin_right"].iloc[0] - supp["bin_left"].iloc[0])
     axs.bar(
@@ -338,9 +344,9 @@ def draw_panel_a(fig, resp, supp, meta):
     axs.set_xlabel("NDVI", fontsize=FS_AXIS, labelpad=1.6)
     n_obs = int(supp["n_obs"].sum())
     assert n_obs == meta["ndvi_support"]["n_obs_total"]
-    # Reviewer item 8.2-10 counts (76,758 obs., 60 sites) and the site-equal
-    # weighting scheme live in the caption (guide section 9); the assert above
-    # keeps the caption's number pinned to the frozen package.
+    # The site count and the site-equal weighting scheme live in the caption
+    # (guide section 9) and the observation count in the metadata; the assert
+    # above keeps the package internally consistent.
     axs.text(
         0.015,
         0.86,
@@ -523,7 +529,7 @@ def draw_panel_c(fig, eff):
 def draw_headers(fig, meta):
     # Elsevier panel labels: plain-weight "(a)" fused with a sentence-case
     # identifier, one text object each (FIGURE_STYLE_GUIDE.md sections 4-5).
-    # The cohort counts and the reading direction of the RMSE effects are
+    # The site counts and the reading direction of the RMSE effects are
     # caption material, not in-figure text.
     fig.text(
         0.5 / PAGE_W,
@@ -535,13 +541,13 @@ def draw_headers(fig, meta):
     fig.text(
         71.0 / PAGE_W,
         122.0 / PAGE_H,
-        "(b) Held-out ET agreement",
+        "(b) Flux-ET agreement",
         fontsize=FS_PANEL,
         va="bottom",
     )
     mask = meta["evaluation_mask"]
-    assert mask["n_sites"] == 45 and mask["n_daily"] == 63681 and mask["n_monthly"] == 1435
-    # Reviewer item 8.2-7 support counts are stated in the Figure 2 caption
+    assert mask["n_sites"] == 37 and mask["n_daily"] == 49289 and mask["n_monthly"] == 1514
+    # The record counts are stated in the Figure 2 caption
     # (guide section 9: exact n lives in a stats block or the caption); the
     # assert above keeps the caption's numbers pinned to the frozen package.
     fig.text(
