@@ -1,0 +1,101 @@
+# E0 disjoint confirmation, unscaled-SIGMOID arm ("fao56_sig" in the Ex5 E0 trio).
+# Identical to 6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml (the cover-scaled
+# E2 canonical run, which serves as arm A) except for: the container (a copy of the GrassBasis
+# container with its calibration state dropped, container_prep_e0_arms.py), pest_run_dir, and
+# ONE physics key under [misc]: transpiration_cover_mode = "none". Kcb stays the sigmoid of
+# NDVI on the same (ndvi_k, ndvi_0) parameters and priors, so the contrast against arm A is
+# cover scaling alone. See examples/5_Flux_Ensemble/5_Flux_Ensemble_fao56_sig.toml.
+project = "6_Flux_International"
+root = "/data/ssd1/swim"
+
+[paths]
+project_workspace = "{root}/{project}"
+data = "{project_workspace}/data"
+gis = "{data}/gis"
+fields_shapefile = "{gis}/flux_crop_pub_66_150m.shp"
+properties = "{data}/properties"
+lulc = "{properties}/{project}_landcover_crop.csv"
+hwsd = "{properties}/{project}_hwsd_crop.csv"
+properties_json = "{properties}/{project}_properties.json"
+
+remote_sensing = "{data}/remote_sensing"
+landsat = "{remote_sensing}/landsat"
+sentinel = "{remote_sensing}/sentinel"
+ecostress = "{remote_sensing}/ecostress"
+
+# E2 re-footing (notes/e2_etf_refooting_plan.md §4): the only differences from
+# 6_Flux_International_LSEnsemble_POR_annual2yr.toml are the container, the calibration stem,
+# and the explicit grass-basis SSEBop source below.
+container = "{data}/{project}_ls_ensemble_grassbasis_por_annual2yr_fao56_sig.swim"
+
+# ESPA SSEBop rescaled from the alfalfa (ETr) to the grass (ETo) reference basis with the daily
+# ERA5-Land ETr/ETo ratio (phase2_convert_ssebop_basis.py), complete record incl. the 2026-09
+# Landsat 7 repair order. PT-JPL keeps the conventional {landsat}/extracts/ptjpl_etf/no_mask.
+[paths.etf_sources]
+ssebop = "{landsat}/extracts/ssebop_etf_grass/no_mask"
+
+[paths.era5]
+met = "{data}/meteorology/era5_crop"
+extracts = "{data}/meteorology/era5_crop/extracts"
+
+[earth_engine]
+bucket = "wudr"
+
+[ids]
+feature_id = "sid"
+
+[data_sources]
+met_source = "era5"
+snow_source = "era5"
+soil_source = "hwsd"
+mask_mode = "none"
+
+[era5land]
+params = ["swe", "eto", "tmean", "tmin", "tmax", "precip", "srad"]
+param_mapping = { precip = "prcp" }
+
+[misc]
+irrigation_threshold = 0.3
+elev_units = "m"
+refet_type = "eto"
+runoff_process = "cn"
+# E0 arm physics (swimrs.process.cover_modes). Do NOT also set
+# transpiration_cover_scaling: resolve_cover_mode raises on a contradiction.
+transpiration_cover_mode = "none"
+
+[date_range]
+start_date = "2013-01-01"
+end_date = "2025-12-31"
+
+[crop_coefficient]
+kc_proxy = "etf"
+cover_proxy = "ndvi"
+
+[calibration]
+pest_run_dir = "{project_workspace}/pestrun_ls_ensemble_grassbasis_por_annual2yr_fao56_sig"
+workers = 20
+realizations = 200
+calibration_dir = "{pest_run_dir}/pest/mult"
+obs_folder = "{pest_run_dir}/obs"
+initial_values_csv = "{pest_run_dir}/params.csv"
+spinup = "{pest_run_dir}/spinup.json"
+
+prior_regularization_fraction = 0.8
+
+# Landsat SSEBop + Landsat PT-JPL ensemble (OLI era, 2013+)
+etf_target_model = "ensemble"
+etf_target_instrument = "landsat"
+etf_ensemble_members = ["ssebop", "ptjpl"]
+
+# ETf noise floor on the member-spread sd (0.1 put ~50% of measured phi in noise)
+etf_weighting_spread_floor = 0.05
+# Daily-ETo floor (mm/day): ETf observations on days with ERA5-Land ETo below this carry
+# zero weight for the whole ensemble observation (both members). ETf = ET/ETo is unstable
+# when the denominator is tiny; on the grass basis the low-ETo share of sum(weight^2) rose
+# from 2.0 % to 4.6 % without this rule (e2_etf_refooting_plan.md §9/§24, G3, 2026-09-07).
+etf_weighting_eto_floor = 1.0
+# SWE error model (sd = max(frac*swe, floor) mm) and target share of
+# expected group phi; weights are derived from the sd so weight and noise agree
+swe_weighting_sd_frac = 0.3
+swe_weighting_sd_floor = 10.0
+swe_weighting_phi_share = 0.15
