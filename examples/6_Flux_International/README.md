@@ -16,12 +16,19 @@ This directory produces:
 | Table S2 transferred parameter sets | `transfer/build_ex5_irrigation_stratified_params.py` | `paper/data/final/e2_run22_transfer_vectors_by_irrigation.json` |
 | Table S9 (E1 vs E2 product parity) | `product_parity/e1_e2_product_parity.py` | `--out-dir` |
 | Supplement S9.1 (28-day month rule) | `awc_recal/monthly_28day_sensitivity.py` | `closure_pool/monthly_28day_sensitivity_*` |
+| Frozen source of record for all of the above except S2/S9 | `promote_final.py` | `paper/data/final/e2_closure_pool/` + `MANIFEST.json` |
 
-**Status (2026-09-21).** The HWSD available-water-capacity units defect
+The paper's tables and figures read `paper/data/final/e2_closure_pool/`, not
+the results root. `promote_final.py` copies the results-root outputs into that
+package and writes its `MANIFEST.json` (sha256 and source of every file, run
+SHAs, headline values); with no flags it checks the package against the
+results root byte for byte.
+
+**Status (2026-09-22).** The HWSD available-water-capacity units defect
 (`notes/HANDOFF_HWSD_AWC_UNITS_RECAL.md`) invalidated every earlier E2 run.
-The recalibration is in progress via `awc_recal/run_awc_recal_chain.sh`.
-Until it finishes, no number from this directory should be quoted; the
-superseded runs are under `results/superseded_awc320_20260921/`.
+The recalibration via `awc_recal/run_awc_recal_chain.sh` is complete and the
+package is frozen from it; the superseded runs are under
+`results/superseded_awc320_20260921/`.
 
 ## Layout
 
@@ -40,6 +47,7 @@ superseded runs are under `results/superseded_awc320_20260921/`.
 ├── archive_postcalibration.py  RUN_POLICY Cats 4-5: merged posterior, bounds, phi history
 ├── evaluation_summary.py       RUN_POLICY Cat 6: paired metrics, groups, reproduction checks
 ├── closure_pool_summary.py     47-site closure-corrected pool re-cut (Table 5, S8, §3.3)
+├── promote_final.py            results root → paper/data/final/e2_closure_pool/ (check by default, --write)
 ├── evaluate.py                 daily, monthly, and ETf evaluation against flux ET
 ├── derived_metrics.py          shared: per-member benchmarks, uncalibrated baseline, decompositions
 ├── pooled_metrics.py           shared: concatenated-pool and √n-weighted metrics
@@ -135,6 +143,18 @@ disjoint set and the 47-site pool.
 uv run python $EX6/product_parity/e1_e2_product_parity.py --out-dir <out>
 ```
 
+**8. Promote and freeze the paper evidence**
+
+```bash
+uv run python $EX6/promote_final.py --config $CFG            # byte-for-byte check; --write replaces the package
+```
+
+Copies the step 4–6 outputs (`closure_pool/`, `transfer/`, `e0_disjoint/`) into
+`paper/data/final/e2_closure_pool/` and regenerates its `MANIFEST.json`. The
+manifest's prose fields (reason for the freeze, gate note, retired files) are
+carried over from the existing manifest; edit them there when the reason for a
+re-freeze changes.
+
 ## Rebuilding the container
 
 Only needed without the shipped container. Everything is under
@@ -153,7 +173,7 @@ quota and are not part of reproduction from the container.
 ## Tests
 
 ```bash
-uv run pytest tests/unit -q -k "objective_audit or evaluation_summary or closure_pool or container_health or stratified_transfer or e2_irrigation_mapping or ex6_flux_source"
+uv run pytest tests/unit -q -k "objective_audit or evaluation_summary or closure_pool or container_health or stratified_transfer or e2_irrigation_mapping or ex6_flux_source or e2_promote_final"
 ```
 
 ## Rules
