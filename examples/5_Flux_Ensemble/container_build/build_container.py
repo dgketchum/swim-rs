@@ -42,8 +42,7 @@ ETF_END = "2025-12-31"
 
 
 def _load_config() -> ProjectConfig:
-    project_dir = Path(__file__).resolve().parent
-    conf = project_dir / "5_Flux_Ensemble.toml"
+    conf = Path(__file__).resolve().parents[1] / "5_Flux_Ensemble.toml"
     cfg = ProjectConfig()
     cfg.read_config(str(conf))
     return cfg
@@ -360,7 +359,7 @@ def main():
     args = parser.parse_args()
 
     cfg = _load_config()
-    project_dir = Path(__file__).resolve().parent
+    project_dir = Path(__file__).resolve().parents[1]
 
     source = args.source or os.path.join(cfg.data_dir, f"{cfg.project_name}.swim")
     dest = os.path.join(cfg.data_dir, f"5_Flux_Ensemble_{args.run}.swim")

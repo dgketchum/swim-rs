@@ -38,15 +38,14 @@ from swimrs.swim.config import ProjectConfig
 from swimrs.utils.flux_stations import create_master_shapefile, filter_by_classification
 
 # Canonical source data (shipped with the repo)
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _FOOTPRINTS_SHP = _REPO_ROOT / "examples" / "data" / "flux_footprints_3p_clean.shp"
 _METADATA_CSV = _REPO_ROOT / "examples" / "data" / "station_metadata.csv"
 
 
 def _load_config() -> ProjectConfig:
     """Load project configuration from TOML file."""
-    project_dir = Path(__file__).resolve().parent
-    conf = project_dir / "5_Flux_Ensemble.toml"
+    conf = Path(__file__).resolve().parents[1] / "5_Flux_Ensemble.toml"
 
     cfg = ProjectConfig()
     cfg.read_config(str(conf))

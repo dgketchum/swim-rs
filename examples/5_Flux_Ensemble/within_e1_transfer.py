@@ -1,6 +1,7 @@
 """Within-E1 held-out spatial transfer (leave-region-out + leave-one-site-out).
 
-The filename retains the former paper-numbering label for archive continuity.
+Output directories keep the ``within_e2_transfer*`` names the frozen evidence and
+the figure builder key on (``e2`` there is the legacy label for paper E1).
 
 Supports the manuscript claim (``paper/text/main.md`` Table 1 and the Parameter
 Transfer methods paragraph) that within Experiment 1 a fixed parameter vector
@@ -68,8 +69,8 @@ does NOT calibrate and does NOT call Earth Engine. It reuses the Run 22 posterio
 ensemble (``*.par.csv``) already on disk and opens the container read-only.
 
 Usage:
-    uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/within_e2_transfer.py
-    uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/within_e2_transfer.py \
+    uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/within_e1_transfer.py
+    uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/within_e1_transfer.py \
         --out /data/ssd1/swim/5_Flux_Ensemble/results/within_e2_transfer_irrigation_stratified \
         --n-boot 2000 --seed 1234 --irr-threshold 0.5 --min-class-train 5
 """
@@ -94,6 +95,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import evaluate as ev  # noqa: E402  (sibling module; needs HERE on sys.path)
+import ex5_paths  # noqa: E402
 
 import swimrs.process.input as swim_input_mod  # noqa: E402
 from swimrs.calibrate.flux_utils import (  # noqa: E402
@@ -106,9 +108,8 @@ from swimrs.process.loop_fast import run_daily_loop_fast  # noqa: E402
 
 # Run 22 canonical publication basis: par.csv + the run22 container it was
 # calibrated and evaluated against (seeded from run21 with the calibration group
-# dropped, then recalibrated under source-exclusive physics + gw gate).
-DEFAULT_PAR_CSV = "/data/ssd1/swim/5_Flux_Ensemble/results/run22/5_Flux_Ensemble.3.par.csv"
-DEFAULT_CONTAINER = "/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run22.swim"
+# dropped, then recalibrated under source-exclusive physics + gw gate). Both
+# default to the Run 22 locations derived from the TOML root (ex5_paths).
 
 PARAM_FAMILIES = [
     "aw",
@@ -530,8 +531,8 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--par-csv", default=DEFAULT_PAR_CSV)
-    parser.add_argument("--container", default=DEFAULT_CONTAINER)
+    parser.add_argument("--par-csv", default=None, help="default: Run 22 posterior")
+    parser.add_argument("--container", default=None, help="default: Run 22 container")
     parser.add_argument(
         "--config", default=None, help="Config TOML (default: 5_Flux_Ensemble.toml)"
     )
@@ -560,6 +561,8 @@ def main():
     args = parser.parse_args()
 
     cfg = ev.load_config(args.config)
+    args.par_csv = args.par_csv or ex5_paths.posterior_par_csv(cfg=cfg)
+    args.container = args.container or ex5_paths.run_container(cfg=cfg)
     flux_dir = ev.resolve_flux_dir(cfg)
     shp = args.shapefile or cfg.fields_shapefile
     # Non-clobbering default: the pooled-only artifacts under

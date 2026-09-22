@@ -42,9 +42,9 @@ import argparse
 import gzip
 import hashlib
 import json
-import os
 import shutil
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -82,8 +82,6 @@ VALUE_TOL = 1e-12
 ETO_IDENTITY_TOL = 1e-9
 SCHEMA_VERSION = "1.2"
 
-DATA_DIR_DEFAULT = "/data/ssd1/swim/5_Flux_Ensemble/data"
-RUN_DIR_DEFAULT = "/data/ssd1/swim/5_Flux_Ensemble/results/run22"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SUPERSEDED_FINAL_DIR = REPO_ROOT / "paper" / "data" / "final"
 SUPERSEDED_FILES = [
@@ -1338,16 +1336,16 @@ def main():
     parser = argparse.ArgumentParser(
         description="Rebuild the E1 OpenET benchmark evidence from May v2.1, ETf-first"
     )
-    parser.add_argument("--run-dir", default=RUN_DIR_DEFAULT)
-    parser.add_argument("--data-dir", default=DATA_DIR_DEFAULT)
+    parser.add_argument("--run-dir", default=None, help="default: the Run 22 results dir")
+    parser.add_argument("--data-dir", default=None, help="default: the configured data dir")
     parser.add_argument(
         "--openet-eto-csv",
         default=str(Path(__file__).resolve().parent / "data" / ETO_SOURCE),
     )
     parser.add_argument(
         "--container",
-        default=os.path.join(DATA_DIR_DEFAULT, "5_Flux_Ensemble_run22.swim"),
-        help="Frozen run container (read-only provenance; 0a identity gate)",
+        default=None,
+        help="Frozen run container (read-only provenance; 0a identity gate); default: Run 22",
     )
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
@@ -1376,6 +1374,14 @@ def main():
         "final user-approved freeze build",
     )
     args = parser.parse_args()
+    if None in (args.run_dir, args.data_dir, args.container):
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import ex5_paths
+
+        cfg = ex5_paths.load_config()
+        args.run_dir = args.run_dir or ex5_paths.run_dir(cfg=cfg)
+        args.data_dir = args.data_dir or cfg.data_dir
+        args.container = args.container or ex5_paths.run_container(cfg=cfg)
 
     outputs, metadata, daily_df, monthly_df = rebuild(args)
 

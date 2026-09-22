@@ -14,21 +14,29 @@ import sys
 import numpy as np
 import pytest
 
-EX5 = os.path.join(
+EX6 = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "examples",
-    "5_Flux_Ensemble",
+    "6_Flux_International",
 )
 
 
 def _load():
-    if EX5 not in sys.path:
-        sys.path.insert(0, EX5)
-    spec = importlib.util.spec_from_file_location(
-        "pooled_arm_compare", os.path.join(EX5, "pooled_arm_compare.py")
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # The script imports its sibling evaluate.py; other tests load the Example 5
+    # evaluate.py under the same module name, so isolate the import.
+    saved = sys.modules.pop("evaluate", None)
+    sys.path.insert(0, EX6)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "pooled_arm_compare", os.path.join(EX6, "pooled_arm_compare.py")
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(EX6)
+        sys.modules.pop("evaluate", None)
+        if saved is not None:
+            sys.modules["evaluate"] = saved
     return module
 
 

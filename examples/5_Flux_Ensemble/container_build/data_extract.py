@@ -81,14 +81,9 @@ MAX_RETRIES = 3
 
 
 def _load_config() -> ProjectConfig:
-    project_dir = Path(__file__).resolve().parent
-    conf = project_dir / "5_Flux_Ensemble.toml"
-
+    conf = Path(__file__).resolve().parents[1] / "5_Flux_Ensemble.toml"
     cfg = ProjectConfig()
-    if os.path.isdir("/data/ssd2/swim"):
-        cfg.read_config(str(conf))
-    else:
-        cfg.read_config(str(conf), project_root_override=str(project_dir.parent))
+    cfg.read_config(str(conf))
     return cfg
 
 
@@ -461,7 +456,7 @@ def extract_etf_v21(cfg: ProjectConfig, sites=None, models=None) -> None:
     """
     is_authorized()
 
-    project_dir = Path(__file__).resolve().parent
+    project_dir = Path(__file__).resolve().parents[1]
     output_dir = project_dir / "data" / "etf_v21_openet_eto"
     os.makedirs(output_dir, exist_ok=True)
 
@@ -576,7 +571,7 @@ def extract_openet_refet(cfg: ProjectConfig, sites=None) -> None:
     """
     is_authorized()
 
-    project_dir = Path(__file__).resolve().parent
+    project_dir = Path(__file__).resolve().parents[1]
     output_dir = project_dir / "data" / "openet_refet"
     os.makedirs(output_dir, exist_ok=True)
 

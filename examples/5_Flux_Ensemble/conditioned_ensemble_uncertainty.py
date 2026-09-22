@@ -31,6 +31,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import evaluate as ev
+import ex5_paths
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -38,28 +39,49 @@ from scipy import stats
 
 from swimrs.container import SwimContainer
 
-RUN_DIR = "/data/ssd1/swim/5_Flux_Ensemble/results/run22"
 PROJECT_DIR = Path(__file__).resolve().parent
 
-# Canonical inputs (plan section 3). No automatic result discovery.
-CANONICAL = {
-    "config": str(PROJECT_DIR / "5_Flux_Ensemble.toml"),
-    "container": "/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run22.swim",
-    "par_final": f"{RUN_DIR}/5_Flux_Ensemble.3.par.csv",
-    "obs_final": f"{RUN_DIR}/archive/4_pest_outputs/5_Flux_Ensemble.3.obs.csv",
-    "obs_metadata": f"{RUN_DIR}/archive/3_problem_definition/observation_metadata.csv",
-    "spread_obs": f"{RUN_DIR}/spread_error/spread_error_observations.csv",
-    "spread_summary": f"{RUN_DIR}/spread_error/spread_error_summary.csv",
-    "spread_persite": f"{RUN_DIR}/spread_error/spread_error_persite.csv",
-    "spread_quintiles": f"{RUN_DIR}/spread_error/spread_error_quintiles.csv",
-    "spot_verify": f"{RUN_DIR}/spread_error/spot_verify.csv",
-    "par_prior": f"{RUN_DIR}/archive/4_pest_outputs/5_Flux_Ensemble.0.par.csv",
-    "daily_metrics": f"{RUN_DIR}/archive/6_evaluation/daily_paired_metrics.csv",
-    "provenance_config": f"{RUN_DIR}/archive/1_provenance/config.toml",
-    "provenance_container_path": f"{RUN_DIR}/archive/1_provenance/container_path.txt",
-    "provenance_manifest": f"{RUN_DIR}/archive/1_provenance/container_manifest.json",
-}
-DEFAULT_OUT_DIR = f"{RUN_DIR}/conditioned_ensemble_uncertainty"
+
+class _CanonicalInputs(dict):
+    """Canonical Run 22 inputs (plan section 3), resolved from the TOML root on
+    first access so importing this module reads no configuration. No automatic
+    result discovery."""
+
+    def _resolve(self):
+        cfg = ex5_paths.load_config()
+        run_dir = ex5_paths.run_dir(cfg=cfg)
+        self.update(
+            {
+                "config": str(ex5_paths.CANONICAL_CONFIG),
+                "container": ex5_paths.run_container(cfg=cfg),
+                "par_final": ex5_paths.posterior_par_csv(cfg=cfg),
+                "obs_final": f"{run_dir}/archive/4_pest_outputs/5_Flux_Ensemble.3.obs.csv",
+                "obs_metadata": f"{run_dir}/archive/3_problem_definition/observation_metadata.csv",
+                "spread_obs": f"{run_dir}/spread_error/spread_error_observations.csv",
+                "spread_summary": f"{run_dir}/spread_error/spread_error_summary.csv",
+                "spread_persite": f"{run_dir}/spread_error/spread_error_persite.csv",
+                "spread_quintiles": f"{run_dir}/spread_error/spread_error_quintiles.csv",
+                "spot_verify": f"{run_dir}/spread_error/spot_verify.csv",
+                "par_prior": f"{run_dir}/archive/4_pest_outputs/5_Flux_Ensemble.0.par.csv",
+                "daily_metrics": f"{run_dir}/archive/6_evaluation/daily_paired_metrics.csv",
+                "provenance_config": f"{run_dir}/archive/1_provenance/config.toml",
+                "provenance_container_path": f"{run_dir}/archive/1_provenance/container_path.txt",
+                "provenance_manifest": f"{run_dir}/archive/1_provenance/container_manifest.json",
+            }
+        )
+
+    def __getitem__(self, key):
+        if not dict.__len__(self):
+            self._resolve()
+        return dict.__getitem__(self, key)
+
+    def resolved(self):
+        if not dict.__len__(self):
+            self._resolve()
+        return dict(self)
+
+
+CANONICAL = _CanonicalInputs()
 RESULTS_NOTE = str(PROJECT_DIR / "notes" / "conditioned_ensemble_uncertainty_results.md")
 
 SEED = 42
@@ -1076,13 +1098,15 @@ def write_results_note(path, meta, summary_rows, contraction_summary):
 # ---------------------------------------------------------------------------
 
 
-def main(out_dir=DEFAULT_OUT_DIR, n_boot=N_BOOT):
+def main(out_dir=None, n_boot=N_BOOT):
     t0 = time.time()
+    if out_dir is None:
+        out_dir = os.path.join(ex5_paths.run_dir(), "conditioned_ensemble_uncertainty")
     os.makedirs(out_dir, exist_ok=True)
     meta = {
         "started": datetime.now(tz=UTC).isoformat(),
         "plan": "examples/5_Flux_Ensemble/notes/conditioned_ensemble_uncertainty_plan.md",
-        "canonical_inputs": dict(CANONICAL),
+        "canonical_inputs": CANONICAL.resolved(),
         "out_dir": out_dir,
         "seed": SEED,
         "n_boot": int(n_boot),
@@ -1344,7 +1368,12 @@ def main(out_dir=DEFAULT_OUT_DIR, n_boot=N_BOOT):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out-dir", type=str, default=DEFAULT_OUT_DIR)
+    parser.add_argument(
+        "--out-dir",
+        type=str,
+        default=None,
+        help="default: <run22>/conditioned_ensemble_uncertainty",
+    )
     parser.add_argument(
         "--n-boot",
         type=int,

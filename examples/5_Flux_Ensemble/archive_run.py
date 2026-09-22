@@ -45,6 +45,7 @@ import traceback
 from datetime import UTC, datetime
 
 import evaluate as ev
+import ex5_paths
 import numpy as np
 import pandas as pd
 
@@ -880,7 +881,7 @@ def main():
 
     container_path = args.container or os.path.join(cfg.data_dir, f"{project}.swim")
     par_csv = args.par_csv or os.path.join(results_dir, f"{project}.{NOPTMAX}.par.csv")
-    log_path = args.log or f"/data/ssd1/swim/5_Flux_Ensemble/nohup_{args.results_tag}_calibrate.out"
+    log_path = args.log or ex5_paths.calibration_log(args.results_tag, cfg)
     pst_path = os.path.join(archive, "3_problem_definition", f"{project}.pst")
     weight_audit = os.path.join(results_dir, "etf_weight_audit.csv")
 
