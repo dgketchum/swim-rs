@@ -2,8 +2,7 @@
 
 Runs the calibrated SCAN model forward (loop exports daily daw3 + zr) and converts
 the kernel's total plant-available water to a volumetric content redistributed over
-the MAX rooting depth — the like-for-like quantity established in the Mead first
-pass (examples/5_Flux_Ensemble/notes/soil_moisture_mead/):
+the MAX rooting depth:
 
     soil_water  = awc*zr - depl_root + daw3          # available water (mm) to zr_max
     theta_avail = soil_water / (zr_max * 1000)       # m3/m3, available-water content

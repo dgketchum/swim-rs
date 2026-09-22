@@ -1,4 +1,6 @@
-# 1_Boulder Tutorial
+# Tutorial T1 (Repo Example 1): Boulder
+
+Publication-facing label: `T1`. Repo path remains `examples/1_Boulder`.
 
 A complete end-to-end SWIM-RS workflow demonstrating the SwimContainer API for data management, extraction, and model execution.
 
@@ -55,5 +57,4 @@ The shapefile (`data/gis/mt_sid_boulder.shp`) contains agricultural fields from 
 ## Outputs
 
 - `data/1_Boulder.swim`: Container with all ingested data
-- `data/prepped_input.json`: Model-ready input file
 - `data/model_output/`: CSV files with daily model results

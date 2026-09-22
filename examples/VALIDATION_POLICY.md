@@ -18,7 +18,7 @@ keeping the existing repo paths unchanged.
 | `T2` | Example 2 | `examples/2_Fort_Peck` | Tutorial |
 | `T3` | Example 3 | `examples/3_Crane` | Tutorial |
 | — | Example 4 | `examples/4_Flux_Network` | Supporting CONUS flux-network workflow |
-| `E0` | Example 5 | `examples/5_Flux_Ensemble` | Vegetation-formulation experiment |
+| `E0` | Example 6 | `examples/6_Flux_International` | Vegetation-formulation experiment (37 sites outside the E1 cohort) |
 | `E1` | Example 5 | `examples/5_Flux_Ensemble` | CONUS flux-ensemble experiment |
 | `E2` | Example 6 | `examples/6_Flux_International` | International transfer experiment |
 | `E3` | Example 7 | `examples/7_Applied_Water` | Applied-water experiment |
@@ -572,9 +572,15 @@ metric triad (KGE, RMSE, and MBE):
    state its aggregation, number of sites, total paired observations,
    timescale, units, benchmark source/version, and (where applicable) the
    `sqrt(n_i)` weight rule. KGE, RMSE, and MBE remain the primary manuscript
-   metrics; pooled `r`, `r^2`, and slope provide compact diagnostic context.
-   NSE, MAE, per-site medians/IQRs, and model win rates are not part of the
-   default grouped output.
+   metrics. For the reader-facing E1 SWIM-OpenET intercomparison, lead with the
+   `sqrt(n_i)`-weighted KGE, RMSE, and MBE because these aggregate station-level
+   metrics and most closely follow Volk et al.'s treatment of station error
+   metrics. Report pooled KGE, RMSE, and MBE as the complementary cohort-level
+   view; pooled `r`, `r^2`, and slope provide compact diagnostic context. When
+   pooled and weighted results support different conclusions, state that
+   difference explicitly rather than selecting one estimand as the general
+   result. NSE, MAE, per-site medians/IQRs, and model win rates are not part of
+   the default grouped output.
 6. **Site-effect summaries are secondary and non-default.** The per-site
    metric table remains a required diagnostic and an input to the weighted
    errors. A median paired site effect, its bootstrap interval, or a site-win
@@ -590,10 +596,19 @@ metric triad (KGE, RMSE, and MBE):
 Volk et al. pooled observations for regression statistics and used
 `sqrt(n_i)`-weighted station-level MBE, MAE, and RMSE. KGE was not one of their
 metrics. Emitting pooled and weighted KGE, RMSE, and MBE here exposes both
-cohort-level and station-balanced views without expanding the manuscript's
-primary metric set; pooled `r`, `r^2`, and zero-intercept slope reproduce the
-associated regression diagnostics. See [Volk et al. (2024), Nature Water,
+the complementary cohort-level view and the primary station-metric view with
+moderated record-length weighting, without expanding the manuscript's primary
+metric set; pooled `r`, `r^2`, and zero-intercept slope reproduce the associated
+regression diagnostics. See [Volk et al. (2024), Nature Water,
 doi:10.1038/s44221-023-00181-7](https://doi.org/10.1038/s44221-023-00181-7).
+
+The frozen reporting source for this comparison is
+`paper/data/final/e1_openet_benchmark/`; its `MANIFEST.json` defines artifact
+roles, precedence, hashes, cohort sizes, and validation status. Tables,
+manuscript values, and benchmark figures must read the grouped products there.
+The legacy `paper/data/final/e2_*` namespace remains available for supporting
+E1 analyses, but `e2_primary_performance_summary.csv` contains secondary
+site-median summaries and is not the headline source.
 
 ### Ensemble-Derived Weighting
 
