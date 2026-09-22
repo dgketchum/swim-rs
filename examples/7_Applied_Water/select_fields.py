@@ -17,15 +17,22 @@ Outputs (project gis dir + a versioned copy in this example dir):
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-REPO = Path("/home/dgketchum/code/swim-rs")
-SLV_DIR = REPO / "data" / "co_slv_wells"
-WMIS_DIR = REPO / "data" / "idwr_wmis"
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+import ex7_paths  # noqa: E402
+
+SLV_DIR = ex7_paths.SLV_DIR
+WMIS_DIR = ex7_paths.WMIS_DIR
+# External input: the IDWR 2015 irrigated-lands inventory (not built by this repo).
 ESPA_FIELDS = Path(
     "/nas/irrmapper/raw_field_polygons/ID/ESPA/"
     "2015_Irrigated_Lands_for_the_Eastern_Snake_Plain_Aquifer/"
@@ -35,10 +42,10 @@ POU_POLY = WMIS_DIR / "pou_polygons.fgb"
 # IrrMapper (2000-2024) irrigated-fraction cache for the ESPA control candidate
 # pool, keyed by `fid2015`. Produced by espa_control_irrmapper.py. Controls are
 # gated STRICTLY never-irrigated (max annual irr fraction == 0) against this.
-ESPA_CONTROL_IRR = WMIS_DIR / "espa_control_irrmapper.csv"
+ESPA_CONTROL_IRR = ex7_paths.ESPA_CONTROL_IRR
 
-PROJECT_GIS = Path("/data/ssd1/swim/7_Applied_Water/data/gis")
-EXAMPLE_DIR = REPO / "examples" / "7_Applied_Water"
+PROJECT_GIS = ex7_paths.gis_dir()
+EXAMPLE_DIR = ex7_paths.EX7
 
 AEA = "EPSG:5070"  # CONUS Albers equal area for area/compactness
 

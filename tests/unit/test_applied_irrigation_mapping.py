@@ -36,11 +36,9 @@ E6_TRANSFER = REPO_ROOT / "examples" / "6_Flux_International" / "transfer"
 def _load_builder():
     """Import the builder by path (``examples/`` is not an importable package).
 
-    Only the shared transfer dir goes on sys.path -- the builder reuses
-    ``build_ex5_cropland_params`` from there for PARAM_FAMILIES and the provenance
-    helpers. The Example 7 dir is deliberately left off sys.path so its generically
-    named siblings (``calibrate.py``, ``data_extract.py``) cannot shadow real imports
-    for the rest of the pytest session.
+    The builder itself puts the Example 7 dir (for ``ex7_paths``) and the shared
+    transfer dir (for ``build_ex5_cropland_params``: PARAM_FAMILIES and the
+    provenance helpers) on sys.path; both modules are import-time side-effect free.
     """
     if str(E6_TRANSFER) not in sys.path:
         sys.path.insert(0, str(E6_TRANSFER))

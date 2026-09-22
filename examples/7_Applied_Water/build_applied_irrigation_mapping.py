@@ -32,15 +32,15 @@ Outputs (under --out-dir):
     e4_irrigation_stratified_param_mapping_metadata.json  - provenance + audit
 
 Usage:
-    uv run python /home/dgketchum/code/swim-rs/examples/7_Applied_Water/build_applied_irrigation_mapping.py
+    uv run python examples/7_Applied_Water/build_applied_irrigation_mapping.py
 
-    uv run python /home/dgketchum/code/swim-rs/examples/7_Applied_Water/build_applied_irrigation_mapping.py \
-        --verify-keys /data/ssd1/swim/7_Applied_Water/results/applied_transfer_run22/per_field_year.csv
+    uv run python examples/7_Applied_Water/build_applied_irrigation_mapping.py \
+        --verify-keys {project_workspace}/results/applied_calibrated/per_field_year.csv
 
-The downstream Example 7 forward run must target the calibrated container
-``/data/ssd1/swim/7_Applied_Water/data/7_Applied_Water_e7cal.swim`` (NOT the base
-``7_Applied_Water.swim``), and must use ``--label transfer_run22_by_irrigation`` so
-``field_accuracy.py`` finds it at ``results/applied_transfer_run22_by_irrigation``.
+The downstream Example 7 forward run must target the calibrated run container
+``{data}/7_Applied_Water_e7cal.swim`` (NOT the base ``7_Applied_Water.swim``), and
+must use ``--label transfer_run22_by_irrigation`` so ``field_accuracy.py`` finds it
+at ``results/applied_transfer_run22_by_irrigation``. Defaults come from ex7_paths.
 """
 
 import argparse
@@ -54,8 +54,12 @@ import geopandas as gpd
 import pandas as pd
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent.parent
-E6_TRANSFER = REPO / "examples" / "6_Flux_International" / "transfer"
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+import ex7_paths  # noqa: E402
+
+E6_TRANSFER = ex7_paths.REPO / "examples" / "6_Flux_International" / "transfer"
 if str(E6_TRANSFER) not in sys.path:
     sys.path.insert(0, str(E6_TRANSFER))
 
@@ -70,12 +74,12 @@ from build_ex5_cropland_params import (  # noqa: E402
 
 from swimrs.container import open_container  # noqa: E402
 
-DEFAULT_VECTORS = REPO / "paper" / "data" / "final" / "e2_run22_transfer_vectors_by_irrigation.json"
-DEFAULT_FIELDS_SHP = "/data/ssd1/swim/7_Applied_Water/data/gis/applied_water_fields.shp"
-DEFAULT_IRRMAPPER_CSV = REPO / "data" / "idwr_wmis" / "espa_control_irrmapper.csv"
-DEFAULT_TRUTH_CSV = HERE / "data" / "metered_truth.csv"
-DEFAULT_CONTAINER = "/data/ssd1/swim/7_Applied_Water/data/7_Applied_Water_e7cal.swim"
-DEFAULT_OUT_DIR = REPO / "paper" / "data" / "final"
+DEFAULT_VECTORS = ex7_paths.TRANSFER_VECTORS
+DEFAULT_FIELDS_SHP = str(ex7_paths.fields_shp())
+DEFAULT_IRRMAPPER_CSV = ex7_paths.ESPA_CONTROL_IRR
+DEFAULT_TRUTH_CSV = ex7_paths.TRUTH_CSV
+DEFAULT_CONTAINER = str(ex7_paths.run_container())
+DEFAULT_OUT_DIR = ex7_paths.FINAL_DIR
 
 # Expected Example 7 cohort composition, keyed by the site_id prefix token.
 EXPECTED_COMPOSITION = {"SLV": 50, "ESPA": 50, "ESPActl": 10}
@@ -87,7 +91,7 @@ RAINFED_CLASS = "rainfed"
 TRUTH_CONTROL_SOURCE = "ESPA_rainfed_control"
 
 # The forward-run contract the downstream E4 evaluation must honor.
-E4_FORWARD_LABEL = "transfer_run22_by_irrigation"
+E4_FORWARD_LABEL = ex7_paths.TRANSFER_LABEL
 E4_FORWARD_CONTAINER = DEFAULT_CONTAINER
 
 
