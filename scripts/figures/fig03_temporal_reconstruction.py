@@ -1,24 +1,10 @@
-"""Figure 3 -- daily ET agreement and temporal reconstruction (production).
+"""Render Figure 3 from the frozen E1 OpenET benchmark display package.
 
-Pooled-agreement composition per paper/notes/fig03_production_handoff.md
-(2026-08-27), concept v3, with panel (a) rendered as hexbin density
-(FIGURE_STYLE_GUIDE sec. 10). Despite the legacy filename, this script
-renders the pooled-agreement design, not the superseded seasonal example.
-
-Reads ONLY the frozen Figure 3 display package under
-paper/data/final/figures/ (hash-verified against fig_manifest.json):
-
-- fig03_pooled_daily_agreement.csv  -- panel (a) paired daily values
-- fig03_scatter_metrics.csv         -- frozen facet statistics + display strings
-- fig03_temporal_site_effects.csv   -- panel (c) paired site shifts + order key
-- fig03_temporal_cohort_effects.csv -- panel (b) medians + bootstrap intervals
-- fig03_metadata.json               -- construction record
-
-The only transformations applied here are declared presentation steps:
-hexbin count binning on a shared log scale (FIGURE_STYLE_GUIDE sec. 10
-density threshold) and rasterization of the hexbin layers. All aggregation,
-interpolation, metric, and bootstrap arithmetic lives in
-scripts/figures/build_figure_data.py.
+The renderer is deliberately presentation-only. All eligibility, metric,
+aggregation, contrast, interaction, and bootstrap calculations are frozen by
+``scripts/figures/build_figure_data.py --only fig03``. This script verifies the
+display-package hashes, rechecks the plotted descriptive statistics, and draws
+the publication proof.
 
 Usage::
 
@@ -41,104 +27,102 @@ import pandas as pd
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from PIL import Image, ImageOps  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 PKG = REPO / "paper" / "data" / "final" / "figures"
-OUTDIR = REPO / "paper" / "figures" / "proofs" / "fig03_pooled_agreement_190"
-STEM = "fig03_pooled_agreement"
+OUTDIR = REPO / "paper" / "figures" / "proofs" / "fig03_pooled_agreement_190_r2"
+STEM = "fig03_pooled_agreement_r2"
 
 PAGE_W, PAGE_H = 190.0, 125.0  # mm
 RASTER_DPI = 600
+MIN_PT = 6.5
 
-# package palette
-C_BLUE = "#0072B2"  # SWIM-RS (panel c cohort markers)
+C_BLUE = "#0072B2"
 C_TEXT = "#000000"
-C_CHARCOAL = "#50545A"
-C_MID = "#7A7F85"
-C_LIGHT = "#C9CDD1"
+C_CHARCOAL = "#4F5459"
+C_MID = "#777D82"
+C_LIGHT = "#C8CDD1"
 
 AX_LO, AX_HI = -2.0, 16.0
 AX_TICKS = [0, 4, 8, 12, 16]
-
-SUPPORT_HEADS = {
-    "acquisition": ("ETf acquisition dates", "4,751 site-days"),
-    "between_acquisitions": ("Between acquisitions", "55,584 site-days"),
-}
-METHODS = [("openet_et", "OpenET"), ("swim_et", "SWIM-RS")]
-
-# panel (a) hexbin density (FIGURE_STYLE_GUIDE sec. 10: > ~5,000 points per
-# panel is hexbin territory) -- one shared log count scale for all facets
 HEX_GRIDSIZE = 40
 CBAR_TICKS = [1, 10, 100, 1000]
-B_ROWS = [
-    ("acquisition", "Acquisition"),
-    ("between_acquisitions", "Between"),
-    ("all_dates", "All dates"),
+
+SUPPORTS = [
+    ("retrieval", "Retrieval dates", 4972),
+    ("between_retrieval", "Between retrievals", 54300),
 ]
-EFFECT_FACETS = [
+METHODS = [("openet_et", "OpenET"), ("swim_et", "SWIM-RS")]
+METRICS = [
     ("kge", "ΔKGE", ""),
     ("rmse", "ΔRMSE", "mm d$^{-1}$"),
     ("mbe", "ΔMBE", "mm d$^{-1}$"),
 ]
+AGGREGATIONS = [
+    ("sqrt_n_weighted_site_metric", "Station-weighted"),
+    ("pooled_observations", "Pooled"),
+]
 
-# numeric effect axes frozen from the corrected package with a small margin
-B_LIMS = {"kge": (-0.10, 0.10), "rmse": (-0.12, 0.15), "mbe": (-0.05, 0.45)}
-B_TICKS = {"kge": [-0.1, 0.0, 0.1], "rmse": [0.0, 0.1], "mbe": [0.0, 0.2, 0.4]}
-C_LIMS = {"kge": (-0.55, 0.42), "rmse": (-0.50, 1.45), "mbe": (-0.72, 2.45)}
-C_TICKS = {"kge": [-0.4, 0.0, 0.4], "rmse": [0.0, 0.7, 1.4], "mbe": [0.0, 1.0, 2.0]}
-
-# Section 5.3 frozen display strings, re-asserted against the package
-EXPECT_DISPLAY = {
-    ("OpenET", "acquisition"): ("0.90", "−0.32", "1.10"),
-    ("OpenET", "between_acquisitions"): ("0.87", "−0.24", "1.13"),
-    ("SWIM-RS", "acquisition"): ("0.88", "−0.05", "1.19"),
-    ("SWIM-RS", "between_acquisitions"): ("0.87", "−0.01", "1.10"),
+B_LIMS = {"kge": (-0.04, 0.07), "rmse": (-0.10, 0.20), "mbe": (-0.05, 0.40)}
+B_TICKS = {
+    "kge": [-0.04, 0.00, 0.04],
+    "rmse": [-0.10, 0.00, 0.10, 0.20],
+    "mbe": [0.00, 0.20, 0.40],
 }
+C_LIMS = {"kge": (-0.10, 0.14), "rmse": (-0.42, 0.34), "mbe": (-0.28, 0.22)}
+C_TICKS = {
+    "kge": [-0.10, 0.00, 0.10],
+    "rmse": [-0.40, -0.20, 0.00, 0.20],
+    "mbe": [-0.20, 0.00, 0.20],
+}
+
+FILES = [
+    "fig03_pooled_daily_agreement.csv",
+    "fig03_scatter_metrics.csv",
+    "fig03_grouped_contrasts.csv",
+    "fig03_interactions.csv",
+    "fig03_site_interactions.csv",
+    "fig03_metadata.json",
+]
 
 FORBIDDEN_STRINGS = [
     "run22",
     "non-overpass",
     "non_overpass",
-    "no-satellite",
+    "acquisition",
     "gap-filled",
     "NSE",
-    "R²",
+    "Bias",
     "MAE",
     "|MBE|",
     "p =",
     "p<",
 ]
 
-MIN_PT = 6.5  # Elsevier floor is 6 pt; hold 6.5 as the working floor
-
 
 class ProofError(RuntimeError):
-    pass
-
-
-# ---------------------------------------------------------------- fonts
+    """Raised when the frozen data or rendered contract has drifted."""
 
 
 def register_fonts() -> None:
-    # Arial, the guide-named family (FIGURE_STYLE_GUIDE.md section 3);
-    # Microsoft core-fonts faces installed under ~/.fonts/arial
-    candidates = [
+    for directory in [
         Path.home() / ".fonts" / "arial",
         Path("/usr/share/fonts/truetype/msttcorefonts"),
-    ]
-    for d in candidates:
-        if d.exists():
-            for p in sorted(d.glob("[Aa]rial*.[TtOo][Tt][Ff]")):
-                fm.fontManager.addfont(str(p))
-    names = {f.name for f in fm.fontManager.ttflist}
-    if "Arial" not in names:
+    ]:
+        if directory.exists():
+            for path in sorted(directory.glob("[Aa]rial*.[TtOo][Tt][Ff]")):
+                fm.fontManager.addfont(str(path))
+    if "Arial" not in {font.name for font in fm.fontManager.ttflist}:
         raise ProofError("Arial is not registered; no fallback is allowed")
+
     style = Path.home() / "code" / "style" / "journal_figures.mplstyle"
-    if style.exists():
-        plt.style.use(str(style))
+    if not style.exists():
+        raise ProofError(f"shared figure style is missing: {style}")
+    plt.style.use(str(style))
     plt.rcParams.update(
         {
-            "savefig.bbox": "standard",  # the mm layout is absolute; never tight-crop
+            "savefig.bbox": "standard",
             "font.family": "Arial",
             "font.size": 7.2,
             "text.color": C_TEXT,
@@ -157,186 +141,201 @@ def register_fonts() -> None:
     )
 
 
-# ---------------------------------------------------------------- data
-
-
 def sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
-def load_package() -> dict:
+def metrics(obs: np.ndarray, sim: np.ndarray) -> dict[str, float]:
+    obs = np.asarray(obs, dtype=float)
+    sim = np.asarray(sim, dtype=float)
+    residual = sim - obs
+    r = float(np.corrcoef(obs, sim)[0, 1])
+    alpha = float(np.std(sim, ddof=0) / np.std(obs, ddof=0))
+    beta = float(np.mean(sim) / np.mean(obs))
+    kge = float(1.0 - np.sqrt((r - 1.0) ** 2 + (alpha - 1.0) ** 2 + (beta - 1.0) ** 2))
+    return {
+        "pearson_r": r,
+        "kge": kge,
+        "mbe": float(np.mean(residual)),
+        "rmse": float(np.sqrt(np.mean(residual**2))),
+    }
+
+
+def signed_display(value: float) -> str:
+    rounded = round(value, 2)
+    if rounded == 0:
+        return "0.00"
+    if rounded > 0:
+        return f"+{rounded:.2f}"
+    return f"−{abs(rounded):.2f}"
+
+
+def load_package() -> dict[str, object]:
     manifest = json.loads((PKG / "fig_manifest.json").read_text())["tables"]
-    files = [
-        "fig03_pooled_daily_agreement.csv",
-        "fig03_scatter_metrics.csv",
-        "fig03_temporal_site_effects.csv",
-        "fig03_temporal_cohort_effects.csv",
-        "fig03_metadata.json",
-    ]
-    for name in files:
+    hashes = {}
+    for name in FILES:
         if name not in manifest:
-            raise ProofError(f"{name} missing from fig_manifest.json")
-        got = sha256(PKG / name)
-        want = manifest[name]["output_sha256"]
-        if got != want:
-            raise ProofError(f"{name}: sha256 {got[:12]} != manifest {want[:12]}")
+            raise ProofError(f"{name} is missing from fig_manifest.json")
+        hashes[name] = sha256(PKG / name)
+        expected = manifest[name]["output_sha256"]
+        if hashes[name] != expected:
+            raise ProofError(f"{name}: sha256 {hashes[name][:12]} != manifest {expected[:12]}")
 
     pooled = pd.read_csv(PKG / "fig03_pooled_daily_agreement.csv")
     scatter = pd.read_csv(
         PKG / "fig03_scatter_metrics.csv",
-        dtype={"display_r": str, "display_bias": str, "display_rmse": str},
+        dtype={
+            "display_r": str,
+            "display_kge": str,
+            "display_mbe": str,
+            "display_rmse": str,
+        },
     )
-    effects = pd.read_csv(PKG / "fig03_temporal_site_effects.csv")
-    cohort = pd.read_csv(PKG / "fig03_temporal_cohort_effects.csv")
-    meta = json.loads((PKG / "fig03_metadata.json").read_text())
+    contrasts = pd.read_csv(PKG / "fig03_grouped_contrasts.csv")
+    interactions = pd.read_csv(PKG / "fig03_interactions.csv")
+    sites = pd.read_csv(PKG / "fig03_site_interactions.csv")
+    metadata = json.loads((PKG / "fig03_metadata.json").read_text())
 
-    # cohort/count gates
-    if len(pooled) != 60335 or pooled["site_id"].nunique() != 43:
-        raise ProofError("pooled table does not carry 60,335 rows over 43 sites")
-    n_acq = int((pooled["temporal_support"] == "acquisition").sum())
-    n_btw = int((pooled["temporal_support"] == "between_acquisitions").sum())
-    if (n_acq, n_btw) != (4751, 55584):
-        raise ProofError(f"temporal-support counts {n_acq}/{n_btw} do not reconcile")
+    if metadata.get("source_package") != "paper/data/final/e1_openet_benchmark":
+        raise ProofError("Figure 3 is not pointed at the promoted E1 package")
+    if metadata.get("source_status") != "frozen_for_results_reporting":
+        raise ProofError("promoted E1 package is not frozen for results reporting")
+    if len(pooled) != 59272 or pooled["site_id"].nunique() != 43:
+        raise ProofError("pooled table does not carry 59,272 rows over 43 sites")
     if pooled.duplicated(["site_id", "date"]).any():
-        raise ProofError("duplicate site_id/date keys in the pooled table")
-    if len(effects) != 129 or len(cohort) != 9:
-        raise ProofError("effect table grain drifted from 129/9 rows")
-    if not ((cohort["seed"] == 42).all() and (cohort["n_resamples"] == 10000).all()):
-        raise ProofError("cohort effects do not carry the frozen bootstrap settings")
+        raise ProofError("duplicate site/date keys in the pooled table")
+    for support, _label, expected_n in SUPPORTS:
+        got = int((pooled["temporal_support"] == support).sum())
+        if got != expected_n:
+            raise ProofError(f"{support} count {got} != {expected_n}")
+    values = pooled[["flux_et", "swim_et", "openet_et"]].to_numpy(dtype=float)
+    if not np.isfinite(values).all() or values.min() < AX_LO or values.max() > AX_HI:
+        raise ProofError("a pooled ET value is nonfinite or outside the frozen axes")
 
-    # range gate
-    vals = pooled[["flux_et", "swim_et", "openet_et"]].values
-    if vals.min() < AX_LO or vals.max() > AX_HI:
-        raise ProofError("a plotted value falls outside the fixed -2..16 axes")
+    if len(scatter) != 4:
+        raise ProofError("scatter statistics must contain four facet rows")
+    for row in scatter.itertuples(index=False):
+        sub = pooled[pooled["temporal_support"] == row.temporal_support]
+        column = "openet_et" if row.method == "OpenET" else "swim_et"
+        reproduced = metrics(sub["flux_et"].to_numpy(), sub[column].to_numpy())
+        for name in ["pearson_r", "kge", "mbe", "rmse"]:
+            if abs(reproduced[name] - float(getattr(row, name))) > 1e-12:
+                raise ProofError(f"scatter {name} fails to reproduce for {row.method}")
+        expected_display = {
+            "display_r": f"{reproduced['pearson_r']:.2f}",
+            "display_kge": f"{reproduced['kge']:.2f}",
+            "display_mbe": signed_display(reproduced["mbe"]),
+            "display_rmse": f"{reproduced['rmse']:.2f}",
+        }
+        for name, expected in expected_display.items():
+            if str(getattr(row, name)) != expected:
+                raise ProofError(f"{name} drifted for {row.method}/{row.temporal_support}")
 
-    # metric gate: recompute the facet statistics from the exact plotted rows
-    for _, row in scatter.iterrows():
-        sub = pooled[pooled["temporal_support"] == row["temporal_support"]]
-        col = "openet_et" if row["method"] == "OpenET" else "swim_et"
-        resid = sub[col].to_numpy() - sub["flux_et"].to_numpy()
-        r = float(np.corrcoef(sub["flux_et"], sub[col])[0, 1])
-        bias = float(resid.mean())
-        rmse = float(np.sqrt(np.mean(resid**2)))
-        if (
-            abs(r - row["pearson_r"]) > 1e-12
-            or abs(bias - row["bias"]) > 1e-12
-            or abs(rmse - row["rmse"]) > 1e-12
-        ):
-            raise ProofError(f"scatter stats fail to reproduce for {row['method']}")
-        want = EXPECT_DISPLAY[(row["method"], row["temporal_support"])]
-        if (row["display_r"], row["display_bias"], row["display_rmse"]) != want:
-            raise ProofError(f"display strings drifted for {row['method']}")
+    expected_contrast_keys = {
+        (support, aggregation, metric)
+        for support, _label, _n in SUPPORTS
+        for aggregation, _reader_label in AGGREGATIONS
+        for metric, _head, _unit in METRICS
+    }
+    got_contrast_keys = set(
+        contrasts[["temporal_class", "aggregation", "metric"]].itertuples(index=False, name=None)
+    )
+    if got_contrast_keys != expected_contrast_keys:
+        raise ProofError("grouped contrast key set drifted")
+    expected_interaction_keys = {
+        (aggregation, metric)
+        for aggregation, _reader_label in AGGREGATIONS
+        for metric, _head, _unit in METRICS
+    }
+    got_interaction_keys = set(
+        interactions[["aggregation", "metric"]].itertuples(index=False, name=None)
+    )
+    if got_interaction_keys != expected_interaction_keys:
+        raise ProofError("interaction key set drifted")
+    for frame in [contrasts, interactions]:
+        if not (frame["n_sites"] == 43).all():
+            raise ProofError("an interval row does not use the 43-site cohort")
+        if not ((frame["bootstrap_reps"] == 10000) & (frame["bootstrap_seed"] == 42)).all():
+            raise ProofError("bootstrap settings drifted")
+        if not (
+            (frame["ci95_low"] <= frame["estimate"]) & (frame["estimate"] <= frame["ci95_high"])
+        ).all():
+            raise ProofError("an estimate falls outside its 95% interval")
 
-    # panel (b) medians reproduce from the site effects
-    for _, row in cohort.iterrows():
-        sub = effects[effects["temporal_support"] == row["temporal_support"]]
-        med = float(sub[f"d_{row['metric']}"].median())
-        if abs(med - row["median_delta"]) > 1e-12:
-            raise ProofError(f"cohort median fails to reproduce for {row['metric']}")
-        if not (row["ci95_lo"] <= row["median_delta"] <= row["ci95_hi"]):
-            raise ProofError("a bootstrap interval does not contain its median")
-
-    # panel (c) ordering key
-    order = effects.drop_duplicates("site_id")[["site_id", "site_order_between_kge"]]
-    if sorted(order["site_order_between_kge"]) != list(range(1, 44)):
-        raise ProofError("site_order_between_kge is not a 1..43 permutation")
-
-    # effect axes cover every mark and interval without clipping
-    for metric, (lo, hi) in B_LIMS.items():
-        s = cohort[cohort["metric"] == metric]
-        if s["ci95_lo"].min() < lo or s["ci95_hi"].max() > hi:
-            raise ProofError(f"panel (b) {metric} interval clipped by frozen limits")
-    for metric, (lo, hi) in C_LIMS.items():
-        s = effects[effects["temporal_support"] != "all_dates"][f"d_{metric}"]
-        if s.min() < lo or s.max() > hi:
-            raise ProofError(f"panel (c) {metric} mark clipped by frozen limits")
+    if len(sites) != 43 or sites["site_id"].nunique() != 43:
+        raise ProofError("site interactions do not contain 43 unique sites")
+    if sorted(sites["site_order_interaction_kge"].astype(int)) != list(range(1, 44)):
+        raise ProofError("site interaction order is not a 1..43 permutation")
+    for metric, _head, _unit in METRICS:
+        blo, bhi = B_LIMS[metric]
+        b = contrasts[contrasts["metric"] == metric]
+        if b["ci95_low"].min() < blo or b["ci95_high"].max() > bhi:
+            raise ProofError(f"panel (b) {metric} interval is clipped")
+        clo, chi = C_LIMS[metric]
+        c = interactions[interactions["metric"] == metric]
+        site_values = sites[f"interaction_{metric}"]
+        if min(c["ci95_low"].min(), site_values.min()) < clo:
+            raise ProofError(f"panel (c) {metric} lower range is clipped")
+        if max(c["ci95_high"].max(), site_values.max()) > chi:
+            raise ProofError(f"panel (c) {metric} upper range is clipped")
 
     return {
         "pooled": pooled,
         "scatter": scatter,
-        "effects": effects,
-        "cohort": cohort,
-        "meta": meta,
-        "hashes": {n: sha256(PKG / n) for n in files},
+        "contrasts": contrasts,
+        "interactions": interactions,
+        "sites": sites,
+        "metadata": metadata,
+        "hashes": hashes,
     }
 
 
-# ---------------------------------------------------------------- layout
+def ax_mm(fig, x0: float, y0: float, width: float, height: float):
+    return fig.add_axes([x0 / PAGE_W, y0 / PAGE_H, width / PAGE_W, height / PAGE_H])
 
 
-def ax_mm(fig, x0: float, y0: float, w: float, h: float):
-    return fig.add_axes([x0 / PAGE_W, y0 / PAGE_H, w / PAGE_W, h / PAGE_H])
+def fig_text(fig, x_mm: float, y_mm: float, text: str, **kwargs):
+    return fig.text(x_mm / PAGE_W, y_mm / PAGE_H, text, **kwargs)
 
 
-def fig_text(fig, x_mm: float, y_mm: float, s: str, **kw):
-    return fig.text(x_mm / PAGE_W, y_mm / PAGE_H, s, **kw)
-
-
-# panel (a) geometry
-A_S = 45.0  # square facet side, mm
-A_X = [14.5, 63.0]
-A_Y = [61.5, 13.0]  # row 0 = OpenET (top), row 1 = SWIM-RS (bottom)
-A_HEAD_Y = 108.0
-
-# right column
-R_X0, R_X1 = 118.0, 187.0
-B_FACET_W, B_FACET_GAP = 17.6, 2.4
-B_LABEL_X = 129.0
-B_FACET_X = [130.5, 150.5, 170.5]
-B_Y0, B_H = 90.5, 21.5
-C_FACET_W = 21.4
-# facets start 1 mm right of panel (b)'s column so the panel (a) colorbar
-# tick labels clear their frames (facet row ends at 188.2, matching b's 188.1)
-C_FACET_X = [119.0, 142.9, 166.8]
-C_Y0, C_H = 11.5, 59.5
-
-TITLE_Y = 120.6
-
-
-def strip_axis(ax, lo, hi, ticks, n_rows):
-    ax.set_xlim(lo, hi)
-    ax.set_ylim(-0.6, n_rows - 0.4)
-    ax.axvline(0, color=C_MID, lw=0.5, zorder=1)
-    ax.set_yticks([])
-    ax.set_xticks(ticks)
-    ax.set_xticklabels([f"{t:g}".replace("-", "−") for t in ticks], fontsize=6.5)
-    ax.tick_params(axis="x", length=2.2, width=0.55, pad=1.2)
-    for side in ax.spines.values():
-        side.set_visible(True)
-        side.set_color(C_CHARCOAL)
-        side.set_linewidth(0.55)
+def style_box(ax) -> None:
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_color(C_CHARCOAL)
+        spine.set_linewidth(0.55)
+    ax.tick_params(axis="both", labelsize=6.5, length=2.2, width=0.55, pad=1.4)
     ax.set_facecolor("white")
 
 
-def draw_panel_a(fig, pooled, scatter):
-    disp = scatter.set_index(["method", "temporal_support"])
-    hexes = []
-    for irow, (col, method) in enumerate(METHODS):
-        for icol, support in enumerate(["acquisition", "between_acquisitions"]):
-            ax = ax_mm(fig, A_X[icol], A_Y[irow], A_S, A_S)
+def draw_panel_a(fig, pooled: pd.DataFrame, scatter: pd.DataFrame) -> dict[str, int]:
+    side = 41.5
+    x_positions = [13.0, 60.5]
+    y_positions = [58.0, 7.5]
+    stat_top_y = [106.0, 56.0]
+    stat_bottom_y = [102.8, 52.8]
+    display = scatter.set_index(["method", "temporal_support"])
+    hexbins = []
+
+    for row_index, (column, method) in enumerate(METHODS):
+        for column_index, (support, _label, _n) in enumerate(SUPPORTS):
+            ax = ax_mm(fig, x_positions[column_index], y_positions[row_index], side, side)
             sub = pooled[pooled["temporal_support"] == support]
-            x = sub["flux_et"].to_numpy()
-            y = sub[col].to_numpy()
-            ax.set_xlim(AX_LO, AX_HI)
-            ax.set_ylim(AX_LO, AX_HI)
-            ax.set_aspect("equal", adjustable="box")
             hb = ax.hexbin(
-                x,
-                y,
+                sub["flux_et"].to_numpy(),
+                sub[column].to_numpy(),
                 gridsize=HEX_GRIDSIZE,
                 extent=(AX_LO, AX_HI, AX_LO, AX_HI),
                 cmap="viridis",
                 mincnt=1,
-                linewidths=0.0,
+                linewidths=0,
                 rasterized=True,
                 zorder=2,
             )
-            hexes.append(hb)
-            # 1:1 guide drawn over the density so it stays readable
+            hexbins.append(hb)
             ax.plot(
                 [AX_LO, AX_HI],
                 [AX_LO, AX_HI],
@@ -345,65 +344,72 @@ def draw_panel_a(fig, pooled, scatter):
                 ls=(0, (4, 2)),
                 zorder=3,
             )
+            ax.set(xlim=(AX_LO, AX_HI), ylim=(AX_LO, AX_HI))
+            ax.set_aspect("equal", adjustable="box")
             ax.set_xticks(AX_TICKS)
             ax.set_yticks(AX_TICKS)
-            ax.tick_params(axis="both", labelsize=6.5, length=2.2, width=0.55, pad=1.4)
-            if icol != 0:
+            if column_index:
                 ax.tick_params(axis="y", labelleft=False)
-            if irow != 1:
+            if not row_index:
                 ax.tick_params(axis="x", labelbottom=False)
-            for side in ax.spines.values():
-                side.set_visible(True)
-                side.set_color(C_CHARCOAL)
-                side.set_linewidth(0.55)
-            # plain-weight facet identifier (FIGURE_STYLE_GUIDE §4/§8: identity
-            # is never carried by colored text; each facet holds one series)
-            ax.text(
-                0.045,
-                0.965,
+            style_box(ax)
+
+            stat = display.loc[(method, support)]
+            fig_text(
+                fig,
+                x_positions[column_index],
+                stat_top_y[row_index],
                 method,
-                transform=ax.transAxes,
                 fontsize=7.0,
-                color=C_TEXT,
+                fontweight="semibold",
                 ha="left",
                 va="top",
-                zorder=5,
             )
-            row = disp.loc[(method, support)]
-            ax.text(
-                0.045,
-                0.885,
-                (
-                    f"$r$ = {row['display_r']}\n"
-                    f"Bias = {row['display_bias']}\n"
-                    f"RMSE = {row['display_rmse']}"
-                ),
-                transform=ax.transAxes,
+            fig_text(
+                fig,
+                x_positions[column_index] + 12.0,
+                stat_top_y[row_index],
+                f"$r$ = {stat['display_r']}; KGE = {stat['display_kge']}",
                 fontsize=6.5,
-                color=C_TEXT,
-                linespacing=1.15,
                 ha="left",
                 va="top",
-                zorder=5,
             )
-    for icol, support in enumerate(["acquisition", "between_acquisitions"]):
-        head, count = SUPPORT_HEADS[support]
-        cx = A_X[icol] + A_S / 2
+            fig_text(
+                fig,
+                x_positions[column_index],
+                stat_bottom_y[row_index],
+                (f"MBE = {stat['display_mbe']}; RMSE = {stat['display_rmse']} mm d$^{{-1}}$"),
+                fontsize=6.5,
+                ha="left",
+                va="top",
+            )
+
+    for column_index, (_support, label, count) in enumerate(SUPPORTS):
+        center = x_positions[column_index] + side / 2
         fig_text(
             fig,
-            cx,
-            A_HEAD_Y + 3.1,
-            head,
+            center,
+            114.5,
+            label,
             fontsize=7.0,
             fontweight="semibold",
             ha="center",
             va="bottom",
         )
-        fig_text(fig, cx, A_HEAD_Y, count, fontsize=6.5, color=C_TEXT, ha="center", va="bottom")
+        fig_text(
+            fig,
+            center,
+            110.8,
+            f"$n$ = {count:,} site-days",
+            fontsize=6.5,
+            ha="center",
+            va="bottom",
+        )
+
     fig_text(
         fig,
-        A_X[0] + A_S + 1.75,
-        6.0,
+        57.5,
+        0.2,
         "Flux ET (mm d$^{-1}$)",
         fontsize=7.0,
         ha="center",
@@ -411,202 +417,327 @@ def draw_panel_a(fig, pooled, scatter):
     )
     fig_text(
         fig,
-        6.0,
-        A_Y[1] + A_S + 1.75,
+        4.3,
+        53.5,
         "Estimated ET (mm d$^{-1}$)",
         fontsize=7.0,
         ha="center",
         va="center",
         rotation=90,
     )
-    # One shared log count scale across all four facets, keyed by one thin
-    # vertical colorbar in the dead strip between panels (a) and (b)/(c).
-    gmax = max(int(hb.get_array().max()) for hb in hexes)
-    norm = matplotlib.colors.LogNorm(vmin=1, vmax=gmax)
-    for hb in hexes:
+
+    maximum = max(int(hb.get_array().max()) for hb in hexbins)
+    norm = matplotlib.colors.LogNorm(vmin=1, vmax=maximum)
+    for hb in hexbins:
         hb.set_norm(norm)
-    # the bar hugs panel (a); tick labels fill the strip to the right, ending
-    # short of the panel (c) facets (x = 119); the title clears the facet
-    # tops (y = 71) and panel (a)'s right column (x = 108)
-    cax = ax_mm(fig, 108.8, 30.0, 2.6, 40.0)
-    cb = fig.colorbar(hexes[0], cax=cax)
-    cb.outline.set_linewidth(0.55)
-    cb.outline.set_edgecolor(C_CHARCOAL)
-    ticks = [t for t in CBAR_TICKS if t <= gmax]
-    cb.set_ticks(ticks)
-    cb.set_ticklabels([f"{t:,}" for t in ticks])
-    cb.minorticks_off()
-    cax.tick_params(labelsize=6.5, length=2.2, width=0.55, pad=1.2)
-    fig_text(fig, 108.8, 71.8, "Site-days", fontsize=7.0, ha="left", va="bottom")
+    cax = ax_mm(fig, 104.5, 31.5, 2.3, 41.0)
+    colorbar = fig.colorbar(hexbins[0], cax=cax)
+    ticks = [tick for tick in CBAR_TICKS if tick <= maximum]
+    colorbar.set_ticks(ticks)
+    colorbar.set_ticklabels([f"{tick:,}" for tick in ticks])
+    colorbar.minorticks_off()
+    colorbar.outline.set_edgecolor(C_CHARCOAL)
+    colorbar.outline.set_linewidth(0.55)
+    cax.tick_params(labelsize=6.5, length=2.2, width=0.55, pad=1.0)
+    fig_text(fig, 104.5, 73.5, "Site-days", fontsize=6.5, ha="left", va="bottom")
+    return {"hexbin_max_count": maximum}
 
 
-def facet_heading(fig, x_center: float, y_top: float, head: str, unit: str):
-    """Two-line facet heading: metric name plus optional 6.5 pt unit line."""
-    fig_text(
-        fig, x_center, y_top, head, fontsize=7.0, fontweight="semibold", ha="center", va="bottom"
-    )
-    if unit:
-        # 3.4 mm keeps the mathtext superscript clear of the head above
-        fig_text(fig, x_center, y_top - 3.4, f"({unit})", fontsize=6.5, ha="center", va="bottom")
+def contrast_axis(ax, metric: str, panel: str) -> None:
+    limits = B_LIMS if panel == "b" else C_LIMS
+    ticks = B_TICKS if panel == "b" else C_TICKS
+    ax.set_xlim(*limits[metric])
+    ax.set_xticks(ticks[metric])
+    ax.set_xticklabels([f"{value:g}".replace("-", "−") for value in ticks[metric]])
+    ax.axvline(0, color=C_MID, lw=0.55, zorder=1)
+    style_box(ax)
 
 
-def draw_panel_b(fig, cohort):
-    n = len(B_ROWS)
-    ypos = {sup: n - 1 - i for i, (sup, _) in enumerate(B_ROWS)}
-    for j, (metric, head, unit) in enumerate(EFFECT_FACETS):
-        ax = ax_mm(fig, B_FACET_X[j], B_Y0, B_FACET_W, B_H)
-        lo, hi = B_LIMS[metric]
-        strip_axis(ax, lo, hi, B_TICKS[metric], n)
-        for sup, _ in B_ROWS:
-            row = cohort[(cohort["metric"] == metric) & (cohort["temporal_support"] == sup)].iloc[0]
-            y = ypos[sup]
-            ax.hlines(y, row["ci95_lo"], row["ci95_hi"], color=C_CHARCOAL, lw=1.15, zorder=2)
+def draw_panel_b(fig, contrasts: pd.DataFrame) -> None:
+    x_positions = [131.5, 151.0, 170.5]
+    width, y0, height = 17.0, 82.5, 22.0
+    base_y = {"retrieval": 1.0, "between_retrieval": 0.0}
+    offsets = {"sqrt_n_weighted_site_metric": 0.14, "pooled_observations": -0.14}
+
+    for column_index, (metric, head, unit) in enumerate(METRICS):
+        ax = ax_mm(fig, x_positions[column_index], y0, width, height)
+        contrast_axis(ax, metric, "b")
+        ax.set_ylim(-0.50, 1.50)
+        ax.set_yticks([1.0, 0.0])
+        if column_index == 0:
+            ax.set_yticklabels(["Retrieval dates", "Between retrievals"], fontsize=6.5)
+            ax.tick_params(axis="y", length=0, pad=3.0)
+        else:
+            ax.set_yticklabels([])
+            ax.tick_params(axis="y", length=0)
+        title = head if not unit else f"{head}\n({unit})"
+        ax.set_title(title, fontsize=7.0, fontweight="semibold", pad=3.0, linespacing=1.0)
+
+        for aggregation, _label in AGGREGATIONS:
+            subset = contrasts[
+                (contrasts["metric"] == metric) & (contrasts["aggregation"] == aggregation)
+            ]
+            for row in subset.itertuples(index=False):
+                y = base_y[row.temporal_class] + offsets[aggregation]
+                if aggregation == "sqrt_n_weighted_site_metric":
+                    color, marker, face, size = C_BLUE, "o", C_BLUE, 3.1
+                else:
+                    color, marker, face, size = C_CHARCOAL, "s", "white", 3.0
+                ax.hlines(y, row.ci95_low, row.ci95_high, color=color, lw=1.05, zorder=2)
+                ax.plot(
+                    row.estimate,
+                    y,
+                    marker=marker,
+                    ms=size,
+                    mfc=face,
+                    mec=color,
+                    mew=0.65,
+                    ls="none",
+                    zorder=3,
+                )
+
+
+def draw_shared_key(fig) -> None:
+    ax = ax_mm(fig, 116.5, 72.0, 71.0, 4.5)
+    ax.set(xlim=(0, 71), ylim=(0, 1))
+    ax.set_axis_off()
+    entries = [
+        (8.0, C_BLUE, "o", C_BLUE, "Station-weighted"),
+        (34.0, C_CHARCOAL, "s", "white", "Pooled"),
+        (53.5, C_MID, "o", "white", "Individual site"),
+    ]
+    for x, color, marker, face, label in entries:
+        if label == "Individual site":
+            ax.plot(x, 0.50, marker=marker, ms=2.6, mfc=face, mec=color, mew=0.6, ls="none")
+        else:
+            ax.plot([x - 2.5, x + 2.5], [0.50, 0.50], color=color, lw=1.0)
             ax.plot(
-                row["median_delta"],
-                y,
-                marker="o",
-                ms=3.1,
-                mfc=C_BLUE,
-                mec=C_BLUE,
-                mew=0,
-                zorder=3,
+                x,
+                0.50,
+                marker=marker,
+                ms=3.0,
+                mfc=face,
+                mec=color,
+                mew=0.65,
+                ls="none",
             )
-        facet_heading(fig, B_FACET_X[j] + B_FACET_W / 2, B_Y0 + B_H + 4.9, head, unit)
-    for sup, label in B_ROWS:
-        fig_text(
-            fig,
-            B_LABEL_X,
-            B_Y0 + (ypos[sup] + 0.6) / (len(B_ROWS) + 0.2) * B_H,
-            label,
-            fontsize=6.5,
-            ha="right",
-            va="center",
+        ax.text(x + 3.2, 0.50, label, fontsize=6.5, ha="left", va="center")
+
+
+def draw_panel_c(fig, interactions: pd.DataFrame, sites: pd.DataFrame) -> None:
+    x_positions = [119.0, 142.3, 165.6]
+    width, y0, height = 20.9, 11.5, 43.5
+    ordered = sites.sort_values("site_order_interaction_kge")
+    site_y = np.arange(len(ordered), dtype=float)
+    summary_y = {"pooled_observations": 45.5, "sqrt_n_weighted_site_metric": 47.6}
+
+    for column_index, (metric, head, unit) in enumerate(METRICS):
+        ax = ax_mm(fig, x_positions[column_index], y0, width, height)
+        contrast_axis(ax, metric, "c")
+        ax.set_ylim(-1.0, 49.0)
+        ax.set_yticks([])
+        title = head if not unit else f"{head}\n({unit})"
+        ax.set_title(title, fontsize=7.0, fontweight="semibold", pad=3.0, linespacing=1.0)
+        ax.axhline(43.7, color=C_LIGHT, lw=0.55, zorder=1)
+        ax.plot(
+            ordered[f"interaction_{metric}"].to_numpy(),
+            site_y,
+            marker="o",
+            ms=2.25,
+            mfc="white",
+            mec=C_MID,
+            mew=0.55,
+            ls="none",
+            zorder=2,
         )
 
-
-def draw_panel_c(fig, effects):
-    eff = effects.set_index(["site_id", "temporal_support"])
-    order = (
-        effects.drop_duplicates("site_id").sort_values("site_order_between_kge")["site_id"].tolist()
-    )
-    n = len(order)
-    for j, (metric, head, unit) in enumerate(EFFECT_FACETS):
-        ax = ax_mm(fig, C_FACET_X[j], C_Y0, C_FACET_W, C_H)
-        lo, hi = C_LIMS[metric]
-        strip_axis(ax, lo, hi, C_TICKS[metric], n)
-        for yi, fid in enumerate(order):
-            a = float(eff.loc[(fid, "acquisition"), f"d_{metric}"])
-            b = float(eff.loc[(fid, "between_acquisitions"), f"d_{metric}"])
-            ax.plot([a, b], [yi, yi], color=C_LIGHT, lw=0.45, zorder=2)
-            ax.plot(a, yi, marker="o", ms=1.9, mfc="white", mec=C_MID, mew=0.5, ls="none", zorder=3)
-            ax.plot(b, yi, marker="D", ms=1.7, mfc=C_MID, mec=C_MID, mew=0.3, ls="none", zorder=4)
-        facet_heading(fig, C_FACET_X[j] + C_FACET_W / 2, C_Y0 + C_H + 4.3, head, unit)
-    # frameless two-entry marker key below the facets (FIGURE_STYLE_GUIDE §8:
-    # every distinguishing symbol is defined inside the figure)
-    kx0 = C_FACET_X[0]
-    kw = C_FACET_X[2] + C_FACET_W - kx0
-    axk = ax_mm(fig, kx0, 3.6, kw, 3.0)
-    axk.set_xlim(0, kw)
-    axk.set_ylim(0, 1)
-    axk.set_axis_off()
-    entries = [
-        ("o", dict(mfc="white", mec=C_MID, mew=0.5, ms=1.9), "Acquisition dates"),
-        ("D", dict(mfc=C_MID, mec=C_MID, mew=0.3, ms=1.7), "Between acquisitions"),
-    ]
-    xk = [kw * 0.16, kw * 0.52]
-    for (marker, mkw, label), x in zip(entries, xk, strict=True):
-        axk.plot([x], [0.5], marker=marker, ls="none", **mkw)
-        axk.text(x + 1.7, 0.5, label, fontsize=6.5, color=C_TEXT, ha="left", va="center")
+        for aggregation, _label in AGGREGATIONS:
+            row = interactions[
+                (interactions["metric"] == metric) & (interactions["aggregation"] == aggregation)
+            ].iloc[0]
+            y = summary_y[aggregation]
+            if aggregation == "sqrt_n_weighted_site_metric":
+                color, marker, face, size = C_BLUE, "o", C_BLUE, 3.1
+            else:
+                color, marker, face, size = C_CHARCOAL, "s", "white", 3.0
+            ax.hlines(y, row["ci95_low"], row["ci95_high"], color=color, lw=1.05, zorder=3)
+            ax.plot(
+                row["estimate"],
+                y,
+                marker=marker,
+                ms=size,
+                mfc=face,
+                mec=color,
+                mew=0.65,
+                ls="none",
+                zorder=4,
+            )
 
 
-def add_panel_title(fig, x_mm: float, y_mm: float, label: str):
-    """Elsevier panel label: plain-weight '(a)' fused with a sentence-case
-    identifier, one text object on one baseline (FIGURE_STYLE_GUIDE §4-5)."""
-    return fig_text(fig, x_mm, y_mm, label, fontsize=7.0, ha="left", va="bottom")
-
-
-# ---------------------------------------------------------------- audit
-
-
-def audit(fig) -> list[dict]:
+def audit(fig) -> list[dict[str, object]]:
     items = []
     for artist in fig.findobj(matplotlib.text.Text):
-        s = artist.get_text().strip()
-        if not s:
+        text = artist.get_text().strip()
+        if not text:
             continue
         size = float(artist.get_fontsize())
-        items.append({"text": s, "fontsize_pt": round(size, 2)})
+        items.append({"text": text, "fontsize_pt": round(size, 2)})
         if size < MIN_PT - 1e-6:
-            raise ProofError(f"text below {MIN_PT}pt: {s!r} at {size}pt")
-        for bad in FORBIDDEN_STRINGS:
-            if bad.lower() in s.lower():
-                raise ProofError(f"forbidden string {bad!r} rendered: {s!r}")
+            raise ProofError(f"text below {MIN_PT} pt: {text!r} at {size} pt")
+        for forbidden in FORBIDDEN_STRINGS:
+            if forbidden.lower() in text.lower():
+                raise ProofError(f"forbidden string {forbidden!r} rendered: {text!r}")
     return items
 
 
-# ---------------------------------------------------------------- main
+def simulate_cvd(source: Image.Image, matrix: np.ndarray) -> Image.Image:
+    rgb = np.asarray(source.convert("RGB"), dtype=float) / 255.0
+    transformed = np.clip(rgb @ matrix.T, 0.0, 1.0)
+    return Image.fromarray(np.round(transformed * 255).astype(np.uint8))
+
+
+def write_review_rasters(png_path: Path) -> None:
+    source = Image.open(png_path)
+    ImageOps.grayscale(source).save(png_path.with_name(f"{png_path.stem}_grayscale.png"))
+    source.resize(
+        (source.width // 4, source.height // 4),
+        resample=Image.Resampling.LANCZOS,
+    ).save(png_path.with_name(f"{png_path.stem}_printcheck.png"))
+
+    matrices = {
+        "protanopia": np.array(
+            [
+                [0.56667, 0.43333, 0.00000],
+                [0.55833, 0.44167, 0.00000],
+                [0.00000, 0.24167, 0.75833],
+            ]
+        ),
+        "deuteranopia": np.array(
+            [
+                [0.62500, 0.37500, 0.00000],
+                [0.70000, 0.30000, 0.00000],
+                [0.00000, 0.30000, 0.70000],
+            ]
+        ),
+        "tritanopia": np.array(
+            [
+                [0.95000, 0.05000, 0.00000],
+                [0.00000, 0.43333, 0.56667],
+                [0.00000, 0.47500, 0.52500],
+            ]
+        ),
+    }
+    for label, matrix in matrices.items():
+        simulate_cvd(source, matrix).save(png_path.with_name(f"{png_path.stem}_cvd_{label}.png"))
 
 
 def main() -> None:
     register_fonts()
-    pkg = load_package()
-
+    package = load_package()
     fig = plt.figure(figsize=(PAGE_W / 25.4, PAGE_H / 25.4), dpi=300, facecolor="white")
-    draw_panel_a(fig, pkg["pooled"], pkg["scatter"])
-    draw_panel_b(fig, pkg["cohort"])
-    draw_panel_c(fig, pkg["effects"])
-    add_panel_title(fig, 4.5, TITLE_Y, "(a) Pooled daily ET agreement")
-    add_panel_title(fig, R_X0 - 3.5, TITLE_Y, "(b) Cohort effects of temporal support")
-    add_panel_title(fig, R_X0 - 3.5, C_Y0 + C_H + 8.0, "(c) Site-level effects")
 
-    items = audit(fig)
+    panel_a_meta = draw_panel_a(fig, package["pooled"], package["scatter"])
+    draw_panel_b(fig, package["contrasts"])
+    draw_shared_key(fig)
+    draw_panel_c(fig, package["interactions"], package["sites"])
 
+    fig_text(
+        fig,
+        4.5,
+        120.5,
+        "(a) Pooled daily ET agreement (43 sites)",
+        fontsize=7.0,
+        ha="left",
+        va="bottom",
+    )
+    fig_text(
+        fig,
+        116.0,
+        120.5,
+        "(b) Relative performance by temporal support",
+        fontsize=7.0,
+        ha="left",
+        va="bottom",
+    )
+    fig_text(
+        fig,
+        116.0,
+        116.0,
+        "Δ = SWIM-RS − OpenET; $n$ = 43 sites",
+        fontsize=6.5,
+        ha="left",
+        va="bottom",
+    )
+    fig_text(
+        fig,
+        119.0,
+        65.7,
+        "(c) Temporal change in relative performance (43 sites)",
+        fontsize=7.0,
+        ha="left",
+        va="bottom",
+    )
+    fig_text(
+        fig,
+        153.5,
+        2.3,
+        "Between-retrieval Δ − retrieval-date Δ; sites ordered by ΔKGE",
+        fontsize=6.5,
+        ha="center",
+        va="bottom",
+    )
+
+    text_items = audit(fig)
     OUTDIR.mkdir(parents=True, exist_ok=True)
-    for ext in ("pdf", "svg"):
-        fig.savefig(OUTDIR / f"{STEM}.{ext}", dpi=RASTER_DPI, facecolor="white")
-    fig.savefig(OUTDIR / f"{STEM}.png", dpi=RASTER_DPI, facecolor="white")
+    for extension in ["pdf", "svg", "png"]:
+        fig.savefig(
+            OUTDIR / f"{STEM}.{extension}",
+            dpi=RASTER_DPI,
+            facecolor="white",
+            bbox_inches=None,
+        )
     plt.close(fig)
+    write_review_rasters(OUTDIR / f"{STEM}.png")
 
-    with open(OUTDIR / "fig03_pooled_agreement_textaudit.csv", "w", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=["text", "fontsize_pt"])
-        w.writeheader()
-        w.writerows(items)
-
+    with (OUTDIR / f"{STEM}_textaudit.csv").open("w", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=["text", "fontsize_pt"])
+        writer.writeheader()
+        writer.writerows(text_items)
     shutil.copy2(__file__, OUTDIR / Path(__file__).name)
 
-    meta = {
-        "figure": "Figure 3 -- daily ET agreement and temporal reconstruction",
-        "contract": "paper/notes/fig03_production_handoff.md (2026-08-27)",
-        "style": (
-            "~/code/style/FIGURE_STYLE_GUIDE.md + journal_figures.mplstyle; "
-            "Arial family (the guide-named face)"
-        ),
-        "composition_id": pkg["meta"]["composition_id"],
+    metadata = {
+        "figure": "Figure 3 -- OpenET benchmark agreement by temporal support",
+        "contract": "paper/notes/fig03_production_handoff.md (2026-09-01)",
+        "style": "FIGURE_STYLE_GUIDE.md + journal_figures.mplstyle",
+        "composition_id": package["metadata"]["composition_id"],
         "canvas_mm": [PAGE_W, PAGE_H],
         "raster_dpi": RASTER_DPI,
+        "counts": package["metadata"]["counts"],
         "panel_a": {
             "axes_mm_day": [AX_LO, AX_HI],
             "ticks": AX_TICKS,
-            "encoding": "hexbin density, viridis, shared log count scale",
+            "encoding": "hexbin density with a shared logarithmic count scale",
             "hex_gridsize": HEX_GRIDSIZE,
-            "rasterized": "hexbin layers only; axes, text, and 1:1 lines are vector",
+            **panel_a_meta,
         },
         "panel_b_limits": B_LIMS,
         "panel_c_limits": C_LIMS,
-        "counts": {
-            "sites": 43,
-            "acquisition_site_days": 4751,
-            "between_acquisition_site_days": 55584,
-            "total_site_days": 60335,
-        },
-        "package_hashes": pkg["hashes"],
-        "text_items_audited": len(items),
+        "review_rasters": [
+            f"{STEM}_grayscale.png",
+            f"{STEM}_printcheck.png",
+            f"{STEM}_cvd_protanopia.png",
+            f"{STEM}_cvd_deuteranopia.png",
+            f"{STEM}_cvd_tritanopia.png",
+        ],
+        "package_hashes": package["hashes"],
+        "text_items_audited": len(text_items),
         "rendered_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "generator": "scripts/figures/fig03_temporal_reconstruction.py",
     }
-    (OUTDIR / "fig03_pooled_agreement_metadata.json").write_text(json.dumps(meta, indent=2))
+    (OUTDIR / f"{STEM}_metadata.json").write_text(json.dumps(metadata, indent=2))
     print(f"rendered {STEM}.pdf/svg/png to {OUTDIR}")
-    print(f"text items audited: {len(items)} (all >= {MIN_PT}pt)")
+    print(f"text items audited: {len(text_items)} (all >= {MIN_PT} pt)")
+    print("review rasters: grayscale, printcheck, cvd_{protanopia,deuteranopia,tritanopia}")
 
 
 if __name__ == "__main__":
