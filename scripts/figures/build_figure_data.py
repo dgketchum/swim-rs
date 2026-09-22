@@ -50,37 +50,41 @@ REPO = Path(__file__).resolve().parents[2]
 FINAL = REPO / "paper" / "data" / "final"
 OUT = FINAL / "figures"
 
-E1_RUN22 = Path("/data/ssd1/swim/5_Flux_Ensemble/results/run22")
+# Workspace locations come from each example's TOML-derived paths module, so the
+# builder follows a relocated ``root`` for free.  ``examples/`` is not a package.
+for _ex in ("5_Flux_Ensemble", "6_Flux_International", "7_Applied_Water"):
+    if str(REPO / "examples" / _ex) not in sys.path:
+        sys.path.append(str(REPO / "examples" / _ex))
+import ex5_paths  # noqa: E402
+import ex6_paths  # noqa: E402
+import ex7_paths  # noqa: E402
+
+_CFG5 = ex5_paths.load_config()
+_CFG6 = ex6_paths.load_config()
+
+E1_RUN22 = Path(ex5_paths.run_dir(cfg=_CFG5))
 E1_ARCHIVE = E1_RUN22 / "archive"
-E1_CONTAINER = Path("/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run22.swim")
-E1_WITHIN_STRAT = Path(
-    "/data/ssd1/swim/5_Flux_Ensemble/results/within_e2_transfer_irrigation_stratified"
-)
+E1_CONTAINER = Path(ex5_paths.run_container(cfg=_CFG5))
+E1_WITHIN_STRAT = Path(ex5_paths.results_root(_CFG5)) / "within_e2_transfer_irrigation_stratified"
 
 # E2 sources repointed 2026-09-21 to the HWSD-AWC-units recalibration (GrassBasis
 # footing, HWSD per-site aw priors).  The frozen copies under
 # paper/data/final/e2_closure_pool/ are the paper's source of record; the results
 # root is read only where a per-site table was not frozen, and its per-site
 # transfer table must hash-match the frozen copy.
-E2_RESULTS = Path(
-    "/data/ssd1/swim/6_Flux_International/results/"
-    "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
-)
-E2_TRANSFER = Path(
-    "/data/ssd1/swim/6_Flux_International/results/e2_run22_transfer_by_irrigation_to_grassbasis"
-)
-E2_CONTAINER = Path(
-    "/data/ssd1/swim/6_Flux_International/data/"
-    "6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim"
+E2_RESULTS = ex6_paths.run_dir(cfg=_CFG6)
+E2_TRANSFER = ex6_paths.results_root(_CFG6) / "e2_run22_transfer_by_irrigation_to_grassbasis"
+E2_CONTAINER = (
+    Path(_CFG6.data_dir) / "6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim"
 )
 E2_FROZEN = FINAL / "e2_closure_pool"
 E2_FROZEN_POOL = E2_FROZEN / "closure_pool"
 E2_FROZEN_TRANSFER = E2_FROZEN / "transfer"
 E2_MAPPING_META = E2_FROZEN_TRANSFER / "e3_irrigation_stratified_param_mapping_metadata.json"
 
-E3_LOCAL = Path("/data/ssd1/swim/7_Applied_Water/results/applied_calibrated")
-E3_TRANSFER = Path("/data/ssd1/swim/7_Applied_Water/results/applied_transfer_run22_by_irrigation")
-E3_CONTAINER = Path("/data/ssd1/swim/7_Applied_Water/data/7_Applied_Water_e7cal.swim")
+E3_LOCAL = ex7_paths.eval_dir(ex7_paths.LOCAL_LABEL)
+E3_TRANSFER = ex7_paths.eval_dir(ex7_paths.TRANSFER_LABEL)
+E3_CONTAINER = ex7_paths.run_container()
 
 NE_COUNTRIES = REPO / "data" / "cartographic" / "ne_110m_admin_0_countries.shp"
 # Archived 2026-08-24 for the section 6.4 / 6.7 CONUS state-boundary context test.
@@ -581,8 +585,8 @@ def e3_configured() -> pd.DataFrame:
 # vegetation formulation (and, for the linear arm, its formulation-specific
 # slope/intercept priors) differs between arms.  Internal run labels are
 # provenance only and never appear in a reader-facing field.
-E0_RESULTS = Path("/data/ssd1/swim/6_Flux_International/results")
-E0_DATA = Path("/data/ssd1/swim/6_Flux_International/data")
+E0_RESULTS = ex6_paths.results_root(_CFG6)
+E0_DATA = Path(_CFG6.data_dir)
 E0_EXAMPLE = "examples/6_Flux_International"
 E0_SITES_FILE = REPO / E0_EXAMPLE / "e0_disjoint" / "disjoint_sites.txt"
 E0_MERGED_POSTERIOR = Path("archive/4_pest_outputs/merged/merged_posterior.csv")
@@ -4340,8 +4344,8 @@ FIG01_EXAMPLE_SITE = "S2"
 # This relocated January delivery is used only to reproduce the already-frozen
 # Figure 1 example-window selection. Its benchmark columns are prohibited from
 # the Figure 1 display table and from every Figure 3 evaluation artifact.
-FIG01_LEGACY_OPENET_DAILY = Path(
-    "/data/ssd1/swim/5_Flux_Ensemble/data/_deprecated_january_delivery/openet_flux/daily_data"
+FIG01_LEGACY_OPENET_DAILY = (
+    Path(_CFG5.data_dir) / "_deprecated_january_delivery" / "openet_flux" / "daily_data"
 )
 FIG01_EXAMPLE_START = "2018-04-01"
 FIG01_EXAMPLE_END = "2018-07-29"
@@ -6218,9 +6222,10 @@ def build_fig01() -> None:
             ],
             "note": (
                 "Version 2.1.0, the proofs under paper/figures/proofs/fig01_graybox_110/ and "
-                "fig01_graybox/, the assets under paper/figures/fig1_handoff/, and "
-                "scripts/figures/fig1_scope_architecture.py are design provenance only. They "
-                "must not be polished, relabelled or reinserted."
+                "fig01_graybox/, and the assets under paper/figures/fig1_handoff/ are design "
+                "provenance only (the retired scripts/figures/fig1_scope_architecture.py was "
+                "removed from the repo 2026-09-22; see git history). They must not be "
+                "polished, relabelled or reinserted."
             ),
         },
         "contract": (
