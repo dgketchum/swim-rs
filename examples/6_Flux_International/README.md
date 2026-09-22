@@ -11,7 +11,7 @@ This directory produces:
 | Paper artifact | Analysis | Output |
 |---|---|---|
 | Table 3, Fig. 2 (E0 vegetation formulation) | `pooled_arm_compare.py` on the 37 sites outside the E1 cohort | `results/e0_disjoint/*/disjoint37/` |
-| Table 5, Table S8, §3.3 (E2 performance, transfer) | `e2_refooting/phase11_closure_pool_summary.py` | `results/<run>/archive/6_evaluation/closure_pool/` |
+| Table 5, Table S8, §3.3 (E2 performance, transfer) | `closure_pool_summary.py` | `results/<run>/archive/6_evaluation/closure_pool/` |
 | Fig. 5b (parameter transfer into E2) | `transfer_ex5_params.py` re-cut in the closure-pool summary | `closure_pool/transfer_refresh_summary.csv` |
 | Table S2 transferred parameter sets | `transfer/build_ex5_irrigation_stratified_params.py` | `paper/data/final/e2_run22_transfer_vectors_by_irrigation.json` |
 | Table S9 (E1 vs E2 product parity) | `product_parity/e1_e2_product_parity.py` | `--out-dir` |
@@ -34,7 +34,12 @@ superseded runs are under `results/superseded_awc320_20260921/`.
 ├── 6_Flux_International_LSEnsemble_POR.toml                        container-build configuration
 ├── 6_Flux_International.toml                                       extraction configuration
 ├── container_build/            raw data → validated container (not needed if you have the container)
-├── e2_refooting/               calibration audit, run-policy archives, evaluation summaries
+├── ex6_paths.py                every on-disk location, derived from the TOML `root`
+├── objective_audit.py          independent reconstruction of the ETf weights (gate G9)
+├── archive_prelaunch.py        RUN_POLICY Cats 1-3 capture and launch-time hash verify
+├── archive_postcalibration.py  RUN_POLICY Cats 4-5: merged posterior, bounds, phi history
+├── evaluation_summary.py       RUN_POLICY Cat 6: paired metrics, groups, reproduction checks
+├── closure_pool_summary.py     47-site closure-corrected pool re-cut (Table 5, S8, §3.3)
 ├── evaluate.py                 daily, monthly, and ETf evaluation against flux ET
 ├── derived_metrics.py          shared: per-member benchmarks, uncalibrated baseline, decompositions
 ├── pooled_metrics.py           shared: concatenated-pool and √n-weighted metrics
@@ -56,7 +61,7 @@ above, not run on their own except where the chain calls them.
 |---|---|---|
 | Calibrated container | `{root}/6_Flux_International/data/6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim` | `[paths] container` in the canonical TOML |
 | Cohort shapefile (66 sites, flux source per site) | `{root}/6_Flux_International/data/gis/flux_crop_pub_66_150m.shp` | `[paths] fields_shapefile` |
-| Flux truth (QAQC daily, closure-corrected `ET_corr`) | `/nas/climate/flux_stations/qaqc/{network}/{sid}_daily_data.csv` | `QAQC_ROOT` in `evaluate.py` |
+| Flux truth (QAQC daily, closure-corrected `ET_corr`) | `{flux_dir}/{network}/{sid}_daily_data.csv` | `[validation] flux_dir` in the TOML |
 | E1 posterior for transfer | `paper/data/final/e2_run22_transfer_vector*.json` | `--params`, `--params-by-site` |
 
 `root` is set in the TOML (`root = "/data/ssd1/swim"`). Change that one line
@@ -85,8 +90,8 @@ uv run python -m swimrs.calibrate.batch_runner --config $CFG --action calibrate-
 ```
 
 The chain wraps this with the objective audit and the run-policy captures
-(`e2_refooting/phase9_objective_audit.py`, `phase9_archive_prelaunch.py`
-before, `phase11_archive_postcalibration.py` after). The merged posterior lands
+(`objective_audit.py`, `archive_prelaunch.py`
+before, `archive_postcalibration.py` after). The merged posterior lands
 at `$ARCHIVE/4_pest_outputs/merged/merged_posterior.csv`.
 
 **3. Evaluate**
@@ -102,15 +107,15 @@ uv run python $EX6/derived_metrics.py --config $CFG --uncalibrated --out {root}/
 **4. Transfer the E1 parameter sets** (no recalibration; vectors frozen upstream)
 
 ```bash
-uv run python $EX6/transfer/build_e3_irrigation_mapping.py --container <container> --out-dir <results>/transfer_refresh
-uv run python $EX6/transfer_ex5_params.py --config $CFG --params paper/data/final/e2_run22_transfer_vector.json --params-by-site <results>/transfer_refresh/e3_irrigation_stratified_param_mapping.json --container <container> --e3-results-dir <results> --out <transfer-out>
+uv run python $EX6/transfer/build_e2_irrigation_mapping.py --container <container> --out-dir <results>/transfer_refresh
+uv run python $EX6/transfer_ex5_params.py --config $CFG --params paper/data/final/e2_run22_transfer_vector.json --params-by-site <results>/transfer_refresh/e3_irrigation_stratified_param_mapping.json --container <container> --e2-results-dir <results> --out <transfer-out>
 ```
 
 **5. Summaries** (Table 5, S8, Fig. 5b; read-only on the archive)
 
 ```bash
-uv run python $EX6/e2_refooting/phase11_evaluation_summary.py --config $CFG --run-name $RUN
-uv run python $EX6/e2_refooting/phase11_closure_pool_summary.py --config $CFG --run-name $RUN
+uv run python $EX6/evaluation_summary.py --config $CFG --run-name $RUN
+uv run python $EX6/closure_pool_summary.py --config $CFG --run-name $RUN
 uv run python $EX6/awc_recal/monthly_28day_sensitivity.py --run-name $RUN
 ```
 
@@ -148,7 +153,7 @@ quota and are not part of reproduction from the container.
 ## Tests
 
 ```bash
-uv run pytest tests/unit -q -k "phase11 or container_health or stratified_transfer or e3_irrigation_mapping or ex6_flux_source"
+uv run pytest tests/unit -q -k "objective_audit or evaluation_summary or closure_pool or container_health or stratified_transfer or e2_irrigation_mapping or ex6_flux_source"
 ```
 
 ## Rules
