@@ -28,7 +28,6 @@ snodas_out = "{root}/data/snodas/snodas.json"
 remote_sensing_tables = "{root}/data/rs_tables"
 joined_timeseries = "{root}/data/plot_timeseries"
 dynamics_data = "{root}/data/dynamics.json"
-prepped_input = "{root}/data/prepped_input.json"
 
 [ids]
 feature_id = "FID"

@@ -15,8 +15,7 @@ fixtures/
 │   │   ├── ke_max.json
 │   │   ├── kc_max.json
 │   │   ├── irr_data.json
-│   │   ├── gwsub_data.json
-│   │   └── prepped_input.json
+│   │   └── gwsub_data.json
 │   └── input/                 # Input data
 │       ├── ndvi/             # Landsat NDVI CSV exports
 │       ├── etf/              # SSEBop ETf CSV exports
