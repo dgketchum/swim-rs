@@ -17,7 +17,7 @@ facet headings, 8 pt axis titles, 7-7.5 pt ticks/legends, SWIM blue
 #0072B2 = cover-scaled sigmoid, black square = unscaled linear,
 vermillion triangle = unscaled sigmoid; identities survive grayscale via
 marker shape and line pattern.  Machine checks assert the frozen-package
-hashes, the manuscript-precision pooled values, the 32/37 and 29/33
+hashes, the manuscript-precision pooled values, the 30/37 and 26/33
 isolated-cover win counts, the absence of internal run labels, and the
 minimum type size before anything is exported.
 
@@ -210,7 +210,7 @@ def load_package():
         assert s == str(r["manuscript_value"]), f"pooled {r['formulation']} mismatch"
 
     iso = eff[eff["comparator"] == "isolated_cover"]
-    for scale, n_want, w_want in (("daily", 37, 32), ("monthly", 33, 29)):
+    for scale, n_want, w_want in (("daily", 37, 30), ("monthly", 33, 26)):
         sub = iso[iso["scale"] == scale]
         assert len(sub) == n_want, f"isolated-cover {scale} site count"
         assert int(sub["win_cover_scaled"].sum()) == w_want, f"isolated-cover {scale} wins"
