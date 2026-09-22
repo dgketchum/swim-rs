@@ -3008,6 +3008,105 @@ E2_CONFIGS = {
     ),
 }
 
+E2_POOL_SUMMARY_LABELS = {
+    "E3 uncalibrated/default": "e3_uncal",
+    "Ex5 stratified transfer": "ex5_transfer_strat",
+    "E3 calibrated": "e3_cal",
+    "LS ensemble": "ls_ensemble",
+}
+
+
+def gate_closure_pool(pool: pd.DataFrame, label: str) -> set[str]:
+    """Gate the frozen E2 closure pool and return its site ids.
+
+    The pool must hold exactly the paper's 47 closure-corrected towers, each
+    once, with no raw-ET tier present.
+    """
+    require_count(len(pool), EXPECTED["E2_pool_daily"], f"{label} closure pool")
+    require_unique(pool, ["fid"], f"{label} closure pool")
+    if (pool["closure_tier"] != "closure_corrected").any():
+        raise BuildError(f"{label}: closure pool contains a non-closure-corrected site")
+    return set(pool["fid"].astype(str))
+
+
+def restrict_to_pool(df: pd.DataFrame, pool_ids: set[str], expected: int, label: str):
+    """Restrict a per-site table indexed by site id to the closure pool.
+
+    Every pool site must be present in the source table; the restricted table
+    must have exactly ``expected`` rows.
+    """
+    ids = set(df.index.astype(str))
+    if not pool_ids <= ids:
+        raise BuildError(f"{label}: closure pool site absent from the per-site table")
+    out = df.loc[df.index.astype(str).isin(pool_ids)].copy()
+    require_count(len(out), expected, label)
+    return out
+
+
+def gate_pool_summary(summ: pd.DataFrame, label: str) -> pd.DataFrame:
+    """Gate the frozen closure-pool cohort summary (``transfer_refresh_summary.csv``).
+
+    Keeps the four reported configurations (seven rows: four daily, three
+    monthly) and requires the daily rows to be on the 47-site pool and the
+    monthly rows on the 39 finite-metric pool sites.
+    """
+    summ = summ[summ["config"].isin(E2_POOL_SUMMARY_LABELS)].copy()
+    summ["legacy_config"] = summ["config"].map(E2_POOL_SUMMARY_LABELS)
+    require_count(len(summ), 7, f"{label} frozen cohort summaries")
+    if (summ.loc[summ["basis"] == "daily", "n_sites"] != EXPECTED["E2_pool_daily"]).any():
+        raise BuildError(f"{label}: frozen daily summary is not on the 47-site pool")
+    if (
+        summ.loc[summ["basis"] == "monthly", "n_sites"] != EXPECTED["E2_pool_monthly_finite"]
+    ).any():
+        raise BuildError(
+            f"{label}: frozen monthly summary is not on the 39 finite-metric pool sites"
+        )
+    return summ
+
+
+def check_pool_medians(
+    ps: pd.DataFrame, summ: pd.DataFrame, cfg: str, label: str, atol: float = 1e-6
+) -> None:
+    """The frozen 47-pool daily medians must be the medians of the restricted per-site table."""
+    frozen = summ[(summ["legacy_config"] == cfg) & (summ["basis"] == "daily")]
+    require_count(len(frozen), 1, f"{label} frozen daily summary for {cfg}")
+    for col, fcol in (("kge", "kge_med"), ("rmse", "rmse_med"), ("bias", "bias_med")):
+        got = float(ps[f"{cfg}_{col}"].median())
+        want = float(frozen[fcol].iloc[0])
+        if not np.isclose(got, want, rtol=0, atol=atol):
+            raise BuildError(f"{label}: pool median {cfg} {col} {got!r} != frozen summary {want!r}")
+
+
+def flag_evaluation_pool(
+    e2: pd.DataFrame, e2_pool: pd.DataFrame, label: str
+) -> tuple[pd.DataFrame, int, int]:
+    """Flag the configured E2 scope with the paper's evaluation pool (Fig. 1).
+
+    ``e2`` is the configured 66-site scope with ``site_id`` and ``in_e1``;
+    ``e2_pool`` is the frozen closure pool with ``fid``, ``country`` and
+    ``continent``.  Every pool site must be in scope; the flag count, the E1
+    overlap within the pool, and the pool's country and continent counts must
+    match ``EXPECTED``.  Returns the flagged frame and the two pool counts.
+    """
+    pool_ids = gate_closure_pool(e2_pool, label)
+    if not pool_ids <= set(e2["site_id"].astype(str)):
+        raise BuildError(f"{label}: closure-pool site not in the configured E2 scope")
+    e2 = e2.copy()
+    e2["in_evaluation_pool"] = e2["site_id"].astype(str).isin(pool_ids)
+    require_count(
+        int(e2["in_evaluation_pool"].sum()), EXPECTED["E2_pool_daily"], f"{label} E2 pool flag"
+    )
+    require_count(
+        int((e2["in_evaluation_pool"] & e2["in_e1"]).sum()),
+        EXPECTED["E1_E2_overlap_pool"],
+        f"{label} E1 overlap within the E2 pool",
+    )
+    n_pool_countries = int(e2_pool["country"].nunique())
+    n_pool_continents = int(e2_pool["continent"].nunique())
+    require_count(n_pool_countries, EXPECTED["E2_pool_countries"], f"{label} E2 pool countries")
+    require_count(n_pool_continents, EXPECTED["E2_pool_continents"], f"{label} E2 pool continents")
+    return e2, n_pool_countries, n_pool_continents
+
 
 def build_fig05_e2() -> None:
     """E2 cross-environment transfer package on the closure-corrected 47-site pool.
@@ -3040,55 +3139,22 @@ def build_fig05_e2() -> None:
         )
 
     pool = pd.read_csv(src_pool)
-    require_count(len(pool), EXPECTED["E2_pool_daily"], "fig05 E2 closure pool")
-    require_unique(pool, ["fid"], "fig05 E2 closure pool")
-    if (pool["closure_tier"] != "closure_corrected").any():
-        raise BuildError("fig05 E2: closure pool contains a non-closure-corrected site")
-    pool_ids = set(pool["fid"].astype(str))
+    pool_ids = gate_closure_pool(pool, "fig05 E2")
     pool = pool.set_index("fid")
 
     ps_all = pd.read_csv(src_ps, index_col=0)
     ps_all.index = ps_all.index.astype(str)
     ps_all.index.name = "site_id"
     require_count(len(ps_all), EXPECTED["E2_daily"], "fig05 E2 daily common cohort (all tiers)")
-    if not pool_ids <= set(ps_all.index):
-        raise BuildError("fig05 E2: closure pool site absent from the per-site transfer table")
-    ps = ps_all.loc[ps_all.index.isin(pool_ids)].copy()
-    require_count(len(ps), EXPECTED["E2_pool_daily"], "fig05 E2 daily pool")
+    ps = restrict_to_pool(ps_all, pool_ids, EXPECTED["E2_pool_daily"], "fig05 E2 daily pool")
 
-    summ = pd.read_csv(src_refresh)
-    label_to_cfg = {
-        "E3 uncalibrated/default": "e3_uncal",
-        "Ex5 stratified transfer": "ex5_transfer_strat",
-        "E3 calibrated": "e3_cal",
-        "LS ensemble": "ls_ensemble",
-    }
-    summ = summ[summ["config"].isin(label_to_cfg)].copy()
-    summ["legacy_config"] = summ["config"].map(label_to_cfg)
-    require_count(len(summ), 7, "fig05 E2 frozen cohort summaries")
-    if (summ.loc[summ["basis"] == "daily", "n_sites"] != EXPECTED["E2_pool_daily"]).any():
-        raise BuildError("fig05 E2: frozen daily summary is not on the 47-site pool")
-    if (
-        summ.loc[summ["basis"] == "monthly", "n_sites"] != EXPECTED["E2_pool_monthly_finite"]
-    ).any():
-        raise BuildError(
-            "fig05 E2: frozen monthly summary is not on the 39 finite-metric pool sites"
-        )
+    summ = gate_pool_summary(pd.read_csv(src_refresh), "fig05 E2")
 
     rows = []
     for cfg, (name, prov) in E2_CONFIGS.items():
         need = [f"{cfg}_{k}" for k in ("kge", "r2", "rmse", "bias", "mae")]
         require_columns(ps.reset_index(), need, f"E2 persite config {cfg}")
-        # The frozen 47-pool medians must be the medians of the restricted per-site table.
-        frozen = summ[(summ["legacy_config"] == cfg) & (summ["basis"] == "daily")]
-        require_count(len(frozen), 1, f"fig05 E2 frozen daily summary for {cfg}")
-        for col, fcol in (("kge", "kge_med"), ("rmse", "rmse_med"), ("bias", "bias_med")):
-            got = float(ps[f"{cfg}_{col}"].median())
-            want = float(frozen[fcol].iloc[0])
-            if not np.isclose(got, want, rtol=0, atol=1e-6):
-                raise BuildError(
-                    f"fig05 E2: pool median {cfg} {col} {got!r} != frozen summary {want!r}"
-                )
+        check_pool_medians(ps, summ, cfg, "fig05 E2")
         rows.append(
             pd.DataFrame(
                 {
@@ -5165,22 +5231,7 @@ def build_fig01() -> None:
     # The paper's E2 evaluation pool (closure-corrected towers, frozen 2026-09-21).
     e2_pool_path = E2_FROZEN_POOL / "closure_pool_sites.csv"
     e2_pool = pd.read_csv(e2_pool_path)
-    require_count(len(e2_pool), EXPECTED["E2_pool_daily"], "fig01 E2 closure pool")
-    if not set(e2_pool["fid"].astype(str)) <= e2_sites:
-        raise BuildError("fig01: closure-pool site not in the configured E2 scope")
-    e2["in_evaluation_pool"] = e2["site_id"].isin(set(e2_pool["fid"].astype(str)))
-    require_count(
-        int(e2["in_evaluation_pool"].sum()), EXPECTED["E2_pool_daily"], "fig01 E2 pool flag"
-    )
-    require_count(
-        int((e2["in_evaluation_pool"] & e2["in_e1"]).sum()),
-        EXPECTED["E1_E2_overlap_pool"],
-        "fig01 E1 overlap within the E2 pool",
-    )
-    n_pool_countries = int(e2_pool["country"].nunique())
-    n_pool_continents = int(e2_pool["continent"].nunique())
-    require_count(n_pool_countries, EXPECTED["E2_pool_countries"], "fig01 E2 pool countries")
-    require_count(n_pool_continents, EXPECTED["E2_pool_continents"], "fig01 E2 pool continents")
+    e2, n_pool_countries, n_pool_continents = flag_evaluation_pool(e2, e2_pool, "fig01")
 
     # ---- handoff section 11: configured counts, source classes, MB_Pch ----
     require_count(len(e1), EXPECTED["E1_configured"], "fig01 E1 configured sites")
