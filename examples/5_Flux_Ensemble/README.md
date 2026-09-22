@@ -1,263 +1,208 @@
-# Example 5: CONUS Flux Ensemble
+# Example 5: CONUS Flux Ensemble (paper Experiment E1)
 
-Example 5 supports two paper experiments on the same 60-site CONUS cropland
-cohort:
+Sixty cropland flux-tower sites in the conterminous United States, forced with
+GridMET, calibrated to the per-capture mean of six unmasked OpenET v2.1 Landsat
+ET-fraction members (SSEBop, PT-JPL, SIMS, geeSEBAL, eeMETRIC, DisALEXI) with
+the intermodel standard deviation as the observation-weighting denominator.
+Eight parameters per site, PEST++ IES, 200 realizations, three iterations.
+Flux-tower ET is validation only: it never configures inputs, supplies a
+target, or enters a transferred parameter set.
 
-- **E0** compares three vegetation formulations.
-- **E1** calibrates SWIM-RS to a six-member OpenET ETf ensemble and evaluates
-  daily ET reconstruction, observation weighting, uncertainty, and parameter
-  transfer.
+This directory produces:
 
-Flux-tower ET is validation-only. It never configures model inputs, supplies a
-calibration target, or contributes to transferred parameter sets.
+| Paper artifact | Analysis | Output |
+|---|---|---|
+| Table 4, Tables S3 and S5, Fig. 3 (E1 daily and monthly benchmark vs OpenET) | `evaluate.py` | `paper/data/final/e1_openet_benchmark/{daily,monthly}/` |
+| Table S4 (retrieval-date vs between-retrieval support) | `overpass_decomposition.py` on the daily evaluator bundle | `paper/data/final/e1_openet_benchmark/temporal/` |
+| Table S6, Fig. 4d (spread vs fixed observation weighting) | `run_weighting_ablation.py`, rescored by `rebuild_e1_benchmark_evidence.py` | `paper/data/final/e2_weighting_ablation_*.csv` |
+| Fig. 4a–c (member spread vs error; conditioned-ensemble spread) | `spread_error.py`, `conditioned_ensemble_uncertainty.py` | `paper/data/final/e2_spread_error_*.csv`; `results/run22/conditioned_ensemble_uncertainty/` |
+| Table S7, Fig. 5a (within-E1 parameter transfer) | `within_e1_transfer.py`, promoted by `promote_final.py` | `paper/data/final/e2_irrigation_stratified_*.csv`, `e2_within_transfer_*.csv` |
+| Fig. 5b, Table S2 (E1 vectors transferred into E2) | Example 6 `transfer/` reads the Run 22 posterior | `paper/data/final/e2_run22_transfer_vector*.json` |
 
-## Start Here
+**Status (2026-09-21).** The published calibration is Run 22 (recalibrated
+2026-07-02). The benchmark package was frozen on 2026-09-01; its
+`MANIFEST.json` pins the sha256 of every input and of the analysis code, and
+`rebuild_e1_benchmark_evidence.py --verify` checks the rest of the `e2_*`
+files against `e2_evidence_metadata.json`. The E0 vegetation-formulation
+experiment (Table 3, Fig. 2) is run in Example 6 on the 37 sites outside this
+cohort; the earlier 60-site arms are retired to the untracked `legacy/`.
 
-The primary E1 configuration is `5_Flux_Ensemble.toml`. The checked-in paths
-assume the project workspace is
-`/data/ssd1/swim/5_Flux_Ensemble`; use explicit config, container, parameter,
-and output paths for any result intended for review or publication.
-
-Install the project environment from the repository root:
-
-```bash
-uv sync --all-extras
-```
-
-The canonical workflow is:
-
-1. Extract or obtain the required inputs.
-2. Build and validate a base container.
-3. Build an E1 run container with the six-member target and corrected
-   reference ET.
-4. Calibrate with PEST++ IES.
-5. Evaluate against flux ET and the separately extracted OpenET benchmark.
-6. Derive the retrieval-date decomposition from the evaluator-owned paired
-   records.
-
-Steps 1 and 4 contact external services or launch expensive computation. They
-should not be run merely to inspect or reproduce existing evidence.
-
-## Naming and Provenance
-
-The scientific labels are E0 and E1. Three older identifiers remain only to
-preserve archived paths and hashes:
-
-| Identifier | Meaning |
-|---|---|
-| `run22` | Internal archive tag for the primary E1 calibration |
-| `e2_*` | Legacy filename namespace in the frozen E1 evidence package |
-| `within_e2_transfer.py` | Legacy script filename for the within-E1 transfer analysis |
-
-Do not use those identifiers as paper experiment labels. The current
-experiment mapping and comparison rules are defined in
+Two identifiers predate the paper numbering and are kept because frozen
+hashes and the figure builder key on them: `run22` is the archive tag of the
+E1 calibration, and `e2_*` filenames and `results/within_e2_transfer*` output
+directories are the legacy namespace for E1 evidence. Neither is a paper
+experiment label; the mapping lives in
 [`../VALIDATION_POLICY.md`](../VALIDATION_POLICY.md).
 
-## Scientific Configuration
+## Layout
 
-SWIM-RS is calibrated at 60 cropland flux sites against the simple per-capture
-mean of six unmasked OpenET v2.1 Landsat ETf members: SSEBop, PT-JPL, SIMS,
-geeSEBAL, eeMETRIC, and DisALEXI. ET-denominated members are divided by OpenET
-bias-corrected GridMET grass-reference ET (ETo) before they enter the target.
-The intermodel sample standard deviation supplies the observation-weighting
-denominator. Eight parameters are estimated per site with 200 realizations and
-three PEST++ IES iterations.
+```
+5_Flux_Ensemble/
+├── 5_Flux_Ensemble.toml                    canonical E1 configuration (`root` sets every path)
+├── ex5_paths.py                            shared: run dir, container, posterior, log derived from the TOML
+├── container_build/                        raw data → base container → run container (skip if you have the container)
+│   ├── data_extract.py                     Earth Engine, GridMET, OpenET member and reference-ET extraction
+│   ├── container_prep.py                   base container (meteorology, NDVI, properties, flux fields)
+│   └── build_container.py                  run container: six-member target, corrected ETo/ETr, dynamics
+├── calibrate.py                            PEST++ IES wrapper; archives the trajectory
+├── archive_run.py                          run-policy archive for a finished calibration
+├── evaluate.py                             daily and monthly benchmark vs flux ET and OpenET
+├── overpass_decomposition.py               strict consumer of the daily evaluator bundle
+├── spread_error.py                         member spread vs acquisition-date ETf error
+├── conditioned_ensemble_uncertainty.py     retrieval spread vs conditioned-parameter spread
+├── run_weighting_ablation.py               spread vs fixed-SD weighting (two recalibrations)
+├── within_e1_transfer.py                   leave-region-out / leave-one-site-out transfer, pooled and irrigation-stratified
+├── promote_final.py                        tracked producer for the hand-promoted e2_* supporting files
+├── rebuild_e1_benchmark_evidence.py        rebuild or --verify the frozen e2_* evidence
+├── data/                                   extracted inputs (gitignored except gis/, see Inputs)
+├── legacy/                                 untracked; retired E0 arms and scripts
+└── notes/                                  untracked; working notes
+```
 
-The E1 benchmark uses the separately extracted, 3 x 3,
-MAD-filtered OpenET v2.1 ensemble supplied with the Volk flux comparison. For
-daily evaluation, capture-date ET is divided by same-day OpenET
-bias-corrected ETo, ETf is reconstructed with the OpenET-core 32-day temporal
-support behavior, and daily ET is recovered with the same ETo. The monthly
-benchmark is an independently extracted full-month product; it is not a sum
-of reconstructed daily values.
+## Inputs
 
-Headline SWIM-OpenET output uses exact common support and reports:
-
-- pooled KGE, RMSE, MBE, Pearson r, Pearson r-squared, and zero-intercept
-  slope;
-- square-root-record-length-weighted site KGE, RMSE, and MBE; and
-- whole-site bootstrap intervals and paired SWIM-minus-OpenET contrasts.
-
-Per-site tables remain required diagnostics. Median site effects are emitted
-only with `--site-effect-summary` and are not the default cohort headline.
-
-## Data Boundary
-
-Large, restricted, or generated inputs are intentionally not committed.
-
-| Location | Contents | Versioned |
+| Input | Location | Configured by |
 |---|---|---|
-| `examples/data/` | Shared flux-footprint geometry and station metadata used to generate the 60-site shapefile | Yes |
-| `examples/5_Flux_Ensemble/data/etf_v21_openet_eto/` | Six locally extracted OpenET ETf member tables and extraction summaries | No |
-| `examples/5_Flux_Ensemble/data/openet_refet/` | Locally extracted OpenET bias-corrected ETo and ETr | No |
-| `{workspace}/data/` | Meteorology, properties, flux records, shapefiles, and SWIM containers | No |
-| `{workspace}/results/` | PEST++ outputs, evaluation bundles, and run archives | No |
+| Base container | `{root}/5_Flux_Ensemble/data/5_Flux_Ensemble.swim` | `[paths] container` |
+| Run 22 container | `{root}/5_Flux_Ensemble/data/5_Flux_Ensemble_run22.swim` | `container_build/build_container.py --run run22` |
+| Run 22 posterior | `{root}/5_Flux_Ensemble/results/run22/5_Flux_Ensemble.3.par.csv` | `calibrate.py --results-tag run22` |
+| Cohort shapefile (60 sites) | `data/gis/flux_fields.shp` (tracked) and `{root}/5_Flux_Ensemble/data/gis/` | `[paths] fields_shapefile` |
+| Flux truth, Volk v2.1 closure-corrected daily ET | `{root}/5_Flux_Ensemble/data/daily_flux_files_2pt1/` | `[validation] flux_dir` |
+| OpenET benchmark, 3 x 3 MAD-filtered v2.1 ensemble at the towers | `{root}/5_Flux_Ensemble/data/openet_flux_2pt1/{daily,monthly}_data/` | `OPENET_SOURCE_DIRNAME` in `evaluate.py` |
+| Paired Volk delivery tables | `data/flux_2pt1/{daily,monthly}_2pt1_paired_data.csv` | sha256 pinned in the benchmark manifest |
+| OpenET bias-corrected GridMET ETo and ETr | `data/openet_refet/openet_{eto,etr}.csv` | `container_build/build_container.py`; sha256 pinned |
+| Six OpenET ETf member tables | `data/etf_v21_openet_eto/*_etf_no_mask.csv` | `container_build/data_extract.py --steps etf_v21` |
 
-The Volk v2.1 closure-corrected flux files must be supplied separately under
-the configured `daily_flux_files_2pt1` directory and remain subject to their
-source data policy. File presence is not a completeness test.
+`root` is set in the TOML (`root = "/data/ssd1/swim"`). Change that one line to
+relocate every derived path; the scripts resolve run directories, containers,
+and the posterior through `ex5_paths.py`, so no path is hard-coded elsewhere.
+Everything under `data/` except `gis/` is gitignored; the Volk flux and OpenET
+deliveries are subject to their source data policy and must be supplied
+separately. File presence is not a completeness test.
 
-## Primary Workflow
+## Workflow
 
-The commands below assume the checked-in canonical filesystem paths. Earth
-Engine extraction and calibration require explicit operator approval.
+Commands run from the repository root with `EX5=examples/5_Flux_Ensemble`,
+`CFG=$EX5/5_Flux_Ensemble.toml`, `DATA={root}/5_Flux_Ensemble/data`, and
+`RUN22={root}/5_Flux_Ensemble/results/run22`. Steps 1 and 2 are expensive;
+steps 3 onward reproduce the paper from the calibrated container and posterior.
 
-### 1. Extract Inputs
+**1. Build the run container** (only if you do not have
+`5_Flux_Ensemble_run22.swim`; see Rebuilding the container below)
 
-Run all current extraction steps:
-
-```bash
-uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/data_extract.py
-```
-
-Or run a checkpointed subset:
-
-```bash
-uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/data_extract.py --steps etf_v21,refet --sites US-Bi1,US-Ne1
-```
-
-The default path uses synchronous Earth Engine retrievals. The
-`ndvi_bucket`, `snodas_bucket`, and `properties_bucket` steps are
-compatibility paths and are not part of the current E1 workflow.
-
-### 2. Build and Validate the Base Container
+**2. Calibrate** (PEST++ IES; hours on a workstation)
 
 ```bash
-uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/container_prep.py --overwrite --getinfo
+uv run python $EX5/calibrate.py --config $CFG --container $DATA/5_Flux_Ensemble_run22.swim --results-tag run22 --keep-pestrun
+uv run python $EX5/archive_run.py --results-tag run22 --container $DATA/5_Flux_Ensemble_run22.swim
 ```
 
-At this intermediate stage, verify every configured site has seasonal NDVI
-coverage and finite meteorology, especially ETo, precipitation, solar
-radiation, and maximum and minimum temperature. With `--getinfo`, ETf is
-intentionally absent from the base container and the base is not
-calibration-ready.
+`archive_run.py` writes the run-policy archive under `$RUN22/archive/`
+(problem definition, parameter bounds, input health, posterior summary).
 
-### 3. Build the Run Container
+**3. Evaluate against flux ET and OpenET** (Table 4, S3, S5, Fig. 3)
 
 ```bash
-uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/build_container.py --run <tag> --source <base-container>
+uv run python $EX5/evaluate.py --config $CFG --par-csv $RUN22/5_Flux_Ensemble.3.par.csv --container $DATA/5_Flux_Ensemble_run22.swim --openet-source volk --output-dir <daily-dir> --bootstrap-reps 10000 --bootstrap-seed 42 --quiet-sites
+uv run python $EX5/evaluate.py --config $CFG --par-csv $RUN22/5_Flux_Ensemble.3.par.csv --container $DATA/5_Flux_Ensemble_run22.swim --monthly --output-dir <monthly-dir> --bootstrap-reps 10000 --bootstrap-seed 42 --quiet-sites
 ```
 
-This non-clobbering step copies the base container, ingests the six OpenET ETf
-members and corrected ETo/ETr, constructs the simple-mean ensemble target, and
-recomputes dynamics. `--mad` builds a diagnostic target and is not the primary
-E1 configuration.
+Daily: capture-date OpenET ET is divided by same-day bias-corrected ETo,
+reconstructed with the OpenET-core 32-day support, and multiplied back. Monthly
+uses the independently extracted full-month product. Each run writes
+`evaluation_grouped_{daily,monthly}_metrics.csv` (pooled and √n-weighted
+estimates with bootstrap intervals), `_contrasts.csv` (paired SWIM minus
+OpenET), `_metadata.json` (inputs, hashes, record contract),
+`evaluation_paired_daily_records.csv`, per-site `evaluation_metrics.csv`, and
+the exclusion ledger.
 
-Before calibration, inspect the run-container validation summary and verify
-that every site has at least one finite ETf capture for every target member,
-seasonal NDVI coverage, and no all-null meteorological variable. Report and
-resolve any incomplete site rather than dropping or filling it silently.
-
-### 4. Calibrate
+**4. Decompose by retrieval support** (Table S4)
 
 ```bash
-uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/calibrate.py --config /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/5_Flux_Ensemble.toml --container <run-container> --results-tag <tag> --keep-pestrun
+uv run python $EX5/overpass_decomposition.py --evaluator-output-dir <daily-dir> --output-dir <temporal-dir> --bootstrap-reps 10000 --seed 42
 ```
 
-Calibration is an expensive inverse run. `calibrate.py` archives the raw
-PEST++ trajectory before cleanup; `--keep-pestrun` retains the working
-directories as well.
+Stale or hash-mismatched parent artifacts are hard errors.
 
-### 5. Evaluate E1
-
-Canonical daily benchmark:
+**5. Spread–error and conditioned-ensemble uncertainty** (Fig. 4a–c)
 
 ```bash
-uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/evaluate.py --config /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/5_Flux_Ensemble.toml --par-csv /data/ssd1/swim/5_Flux_Ensemble/results/run22/5_Flux_Ensemble.3.par.csv --container /data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run22.swim --openet-source volk --output-dir <daily-output-dir> --bootstrap-reps 10000 --bootstrap-seed 42 --quiet-sites
+uv run python $EX5/spread_error.py --config $CFG
+uv run python $EX5/conditioned_ensemble_uncertainty.py
 ```
 
-Canonical monthly benchmark:
+Outputs land in `$RUN22/spread_error/` and
+`$RUN22/conditioned_ensemble_uncertainty/`.
+
+**6. Weighting ablation** (Table S6, Fig. 4d; two further calibrations)
 
 ```bash
-uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/evaluate.py --config /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/5_Flux_Ensemble.toml --par-csv /data/ssd1/swim/5_Flux_Ensemble/results/run22/5_Flux_Ensemble.3.par.csv --container /data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run22.swim --monthly --output-dir <monthly-output-dir> --bootstrap-reps 10000 --bootstrap-seed 42 --quiet-sites
+uv run python $EX5/container_build/build_container.py --run run22ablation --source $DATA/5_Flux_Ensemble.swim
+uv run python $EX5/run_weighting_ablation.py --tag run22 --container $DATA/5_Flux_Ensemble_run22ablation.swim
 ```
 
-The daily evaluator writes the following authoritative bundle:
+Arm outputs are `results/ablation_run22_e1_spread/`,
+`results/ablation_run22_e2_fixed_sd/`, and `results/ablation_run22_summary/`
+(`e1`/`e2` here are arm ids, not paper experiments). `--summary-only`
+regenerates the summaries without recalibrating.
 
-| Artifact | Role |
-|---|---|
-| `evaluation_grouped_daily_metrics.csv` | Pooled and weighted estimates with intervals |
-| `evaluation_grouped_daily_contrasts.csv` | Paired SWIM-minus-OpenET contrasts |
-| `evaluation_grouped_daily_metadata.json` | Inputs, configuration, hashes, and record contract |
-| `evaluation_paired_daily_records.csv` | Canonical paired observations and retrieval-support class |
-| `evaluation_metrics.csv` | Secondary per-site metrics |
-| `evaluation_sites_excluded.csv` | Exclusion and eligibility ledger |
-
-Monthly output follows the same `evaluation_grouped_monthly_*` convention and
-adds `evaluation_monthly_metrics.csv`. Automatic parameter discovery and the
-`diy` OpenET source are diagnostic conveniences, not publication provenance.
-
-### 6. Decompose Retrieval Support
-
-`overpass_decomposition.py` is a strict consumer of the complete daily
-evaluator bundle. It does not reconstruct OpenET independently.
+**7. Within-E1 parameter transfer** (Table S7, Fig. 5a)
 
 ```bash
-uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/overpass_decomposition.py --evaluator-output-dir <daily-output-dir> --output-dir <temporal-output-dir> --bootstrap-reps 10000 --seed 42
+uv run python $EX5/within_e1_transfer.py
 ```
 
-Missing, stale, or hash-mismatched parent artifacts are hard errors. Use
-`--legacy-site-products` only when reproducing the former compatibility
-tables.
+The posterior and container default to Run 22 and the output to
+`results/within_e2_transfer_irrigation_stratified/`, which holds both the
+pooled (`loro`, `loso`) and the irrigation-stratified (`loro_strat`,
+`loso_strat`) arms beside the local and default references. The stratified
+arms carry two class vectors so a rainfed site never receives an irrigated
+`mad`. The sibling `results/within_e2_transfer/` is an earlier run of the same
+script before the stratified arms existed; its pooled columns equal the
+stratified run's to floating-point round-off, and `promote_final.py` copies
+the frozen `e2_within_transfer_*` files from it.
 
-## E0 Vegetation-Formulation Arms
-
-| Configuration | Vegetation response | Transpiration term |
-|---|---|---|
-| `5_Flux_Ensemble.toml` | Sigmoid Kcb-NDVI | `fc * Ks * Kcb` |
-| `5_Flux_Ensemble_fao56_sig.toml` | Sigmoid Kcb-NDVI | `Ks * Kcb` |
-| `5_Flux_Ensemble_fao56.toml` | Linear Kcb-NDVI | `Ks * Kcb` |
-
-Each arm is calibrated independently on the same cohort and satellite target.
-`pooled_arm_compare.py` compares two arms on one identical flux-observation
-mask; run it for the two prespecified contrasts. It exits nonzero when its
-configuration-identity gate fails.
-
-## Supporting and Maintenance Analyses
-
-| Script | Purpose | Execution class |
-|---|---|---|
-| `archive_run.py` | Complete the provenance, input-health, posterior, and evaluation archive for a calibrated run | Post-processing; writes archive |
-| `spread_error.py` | Relate OpenET member spread to acquisition-date ETf error | Read-only analysis |
-| `conditioned_ensemble_uncertainty.py` | Compare retrieval spread with conditioned-parameter ensemble spread | Read-only inputs; writes dedicated results |
-| `run_weighting_ablation.py` | Compare spread and fixed-denominator observation weighting | Expensive calibration unless `--summary-only` |
-| `within_e2_transfer.py` | Within-E1 leave-region-out and leave-one-site-out parameter transfer | Forward runs; legacy filename |
-| `rebuild_e1_benchmark_evidence.py` | Rebuild or verify the frozen legacy-named E1 evidence package | Evidence maintenance; not the normal evaluator |
-
-The primary evaluator now implements the pooled and square-root-record-length
-weighted OpenET comparison directly. The former `volk_replication.py` workflow
-is superseded and must not be used.
-
-## Repository File Map
-
-| File | Role |
-|---|---|
-| `5_Flux_Ensemble.toml` | Primary E1 and cover-scaled E0 configuration |
-| `5_Flux_Ensemble_fao56_sig.toml` | E0 unscaled-sigmoid configuration |
-| `5_Flux_Ensemble_fao56.toml` | E0 unscaled-linear configuration |
-| `data_extract.py` | Earth Engine and GridMET extraction entry point |
-| `container_prep.py` | Base-container builder |
-| `build_container.py` | Six-member target and reference-ET run-container builder |
-| `calibrate.py` | PEST++ IES calibration wrapper |
-| `evaluate.py` | Canonical E1 flux/OpenET evaluator |
-| `overpass_decomposition.py` | Retrieval versus between-retrieval consumer |
-| `pooled_arm_compare.py` | E0 paired formulation comparator |
-| `archive_run.py` | Run archive materializer |
-
-## Validation
-
-Run the complete repository suite before committing logic changes:
+**8. Promote and freeze the paper evidence**
 
 ```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest tests/ -v
+uv run python $EX5/promote_final.py            # byte-for-byte check of the promoted files; --write replaces them
+uv run python $EX5/rebuild_e1_benchmark_evidence.py --output-dir <scratch-dir> --verify
 ```
 
-Focused tests for the E1 benchmark contract are under
-`tests/unit/test_e2_grouped_benchmark_metrics.py`,
-`tests/unit/test_e1_paired_record_temporal.py`,
-`tests/unit/test_overpass_decomposition.py`,
-`tests/unit/test_benchmark_regression.py`, and
-`tests/unit/test_rebuild_verify.py`. The first filename retains a legacy paper
-number; its tests exercise the current E1 evaluator.
+`promote_final.py` produces the `e2_spread_error_*`, `e2_within_transfer_*`,
+`e2_irrigation_stratified_transfer_summary.csv`, and
+`e2_irrigation_stratified_fold_mad_domain.csv` files from steps 5 and 7.
+`rebuild_e1_benchmark_evidence.py` rebuilds the `e2_primary_*`,
+`e2_benchmark_*`, `e2_temporal_*` files, rescores the ablation onto the frozen
+benchmark record, and writes `e2_evidence_metadata.json`; `--verify` compares
+against the frozen hashes. The headline `e1_openet_benchmark/` package is
+promoted from the step 3 and 4 output directories and described by its
+`MANIFEST.json`, which names the similarly named legacy products that must not
+be substituted for it.
+
+## Rebuilding the container
+
+Only needed without `5_Flux_Ensemble_run22.swim`. `data_extract.py` contacts
+Earth Engine and downloads GridMET; run it with approval, not to inspect
+existing evidence.
+
+```bash
+uv run python $EX5/container_build/data_extract.py                       # or --steps etf_v21,refet --sites US-Bi1,US-Ne1
+uv run python $EX5/container_build/container_prep.py --overwrite --getinfo
+uv run python $EX5/container_build/build_container.py --run run22 --source $DATA/5_Flux_Ensemble.swim
+```
+
+After `container_prep.py`, every site must have seasonal NDVI and finite
+meteorology (ETo, precipitation, radiation, tmax, tmin); ETf is deliberately
+absent from the base container. After `build_container.py`, every site must
+have at least one finite ETf capture per member. Report an incomplete site;
+do not drop or fill it.
+
+## Tests
+
+```bash
+uv run pytest tests/unit -v -k "e1_paired_record_temporal or e2_grouped_benchmark_metrics or overpass_decomposition or benchmark_regression or rebuild_verify or conditioned_ensemble or weighting_ablation or archive_eto_export or promote_final"
+```
+
+`test_e2_grouped_benchmark_metrics.py` keeps a legacy filename; it exercises
+the current E1 evaluator.
