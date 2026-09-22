@@ -57,15 +57,26 @@ E1_WITHIN_STRAT = Path(
     "/data/ssd1/swim/5_Flux_Ensemble/results/within_e2_transfer_irrigation_stratified"
 )
 
+# E2 sources repointed 2026-09-21 to the HWSD-AWC-units recalibration (GrassBasis
+# footing, HWSD per-site aw priors).  The frozen copies under
+# paper/data/final/e2_closure_pool/ are the paper's source of record; the results
+# root is read only where a per-site table was not frozen, and its per-site
+# transfer table must hash-match the frozen copy.
 E2_RESULTS = Path(
-    "/data/ssd1/swim/6_Flux_International/results/6_Flux_International_LSEnsemble_POR_annual2yr"
+    "/data/ssd1/swim/6_Flux_International/results/"
+    "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
 )
 E2_TRANSFER = Path(
-    "/data/ssd1/swim/6_Flux_International/results/e2_run22_transfer_by_irrigation_to_e3"
+    "/data/ssd1/swim/6_Flux_International/results/e2_run22_transfer_by_irrigation_to_grassbasis"
 )
 E2_CONTAINER = Path(
-    "/data/ssd1/swim/6_Flux_International/data/6_Flux_International_ls_ensemble_por_annual2yr.swim"
+    "/data/ssd1/swim/6_Flux_International/data/"
+    "6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim"
 )
+E2_FROZEN = FINAL / "e2_closure_pool"
+E2_FROZEN_POOL = E2_FROZEN / "closure_pool"
+E2_FROZEN_TRANSFER = E2_FROZEN / "transfer"
+E2_MAPPING_META = E2_FROZEN_TRANSFER / "e3_irrigation_stratified_param_mapping_metadata.json"
 
 E3_LOCAL = Path("/data/ssd1/swim/7_Applied_Water/results/applied_calibrated")
 E3_TRANSFER = Path("/data/ssd1/swim/7_Applied_Water/results/applied_transfer_run22_by_irrigation")
@@ -109,12 +120,13 @@ EXPECTED = {
     "E0_pooled_sites": 37,
     "E0_pooled_daily": 49289,
     "E0_pooled_monthly": 1514,
+    "E0_pooled_monthly_sites": 34,
     "E0_effect_daily_sites": 37,
     "E0_effect_monthly_sites": 33,
-    "E0_iso_daily_wins": 32,
-    "E0_iso_monthly_wins": 29,
-    "E0_whole_daily_wins": 34,
-    "E0_whole_monthly_wins": 30,
+    "E0_iso_daily_wins": 30,
+    "E0_iso_monthly_wins": 26,
+    "E0_whole_daily_wins": 32,
+    "E0_whole_monthly_wins": 28,
     "E1_configured": 60,
     "E1_daily": 45,
     "E1_monthly_finite": 29,
@@ -128,9 +140,19 @@ EXPECTED = {
     "E2_daily": 63,
     "E2_monthly_support": 56,
     "E2_monthly_finite": 50,
+    # Closure-corrected (EBR) evaluation pool: the paper's E2 numbers (decision
+    # 2026-09-08); the 16 raw-ET towers are scored but do not appear in the paper.
+    "E2_pool_daily": 47,
+    "E2_pool_monthly_support": 43,
+    "E2_pool_monthly_finite": 39,
+    "E2_pool_conus": 29,
+    "E2_pool_ex_conus": 18,
+    "E2_pool_countries": 8,
+    "E2_pool_continents": 3,
     "E3_fields": 50,
     "E3_field_years": 408,
     "E1_E2_overlap": 13,
+    "E1_E2_overlap_pool": 10,
 }
 
 METRIC_DEFS = {
@@ -494,9 +516,7 @@ def e1_configured() -> pd.DataFrame:
 def e2_configured() -> pd.DataFrame:
     import zarr
 
-    mapping = json.loads(
-        (FINAL / "e3_irrigation_stratified_param_mapping_metadata.json").read_text()
-    )
+    mapping = json.loads(E2_MAPPING_META.read_text())
     assignments = mapping["assignments"]
     z = zarr.open(str(E2_CONTAINER), mode="r")
     uid = [str(x) for x in z["geometry/uid"][:]]
@@ -680,28 +700,29 @@ E0_PRIOR_PACKAGE_DIR = "superseded_fig02_2026-09-01"
 # to three decimals, monthly RMSE/MBE to one.  Signs are plain ASCII here;
 # main.md prints a typographic minus and an explicit plus.  The build fails
 # when a frozen pooled value does not reproduce its manuscript string exactly.
-# The cover-scaled daily RMSE is 1.11846 mm d-1, which prints as 1.118; the
-# 1.119 carried by the 2026-09-18 confirmation note (and from there into
-# main.md) is a double-rounding slip and is not asserted here.
+# Values are the 2026-09-21 HWSD-AWC-units recalibration (frozen copies in
+# paper/data/final/e2_closure_pool/e0_disjoint/); the cover-scaled arm wins
+# 6/6 pooled metrics against the unscaled sigmoid and 5/6 against the unscaled
+# linear arm, losing pooled monthly KGE 0.734 vs 0.737.
 E0_TABLE3 = {
-    ("cover_scaled_sigmoid", "daily", "rmse"): "1.118",
-    ("cover_scaled_sigmoid", "daily", "mbe"): "-0.056",
-    ("cover_scaled_sigmoid", "daily", "kge"): "0.707",
-    ("cover_scaled_sigmoid", "monthly", "rmse"): "23.2",
-    ("cover_scaled_sigmoid", "monthly", "mbe"): "-2.6",
-    ("cover_scaled_sigmoid", "monthly", "kge"): "0.746",
-    ("unscaled_linear", "daily", "rmse"): "1.401",
-    ("unscaled_linear", "daily", "mbe"): "0.235",
-    ("unscaled_linear", "daily", "kge"): "0.681",
-    ("unscaled_linear", "monthly", "rmse"): "32.4",
-    ("unscaled_linear", "monthly", "mbe"): "5.8",
-    ("unscaled_linear", "monthly", "kge"): "0.744",
-    ("unscaled_sigmoid", "daily", "rmse"): "1.444",
-    ("unscaled_sigmoid", "daily", "mbe"): "-0.191",
-    ("unscaled_sigmoid", "daily", "kge"): "0.607",
-    ("unscaled_sigmoid", "monthly", "rmse"): "35.1",
-    ("unscaled_sigmoid", "monthly", "mbe"): "-7.0",
-    ("unscaled_sigmoid", "monthly", "kge"): "0.621",
+    ("cover_scaled_sigmoid", "daily", "rmse"): "1.144",
+    ("cover_scaled_sigmoid", "daily", "mbe"): "-0.092",
+    ("cover_scaled_sigmoid", "daily", "kge"): "0.697",
+    ("cover_scaled_sigmoid", "monthly", "rmse"): "24.2",
+    ("cover_scaled_sigmoid", "monthly", "mbe"): "-3.7",
+    ("cover_scaled_sigmoid", "monthly", "kge"): "0.734",
+    ("unscaled_linear", "daily", "rmse"): "1.407",
+    ("unscaled_linear", "daily", "mbe"): "0.221",
+    ("unscaled_linear", "daily", "kge"): "0.677",
+    ("unscaled_linear", "monthly", "rmse"): "32.8",
+    ("unscaled_linear", "monthly", "mbe"): "5.5",
+    ("unscaled_linear", "monthly", "kge"): "0.737",
+    ("unscaled_sigmoid", "daily", "rmse"): "1.456",
+    ("unscaled_sigmoid", "daily", "mbe"): "-0.268",
+    ("unscaled_sigmoid", "daily", "kge"): "0.591",
+    ("unscaled_sigmoid", "monthly", "rmse"): "34.9",
+    ("unscaled_sigmoid", "monthly", "mbe"): "-9.2",
+    ("unscaled_sigmoid", "monthly", "kge"): "0.606",
 }
 
 # calc_metrics (examples/6_Flux_International/evaluate.py) returns NaN below
@@ -976,7 +997,9 @@ def build_fig02() -> None:
                         "metric": metric,
                         "value": v,
                         "unit": unit,
-                        "n_sites": EXPECTED["E0_pooled_sites"],
+                        "n_sites": EXPECTED[
+                            "E0_pooled_sites" if scale == "daily" else "E0_pooled_monthly_sites"
+                        ],
                         "n_paired": EXPECTED[
                             "E0_pooled_daily" if scale == "daily" else "E0_pooled_monthly"
                         ],
@@ -1017,6 +1040,13 @@ def build_fig02() -> None:
         if ps["rmse_a_daily"].isna().any() or ps["rmse_b_daily"].isna().any():
             raise BuildError(f"{label}: missing daily RMSE")
         per_site_hashes[comp_key] = sha256(ps_path)
+        # Sites contributing pooled monthly sums (>= 6 qualifying months); the
+        # per-site monthly metric needs >= 10 (E0_effect_monthly_sites).
+        require_count(
+            int((ps["n_monthly"] >= E0_POOLED_MIN_MONTHS).sum()),
+            EXPECTED["E0_pooled_monthly_sites"],
+            f"{label} pooled-month sites",
+        )
         mo_fin = ps["rmse_a_monthly"].notna() & ps["rmse_b_monthly"].notna()
         if (ps.loc[mo_fin, "n_monthly"] < E0_SITE_METRIC_MIN_MONTHS).any() or (
             ps.loc[~mo_fin, "n_monthly"] >= E0_SITE_METRIC_MIN_MONTHS
@@ -1172,6 +1202,7 @@ def build_fig02() -> None:
             "id": E0_MASK_ID,
             "n_sites": EXPECTED["E0_pooled_sites"],
             "n_daily": EXPECTED["E0_pooled_daily"],
+            "n_sites_monthly": EXPECTED["E0_pooled_monthly_sites"],
             "n_monthly": EXPECTED["E0_pooled_monthly"],
             "flux_source": (
                 "closure-corrected per-site flux ET from the (network, et_col) pair declared "
@@ -2967,7 +2998,10 @@ E2_CONFIGS = {
         "e1_irrigation_class_transfer",
         "fixed E1-derived irrigated/rainfed parameter sets assigned by the E2 equipped-for-irrigation classification",
     ),
-    "e3_cal": ("local_calibration", "local E2 satellite calibration (ls_ensemble_por_annual2yr)"),
+    "e3_cal": (
+        "local_calibration",
+        "local E2 satellite calibration (LSEnsemble_GrassBasis_POR_annual2yr, HWSD aw priors)",
+    ),
     "ls_ensemble": (
         "landsat_benchmark",
         "interpolated coincident Landsat SSEBop + PT-JPL benchmark",
@@ -2976,25 +3010,85 @@ E2_CONFIGS = {
 
 
 def build_fig05_e2() -> None:
+    """E2 cross-environment transfer package on the closure-corrected 47-site pool.
+
+    Per-site metrics come from the by-irrigation transfer run (all 63 daily
+    common-cohort sites, then restricted to the frozen closure pool); cohort
+    summaries are the frozen 47-pool medians from the phase-11 closure-pool
+    summary.  The two must agree: the median of each restricted per-site
+    column is asserted against the frozen summary row.
+    """
     src_ps = E2_TRANSFER / "transfer_comparison_persite.csv"
-    src_sum = E2_TRANSFER / "transfer_comparison_summary.csv"
     src_mstrat = E2_TRANSFER / "evaluation_monthly_metrics_strat.csv"
     src_mcal = E2_RESULTS / "evaluation_monthly_metrics.csv"
-    src_persite_strat = FINAL / "e3_irrigation_stratified_transfer_persite_daily.csv"
-    src_boot = FINAL / "e3_irrigation_stratified_transfer_bootstrap.csv"
-    src_e3sum = FINAL / "e3_irrigation_stratified_transfer_summary.csv"
-    for p in (src_ps, src_sum, src_mstrat, src_mcal, src_persite_strat, src_boot, src_e3sum):
+    src_frozen_ps = E2_FROZEN_TRANSFER / "transfer_comparison_persite.csv"
+    src_pool = E2_FROZEN_POOL / "closure_pool_sites.csv"
+    src_refresh = E2_FROZEN_POOL / "transfer_refresh_summary.csv"
+    src_pool_meta = E2_FROZEN_POOL / "closure_pool_metadata.json"
+    for p in (src_ps, src_mstrat, src_mcal, src_frozen_ps, src_pool, src_refresh, src_pool_meta):
         if not p.exists():
             raise BuildError(f"fig05 E2 source missing: {p}")
+    if sha256(src_ps) != sha256(src_frozen_ps):
+        raise BuildError(
+            "fig05 E2: results-root transfer_comparison_persite.csv differs from the frozen copy "
+            f"{src_frozen_ps}"
+        )
+    pool_meta = json.loads(src_pool_meta.read_text())
+    if pool_meta.get("problems"):
+        raise BuildError(
+            f"fig05 E2: closure pool metadata reports problems {pool_meta['problems']}"
+        )
 
-    ps = pd.read_csv(src_ps, index_col=0)
-    ps.index.name = "site_id"
-    require_count(len(ps), EXPECTED["E2_daily"], "fig05 E2 daily cohort")
+    pool = pd.read_csv(src_pool)
+    require_count(len(pool), EXPECTED["E2_pool_daily"], "fig05 E2 closure pool")
+    require_unique(pool, ["fid"], "fig05 E2 closure pool")
+    if (pool["closure_tier"] != "closure_corrected").any():
+        raise BuildError("fig05 E2: closure pool contains a non-closure-corrected site")
+    pool_ids = set(pool["fid"].astype(str))
+    pool = pool.set_index("fid")
+
+    ps_all = pd.read_csv(src_ps, index_col=0)
+    ps_all.index = ps_all.index.astype(str)
+    ps_all.index.name = "site_id"
+    require_count(len(ps_all), EXPECTED["E2_daily"], "fig05 E2 daily common cohort (all tiers)")
+    if not pool_ids <= set(ps_all.index):
+        raise BuildError("fig05 E2: closure pool site absent from the per-site transfer table")
+    ps = ps_all.loc[ps_all.index.isin(pool_ids)].copy()
+    require_count(len(ps), EXPECTED["E2_pool_daily"], "fig05 E2 daily pool")
+
+    summ = pd.read_csv(src_refresh)
+    label_to_cfg = {
+        "E3 uncalibrated/default": "e3_uncal",
+        "Ex5 stratified transfer": "ex5_transfer_strat",
+        "E3 calibrated": "e3_cal",
+        "LS ensemble": "ls_ensemble",
+    }
+    summ = summ[summ["config"].isin(label_to_cfg)].copy()
+    summ["legacy_config"] = summ["config"].map(label_to_cfg)
+    require_count(len(summ), 7, "fig05 E2 frozen cohort summaries")
+    if (summ.loc[summ["basis"] == "daily", "n_sites"] != EXPECTED["E2_pool_daily"]).any():
+        raise BuildError("fig05 E2: frozen daily summary is not on the 47-site pool")
+    if (
+        summ.loc[summ["basis"] == "monthly", "n_sites"] != EXPECTED["E2_pool_monthly_finite"]
+    ).any():
+        raise BuildError(
+            "fig05 E2: frozen monthly summary is not on the 39 finite-metric pool sites"
+        )
 
     rows = []
     for cfg, (name, prov) in E2_CONFIGS.items():
         need = [f"{cfg}_{k}" for k in ("kge", "r2", "rmse", "bias", "mae")]
         require_columns(ps.reset_index(), need, f"E2 persite config {cfg}")
+        # The frozen 47-pool medians must be the medians of the restricted per-site table.
+        frozen = summ[(summ["legacy_config"] == cfg) & (summ["basis"] == "daily")]
+        require_count(len(frozen), 1, f"fig05 E2 frozen daily summary for {cfg}")
+        for col, fcol in (("kge", "kge_med"), ("rmse", "rmse_med"), ("bias", "bias_med")):
+            got = float(ps[f"{cfg}_{col}"].median())
+            want = float(frozen[fcol].iloc[0])
+            if not np.isclose(got, want, rtol=0, atol=1e-6):
+                raise BuildError(
+                    f"fig05 E2: pool median {cfg} {col} {got!r} != frozen summary {want!r}"
+                )
         rows.append(
             pd.DataFrame(
                 {
@@ -3017,12 +3111,16 @@ def build_fig05_e2() -> None:
     daily = pd.concat(rows, ignore_index=True)
 
     # monthly: per-site available for three of four treatments
-    mstrat = pd.read_csv(src_mstrat)
-    mcal = pd.read_csv(src_mcal)
-    require_count(len(mstrat), EXPECTED["E2_monthly_support"], "fig05 E2 monthly strat")
-    require_count(len(mcal), EXPECTED["E2_monthly_support"], "fig05 E2 monthly cal")
-    if set(mstrat["fid"]) != set(mcal["fid"]):
+    mstrat_all = pd.read_csv(src_mstrat)
+    mcal_all = pd.read_csv(src_mcal)
+    require_count(len(mstrat_all), EXPECTED["E2_monthly_support"], "fig05 E2 monthly strat (all)")
+    require_count(len(mcal_all), EXPECTED["E2_monthly_support"], "fig05 E2 monthly cal (all)")
+    if set(mstrat_all["fid"]) != set(mcal_all["fid"]):
         raise BuildError("fig05 E2 monthly: site sets differ between transfer and canonical runs")
+    mstrat = mstrat_all[mstrat_all["fid"].astype(str).isin(pool_ids)].copy()
+    mcal = mcal_all[mcal_all["fid"].astype(str).isin(pool_ids)].copy()
+    require_count(len(mstrat), EXPECTED["E2_pool_monthly_support"], "fig05 E2 monthly strat pool")
+    require_count(len(mcal), EXPECTED["E2_pool_monthly_support"], "fig05 E2 monthly cal pool")
 
     def _m(df, suffix, name, prov):
         return pd.DataFrame(
@@ -3031,7 +3129,7 @@ def build_fig05_e2() -> None:
                 "legacy_prefix": "e3_",
                 "record_type": "site_metric",
                 "scale": "monthly",
-                "site_id": df["fid"],
+                "site_id": df["fid"].astype(str),
                 "treatment": name,
                 "legacy_config": suffix,
                 "treatment_provenance": prov,
@@ -3054,17 +3152,22 @@ def build_fig05_e2() -> None:
         ignore_index=True,
     )
     n_finite = int(monthly[monthly["treatment"] == "local_calibration"]["finite_metric"].sum())
-    require_count(n_finite, EXPECTED["E2_monthly_finite"], "fig05 E2 monthly finite-metric")
+    require_count(n_finite, EXPECTED["E2_pool_monthly_finite"], "fig05 E2 monthly finite-metric")
+    fin_cal = mcal.loc[mcal["kge_swim"].notna(), "fid"].astype(str)
+    if set(fin_cal) != set(pool.index[pool["monthly_metrics_finite"].astype(bool)].astype(str)):
+        raise BuildError("fig05 E2: finite-metric monthly sites differ from the frozen pool flags")
+    for cfg, col_df, sfx in (
+        ("e3_cal", mcal, "swim"),
+        ("ls_ensemble", mcal, "rs"),
+        ("ex5_transfer_strat", mstrat, "swim"),
+    ):
+        frozen = summ[(summ["legacy_config"] == cfg) & (summ["basis"] == "monthly")]
+        require_count(len(frozen), 1, f"fig05 E2 frozen monthly summary for {cfg}")
+        got = float(col_df[f"kge_{sfx}"].median())
+        want = float(frozen["kge_med"].iloc[0])
+        if not np.isclose(got, want, rtol=0, atol=1e-6):
+            raise BuildError(f"fig05 E2: pool monthly KGE median {cfg} {got!r} != frozen {want!r}")
 
-    summ = pd.read_csv(src_sum)
-    label_to_cfg = {
-        "E3 uncalibrated/default": "e3_uncal",
-        "Ex5 stratified transfer": "ex5_transfer_strat",
-        "E3 calibrated": "e3_cal",
-        "LS ensemble": "ls_ensemble",
-    }
-    summ = summ[summ["config"].isin(label_to_cfg)].copy()
-    summ["legacy_config"] = summ["config"].map(label_to_cfg)
     summ_out = pd.DataFrame(
         {
             "experiment": "E2",
@@ -3080,9 +3183,9 @@ def build_fig05_e2() -> None:
             "rmse": summ["rmse_med"],
             "mbe": summ["bias_med"],
             "mae": summ["mae_med"],
-            "n_paired": summ["n_sites_common"],
-            "alpha": summ["alpha_med"],
-            "beta": summ["beta_med"],
+            "n_paired": summ["n_sites"],
+            "alpha": np.nan,
+            "beta": np.nan,
         }
     )
 
@@ -3091,23 +3194,33 @@ def build_fig05_e2() -> None:
 
     # geography / class lookup, over the full configured 66
     cfg66 = e2_configured()
-    strat = pd.read_csv(src_persite_strat).set_index("fid")
-    cfg66["conus"] = cfg66["site_id"].map(strat["conus"])
-    cfg66["conus"] = np.where(
-        cfg66["conus"].notna(),
-        cfg66["conus"],
-        (cfg66["lon"].between(-125, -66)) & (cfg66["lat"].between(24, 50)),
-    ).astype(bool)
-    cfg66["in_daily_cohort"] = cfg66["site_id"].isin(ps.index)
-    cfg66["in_monthly_cohort"] = cfg66["site_id"].isin(set(mcal["fid"]))
+    region = pool["region"].reindex(cfg66["site_id"]).to_numpy()
+    bbox = (cfg66["lon"].between(-125, -66)) & (cfg66["lat"].between(24, 50))
+    cfg66["conus"] = np.where(pd.notna(region), region == "CONUS", bbox).astype(bool)
+    cfg66["in_daily_cohort"] = cfg66["site_id"].isin(ps_all.index)
+    cfg66["in_monthly_cohort"] = cfg66["site_id"].isin(set(mcal_all["fid"].astype(str)))
+    cfg66["in_closure_pool"] = cfg66["site_id"].isin(pool_ids)
+    cfg66["in_monthly_pool"] = cfg66["site_id"].isin(set(mcal["fid"].astype(str)))
     e1_sites = set(e1_configured()["site_id"])
     cfg66["also_in_e1"] = cfg66["site_id"].isin(e1_sites)
     require_count(int(cfg66["also_in_e1"].sum()), EXPECTED["E1_E2_overlap"], "E1/E2 overlap")
+    require_count(
+        int((cfg66["also_in_e1"] & cfg66["in_closure_pool"]).sum()),
+        EXPECTED["E1_E2_overlap_pool"],
+        "E1/E2 overlap within the closure pool",
+    )
     require_count(int(cfg66["in_daily_cohort"].sum()), EXPECTED["E2_daily"], "E2 daily cohort flag")
-    n_conus = int(cfg66.loc[cfg66["in_daily_cohort"], "conus"].sum())
-    n_ex = int((~cfg66.loc[cfg66["in_daily_cohort"], "conus"]).sum())
-    require_count(n_conus, 42, "E2 daily CONUS split")
-    require_count(n_ex, 21, "E2 daily ex-CONUS split")
+    require_count(int(cfg66["in_closure_pool"].sum()), EXPECTED["E2_pool_daily"], "E2 pool flag")
+    n_conus = int(cfg66.loc[cfg66["in_closure_pool"], "conus"].sum())
+    n_ex = int((~cfg66.loc[cfg66["in_closure_pool"], "conus"]).sum())
+    require_count(n_conus, EXPECTED["E2_pool_conus"], "E2 pool CONUS split")
+    require_count(n_ex, EXPECTED["E2_pool_ex_conus"], "E2 pool ex-CONUS split")
+    n_equipped = int(cfg66["equipped_for_irrigation"].sum())
+    require_count(n_equipped, FIG01_CLASS_COUNTS["e2_irrigated"], "E2 equipped sites")
+    n_equipped_pool = int(cfg66.loc[cfg66["in_closure_pool"], "equipped_for_irrigation"].sum())
+    require_count(
+        n_equipped_pool, pool_meta["irrigation_class_pool"]["irrigated"], "E2 pool equipped sites"
+    )
     cfg66.insert(0, "legacy_prefix", "e3_")
     cfg66.insert(0, "experiment", "E2")
     n_lu = write_table(cfg66, "fig05_geography_lookup.csv")
@@ -3119,20 +3232,22 @@ def build_fig05_e2() -> None:
             k: {"path": str(p), "sha256": sha256(p)}
             for k, p in {
                 "transfer_comparison_persite": src_ps,
-                "transfer_comparison_summary": src_sum,
+                "transfer_comparison_persite_frozen": src_frozen_ps,
                 "evaluation_monthly_metrics_strat": src_mstrat,
                 "evaluation_monthly_metrics_canonical": src_mcal,
-                "e3_irrigation_stratified_transfer_bootstrap": src_boot,
-                "e3_irrigation_stratified_transfer_summary": src_e3sum,
+                "closure_pool_sites": src_pool,
+                "transfer_refresh_summary": src_refresh,
+                "closure_pool_metadata": src_pool_meta,
             }.items()
         },
         experiment_mapping={"E2": "legacy e3_*"},
         cohort_key="site_id",
         inclusion_rule=(
-            "66 configured E2 sites; 63 with >=10 paired daily observations form the daily "
-            "common cohort; 56 have paired monthly support and 50 of those meet the "
-            "10-month finite-metric criterion. All four treatments are scored on identical "
-            "common-support days."
+            "66 configured E2 sites; 63 with >=10 paired daily observations form the all-tier "
+            "daily common cohort; the paper's E2 pool is the 47 closure-corrected (EBR) towers "
+            "among them (16 raw-ET towers excluded, decision 2026-09-08). Of the 47, 43 have "
+            "paired monthly support and 39 meet the 10-month finite-metric criterion. All four "
+            "treatments are scored on identical rs-gated common-support days."
         ),
         temporal_support_rule="Daily common-support days 2013-2025; monthly are sums of paired days (>=20 paired days per month, >=6 paired months).",
         units={"rmse_daily": "mm d-1", "rmse_monthly": "mm month-1", "mbe": "mm d-1 / mm month-1"},
@@ -3143,21 +3258,24 @@ def build_fig05_e2() -> None:
             "legacy config ls_ensemble -> landsat_benchmark",
             "legacy r2 -> nse; legacy bias -> mbe",
             "superseded pooled transfer (ex5_transfer) deliberately excluded from the display package",
+            "cohort_summary rows are the frozen 47-pool medians (transfer_refresh_summary.csv); "
+            "alpha/beta medians are not frozen for the pool and are null",
         ],
         deterministic_seed=1234,
         configured_counts={"E2": 66},
         evaluated_counts={
-            "daily_sites": 63,
-            "monthly_support_sites": 56,
-            "monthly_finite_metric_sites": 50,
-            "conus_daily": 42,
-            "ex_conus_daily": 21,
-            "also_in_e1": 13,
+            "daily_sites_all_tiers": EXPECTED["E2_daily"],
+            "daily_sites": EXPECTED["E2_pool_daily"],
+            "monthly_support_sites": EXPECTED["E2_pool_monthly_support"],
+            "monthly_finite_metric_sites": EXPECTED["E2_pool_monthly_finite"],
+            "conus_daily": n_conus,
+            "ex_conus_daily": n_ex,
+            "also_in_e1": EXPECTED["E1_E2_overlap_pool"],
         },
         known_gap=(
             "Per-site MONTHLY metrics for the generic-defaults treatment are not persisted "
             "by transfer_ex5_params.py (the uncalibrated arm is a fresh in-process forward "
-            "run). Only the cohort median is available and is frozen as a record_type="
+            "run). Only the daily cohort median is available and is frozen as a record_type="
             "cohort_summary row. Site-level monthly distributions can therefore be drawn "
             "for three of four treatments."
         ),
@@ -3168,29 +3286,40 @@ def build_fig05_e2() -> None:
         sources={
             "e2_container_geometry": {"path": str(E2_CONTAINER), "arrays": ["geometry/*"]},
             "e3_irrigation_stratified_param_mapping_metadata": {
-                "path": str(FINAL / "e3_irrigation_stratified_param_mapping_metadata.json"),
-                "sha256": sha256(FINAL / "e3_irrigation_stratified_param_mapping_metadata.json"),
+                "path": str(E2_MAPPING_META),
+                "sha256": sha256(E2_MAPPING_META),
             },
-            "e3_irrigation_stratified_transfer_persite_daily": {
-                "path": str(src_persite_strat),
-                "sha256": sha256(src_persite_strat),
-            },
+            "closure_pool_sites": {"path": str(src_pool), "sha256": sha256(src_pool)},
         },
         experiment_mapping={"E2": "legacy e3_*"},
         cohort_key="site_id",
-        inclusion_rule="All 66 configured E2 sites, flagged for daily/monthly cohort membership.",
+        inclusion_rule=(
+            "All 66 configured E2 sites, flagged for all-tier daily/monthly cohort membership "
+            "and for the closure-corrected evaluation pool."
+        ),
         display_transformations=[
-            "CONUS flag taken from the frozen stratified per-site table where present; otherwise derived from the container lon/lat bounding box (-125..-66 E, 24..50 N)",
+            "CONUS flag taken from the frozen closure-pool region where present; otherwise derived from the container lon/lat bounding box (-125..-66 E, 24..50 N)",
             "equipped_for_irrigation is stage 1 of the two-stage classifier, recovered per the frozen param-mapping metadata",
         ],
         units={"lat": "degrees north", "lon": "degrees east"},
         deterministic_seed=None,
         configured_counts={"E2": 66},
-        evaluated_counts={"daily": 63, "conus_daily": 42, "ex_conus_daily": 21, "equipped": 13},
+        evaluated_counts={
+            "daily_all_tiers": EXPECTED["E2_daily"],
+            "closure_pool": EXPECTED["E2_pool_daily"],
+            "conus_pool": n_conus,
+            "ex_conus_pool": n_ex,
+            "equipped": n_equipped,
+            "equipped_pool": n_equipped_pool,
+            "also_in_e1": EXPECTED["E1_E2_overlap"],
+            "also_in_e1_pool": EXPECTED["E1_E2_overlap_pool"],
+        },
     )
     print(
-        f"  fig05 E2: {n} rows (63 daily x 4 treatments + 56 monthly x 3 + 8 cohort summaries), "
-        f"lookup {n_lu} rows (42 CONUS / 21 ex-CONUS daily; 13 also in E1)"
+        f"  fig05 E2: {n} rows ({EXPECTED['E2_pool_daily']} daily x 4 treatments + "
+        f"{EXPECTED['E2_pool_monthly_support']} monthly x 3 + {len(summ)} cohort summaries), "
+        f"lookup {n_lu} rows ({n_conus} CONUS / {n_ex} ex-CONUS pool; "
+        f"{EXPECTED['E1_E2_overlap_pool']} also in E1)"
     )
 
 
@@ -4159,8 +4288,10 @@ FIG01_EXAMPLE_CAPTURES = 8
 FIG01_CLASS_COUNTS = {
     "e1_irrigated": 39,
     "e1_rainfed": 21,
-    "e2_irrigated": 13,
-    "e2_rainfed": 53,
+    # US-RC3 joined the irrigated class when the mapping was regenerated on the
+    # recalibrated container (2026-09-21); the August mapping had 13 / 53.
+    "e2_irrigated": 14,
+    "e2_rainfed": 52,
 }
 
 # Column-name patterns that may never reach the Figure 1 example display table
@@ -5031,6 +5162,25 @@ def build_fig01() -> None:
     e2["in_e1"] = e2["site_id"].isin(set(e1["site_id"]))
     require_count(int(e1["in_e2"].sum()), EXPECTED["E1_E2_overlap"], "fig01 E1->E2 overlap")
     require_count(int(e2["in_e1"].sum()), EXPECTED["E1_E2_overlap"], "fig01 E2->E1 overlap")
+    # The paper's E2 evaluation pool (closure-corrected towers, frozen 2026-09-21).
+    e2_pool_path = E2_FROZEN_POOL / "closure_pool_sites.csv"
+    e2_pool = pd.read_csv(e2_pool_path)
+    require_count(len(e2_pool), EXPECTED["E2_pool_daily"], "fig01 E2 closure pool")
+    if not set(e2_pool["fid"].astype(str)) <= e2_sites:
+        raise BuildError("fig01: closure-pool site not in the configured E2 scope")
+    e2["in_evaluation_pool"] = e2["site_id"].isin(set(e2_pool["fid"].astype(str)))
+    require_count(
+        int(e2["in_evaluation_pool"].sum()), EXPECTED["E2_pool_daily"], "fig01 E2 pool flag"
+    )
+    require_count(
+        int((e2["in_evaluation_pool"] & e2["in_e1"]).sum()),
+        EXPECTED["E1_E2_overlap_pool"],
+        "fig01 E1 overlap within the E2 pool",
+    )
+    n_pool_countries = int(e2_pool["country"].nunique())
+    n_pool_continents = int(e2_pool["continent"].nunique())
+    require_count(n_pool_countries, EXPECTED["E2_pool_countries"], "fig01 E2 pool countries")
+    require_count(n_pool_continents, EXPECTED["E2_pool_continents"], "fig01 E2 pool continents")
 
     # ---- handoff section 11: configured counts, source classes, MB_Pch ----
     require_count(len(e1), EXPECTED["E1_configured"], "fig01 E1 configured sites")
@@ -5153,6 +5303,7 @@ def build_fig01() -> None:
                 "network",
                 "country",
                 "in_e1",
+                "in_evaluation_pool",
                 "equipped_for_irrigation",
                 "irrigation_class",
                 "source_key",
@@ -5322,10 +5473,10 @@ def build_fig01() -> None:
                 "configured_unit": "E2 cropland flux sites not in E1",
                 "domain": "E2 sites in eight countries; E2 inputs and processing",
                 "primary_etf_target": "per-capture mean of coincident Landsat SSEBop and PT-JPL ETf (matched across formulations)",
-                "primary_weighting": "spread-based (sigma_ensemble + 0.1)",
-                "daily_evaluation_n": 37,
-                "monthly_supported_n": 37,
-                "monthly_finite_metric_n": 33,
+                "primary_weighting": "spread-based (sigma_ensemble + 0.05)",
+                "daily_evaluation_n": EXPECTED["E0_pooled_sites"],
+                "monthly_supported_n": EXPECTED["E0_pooled_monthly_sites"],
+                "monthly_finite_metric_n": EXPECTED["E0_effect_monthly_sites"],
                 "field_year_n": None,
                 "external_evaluation": "flux ET withheld from calibration, then compared across the three vegetation formulations to select the cover-scaled sigmoid",
                 "parameter_source": "locally calibrated per formulation on E2 inputs",
@@ -5358,19 +5509,27 @@ def build_fig01() -> None:
                 "evidence_role": "evaluation",
                 "configured_n": 66,
                 "configured_unit": "cropland flux sites",
-                "domain": f"{n_countries} countries on {n_continents} continents; CONUS and ex-CONUS",
+                "domain": (
+                    f"{n_countries} countries on {n_continents} continents configured; "
+                    f"evaluated closure-corrected pool in {n_pool_countries} countries on "
+                    f"{n_pool_continents} continents; CONUS and ex-CONUS"
+                ),
                 "primary_etf_target": "per-capture mean of coincident Landsat SSEBop and PT-JPL ETf",
-                "primary_weighting": "spread-based (sigma_ensemble + 0.1); fixed 0.33 scale only for the ECOSTRESS-only sensitivity rows",
-                "daily_evaluation_n": 63,
-                "monthly_supported_n": 56,
-                "monthly_finite_metric_n": 50,
+                "primary_weighting": "spread-based (sigma_ensemble + 0.05)",
+                "daily_evaluation_n": EXPECTED["E2_pool_daily"],
+                "monthly_supported_n": EXPECTED["E2_pool_monthly_support"],
+                "monthly_finite_metric_n": EXPECTED["E2_pool_monthly_finite"],
                 "field_year_n": None,
                 "external_evaluation": "AmeriFlux, FLUXNET, ICOS and OzFlux ET",
                 "parameter_source": "local calibration arm; fixed E1-derived irrigated/rainfed sets for the transfer arm",
                 "scientific_roles": "international evaluation; E1-to-E2 transfer under changed geography and inputs",
-                "independence_statement": "13 of 66 sites also occur in E1 and test changed inputs; 53 are unseen fields; 37 of the E2 sites not in E1 carry the E0 formulation comparison",
-                "source_artifact": str(E2_RESULTS / "evaluation_metrics.csv"),
-                "source_sha256": sha256(E2_RESULTS / "evaluation_metrics.csv"),
+                "independence_statement": (
+                    "13 of 66 configured sites (10 of the 47 evaluated) also occur in E1 and test "
+                    "changed inputs; the rest are unseen fields; 37 of the E2 sites not in E1 carry "
+                    "the E0 formulation comparison"
+                ),
+                "source_artifact": str(e2_pool_path),
+                "source_sha256": sha256(e2_pool_path),
             },
             {
                 "experiment": "E3",
@@ -8517,6 +8676,10 @@ def build_fig01() -> None:
             "e1_daily_evaluation": int(e1["in_daily_evaluation"].sum()),
             "e2_countries": n_countries,
             "e2_continents": n_continents,
+            "e2_evaluation_pool": int(e2["in_evaluation_pool"].sum()),
+            "e2_pool_countries": n_pool_countries,
+            "e2_pool_continents": n_pool_continents,
+            "e1_e2_overlap_pool": int((e2["in_evaluation_pool"] & e2["in_e1"]).sum()),
             "e2_continent_names": continents,
             "e2_countries_names": countries,
             "e3_display_geometry_types": sorted(set(e3_disp.geom_type)),
