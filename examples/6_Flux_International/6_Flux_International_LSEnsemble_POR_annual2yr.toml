@@ -75,3 +75,7 @@ etf_weighting_spread_floor = 0.05
 swe_weighting_sd_frac = 0.3
 swe_weighting_sd_floor = 10.0
 swe_weighting_phi_share = 0.15
+
+[validation]
+# flux-data-qaqc archive, {flux_dir}/{network}/{site}_daily_data.csv; validation truth only
+flux_dir = "/nas/climate/flux_stations/qaqc"

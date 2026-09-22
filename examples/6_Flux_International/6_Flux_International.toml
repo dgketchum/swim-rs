@@ -75,3 +75,7 @@ etf_target_model = "ptjpl"
 # --- Experiment C: Combined Landsat + ECOSTRESS ---
 # etf_target_model = "ensemble"
 # etf_ensemble_members = ["ptjpl"]
+
+[validation]
+# flux-data-qaqc archive, {flux_dir}/{network}/{site}_daily_data.csv; validation truth only
+flux_dir = "/nas/climate/flux_stations/qaqc"

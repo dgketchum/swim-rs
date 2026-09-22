@@ -1,18 +1,18 @@
 """Ex5 -> Ex6 cropland parameter transferability stress test.
 
-Applies the fixed Example 5 (Experiment 2) cropland median parameter vector to
-every site in the canonical Example 6 (Experiment 3) 66-site international
+Applies the fixed Example 5 (paper E1) cropland median parameter vector to
+every site in the canonical Example 6 (paper E2) 66-site international
 cropland cohort, runs a forward simulation (no local recalibration), and scores
 the transferred ET against flux-tower ET using the same validation rules as the
-published E3 analysis (``evaluate.py``).
+published E2 analysis (``evaluate.py``).
 
 The transferred run is compared on common paired days/months against three
-configurations drawn from the canonical E3 results so the comparison reconciles
+configurations drawn from the canonical E2 results so the comparison reconciles
 with the published numbers:
 
-    E3 calibrated   - site-specific E3 PEST++ IES calibration (per-site et_act)
-    E3 uncalibrated - default/initial parameters (fresh forward run here)
-    LS ensemble     - the E3 remote-sensing anchor (per-site et_rs); context only
+    E2 calibrated   - site-specific E2 PEST++ IES calibration (per-site et_act)
+    E2 uncalibrated - default/initial parameters (fresh forward run here)
+    LS ensemble     - the E2 remote-sensing anchor (per-site et_rs); context only
 
 ``--params`` takes a single flat ``{param: value}`` vector applied to every site
 (the pooled transfer). ``--params-by-site`` additionally takes a nested
@@ -21,8 +21,8 @@ with the published numbers:
 transfer, in which each site receives the irrigated or the rainfed class vector
 according to the canonical two-stage satellite irrigation classifier. Supplying
 both yields all five handoff comparators from one invocation on identical common
-support: E3 defaults, pooled Run 22 transfer, irrigation-stratified Run 22
-transfer, local E3 satellite calibration, and the interpolated Landsat ensemble
+support: E2 defaults, pooled Run 22 transfer, irrigation-stratified Run 22
+transfer, local E2 satellite calibration, and the interpolated Landsat ensemble
 context. Unlike the optional LULC comparator, the stratified mapping must cover
 every cohort site: partial coverage raises rather than silently shrinking the
 common support.
@@ -33,10 +33,10 @@ Transfer vectors are frozen upstream (``transfer/ex5_cropland_params.json``,
 derived or tuned from Example 6 flux ET (see
 ``transfer/build_ex5_cropland_params.py``,
 ``transfer/build_ex5_irrigation_stratified_params.py``, and
-``transfer/build_e3_irrigation_mapping.py``).
+``transfer/build_e2_irrigation_mapping.py``).
 
-Outputs (under ``--out``, default ``{project_ws}/results/ex5_transfer_to_e3``):
-    evaluation_metrics.csv            - Ex5-transferred daily per-site (E3 format)
+Outputs (under ``--out``, default ``{project_ws}/results/ex5_transfer_to_e2``):
+    evaluation_metrics.csv            - Ex5-transferred daily per-site (E2 format)
     evaluation_monthly_metrics.csv    - Ex5-transferred monthly per-site
     pooled_metrics_daily.csv          - Ex5-transferred pooled (Volk methodology)
     pooled_metrics_monthly.csv
@@ -65,7 +65,7 @@ Usage:
         --params /home/dgketchum/code/swim-rs/paper/data/final/e2_run22_transfer_vector.json \\
         --params-by-site \\
         /home/dgketchum/code/swim-rs/paper/data/final/e3_irrigation_stratified_param_mapping.json \\
-        --out /data/ssd1/swim/6_Flux_International/results/e2_run22_transfer_by_irrigation_to_e3 \\
+        --out <results>/e2_run22_transfer_by_irrigation_to_grassbasis \\
         --require-empty-out
 
 This is a forward run with fixed parameters against existing container inputs.
@@ -87,6 +87,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import evaluate as ev  # noqa: E402  (sibling module; needs HERE on sys.path)
+import ex6_paths  # noqa: E402
 import pooled_metrics as pm  # noqa: E402
 from derived_metrics import run_uncalibrated_model  # noqa: E402
 
@@ -96,10 +97,10 @@ from swimrs.calibrate.flux_utils import (  # noqa: E402
 )
 from swimrs.container import SwimContainer  # noqa: E402
 
-DEFAULT_CONFIG = HERE / "6_Flux_International_LSEnsemble_POR_annual2yr.toml"
+DEFAULT_CONFIG = ex6_paths.CANONICAL_CONFIG
 DEFAULT_PARAMS = HERE / "transfer" / "ex5_cropland_params.json"
 
-# Validation gates, matched to evaluate.py / pooled_metrics.py (E3 protocol).
+# Validation gates, matched to evaluate.py / pooled_metrics.py (E2 protocol).
 MIN_DAILY_OBS = 10  # paired days for a daily site metric
 MIN_DAILY_FOR_MONTHLY = 30  # daily overlap needed before building months
 MIN_DAYS_PER_MONTH = 20  # valid daily flux obs required to keep a month
@@ -109,6 +110,8 @@ MIN_MONTHLY_OBS = 6  # paired months for a monthly site metric
 # is core -- when supplied it joins the common-site index and the paired
 # win-rate/summary machinery -- but it is only instantiated when
 # ``--params-by-site`` is given, so downstream code keys off frame presence.
+# The ``e3_*`` keys and "E2" labels are legacy names for Example 6 (paper E2): the frozen
+# transfer CSVs under paper/data/final and the figure builder key on them, so they stay.
 STRAT_CONFIG = "ex5_transfer_strat"
 CORE_CONFIGS = ["e3_uncal", "ex5_transfer", STRAT_CONFIG, "e3_cal", "ls_ensemble"]
 CONFIG_LABELS = {
@@ -129,7 +132,7 @@ CONFIG_DESCRIPTIONS = {
 
 
 def full_metrics(obs, mod):
-    """E3 calc_metrics (n, r2, r, rmse, bias, kge) plus mae, alpha, beta."""
+    """E2 calc_metrics (n, r2, r, rmse, bias, kge) plus mae, alpha, beta."""
     out = dict(ev.calc_metrics(obs, mod))
     mask = np.isfinite(obs) & np.isfinite(mod)
     o, m = obs[mask], mod[mask]
@@ -314,9 +317,9 @@ def _resolve_class_assignment(params_by_fid, mapping_path):
     return assignment, counts, vectors, hashes, companion
 
 
-def _load_e3_calibrated(e3_results_dir, fid):
+def _load_e2_calibrated(e2_results_dir, fid):
     """Read calibrated SWIM et_act and LS-ensemble et_rs from canonical {fid}.csv."""
-    path = Path(e3_results_dir) / f"{fid}.csv"
+    path = Path(e2_results_dir) / f"{fid}.csv"
     if not path.exists():
         return None
     df = pd.read_csv(path, index_col=0, parse_dates=True)
@@ -388,12 +391,12 @@ def main():
     )
     parser.add_argument("--container", default=None, help="Override container path")
     parser.add_argument(
-        "--e3-results-dir",
+        "--e2-results-dir",
         default=None,
-        help="Canonical E3 results dir (for E3 calibrated + LS ensemble)",
+        help="Canonical E2 results dir (for E2 calibrated + LS ensemble)",
     )
     parser.add_argument(
-        "--out", default=None, help="Output dir (default: {project_ws}/results/ex5_transfer_to_e3)"
+        "--out", default=None, help="Output dir (default: {project_ws}/results/ex5_transfer_to_e2)"
     )
     parser.add_argument(
         "--lulc-params",
@@ -414,11 +417,11 @@ def main():
     conf_path = Path(args.config)
     cfg = ev._load_config(conf_path)
     container_path = args.container or ev._default_container_path(cfg)
-    e3_results_dir = args.e3_results_dir or ev._results_dir(cfg, conf_path)
+    e2_results_dir = args.e2_results_dir or ev._results_dir(cfg, conf_path)
     out_dir = (
         Path(args.out)
         if args.out
-        else Path(ev._results_dir(cfg, conf_path)).parent / "ex5_transfer_to_e3"
+        else Path(ev._results_dir(cfg, conf_path)).parent / "ex5_transfer_to_e2"
     )
     if args.require_empty_out and out_dir.exists():
         existing = sorted(str(p.relative_to(out_dir)) for p in out_dir.rglob("*.csv"))
@@ -449,7 +452,7 @@ def main():
         fids = _cohort_fids(cfg, container, args.sites)
         print(f"Cohort: {len(fids)} sites")
         print(f"Container: {container_path}")
-        print(f"E3 results dir (calibrated + LS ensemble): {e3_results_dir}")
+        print(f"E2 results dir (calibrated + LS ensemble): {e2_results_dir}")
         print(f"Transfer vector: {args.params}")
         print(f"  {vector}\n")
 
@@ -484,7 +487,7 @@ def main():
             print(f"Forward run: Ex5 stratified transfer ({len(strat_params)} per-site vectors)...")
             strat_results = _run_fixed_params_dict(cfg, container, fids, strat_params)
 
-        print("Forward run: E3 uncalibrated (default parameters)...")
+        print("Forward run: E2 uncalibrated (default parameters)...")
         uncal_results = run_uncalibrated_model(cfg, container, fids)
 
         lulc_results = {}
@@ -517,9 +520,9 @@ def main():
             if ex5_df is None:
                 continue
 
-            e3_csv = _load_e3_calibrated(e3_results_dir, fid)
-            if e3_csv is not None and "et_rs" in e3_csv:
-                rs = e3_csv["et_rs"]
+            e2_csv = _load_e2_calibrated(e2_results_dir, fid)
+            if e2_csv is not None and "et_rs" in e2_csv:
+                rs = e2_csv["et_rs"]
             else:
                 rs = ev._build_rs_eta_series(container, cfg, fid, ex5_df["etref"])
             if rs is None:
@@ -532,8 +535,8 @@ def main():
             unc = uncal_results.get(fid)
             if unc is not None:
                 series_by_config["e3_uncal"] = unc
-            if e3_csv is not None and "et_act" in e3_csv:
-                series_by_config["e3_cal"] = e3_csv["et_act"]
+            if e2_csv is not None and "et_act" in e2_csv:
+                series_by_config["e3_cal"] = e2_csv["et_act"]
             if fid in lulc_results:
                 series_by_config["lulc_defaults"] = lulc_results[fid]["et_act"]
             strat_df = strat_results.get(fid)
@@ -548,7 +551,7 @@ def main():
                 if mm is not None:
                     per_monthly[config][fid] = mm
 
-            # Write per-site series (E3 {site}.csv layout). The top-level CSVs are
+            # Write per-site series (E2 {site}.csv layout). The top-level CSVs are
             # the --params run; the stratified run gets its own subdirectory so the
             # two are never confused, and so pooled metrics can be accumulated for
             # each without cross-contamination.
@@ -586,7 +589,7 @@ def main():
         args,
         conf_path,
         container_path,
-        e3_results_dir,
+        e2_results_dir,
         vector,
         fids,
         daily_df,
@@ -608,7 +611,7 @@ def _run_fixed_params_dict(cfg, container, fids, params_by_fid):
 
 
 def _write_evaluation_metrics(out_dir, daily_df, monthly_df, config="ex5_transfer", suffix=""):
-    """One config's standalone metrics in the E3 evaluate.py column layout."""
+    """One config's standalone metrics in the E2 evaluate.py column layout."""
     for basis, frames, fname in [
         ("daily", daily_df, f"evaluation_metrics{suffix}.csv"),
         ("monthly", monthly_df, f"evaluation_monthly_metrics{suffix}.csv"),
@@ -748,20 +751,20 @@ def _write_winrates(out_dir, daily_df, monthly_df):
     return df
 
 
-def _reconcile(daily_df, monthly_df, e3_results_dir):
-    """Cross-check recomputed E3-calibrated / LS metrics vs published E3 CSVs.
+def _reconcile(daily_df, monthly_df, e2_results_dir):
+    """Cross-check recomputed E2-calibrated / LS metrics vs published E2 CSVs.
 
     Per-site max-abs difference is the strong check (valid on any cohort subset);
     medians are reported too but only equal the published medians on the full
     cohort. A near-zero per-site delta confirms the transfer script reproduces
-    the published E3 pairing protocol exactly.
+    the published E2 pairing protocol exactly.
     """
     out = {}
     for basis, frames, fname in [
         ("daily", daily_df, "evaluation_metrics.csv"),
         ("monthly", monthly_df, "evaluation_monthly_metrics.csv"),
     ]:
-        pub_path = Path(e3_results_dir) / fname
+        pub_path = Path(e2_results_dir) / fname
         if not pub_path.exists():
             continue
         pub = pd.read_csv(pub_path).set_index("fid")
@@ -794,7 +797,7 @@ def _write_metadata(
     args,
     conf_path,
     container_path,
-    e3_results_dir,
+    e2_results_dir,
     vector,
     fids,
     daily_df,
@@ -808,7 +811,7 @@ def _write_metadata(
     meta = {
         "config": str(conf_path),
         "container": str(container_path),
-        "e3_results_dir": str(e3_results_dir),
+        "e2_results_dir": str(e2_results_dir),
         "out_dir": str(out_dir),
         "transfer_params_path": str(args.params),
         "transfer_vector": vector,
@@ -830,7 +833,7 @@ def _write_metadata(
             "monthly_min_paired_months": MIN_MONTHLY_OBS,
             "flux_ET": "ET_corr preferred; raw ET fallback (E3 rule)",
         },
-        "reconciliation_kge_med": _reconcile(daily_df, monthly_df, e3_results_dir),
+        "reconciliation_kge_med": _reconcile(daily_df, monthly_df, e2_results_dir),
     }
     if strat_meta:
         meta["stratified_transfer"] = {

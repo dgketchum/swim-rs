@@ -25,7 +25,7 @@ Values
   interpolation.
 * Flux reference (primary): Volk v2.1 ``Closed`` (energy-balance-closed ET) -- identical for
   both product versions. Sensitivity arm: the E2 archive's own truth, ``ET_corr`` from the
-  flux-data-qaqc archive (``/nas/climate/flux_stations/qaqc/<network>/<site>_daily_data.csv``,
+  flux-data-qaqc archive (``[validation] flux_dir`` in the TOML, ``<network>/<site>_daily_data.csv``,
   network from the closure-pool table). The two references are byte-identical at 5 of the 9
   sites and differ at US-Bi1, US-Bi2, US-Mj1, US-Tw2.
 
@@ -68,27 +68,26 @@ import pandas as pd
 from scipy import stats
 from sklearn.metrics import mean_squared_error, r2_score
 
-REPO = Path(__file__).resolve().parents[3]
+HERE = Path(__file__).resolve().parent
+if str(HERE.parent) not in sys.path:
+    sys.path.insert(0, str(HERE.parent))
+import ex6_paths  # noqa: E402
 
-E1_PAIRED = Path("/data/ssd1/swim/5_Flux_Ensemble/data/flux_2pt1/daily_2pt1_paired_data.csv")
+REPO = ex6_paths.REPO
+
+# Workspace locations (E1 master, E2 run, container, flux archive) are resolved from the
+# TOML by ``resolve_paths`` at run time; ``load_config`` would otherwise run at import.
+E1_PAIRED = None
+E2_RESULTS = E2_ARCHIVE = E2_POOL = E2_CONTAINER = QAQC_ROOT = None
 E1_PAIRED_SHA256_EXPECTED = "bc553977782090367ab13861bcfcb369d07c8fad9a794305b8491f178766ad29"
 E1_COHORT = REPO / "paper" / "data" / "final" / "e2_primary_daily_site_metrics.csv"
 E1_EVIDENCE_META = REPO / "paper" / "data" / "final" / "e2_evidence_metadata.json"
 
-E2_RESULTS = Path(
-    "/data/ssd1/swim/6_Flux_International/results/6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
-)
-E2_ARCHIVE = E2_RESULTS / "archive"
-E2_POOL = E2_ARCHIVE / "6_evaluation" / "closure_pool" / "closure_pool_sites.csv"
-E2_CONTAINER = Path(
-    "/data/ssd1/swim/6_Flux_International/data/6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim"
-)
 E2_ETF_PATHS = {
     "ssebop": "remote_sensing/etf/landsat/ssebop/no_mask",
     "ptjpl": "remote_sensing/etf/landsat/ptjpl/no_mask",
 }
 E2_ETO_PATH = "meteorology/era5/eto"
-QAQC_ROOT = Path("/nas/climate/flux_stations/qaqc")
 OPENET_ETO = REPO / "examples" / "5_Flux_Ensemble" / "data" / "openet_refet" / "openet_eto.csv"
 OPENET_ETO_SHA256_EXPECTED = "f7917756e81e07cd0c8d828ca271a81fb4e767657147d9a321e1310a633ccfef"
 
@@ -109,7 +108,25 @@ HIGHER_IS_BETTER = {
 }
 MIN_PAIRED_DAYS = 10
 MIN_SUPPORT_DAYS = 5  # per-site minimum for the e2_only / e1_only error contrast
-DEFAULT_OUT = E2_ARCHIVE / "6_evaluation" / "e1_e2_product_parity"
+
+
+def resolve_paths(config_path=None):
+    """Bind the workspace locations from the E2 TOML (E1 lives under the same ``root``)."""
+    global E1_PAIRED, E2_RESULTS, E2_ARCHIVE, E2_POOL, E2_CONTAINER, QAQC_ROOT
+    cfg = ex6_paths.load_config(config_path)
+    E1_PAIRED = (
+        ex6_paths.swim_root(config_path)
+        / "5_Flux_Ensemble"
+        / "data"
+        / "flux_2pt1"
+        / "daily_2pt1_paired_data.csv"
+    )
+    E2_RESULTS = ex6_paths.run_dir(Path(config_path or ex6_paths.CANONICAL_CONFIG).stem, cfg)
+    E2_ARCHIVE = E2_RESULTS / "archive"
+    E2_POOL = E2_ARCHIVE / "6_evaluation" / "closure_pool" / "closure_pool_sites.csv"
+    E2_CONTAINER = Path(cfg.container_path)
+    QAQC_ROOT = Path(cfg.flux_dir)
+    return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -756,11 +773,18 @@ def git_info() -> dict:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
+    ap.add_argument("--config", default=str(ex6_paths.CANONICAL_CONFIG), help="E2 run TOML")
+    ap.add_argument(
+        "--out-dir",
+        type=Path,
+        default=None,
+        help="default <archive>/6_evaluation/e1_e2_product_parity",
+    )
     ap.add_argument("--n-boot", type=int, default=10000)
     ap.add_argument("--seed", type=int, default=20260909)
     args = ap.parse_args(argv)
-    out = args.out_dir
+    resolve_paths(Path(args.config))
+    out = args.out_dir or E2_ARCHIVE / "6_evaluation" / "e1_e2_product_parity"
     out.mkdir(parents=True, exist_ok=True)
 
     e1_sites = load_e1_cohort()

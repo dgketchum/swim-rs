@@ -5,7 +5,7 @@ Implements the Volk et al. (2024) pooled-comparison conventions directly:
     (one regression across all site-days / site-months, not a per-site mean).
   - sqrt(n)-weighted per-station MBE / MAE / RMSE.
   - A pooled KGE computed on the full concatenated pool (a diagnostic for paper
-    Experiment 2), reusing evaluate.calc_metrics for an exact definition match.
+    E2), reusing evaluate.calc_metrics for an exact definition match.
 
 Reads the per-site combined CSVs already written by ``evaluate.py`` (``et_act``
 = SWIM daily ETa, ``et_rs`` = RS-derived daily ETa) and pairs them against the
@@ -15,22 +15,21 @@ QAQC flux ET_corr truth with the same gates as ``evaluate.py``:
     months require finite flux+SWIM+RS, >=6 per site
 
 Usage:
-    python pooled_metrics.py [--results-dir DIR]
+    uv run python pooled_metrics.py [--config TOML] [--results-dir DIR]
 """
 
 import argparse
 import os
+from pathlib import Path
 
+import ex6_paths
 import numpy as np
 import pandas as pd
-from evaluate import calc_metrics, load_flux_et, load_flux_sources
+from evaluate import _load_config, _results_dir, calc_metrics, load_flux_et, load_flux_sources
 from scipy import stats
 
 from swimrs.calibrate.flux_utils import paired_monthly_sums, passes_site_minimum
 
-RESULTS_DIR_DEFAULT = (
-    "/data/ssd1/swim/6_Flux_International/results/6_Flux_International_LSEnsemble_POR_annual2yr"
-)
 MIN_DAILY_OBS = 10
 MIN_MONTHLY_OBS = 6
 MIN_DAILY_FOR_MONTHLY = 30
@@ -180,15 +179,23 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--results-dir", default=RESULTS_DIR_DEFAULT)
+    parser.add_argument("--config", default=str(ex6_paths.CANONICAL_CONFIG), help="Run TOML")
+    parser.add_argument(
+        "--results-dir", default=None, help="default: results/<config stem> under the TOML root"
+    )
     parser.add_argument(
         "--shapefile",
-        default=os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "data", "gis", "flux_crop_pub_66_150m.shp"
-        ),
-        help="Cohort shapefile declaring per-site flux network/et_col",
+        default=None,
+        help="Cohort shapefile declaring per-site flux network/et_col (default: the TOML's)",
     )
     args = parser.parse_args()
+
+    conf_path = Path(args.config)
+    cfg = _load_config(conf_path)
+    if args.results_dir is None:
+        args.results_dir = _results_dir(cfg, conf_path)
+    if args.shapefile is None:
+        args.shapefile = cfg.fields_shapefile
 
     # Site list = the per-site CSVs evaluate.py already wrote.
     fids = sorted(

@@ -32,7 +32,7 @@ printed; any failure exits non-zero:
 
 The run log is gzipped into ``1_provenance/run_stdout.log.gz`` (original left in place).
 
-    uv run python examples/6_Flux_International/e2_refooting/phase11_archive_postcalibration.py
+    uv run python examples/6_Flux_International/archive_postcalibration.py
 """
 
 import argparse
@@ -47,18 +47,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-REPO = Path(__file__).resolve().parents[3]
-EX6 = REPO / "examples" / "6_Flux_International"
-DEFAULT_CONFIG = EX6 / "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml"
-DEFAULT_RUN_NAME = "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
-DEFAULT_RESULTS_ROOT = "/data/ssd1/swim/6_Flux_International/results"
-DEFAULT_LOG = (
-    "/data/ssd1/swim/6_Flux_International/nohup_calibrate_ls_ensemble_grassbasis_por_annual2yr.out"
-)
-DEFAULT_BASELINE_PESTRUN = "/data/ssd1/swim/6_Flux_International/pestrun_ls_ensemble_por_annual2yr"
-DEFAULT_BASELINE_CONTAINER = (
-    "/data/ssd1/swim/6_Flux_International/data/6_Flux_International_ls_ensemble_por_annual2yr.swim"
-)
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+import ex6_paths  # noqa: E402
+
+DEFAULT_CONFIG = ex6_paths.CANONICAL_CONFIG
+DEFAULT_RUN_NAME = ex6_paths.CANONICAL_RUN
 
 BOUND_TOL = 0.01  # fraction of the bound span (RUN_POLICY / calibration_guidance)
 BOUNDARY_FLAG_RATE = 0.5
@@ -309,23 +304,36 @@ def main():
     )
     p.add_argument("--config", default=str(DEFAULT_CONFIG))
     p.add_argument("--run-name", default=DEFAULT_RUN_NAME)
-    p.add_argument("--results-root", default=DEFAULT_RESULTS_ROOT)
+    p.add_argument("--results-root", default=None, help="default {project_ws}/results")
     p.add_argument("--noptmax", type=int, default=3, help="declared posterior iteration")
-    p.add_argument("--log", default=DEFAULT_LOG, help="batch_runner stdout to gzip into Cat 1")
-    p.add_argument("--baseline-pestrun", default=DEFAULT_BASELINE_PESTRUN)
-    p.add_argument("--baseline-container", default=DEFAULT_BASELINE_CONTAINER)
+    p.add_argument(
+        "--log",
+        default=None,
+        help="batch_runner stdout to gzip into Cat 1 (default {project_ws}/nohup_calibrate_<run>.out)",
+    )
+    p.add_argument(
+        "--baseline-config",
+        default=str(ex6_paths.BASELINE_CONFIG),
+        help="TOML of the superseded run the posterior is compared against",
+    )
+    p.add_argument("--baseline-pestrun", default=None, help="default the baseline pest_run_dir")
+    p.add_argument("--baseline-container", default=None, help="default the baseline container")
     p.add_argument("--baseline-iterations", default="3,4")
     args = p.parse_args()
 
     import geopandas as gpd
     import zarr
 
-    from swimrs.swim.config import ProjectConfig
-
-    cfg = ProjectConfig()
-    cfg.read_config(args.config, calibrate=True)
+    cfg = ex6_paths.load_config(args.config)
+    results_root = Path(args.results_root) if args.results_root else ex6_paths.results_root(cfg)
+    if args.log is None:
+        args.log = str(ex6_paths.calibration_log(cfg))
+    if args.baseline_pestrun is None or args.baseline_container is None:
+        bcfg = ex6_paths.load_config(args.baseline_config)
+        args.baseline_pestrun = args.baseline_pestrun or bcfg.pest_run_dir
+        args.baseline_container = args.baseline_container or bcfg.container_path
     pestrun = Path(cfg.pest_run_dir)
-    archive = Path(args.results_root) / args.run_name / "archive"
+    archive = results_root / args.run_name / "archive"
     cat4, cat5 = archive / "4_pest_outputs", archive / "5_posterior_summaries"
     (cat4 / "merged").mkdir(parents=True, exist_ok=True)
     cat5.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,6 @@
-"""Freeze irrigation-stratified Example 5 (Experiment 2) transfer vectors.
+"""Freeze irrigation-stratified Example 5 (paper E1) transfer vectors.
 
-The pooled E2 transfer vector has ``mad = 0.136917``, which is inside the
+The pooled E1 transfer vector has ``mad = 0.136917``, which is inside the
 irrigated prior (0.10-0.30) but outside the configured rainfed prior
 (0.30-0.80). Applying it to rainfed targets therefore transfers a scheduler
 trigger from outside the rainfed parameter domain. This builder replaces the
@@ -53,10 +53,15 @@ from build_ex5_cropland_params import (  # noqa: E402  (sibling module)
     compute_cropland_medians,
 )
 
-REPO_ROOT = HERE.parents[2]
+if str(HERE.parent) not in sys.path:
+    sys.path.insert(0, str(HERE.parent))
+import ex6_paths  # noqa: E402
 
-DEFAULT_PAR_CSV = "/data/ssd1/swim/5_Flux_Ensemble/results/run22/5_Flux_Ensemble.3.par.csv"
-DEFAULT_CONTAINER = "/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run22.swim"
+REPO_ROOT = ex6_paths.REPO
+
+# Run 22 posterior and source container, under the shared TOML ``root``
+EX5_PAR_CSV = Path("5_Flux_Ensemble") / "results" / "run22" / "5_Flux_Ensemble.3.par.csv"
+EX5_CONTAINER = Path("5_Flux_Ensemble") / "data" / "5_Flux_Ensemble_run22.swim"
 DEFAULT_OUT_DIR = REPO_ROOT / "paper" / "data" / "final"
 
 CLASSES = ("irrigated", "rainfed")
@@ -262,8 +267,14 @@ def _worktree_dirty():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--par-csv", default=DEFAULT_PAR_CSV, help="Run 22 posterior .par.csv")
-    parser.add_argument("--container", default=DEFAULT_CONTAINER, help="Run 22 source container")
+    parser.add_argument(
+        "--par-csv", default=None, help=f"Run 22 posterior .par.csv (default <root>/{EX5_PAR_CSV})"
+    )
+    parser.add_argument(
+        "--container",
+        default=None,
+        help=f"Run 22 source container (default <root>/{EX5_CONTAINER})",
+    )
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR), help="Artifact output dir")
     parser.add_argument(
         "--expect-par-sha256",
@@ -276,6 +287,9 @@ def main():
         help="Write artifacts even if class counts or audit values do not reproduce",
     )
     args = parser.parse_args()
+    root = ex6_paths.swim_root()
+    args.par_csv = args.par_csv or str(root / EX5_PAR_CSV)
+    args.container = args.container or str(root / EX5_CONTAINER)
 
     par_csv = Path(args.par_csv)
     container_path = Path(args.container)

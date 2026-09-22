@@ -1,4 +1,4 @@
-"""Phase 9 (E2 re-footing plan §15): independent audit of the built inverse problem.
+"""Independent audit of the built E2 inverse problem (RUN_POLICY gate G9).
 
 Reconstructs every ETf observation's target, spread, eligibility and weight directly from the
 corrected container and the resolved config (no PestBuilder code path), then compares the
@@ -16,31 +16,29 @@ Outputs (QA root): ``objective_weight_audit.json`` (summary + gate), ``objective
 (baseline weighted dates lost, with category), ``objective_weight_counts.csv`` (weighted counts by
 site / year / member count / batch vs baseline).
 
-    uv run python examples/6_Flux_International/e2_refooting/phase9_objective_audit.py \
-        --config examples/6_Flux_International/6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml \
-        --baseline-pest-archive /data/ssd1/swim/6_Flux_International/pestrun_ls_ensemble_por_annual2yr/pest_archive \
-        --ledger /data/ssd1/swim/6_Flux_International/data/e2_etf_refooting/ssebop_conversion_ledger.csv \
-        --out-dir /data/ssd1/swim/6_Flux_International/data/e2_etf_refooting
+    uv run python examples/6_Flux_International/objective_audit.py \
+        --config examples/6_Flux_International/6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml
+
+Defaults derive from the TOML: the baseline ``pest_archive`` is the baseline run's
+``pest_run_dir``; the ledger and ``--out-dir`` sit in the QA root ``{data}/e2_etf_refooting``.
 """
 
 import argparse
 import json
 import os
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-QA_ROOT = "/data/ssd1/swim/6_Flux_International/data/e2_etf_refooting"
-DEFAULT_CONFIG = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml",
-)
-DEFAULT_BASELINE_ARCHIVE = (
-    "/data/ssd1/swim/6_Flux_International/pestrun_ls_ensemble_por_annual2yr/pest_archive"
-)
-DEFAULT_LEDGER = os.path.join(QA_ROOT, "ssebop_conversion_ledger.csv")
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+import ex6_paths  # noqa: E402
+
+DEFAULT_CONFIG = str(ex6_paths.CANONICAL_CONFIG)
 
 PTJPL_ONLY_REVIEW_SHARE = 0.10
 WEIGHT_RTOL = 1e-6
@@ -747,12 +745,28 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument("--config", default=DEFAULT_CONFIG)
-    p.add_argument("--baseline-pest-archive", default=DEFAULT_BASELINE_ARCHIVE)
-    p.add_argument("--ledger", default=DEFAULT_LEDGER)
-    p.add_argument("--out-dir", default=QA_ROOT)
+    p.add_argument(
+        "--baseline-config",
+        default=str(ex6_paths.BASELINE_CONFIG),
+        help="TOML of the run whose pest_archive the weights are compared against",
+    )
+    p.add_argument(
+        "--baseline-pest-archive", default=None, help="default <baseline pest_run_dir>/pest_archive"
+    )
+    p.add_argument("--ledger", default=None, help="default <qa-root>/ssebop_conversion_ledger.csv")
+    p.add_argument("--out-dir", default=None, help="default the QA root {data}/e2_etf_refooting")
     p.add_argument("--noptmax", type=int, default=3, help="noptmax the .pst files must carry")
     p.add_argument("--reals", type=int, default=200, help="ies_num_reals the .pst files must carry")
     args = p.parse_args()
+
+    qa_root = ex6_paths.qa_root(ex6_paths.load_config(args.config))
+    if args.baseline_pest_archive is None:
+        bcfg = ex6_paths.load_config(args.baseline_config)
+        args.baseline_pest_archive = str(Path(bcfg.pest_run_dir) / "pest_archive")
+    if args.ledger is None:
+        args.ledger = str(qa_root / "ssebop_conversion_ledger.csv")
+    if args.out_dir is None:
+        args.out_dir = str(qa_root)
     s = run_audit(
         args.config, args.baseline_pest_archive, args.ledger, args.out_dir, args.noptmax, args.reals
     )

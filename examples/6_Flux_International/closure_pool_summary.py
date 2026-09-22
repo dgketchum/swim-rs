@@ -39,7 +39,7 @@ Outputs (``<archive>/6_evaluation/closure_pool/`` by default):
 Usage::
 
     uv run --project /home/dgketchum/code/swim-rs python \\
-        examples/6_Flux_International/e2_refooting/phase11_closure_pool_summary.py \\
+        examples/6_Flux_International/closure_pool_summary.py \\
         [--verify-all-sites] [--skip-members]
 """
 
@@ -56,14 +56,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-REPO = Path(__file__).resolve().parents[3]
-EX6 = REPO / "examples" / "6_Flux_International"
-for _p in (EX6, EX6 / "e2_refooting"):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
 
+import ex6_paths  # noqa: E402
 from evaluate import calc_metrics  # noqa: E402
-from phase11_evaluation_summary import (  # noqa: E402
+from evaluation_summary import (  # noqa: E402
     METRICS,
     MIN_DAILY,
     MIN_DAYS_PER_MONTH,
@@ -74,11 +73,11 @@ from pooled_metrics import pooled_stats, sqrt_n_weighted_mean  # noqa: E402
 
 from swimrs.calibrate.flux_utils import paired_monthly_sums  # noqa: E402
 
-DEFAULT_CONFIG = EX6 / "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml"
-RESULTS_ROOT = Path("/data/ssd1/swim/6_Flux_International/results")
-DEFAULT_RUN_NAME = "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
-DEFAULT_TRANSFER_NEW = RESULTS_ROOT / "e2_run22_transfer_by_irrigation_to_grassbasis"
-DEFAULT_TRANSITION = "/data/ssd1/swim/6_Flux_International/data/e2_etf_refooting/irrigation_classifier_transition.csv"
+REPO = ex6_paths.REPO
+DEFAULT_CONFIG = ex6_paths.CANONICAL_CONFIG
+DEFAULT_RUN_NAME = ex6_paths.CANONICAL_RUN
+TRANSFER_NEW_NAME = "e2_run22_transfer_by_irrigation_to_grassbasis"  # under {project_ws}/results
+TRANSITION_NAME = "irrigation_classifier_transition.csv"  # under the QA root
 
 CLOSURE_TIER = {"ET_corr": "closure_corrected", "ET": "raw"}
 PRIMARY_TIER = "closure_corrected"
@@ -479,9 +478,11 @@ def main():
     )
     p.add_argument("--config", default=str(DEFAULT_CONFIG))
     p.add_argument("--run-name", default=DEFAULT_RUN_NAME)
-    p.add_argument("--results-root", default=str(RESULTS_ROOT))
-    p.add_argument("--transfer-new", default=str(DEFAULT_TRANSFER_NEW))
-    p.add_argument("--transition-csv", default=DEFAULT_TRANSITION)
+    p.add_argument("--results-root", default=None, help="default {project_ws}/results")
+    p.add_argument(
+        "--transfer-new", default=None, help=f"default <results-root>/{TRANSFER_NEW_NAME}"
+    )
+    p.add_argument("--transition-csv", default=None, help=f"default <qa-root>/{TRANSITION_NAME}")
     p.add_argument("--out", default=None, help="default <archive>/6_evaluation/closure_pool")
     p.add_argument("--reps", type=int, default=10000)
     p.add_argument("--seed", type=int, default=20260908)
@@ -495,6 +496,12 @@ def main():
     )
     args = p.parse_args()
 
+    if None in (args.results_root, args.transfer_new, args.transition_csv):
+        cfg = ex6_paths.load_config(Path(args.config))
+        results_root = Path(args.results_root) if args.results_root else ex6_paths.results_root(cfg)
+        args.results_root = str(results_root)
+        args.transfer_new = args.transfer_new or str(results_root / TRANSFER_NEW_NAME)
+        args.transition_csv = args.transition_csv or str(ex6_paths.qa_root(cfg) / TRANSITION_NAME)
     results_dir = Path(args.results_root) / args.run_name
     cat6 = results_dir / "archive" / "6_evaluation"
     out = Path(args.out) if args.out else cat6 / "closure_pool"

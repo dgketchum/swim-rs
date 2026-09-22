@@ -1,4 +1,4 @@
-"""Recompute the derived E3 (Example 6) validation analyses for the manuscript.
+"""Recompute the derived E2 (Example 6) validation analyses for the manuscript.
 
 These are the sub-analyses that the headline ``evaluate.py`` run does not emit
 directly but the results overview reports:

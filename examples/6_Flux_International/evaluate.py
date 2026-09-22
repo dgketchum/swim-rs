@@ -17,6 +17,7 @@ Usage:
 import argparse
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -35,18 +36,21 @@ from swimrs.process.input import build_swim_input
 from swimrs.process.loop_fast import run_daily_loop_fast
 from swimrs.swim.config import ProjectConfig
 
-QAQC_ROOT = "/nas/climate/flux_stations/qaqc"
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+import ex6_paths  # noqa: E402
+
+# flux-data-qaqc archive ([validation] flux_dir in the TOML); _load_config re-points it
+QAQC_ROOT = ex6_paths.flux_root_static()
 QAQC_NETWORKS = ["ameriflux", "fluxnet", "icos", "ozflux"]
 
 
 def _load_config(conf_path: Path | None = None):
-    project_dir = Path(__file__).resolve().parent
-    conf = conf_path if conf_path is not None else project_dir / "6_Flux_International.toml"
-    cfg = ProjectConfig()
-    if os.path.isdir("/data/ssd1/swim"):
-        cfg.read_config(str(conf), calibrate=True)
-    else:
-        cfg.read_config(str(conf), project_root_override=str(project_dir.parent), calibrate=True)
+    """Read the TOML (default: the canonical GrassBasis run) and adopt its flux archive."""
+    global QAQC_ROOT
+    cfg = ex6_paths.load_config(conf_path)
+    QAQC_ROOT = cfg.flux_dir
     return cfg
 
 
@@ -730,7 +734,7 @@ if __name__ == "__main__":
         "--config",
         type=str,
         default=None,
-        help="Path to TOML config (default: 6_Flux_International.toml)",
+        help="Path to TOML config (default: the canonical GrassBasis run TOML)",
     )
     parser.add_argument(
         "--par-csv",
@@ -765,7 +769,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    conf_path = Path(args.config) if args.config else None
+    conf_path = Path(args.config) if args.config else ex6_paths.CANONICAL_CONFIG
     cfg = _load_config(conf_path)
     results_dir = _results_dir(cfg, conf_path)
 

@@ -18,15 +18,17 @@ import glob
 import json
 import os
 import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-RESULTS = "/data/ssd1/swim/6_Flux_International/results"
-DEFAULT_RUN = "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
-DEFAULT_HWSD = (
-    "/data/ssd1/swim/6_Flux_International/data/properties/6_Flux_International_hwsd_crop.csv"
-)
+HERE = Path(__file__).resolve().parent
+if str(HERE.parent) not in sys.path:
+    sys.path.insert(0, str(HERE.parent))
+import ex6_paths  # noqa: E402
+
+DEFAULT_RUN = ex6_paths.CANONICAL_RUN
 
 
 def expected_prior(hwsd_mm: float, lower: float, upper: float) -> float:
@@ -39,14 +41,20 @@ def expected_prior(hwsd_mm: float, lower: float, upper: float) -> float:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--config", default=str(ex6_paths.CANONICAL_CONFIG), help="Run TOML")
     ap.add_argument("--run-name", default=DEFAULT_RUN)
-    ap.add_argument("--results-root", default=RESULTS)
-    ap.add_argument("--hwsd-csv", default=DEFAULT_HWSD)
+    ap.add_argument("--results-root", default=None, help="default {project_ws}/results")
+    ap.add_argument("--hwsd-csv", default=None, help="default the TOML's hwsd_csv")
     ap.add_argument("--lower", type=float, default=100.0)
     ap.add_argument("--upper", type=float, default=400.0)
     ap.add_argument("--expect-sites", type=int, default=66)
     ap.add_argument("--out-dir", default=None, help="default: the 3_problem_definition dir")
     args = ap.parse_args()
+
+    if args.results_root is None or args.hwsd_csv is None:
+        cfg = ex6_paths.load_config(args.config)
+        args.results_root = args.results_root or str(ex6_paths.results_root(cfg))
+        args.hwsd_csv = args.hwsd_csv or cfg.hwsd_csv
 
     prob = os.path.join(args.results_root, args.run_name, "archive", "3_problem_definition")
     files = sorted(glob.glob(os.path.join(prob, "batch_*", "params.csv")))

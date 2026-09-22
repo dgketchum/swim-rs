@@ -67,3 +67,7 @@ prior_regularization_fraction = 0.8
 etf_target_model = "ensemble"
 etf_target_instrument = "landsat"
 etf_ensemble_members = ["ssebop", "ptjpl"]
+
+[validation]
+# flux-data-qaqc archive, {flux_dir}/{network}/{site}_daily_data.csv; validation truth only
+flux_dir = "/nas/climate/flux_stations/qaqc"

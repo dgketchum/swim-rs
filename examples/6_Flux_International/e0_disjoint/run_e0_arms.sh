@@ -10,10 +10,12 @@
 set -euo pipefail
 REPO=/home/dgketchum/code/swim-rs
 EX6=$REPO/examples/6_Flux_International
-E2=/data/ssd1/swim/6_Flux_International
+BASE=6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr
+# workspace root from the TOML (one line to relocate everything on disk)
+SWIM_ROOT=$(uv --directory $REPO run python -c "import sys,tomllib;print(tomllib.load(open(sys.argv[1],'rb'))['root'])" "$EX6/$BASE.toml")
+E2=$SWIM_ROOT/6_Flux_International
 RESULTS=$E2/results
 QA_CANON=$E2/data/e2_etf_refooting
-BASE=6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr
 CANON_ARCHIVE=$RESULTS/$BASE/archive
 PY="uv --directory $REPO run python -u"
 
@@ -41,18 +43,18 @@ for ARM in ${ARMS:-fao56_sig fao56}; do  # ARMS="fao56" resumes a single arm; th
       --reals 200 --noptmax 3 --workers 20 --batch-size 50 --exclude-uncovered
   $PY -m swimrs.calibrate.batch_runner --config "$CFG" --action build-all \
       --reals 200 --noptmax 3 --workers 20 --batch-size 50 --exclude-uncovered
-  $PY $EX6/e2_refooting/phase9_objective_audit.py --config "$CFG" \
+  $PY $EX6/objective_audit.py --config "$CFG" \
       --baseline-pest-archive $E2/pestrun_ls_ensemble_grassbasis_por_annual2yr/pest_archive \
       --out-dir "$QA" --noptmax 3 --reals 200
 
   # Cats 1-3 pre-launch, hash verify at launch, then calibrate (build reused via --resume)
-  $PY $EX6/e2_refooting/phase9_archive_prelaunch.py capture --config "$CFG" --run-name "$RUN" \
+  $PY $EX6/archive_prelaunch.py capture --config "$CFG" --run-name "$RUN" \
       --qa-root "$QA" --command "$LAUNCH" --workers 20 --reals 200 --noptmax 3 --batch-size 50
-  $PY $EX6/e2_refooting/phase9_archive_prelaunch.py verify --config "$CFG" --run-name "$RUN" --qa-root "$QA"
+  $PY $EX6/archive_prelaunch.py verify --config "$CFG" --run-name "$RUN" --qa-root "$QA"
   $LAUNCH > "$LOG" 2>&1
 
   # Cats 4-5 + completion checks, then Cat 6 evaluation from the merged posterior
-  $PY $EX6/e2_refooting/phase11_archive_postcalibration.py --config "$CFG" --run-name "$RUN" --log "$LOG"
+  $PY $EX6/archive_postcalibration.py --config "$CFG" --run-name "$RUN" --log "$LOG"
   POST=$RESULTS/$RUN/archive/4_pest_outputs/merged/merged_posterior.csv
   $PY $EX6/evaluate.py --config "$CFG" --par-csv "$POST"
   $PY $EX6/evaluate.py --config "$CFG" --par-csv "$POST" --monthly

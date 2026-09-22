@@ -1,4 +1,4 @@
-"""Unit tests for the E2 closure-corrected pool re-cut (``e2_refooting/phase11_closure_pool_summary.py``).
+"""Unit tests for the E2 closure-corrected pool re-cut (``closure_pool_summary.py``).
 
 Covers the pure pieces: closure-tier mapping and pool selection, country/continent from the
 site-id prefix (the ``US``/``USA`` normalisation), headline rows with NaN-metric monthly rows,
@@ -16,28 +16,33 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EX6_DIR = REPO_ROOT / "examples" / "6_Flux_International"
-E2_DIR = EX6_DIR / "e2_refooting"
 
 
 # Example-level helper modules share bare names (``evaluate``, ``pooled_metrics``) across
 # examples; another test may already have cached the Example 5 ``evaluate``. Evict those names
 # while loading so the Example 6 versions resolve, then restore the caller's modules.
-_SHARED_NAMES = ("evaluate", "pooled_metrics", "derived_metrics", "phase11_evaluation_summary")
+_SHARED_NAMES = (
+    "ex6_paths",
+    "evaluate",
+    "pooled_metrics",
+    "derived_metrics",
+    "evaluation_summary",
+    "archive_postcalibration",
+)
 
 
 @pytest.fixture(scope="module")
 def cp():
     saved = {n: sys.modules.pop(n) for n in _SHARED_NAMES if n in sys.modules}
-    for p in (EX6_DIR, E2_DIR):
-        sys.path.insert(0, str(p))
+    sys.path.insert(0, str(EX6_DIR))
     spec = importlib.util.spec_from_file_location(
-        "phase11_closure_pool_summary", E2_DIR / "phase11_closure_pool_summary.py"
+        "closure_pool_summary", EX6_DIR / "closure_pool_summary.py"
     )
     module = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(module)
     finally:
-        sys.path[:] = [p for p in sys.path if p not in (str(EX6_DIR), str(E2_DIR))]
+        sys.path[:] = [p for p in sys.path if p != str(EX6_DIR)]
         for n in _SHARED_NAMES:
             sys.modules.pop(n, None)
         sys.modules.update(saved)

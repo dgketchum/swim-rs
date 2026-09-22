@@ -12,9 +12,9 @@ and the evaluation step. Category 3 is copied from the batches built by
 compares them with the archive; a non-zero exit blocks the launch (plan §16 "config, container and
 source hashes are checked again at launch").
 
-    uv run python examples/6_Flux_International/e2_refooting/phase9_archive_prelaunch.py capture \
+    uv run python examples/6_Flux_International/archive_prelaunch.py capture \
         --command "<exact launch command>"
-    uv run python examples/6_Flux_International/e2_refooting/phase9_archive_prelaunch.py verify
+    uv run python examples/6_Flux_International/archive_prelaunch.py verify
 """
 
 import argparse
@@ -31,12 +31,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-REPO = Path(__file__).resolve().parents[3]
-EX6 = REPO / "examples" / "6_Flux_International"
-QA_ROOT = Path("/data/ssd1/swim/6_Flux_International/data/e2_etf_refooting")
-DEFAULT_CONFIG = EX6 / "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml"
-DEFAULT_RUN_NAME = "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
-DEFAULT_RESULTS_ROOT = "/data/ssd1/swim/6_Flux_International/results"
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+import ex6_paths  # noqa: E402
+
+REPO = ex6_paths.REPO
+DEFAULT_CONFIG = ex6_paths.CANONICAL_CONFIG
+DEFAULT_RUN_NAME = ex6_paths.CANONICAL_RUN
 
 ACTIVE_TARGET_MODELS = ("ssebop", "ptjpl")
 # Arrays whose undetected change would silently invalidate results -> content SHA-256
@@ -396,7 +398,7 @@ def capture_problem_definition(prob: Path, cfg, qa_root: Path) -> dict:
     audit_json = qa_root / "objective_weight_audit.json"
     if not rows_path.exists() or not audit_json.exists():
         raise FileNotFoundError(
-            "run phase9_objective_audit.py first (objective_weight_rows.csv / objective_weight_audit.json)"
+            "run objective_audit.py first (objective_weight_rows.csv / objective_weight_audit.json)"
         )
     audit = json.loads(audit_json.read_text())
     if not audit.get("pass"):
@@ -495,8 +497,8 @@ def main():
     p.add_argument("mode", choices=["capture", "verify"])
     p.add_argument("--config", default=str(DEFAULT_CONFIG))
     p.add_argument("--run-name", default=DEFAULT_RUN_NAME)
-    p.add_argument("--results-root", default=DEFAULT_RESULTS_ROOT)
-    p.add_argument("--qa-root", default=str(QA_ROOT))
+    p.add_argument("--results-root", default=None, help="default {project_ws}/results")
+    p.add_argument("--qa-root", default=None, help="default {data}/e2_etf_refooting")
     p.add_argument("--command", default=None, help="Exact launch command being archived (capture)")
     p.add_argument("--workers", type=int, default=20)
     p.add_argument("--reals", type=int, default=200)
@@ -506,13 +508,12 @@ def main():
 
     import zarr
 
-    from swimrs.swim.config import ProjectConfig
-
-    cfg = ProjectConfig()
-    cfg.read_config(args.config, calibrate=True)
+    cfg = ex6_paths.load_config(args.config)
     config_path = Path(args.config).resolve()
+    results_root = Path(args.results_root) if args.results_root else ex6_paths.results_root(cfg)
+    qa_root = Path(args.qa_root) if args.qa_root else ex6_paths.qa_root(cfg)
     root = zarr.open_group(cfg.container_path, mode="r")
-    archive = Path(args.results_root) / args.run_name / "archive"
+    archive = results_root / args.run_name / "archive"
 
     if args.mode == "capture":
         if not args.command:
@@ -527,8 +528,8 @@ def main():
         capture_provenance(
             archive / "1_provenance", cfg, config_path, args.run_name, args.command, params, root
         )
-        gate = capture_input_audit(archive / "2_input_audit", cfg, root, Path(args.qa_root))
-        capture_problem_definition(archive / "3_problem_definition", cfg, Path(args.qa_root))
+        gate = capture_input_audit(archive / "2_input_audit", cfg, root, qa_root)
+        capture_problem_definition(archive / "3_problem_definition", cfg, qa_root)
         if gate != "PASS":
             raise SystemExit(f"Input-audit gate = {gate}; refusing to proceed to calibration.")
         print("Pre-launch archive complete; gate PASS.")

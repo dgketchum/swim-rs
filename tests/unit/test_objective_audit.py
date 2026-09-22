@@ -1,9 +1,9 @@
-"""Unit tests for the E2 Phase 9 inverse-problem audit and pre-launch archive helpers.
+"""Unit tests for the E2 inverse-problem audit and pre-launch archive helpers.
 
-Covers the pure pieces of ``e2_refooting/phase9_objective_audit.py`` (observation-name decoding,
+Covers the pure pieces of ``objective_audit.py`` (observation-name decoding,
 independent reconstruction of the pest_builder spread weights with member-count and ETo-floor
 rules, SWE phi-share weight derivation, loss classification) and of
-``e2_refooting/phase9_archive_prelaunch.py`` (content hashing, hash comparison, Category 3
+``archive_prelaunch.py`` (content hashing, hash comparison, Category 3
 observation-metadata decoding).
 """
 
@@ -17,28 +17,28 @@ import pandas as pd
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-E2_DIR = REPO_ROOT / "examples" / "6_Flux_International" / "e2_refooting"
+EX6_DIR = REPO_ROOT / "examples" / "6_Flux_International"
 
 
 def _load(name):
-    sys.path.insert(0, str(E2_DIR))
-    spec = importlib.util.spec_from_file_location(name, E2_DIR / f"{name}.py")
+    sys.path.insert(0, str(EX6_DIR))
+    spec = importlib.util.spec_from_file_location(name, EX6_DIR / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(module)
     finally:
-        sys.path[:] = [p for p in sys.path if p != str(E2_DIR)]
+        sys.path[:] = [p for p in sys.path if p != str(EX6_DIR)]
     return module
 
 
 @pytest.fixture(scope="module")
 def audit():
-    return _load("phase9_objective_audit")
+    return _load("objective_audit")
 
 
 @pytest.fixture(scope="module")
 def arch():
-    return _load("phase9_archive_prelaunch")
+    return _load("archive_prelaunch")
 
 
 DATES = pd.date_range("2015-01-01", periods=6, freq="D")

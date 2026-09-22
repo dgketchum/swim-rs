@@ -1,11 +1,11 @@
-"""Build the Example 6 (Experiment 3) per-site irrigation-stratified param mapping.
+"""Build the Example 6 (paper E2) per-site irrigation-stratified param mapping.
 
 Expands the two frozen Run 22 class vectors into a per-site
-``{sid: {param: value}}`` mapping covering the full 66-site E3 publication
+``{sid: {param: value}}`` mapping covering the full 66-site E2 publication
 cohort, so ``../transfer_ex5_params.py --params-by-site`` can score the
 irrigation-stratified transfer against the pooled transfer on identical support.
 
-Target-class policy (handoff, "Target-class policy > E3"): the first-stage
+Target-class policy (handoff, "Target-class policy > E2"): the first-stage
 site-level "equipped for irrigation" result of the canonical two-stage local
 satellite ET/precipitation classifier selects the vector -- equipped site gets
 the irrigated vector, not equipped gets the rainfed vector. The second-stage
@@ -23,12 +23,12 @@ container nor any CSV/JSON. The only persisted record is
 independently verified to reproduce the stage-1 rule exactly on this container:
 equipped is True for exactly 14 sites, with zero equipped-but-never-activated
 sites and zero activated-but-not-equipped sites. Note ``properties/irrigation/irr``
-does not exist in any E3 container -- that is the CONUS ``use_mask`` path.
+does not exist in any E2 container -- that is the CONUS ``use_mask`` path.
 
 No flux ET and no meter record enters classification: irrigation status comes from
 remote-sensing ET, precipitation, and land cover only.
 
-Reconciliation, asserted here (handoff stop condition: "the final E3 cohort does
+Reconciliation, asserted here (handoff stop condition: "the final E2 cohort does
 not reconcile independently of the 75-site container"):
 
     container scope (75 sites)  : 14 ever-irrigated sites / 175 irrigated site-years
@@ -40,14 +40,15 @@ Writes (under ``--out-dir``, default ``paper/data/final``):
     e3_irrigation_stratified_param_mapping_metadata.json  - assignments + provenance
 
 Usage:
-    uv run python \\
-        /home/dgketchum/code/swim-rs/examples/6_Flux_International/transfer/build_e3_irrigation_mapping.py
+    uv run python examples/6_Flux_International/transfer/build_e2_irrigation_mapping.py
 
-    uv run python \\
-        /home/dgketchum/code/swim-rs/examples/6_Flux_International/transfer/build_e3_irrigation_mapping.py \\
-        --vectors /home/dgketchum/code/swim-rs/paper/data/final/e2_run22_transfer_vectors_by_irrigation.json \\
-        --container /data/ssd1/swim/6_Flux_International/data/6_Flux_International_ls_ensemble_por_annual2yr.swim \\
-        --shapefile /data/ssd1/swim/6_Flux_International/data/gis/flux_crop_pub_66_150m.shp
+    uv run python examples/6_Flux_International/transfer/build_e2_irrigation_mapping.py \\
+        --vectors paper/data/final/e2_run22_transfer_vectors_by_irrigation.json \\
+        --config examples/6_Flux_International/<run>.toml   # container + cohort shapefile
+
+Output file names keep the legacy ``e3_`` prefix (Example 6 was "Experiment 3" before the
+paper renumbering); the frozen artifacts under ``paper/data/final`` and the figure builder
+key on those names.
 
 This script only reads existing artifacts. It does NOT run the model, rebuild a
 container, calibrate, or call Earth Engine.
@@ -74,15 +75,15 @@ from build_ex5_irrigation_stratified_params import (  # noqa: E402  (sibling mod
     _worktree_dirty,
 )
 
-REPO_ROOT = HERE.parents[2]
+if str(HERE.parent) not in sys.path:
+    sys.path.insert(0, str(HERE.parent))
+import ex6_paths  # noqa: E402
+
+REPO_ROOT = ex6_paths.REPO
 
 DEFAULT_VECTORS = (
     REPO_ROOT / "paper" / "data" / "final" / ("e2_run22_transfer_vectors_by_irrigation.json")
 )
-DEFAULT_CONTAINER = (
-    "/data/ssd1/swim/6_Flux_International/data/6_Flux_International_ls_ensemble_por_annual2yr.swim"
-)
-DEFAULT_SHAPEFILE = "/data/ssd1/swim/6_Flux_International/data/gis/flux_crop_pub_66_150m.shp"
 DEFAULT_OUT_DIR = REPO_ROOT / "paper" / "data" / "final"
 UID_COL = "sid"
 
@@ -111,7 +112,7 @@ STAGE1_RECOVERY = (
     "independently to reproduce the stage-1 rule exactly on this container: "
     "equipped is True for exactly 14 sites, with zero equipped-but-never-activated "
     "sites and zero activated-but-not-equipped sites. "
-    "properties/irrigation/irr does not exist in any E3 container (CONUS use_mask "
+    "properties/irrigation/irr does not exist in any E2 container (CONUS use_mask "
     "path only) and is not consulted."
 )
 STAGE2_NOTE = (
@@ -177,7 +178,7 @@ def read_irrigation_years(container_path):
 
     container_path = Path(container_path)
     if not container_path.exists():
-        raise FileNotFoundError(f"E3 container not found: {container_path}")
+        raise FileNotFoundError(f"E2 container not found: {container_path}")
 
     root = zarr.open(str(container_path), mode="r")
     if "derived/dynamics/irr_data" not in root:
@@ -214,7 +215,7 @@ def read_cohort(shapefile, uid_col=UID_COL):
 
     shapefile = Path(shapefile)
     if not shapefile.exists():
-        raise FileNotFoundError(f"E3 cohort shapefile not found: {shapefile}")
+        raise FileNotFoundError(f"E2 cohort shapefile not found: {shapefile}")
     gdf = gpd.read_file(shapefile, engine="fiona")
     if uid_col not in gdf.columns:
         raise KeyError(f"{shapefile} has no {uid_col!r} column; found {list(gdf.columns)}")
@@ -253,7 +254,7 @@ def reconcile(irr_years, cohort, allow_unexpected=False):
     }
 
     stop = (
-        "Stop condition (handoff, 'Stop conditions'): the final E3 cohort does not "
+        "Stop condition (handoff, 'Stop conditions'): the final E2 cohort does not "
         "reconcile independently of the 75-site container. Investigate the cohort, "
         "the container, or the classifier rather than substituting inputs. Pass "
         "--allow-unexpected only to inspect a knowingly different cohort."
@@ -297,7 +298,7 @@ def reconcile(irr_years, cohort, allow_unexpected=False):
     report["failures"] = failures
     if failures and not allow_unexpected:
         raise ValueError(
-            "E3 cohort irrigation reconciliation failed:\n  - "
+            "E2 cohort irrigation reconciliation failed:\n  - "
             + "\n  - ".join(failures)
             + "\n"
             + stop
@@ -335,8 +336,15 @@ def main():
     parser.add_argument(
         "--vectors", default=str(DEFAULT_VECTORS), help="Frozen two-vector artifact JSON"
     )
-    parser.add_argument("--container", default=DEFAULT_CONTAINER, help="Canonical E3 container")
-    parser.add_argument("--shapefile", default=DEFAULT_SHAPEFILE, help="66-site cohort shapefile")
+    parser.add_argument(
+        "--config",
+        default=str(ex6_paths.CANONICAL_CONFIG),
+        help="Run TOML supplying the default container and cohort shapefile",
+    )
+    parser.add_argument("--container", default=None, help="E2 container (default: the TOML's)")
+    parser.add_argument(
+        "--shapefile", default=None, help="66-site cohort shapefile (default: the TOML's)"
+    )
     parser.add_argument("--uid-col", default=UID_COL, help="Cohort shapefile uid column")
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR), help="Artifact output dir")
     parser.add_argument(
@@ -346,6 +354,11 @@ def main():
         "does not match the frozen 14/175 and 13/163 expectations",
     )
     args = parser.parse_args()
+
+    if args.container is None or args.shapefile is None:
+        cfg = ex6_paths.load_config(args.config)
+        args.container = args.container or cfg.container_path
+        args.shapefile = args.shapefile or cfg.fields_shapefile
 
     vectors_path = Path(args.vectors)
     vectors = load_class_vectors(vectors_path)

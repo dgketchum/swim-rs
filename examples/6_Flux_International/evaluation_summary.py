@@ -1,4 +1,4 @@
-"""E2 Phase 11 (plan §17) evaluation summary and RUN_POLICY Category 6 archive for the GrassBasis
+"""E2 evaluation summary and RUN_POLICY Category 6 archive for the GrassBasis
 run, with the Gate G11 integrity checks.
 
 Consumes what ``evaluate.py`` (daily, ``--monthly``, ``--etf``), ``derived_metrics.py``,
@@ -28,7 +28,7 @@ QAQC flux archive, and writes ``results/<run>/archive/6_evaluation/``:
 
 Read-only on every container and on the baseline results. No calibration, no Earth Engine.
 
-    uv run python examples/6_Flux_International/e2_refooting/phase11_evaluation_summary.py
+    uv run python examples/6_Flux_International/evaluation_summary.py
 """
 
 import argparse
@@ -44,24 +44,21 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-REPO = Path(__file__).resolve().parents[3]
-EX6 = REPO / "examples" / "6_Flux_International"
-for _p in (EX6, EX6 / "e2_refooting"):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+import ex6_paths  # noqa: E402
 
-DEFAULT_CONFIG = EX6 / "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml"
-DEFAULT_BASELINE_CONFIG = EX6 / "6_Flux_International_LSEnsemble_POR_annual2yr.toml"
-RESULTS_ROOT = Path("/data/ssd1/swim/6_Flux_International/results")
-DEFAULT_RUN_NAME = "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
-DEFAULT_BASELINE_RESULTS = RESULTS_ROOT / "6_Flux_International_LSEnsemble_POR_annual2yr"
-DEFAULT_BASELINE_FROZEN = (
-    DEFAULT_BASELINE_RESULTS / "archive_recal20260702_classifier" / "6_evaluation"
-)
-DEFAULT_BASELINE_PESTRUN = "/data/ssd1/swim/6_Flux_International/pestrun_ls_ensemble_por_annual2yr"
-DEFAULT_TRANSFER_NEW = RESULTS_ROOT / "e2_run22_transfer_by_irrigation_to_grassbasis"
-DEFAULT_TRANSFER_OLD = RESULTS_ROOT / "e2_run22_transfer_by_irrigation_to_e3"
-DEFAULT_TRANSITION = "/data/ssd1/swim/6_Flux_International/data/e2_etf_refooting/irrigation_classifier_transition.csv"
+REPO = ex6_paths.REPO
+DEFAULT_CONFIG = ex6_paths.CANONICAL_CONFIG
+DEFAULT_BASELINE_CONFIG = ex6_paths.BASELINE_CONFIG
+DEFAULT_RUN_NAME = ex6_paths.CANONICAL_RUN
+BASELINE_RUN_NAME = ex6_paths.BASELINE_RUN
+# under the baseline run dir: the frozen classifier-recal evaluation the summary compares against
+BASELINE_FROZEN_SUBDIR = Path("archive_recal20260702_classifier") / "6_evaluation"
+TRANSFER_NEW_NAME = "e2_run22_transfer_by_irrigation_to_grassbasis"  # under {project_ws}/results
+TRANSFER_OLD_NAME = "e2_run22_transfer_by_irrigation_to_e3"
+TRANSITION_NAME = "irrigation_classifier_transition.csv"  # under the QA root
 
 MIN_DAILY = 10
 MIN_DAILY_FOR_MONTHLY = 30
@@ -319,22 +316,30 @@ def main():
     )
     p.add_argument("--config", default=str(DEFAULT_CONFIG))
     p.add_argument("--run-name", default=DEFAULT_RUN_NAME)
-    p.add_argument("--results-root", default=str(RESULTS_ROOT))
+    p.add_argument("--results-root", default=None, help="default {project_ws}/results")
     p.add_argument("--baseline-config", default=str(DEFAULT_BASELINE_CONFIG))
-    p.add_argument("--baseline-results", default=str(DEFAULT_BASELINE_RESULTS))
-    p.add_argument("--baseline-frozen-eval", default=str(DEFAULT_BASELINE_FROZEN))
-    p.add_argument("--baseline-pestrun", default=DEFAULT_BASELINE_PESTRUN)
+    p.add_argument("--baseline-results", default=None, help="default <results-root>/<baseline run>")
+    p.add_argument(
+        "--baseline-frozen-eval",
+        default=None,
+        help=f"default <baseline-results>/{BASELINE_FROZEN_SUBDIR}",
+    )
+    p.add_argument("--baseline-pestrun", default=None, help="default the baseline pest_run_dir")
     p.add_argument("--baseline-iteration", type=int, default=3)
-    p.add_argument("--transfer-new", default=str(DEFAULT_TRANSFER_NEW))
-    p.add_argument("--transfer-old", default=str(DEFAULT_TRANSFER_OLD))
-    p.add_argument("--transition-csv", default=DEFAULT_TRANSITION)
+    p.add_argument(
+        "--transfer-new", default=None, help=f"default <results-root>/{TRANSFER_NEW_NAME}"
+    )
+    p.add_argument(
+        "--transfer-old", default=None, help=f"default <results-root>/{TRANSFER_OLD_NAME}"
+    )
+    p.add_argument("--transition-csv", default=None, help=f"default <qa-root>/{TRANSITION_NAME}")
     p.add_argument("--skip-baseline-forward", action="store_true")
     args = p.parse_args()
 
     import evaluate as ev
     import geopandas as gpd
     import zarr
-    from phase11_archive_postcalibration import (
+    from archive_postcalibration import (
         merge_par_csvs,
         posterior_medians,
         read_irrigation_class,
@@ -345,7 +350,20 @@ def main():
 
     conf_path = Path(args.config)
     cfg = ev._load_config(conf_path)
-    results = Path(args.results_root) / args.run_name
+    results_root = Path(args.results_root) if args.results_root else ex6_paths.results_root(cfg)
+    if args.baseline_results is None:
+        args.baseline_results = str(results_root / BASELINE_RUN_NAME)
+    if args.baseline_frozen_eval is None:
+        args.baseline_frozen_eval = str(Path(args.baseline_results) / BASELINE_FROZEN_SUBDIR)
+    if args.baseline_pestrun is None:
+        args.baseline_pestrun = ex6_paths.load_config(Path(args.baseline_config)).pest_run_dir
+    if args.transfer_new is None:
+        args.transfer_new = str(results_root / TRANSFER_NEW_NAME)
+    if args.transfer_old is None:
+        args.transfer_old = str(results_root / TRANSFER_OLD_NAME)
+    if args.transition_csv is None:
+        args.transition_csv = str(ex6_paths.qa_root(cfg) / TRANSITION_NAME)
+    results = results_root / args.run_name
     archive = results / "archive"
     cat6 = archive / "6_evaluation"
     ts_dir = cat6 / "site_daily_timeseries"
@@ -849,7 +867,7 @@ def main():
             "posterior_iteration": 3,
             "statistic": "median over realizations (base excluded)",
         },
-        "flux_archive": ev.QAQC_ROOT,
+        "flux_archive": str(cfg.flux_dir),
         "flux_sources": "per-site (network, et_col) from the cohort shapefile",
         "cohort_shapefile": str(cfg.fields_shapefile),
         "period": [str(cfg.start_dt.date()), str(cfg.end_dt.date())],

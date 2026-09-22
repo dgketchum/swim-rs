@@ -1,4 +1,4 @@
-"""Freeze the Example 5 (Experiment 2) cropland median parameter vector.
+"""Freeze the Example 5 (paper E1) cropland median parameter vector.
 
 Reads the Example 5 publication calibration parameter ensemble (PEST++ IES
 ``.par.csv``) and writes two frozen artifacts used by the Ex5 -> Ex6 parameter
@@ -9,7 +9,7 @@ transferability test (``../transfer_ex5_params.py``):
 
 Aggregation: for each of the eight calibrated parameters, take each Ex5 site's
 posterior median (the median realization value, ``base`` excluded), then take
-the median across the Ex5 cropland sites. This matches the "median Experiment 2
+the median across the Ex5 cropland sites. This matches the "median E1
 cropland posterior" framing in the transferability plan. All 60 Example 5 sites
 are CONUS cropland, so the cropland median is the median over the whole cohort.
 
@@ -25,16 +25,20 @@ import argparse
 import hashlib
 import json
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
 
 HERE = Path(__file__).resolve().parent
+if str(HERE.parent) not in sys.path:
+    sys.path.insert(0, str(HERE.parent))
+import ex6_paths  # noqa: E402
 
-# Example 5 publication run (Run 21): clean re-run reproducing Run 20 bit-for-bit
-# with the complete RUN_POLICY archive. The final-iteration parameter ensemble.
-DEFAULT_PAR_CSV = "/data/ssd1/swim/5_Flux_Ensemble/results/run21/5_Flux_Ensemble.3.par.csv"
+# Example 5 publication run (Run 22): the final-iteration parameter ensemble under the
+# shared TOML ``root`` (the frozen paper/data/final vectors record this file's sha256).
+EX5_PAR_CSV = Path("5_Flux_Ensemble") / "results" / "run22" / "5_Flux_Ensemble.3.par.csv"
 
 # The eight calibrated parameters, with the PEST parameter-family token used in
 # the .par.csv column names (``pname:p_<family>_<site>_:0_...``).
@@ -144,7 +148,9 @@ def _git_sha():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--par-csv", default=DEFAULT_PAR_CSV, help="Ex5 publication .par.csv")
+    parser.add_argument(
+        "--par-csv", default=None, help=f"Ex5 publication .par.csv (default <root>/{EX5_PAR_CSV})"
+    )
     parser.add_argument("--out-dir", default=str(HERE), help="Where to write the JSON artifacts")
     parser.add_argument("--out-json", default=None, help="Explicit vector JSON path")
     parser.add_argument("--out-meta", default=None, help="Explicit metadata JSON path")
@@ -155,6 +161,8 @@ def main():
         help="Source-run label for the metadata (default: derived from the --par-csv path)",
     )
     args = parser.parse_args()
+    if args.par_csv is None:
+        args.par_csv = str(ex6_paths.swim_root() / EX5_PAR_CSV)
 
     par_csv = Path(args.par_csv)
     if not par_csv.exists():

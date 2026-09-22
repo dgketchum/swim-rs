@@ -1,8 +1,8 @@
-"""Unit tests for the E2 Phase 11 post-calibration archive and evaluation-summary helpers.
+"""Unit tests for the E2 post-calibration archive and evaluation-summary helpers.
 
-Covers the pure pieces of ``e2_refooting/phase11_archive_postcalibration.py`` (PEST parameter-name
+Covers the pure pieces of ``archive_postcalibration.py`` (PEST parameter-name
 decoding, per-batch posterior merge, medians, per-site bounds and boundary-hit rates, phi-history
-checks, ingested-vs-posterior comparison) and of ``e2_refooting/phase11_evaluation_summary.py``
+checks, ingested-vs-posterior comparison) and of ``evaluation_summary.py``
 (metrics with KGE components against the evaluator's ``calc_metrics``, the declared daily and
 monthly pairing masks, retrieval-day masks and the overpass split, count reconciliation, grouped
 medians, and the NaN-aware reproduction delta).
@@ -18,29 +18,27 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EX6_DIR = REPO_ROOT / "examples" / "6_Flux_International"
-E2_DIR = EX6_DIR / "e2_refooting"
 
 
 def _load(name):
-    for p in (EX6_DIR, E2_DIR):
-        sys.path.insert(0, str(p))
-    spec = importlib.util.spec_from_file_location(name, E2_DIR / f"{name}.py")
+    sys.path.insert(0, str(EX6_DIR))
+    spec = importlib.util.spec_from_file_location(name, EX6_DIR / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(module)
     finally:
-        sys.path[:] = [p for p in sys.path if p not in (str(EX6_DIR), str(E2_DIR))]
+        sys.path[:] = [p for p in sys.path if p != str(EX6_DIR)]
     return module
 
 
 @pytest.fixture(scope="module")
 def arch():
-    return _load("phase11_archive_postcalibration")
+    return _load("archive_postcalibration")
 
 
 @pytest.fixture(scope="module")
 def summ():
-    return _load("phase11_evaluation_summary")
+    return _load("evaluation_summary")
 
 
 def _pcol(param, fid):

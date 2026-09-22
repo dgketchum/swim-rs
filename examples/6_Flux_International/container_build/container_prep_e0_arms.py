@@ -33,15 +33,13 @@ import zarr
 from swimrs.swim.config import ProjectConfig
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE / "e2_refooting"))  # phase8 (container build)
-sys.path.insert(0, str(HERE.parent / "e2_refooting"))  # phase9 (calibration archive)
+for _p in (HERE / "e2_refooting", HERE.parent):  # phase8 (container build); calibration archive
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+import ex6_paths  # noqa: E402
+from archive_prelaunch import compare_hashes, container_manifest  # noqa: E402
 from phase8_container_health import check_no_calibration_state  # noqa: E402
-from phase9_archive_prelaunch import compare_hashes, container_manifest  # noqa: E402
 
-SOURCE = (
-    "/data/ssd1/swim/6_Flux_International/data/"
-    "6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim"
-)
 RUN_ATTRS = ("last_run", "default_restart_run_id", "last_health_check")
 
 
@@ -74,9 +72,11 @@ def clean_calibration_state(root: zarr.Group) -> list[str]:
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", required=True, help="arm TOML; its [paths] container is the target")
-    ap.add_argument("--source", default=SOURCE)
+    ap.add_argument("--source", default=None, help="default the canonical GrassBasis container")
     ap.add_argument("--overwrite", action="store_true")
     args = ap.parse_args()
+    if args.source is None:
+        args.source = ex6_paths.load_config().container_path
 
     cfg = ProjectConfig()
     cfg.read_config(args.config, calibrate=True)

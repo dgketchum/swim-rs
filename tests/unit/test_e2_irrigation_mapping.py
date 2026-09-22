@@ -1,7 +1,7 @@
-"""Unit tests for the Example 6 (Experiment 3) per-site irrigation-stratified mapping.
+"""Unit tests for the Example 6 (paper E2) per-site irrigation-stratified mapping.
 
-``examples/6_Flux_International/transfer/build_e3_irrigation_mapping.py`` expands the two
-frozen Run 22 class vectors into ``{sid: {param: value}}`` over the 66-site E3 publication
+``examples/6_Flux_International/transfer/build_e2_irrigation_mapping.py`` expands the two
+frozen Run 22 class vectors into ``{sid: {param: value}}`` over the 66-site E2 publication
 cohort. Three properties make it worth testing hard:
 
 1. **Stage 1 is not persisted.** The classifier's site-level ``equipped`` flag is a local
@@ -42,8 +42,8 @@ def _load_builder():
     if str(TRANSFER_DIR) not in sys.path:
         sys.path.insert(0, str(TRANSFER_DIR))
     spec = importlib.util.spec_from_file_location(
-        "build_e3_irrigation_mapping",
-        TRANSFER_DIR / "build_e3_irrigation_mapping.py",
+        "build_e2_irrigation_mapping",
+        TRANSFER_DIR / "build_e2_irrigation_mapping.py",
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -106,7 +106,7 @@ def _stub_container(tmp_path, name, irr_years, blobs=None, irr_props=None, uid_e
 
     Mirrors ``SwimContainer.create``: both are VariableLengthUTF8 arrays (a plain
     object-dtype dataset fails on zarr 3.1.5). ``irr_props`` optionally writes a
-    contradictory ``properties/irrigation/irr`` array, which the E3 path must ignore.
+    contradictory ``properties/irrigation/irr`` array, which the E2 path must ignore.
     """
     zarr = pytest.importorskip("zarr")
     import numpy as np
@@ -267,7 +267,7 @@ class TestStage1Recovery:
             bld.read_irrigation_years(path)
 
     def test_missing_container_raises(self, tmp_path):
-        with pytest.raises(FileNotFoundError, match="E3 container not found"):
+        with pytest.raises(FileNotFoundError, match="E2 container not found"):
             bld.read_irrigation_years(tmp_path / "ghost.swim")
 
     def test_recovery_note_records_that_stage1_is_not_persisted(self):
@@ -540,7 +540,7 @@ class TestReadCohort:
             bld.read_cohort(path)
 
     def test_missing_shapefile_raises(self, tmp_path):
-        with pytest.raises(FileNotFoundError, match="E3 cohort shapefile not found"):
+        with pytest.raises(FileNotFoundError, match="E2 cohort shapefile not found"):
             bld.read_cohort(tmp_path / "ghost.shp")
 
 
@@ -554,7 +554,7 @@ class TestArtifacts:
         vectors = _vectors_json(tmp_path)
         out_dir = tmp_path / "final"
         argv = [
-            "build_e3_irrigation_mapping.py",
+            "build_e2_irrigation_mapping.py",
             "--vectors",
             str(vectors),
             "--container",

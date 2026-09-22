@@ -1,7 +1,7 @@
-"""Unit tests for the irrigation-stratified comparator in the Ex5 -> E3 transfer runner.
+"""Unit tests for the irrigation-stratified comparator in the Ex5 -> E2 transfer runner.
 
 ``examples/6_Flux_International/transfer_ex5_params.py`` gained a fifth comparator,
-``ex5_transfer_strat``: a per-site ``{site_id: {param: value}}`` mapping in which each E3
+``ex5_transfer_strat``: a per-site ``{site_id: {param: value}}`` mapping in which each E2
 site receives the irrigated or the rainfed Run 22 class vector. The new surface is small
 but every piece of it guards a way the published comparison could go wrong silently:
 
@@ -128,7 +128,7 @@ SERIES_BASE = 3.0 + 1.5 * np.sin(np.arange(SERIES_DAYS) * 2.0 * np.pi / 30.0)
 
 
 def _site_csv(directory, fid, offset=0.0, rs_offset=0.5):
-    """Write a per-site ``{fid}.csv`` in the E3 layout that pooled metrics re-read.
+    """Write a per-site ``{fid}.csv`` in the E2 layout that pooled metrics re-read.
 
     ``et_act`` is the flux series plus a constant ``offset``, so the pooled bias of that
     series is exactly ``offset`` and a swapped series dir is immediately visible.
@@ -526,7 +526,7 @@ class TestRequireEmptyOut:
             str(params),
             "--container",
             str(tmp_path / "c.swim"),
-            "--e3-results-dir",
+            "--e2-results-dir",
             str(tmp_path / "e3results"),
             "--out",
             str(out_dir),

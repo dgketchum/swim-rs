@@ -26,18 +26,16 @@ import numpy as np
 import pandas as pd
 
 HERE = Path(__file__).resolve().parent
-EX6 = HERE.parent
-for _p in (EX6, EX6 / "e2_refooting"):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+if str(HERE.parent) not in sys.path:
+    sys.path.insert(0, str(HERE.parent))
 
+import ex6_paths  # noqa: E402
+from closure_pool_summary import bootstrap_paired_median  # noqa: E402
 from evaluate import calc_metrics  # noqa: E402
-from phase11_closure_pool_summary import bootstrap_paired_median  # noqa: E402
 
 from swimrs.calibrate.flux_utils import paired_monthly_sums  # noqa: E402
 
-RESULTS = Path("/data/ssd1/swim/6_Flux_International/results")
-DEFAULT_RUN = "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
+DEFAULT_RUN = ex6_paths.CANONICAL_RUN
 METRICS = ["kge", "rmse", "bias", "r2", "r"]
 
 
@@ -67,8 +65,9 @@ def site_monthly(ts_path: Path, month_min_days: int) -> dict | None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--config", default=str(ex6_paths.CANONICAL_CONFIG), help="Run TOML")
     ap.add_argument("--run-name", default=DEFAULT_RUN)
-    ap.add_argument("--results-root", default=str(RESULTS))
+    ap.add_argument("--results-root", default=None, help="default {project_ws}/results")
     ap.add_argument(
         "--closure-pool", default=None, help="default <archive>/6_evaluation/closure_pool"
     )
@@ -78,6 +77,8 @@ def main() -> int:
     ap.add_argument("--out", default=None, help="default: the closure-pool directory")
     args = ap.parse_args()
 
+    if args.results_root is None:
+        args.results_root = str(ex6_paths.results_root(ex6_paths.load_config(args.config)))
     cat6 = Path(args.results_root) / args.run_name / "archive" / "6_evaluation"
     cp = Path(args.closure_pool) if args.closure_pool else cat6 / "closure_pool"
     out = Path(args.out) if args.out else cp

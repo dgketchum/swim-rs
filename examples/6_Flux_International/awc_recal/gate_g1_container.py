@@ -30,23 +30,14 @@ import pandas as pd
 import zarr
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "container_build" / "e2_refooting"))
+for _p in (HERE.parent, HERE.parent / "container_build" / "e2_refooting"):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+import ex6_paths  # noqa: E402
 from phase8_container_health import check_no_calibration_state  # noqa: E402
 
-E2 = Path("/data/ssd1/swim/6_Flux_International")
-DEFAULT_NEW = E2 / "data" / "6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim"
-DEFAULT_OLD = (
-    E2
-    / "results"
-    / "superseded_awc320_20260921"
-    / "containers"
-    / "6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim"
-)
-DEFAULT_TRANSITION_CANON = E2 / "data" / "e2_etf_refooting" / "irrigation_classifier_transition.csv"
-DEFAULT_TRANSITION_NEW = (
-    E2 / "data" / "awc_recal" / "qa_canon" / "irrigation_classifier_transition.csv"
-)
-DEFAULT_OUT = E2 / "data" / "awc_recal" / "gate_g1_container.json"
+SUPERSEDED = "superseded_awc320_20260921"  # under {project_ws}/results
+TRANSITION_NAME = "irrigation_classifier_transition.csv"
 
 
 def array_paths(root: zarr.Group) -> dict[str, zarr.Array]:
@@ -65,17 +56,39 @@ def content_hash(x: np.ndarray) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--new", default=str(DEFAULT_NEW))
-    ap.add_argument("--old", default=str(DEFAULT_OLD))
-    ap.add_argument("--transition-new", default=str(DEFAULT_TRANSITION_NEW))
-    ap.add_argument("--transition-canon", default=str(DEFAULT_TRANSITION_CANON))
-    ap.add_argument("--out", default=str(DEFAULT_OUT))
+    ap.add_argument("--config", default=str(ex6_paths.CANONICAL_CONFIG), help="Run TOML")
+    ap.add_argument("--new", default=None, help="default the TOML's container")
+    ap.add_argument(
+        "--old", default=None, help=f"default <results>/{SUPERSEDED}/containers/<container name>"
+    )
+    ap.add_argument(
+        "--transition-new",
+        default=None,
+        help=f"default {{data}}/awc_recal/qa_canon/{TRANSITION_NAME}",
+    )
+    ap.add_argument("--transition-canon", default=None, help=f"default <qa-root>/{TRANSITION_NAME}")
+    ap.add_argument("--out", default=None, help="default {data}/awc_recal/gate_g1_container.json")
     ap.add_argument(
         "--allow-calibration-state",
         action="store_true",
         help="Do not fail on calibration state (use only for a pre-clean inspection)",
     )
     args = ap.parse_args()
+
+    cfg = ex6_paths.load_config(args.config)
+    data = Path(cfg.data_dir)
+    if args.new is None:
+        args.new = cfg.container_path
+    if args.old is None:
+        args.old = str(
+            ex6_paths.results_root(cfg) / SUPERSEDED / "containers" / Path(cfg.container_path).name
+        )
+    if args.transition_new is None:
+        args.transition_new = str(data / "awc_recal" / "qa_canon" / TRANSITION_NAME)
+    if args.transition_canon is None:
+        args.transition_canon = str(ex6_paths.qa_root(cfg) / TRANSITION_NAME)
+    if args.out is None:
+        args.out = str(data / "awc_recal" / "gate_g1_container.json")
 
     new = zarr.open_group(args.new, mode="r")
     old = zarr.open_group(args.old, mode="r")

@@ -17,17 +17,19 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-RESULTS = "/data/ssd1/swim/6_Flux_International/results"
-DEFAULT_RUN = "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
-DEFAULT_OLD = os.path.join(RESULTS, "superseded_awc320_20260921", DEFAULT_RUN)
-DEFAULT_HWSD = (
-    "/data/ssd1/swim/6_Flux_International/data/properties/6_Flux_International_hwsd_crop.csv"
-)
+HERE = Path(__file__).resolve().parent
+if str(HERE.parent) not in sys.path:
+    sys.path.insert(0, str(HERE.parent))
+import ex6_paths  # noqa: E402
+
+DEFAULT_RUN = ex6_paths.CANONICAL_RUN
+SUPERSEDED = "superseded_awc320_20260921"  # under {project_ws}/results
 
 
 def summarize(run_dir: str, hwsd: pd.Series) -> dict:
@@ -56,11 +58,22 @@ def summarize(run_dir: str, hwsd: pd.Series) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--config", default=str(ex6_paths.CANONICAL_CONFIG), help="Run TOML")
     ap.add_argument("--run-name", default=DEFAULT_RUN)
-    ap.add_argument("--results-root", default=RESULTS)
-    ap.add_argument("--old-run-dir", default=DEFAULT_OLD)
-    ap.add_argument("--hwsd-csv", default=DEFAULT_HWSD)
+    ap.add_argument("--results-root", default=None, help="default {project_ws}/results")
+    ap.add_argument(
+        "--old-run-dir", default=None, help=f"default <results-root>/{SUPERSEDED}/<run>"
+    )
+    ap.add_argument("--hwsd-csv", default=None, help="default the TOML's hwsd_csv")
     args = ap.parse_args()
+
+    if None in (args.results_root, args.old_run_dir, args.hwsd_csv):
+        cfg = ex6_paths.load_config(args.config)
+        args.results_root = args.results_root or str(ex6_paths.results_root(cfg))
+        args.old_run_dir = args.old_run_dir or os.path.join(
+            args.results_root, SUPERSEDED, args.run_name
+        )
+        args.hwsd_csv = args.hwsd_csv or cfg.hwsd_csv
 
     hwsd = pd.read_csv(args.hwsd_csv).set_index("sid")["awc"].astype(float)
     new_dir = os.path.join(args.results_root, args.run_name)
