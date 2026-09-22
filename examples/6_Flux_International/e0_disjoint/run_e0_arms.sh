@@ -17,7 +17,7 @@ BASE=6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr
 CANON_ARCHIVE=$RESULTS/$BASE/archive
 PY="uv --directory $REPO run python -u"
 
-for ARM in fao56_sig fao56; do
+for ARM in ${ARMS:-fao56_sig fao56}; do  # ARMS="fao56" resumes a single arm; the pooled gates need both posteriors
   RUN=${BASE}_${ARM}
   CFG=$EX6/${RUN}.toml
   QA=$E2/data/e0_disjoint/qa_${ARM}
