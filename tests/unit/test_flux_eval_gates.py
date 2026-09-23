@@ -8,9 +8,14 @@ import numpy as np
 import pandas as pd
 
 from swimrs.calibrate.flux_utils import (
+    VOLK_MAX_FILLED_DAYS,
+    VOLK_MONTH_COMPLETENESS,
     full_month_paired_sums,
     paired_monthly_sums,
     passes_site_minimum,
+    volk_full_month_paired_sums,
+    volk_gap_fill_et,
+    volk_monthly_total,
     write_excluded_sites,
 )
 
@@ -125,3 +130,107 @@ def test_write_excluded_sites_empty_writes_header(tmp_path):
     df = pd.read_csv(path)
     assert list(df.columns) == ["site", "reason"]
     assert len(df) == 0
+
+
+# ---------------------------------------------------------------------------
+# Volk et al. (2024) monthly protocol helpers (flux-data-qaqc replication)
+# ---------------------------------------------------------------------------
+
+
+class TestVolkGapFill:
+    def _series(self, n=60, et=3.0, eto=5.0, start="2020-06-01"):
+        idx = pd.date_range(start, periods=n, freq="D")
+        return pd.Series(et, index=idx), pd.Series(eto, index=idx)
+
+    def test_interior_gap_filled_from_smoothed_etof(self):
+        flux, eto = self._series()
+        flux.iloc[10:13] = np.nan
+        filled, gap = volk_gap_fill_et(flux, eto)
+        # EToF = 0.6 everywhere; fill = ETo x EToF = 3.0 on the three gap days
+        assert gap.sum() == 3
+        assert gap.iloc[10:13].all()
+        assert np.allclose(filled.iloc[10:13], 3.0)
+        # measured days are never altered
+        assert np.allclose(filled[~gap], 3.0)
+
+    def test_leading_days_beyond_window_reach_stay_missing_trailing_days_fill(self):
+        flux, eto = self._series()
+        flux.iloc[:5] = np.nan
+        flux.iloc[-5:] = np.nan
+        filled, gap = volk_gap_fill_et(flux, eto)
+        # centered 7-day window (min 2 values) reaches back two days from the
+        # first valid day; linear interpolation never extends backwards
+        assert not gap.iloc[:3].any()
+        assert gap.iloc[3:5].all()
+        # pandas interpolate carries the last smoothed EToF forward
+        assert gap.iloc[-5:].all()
+        assert np.allclose(filled.iloc[-5:], 3.0)
+
+    def test_etof_outlier_excluded_from_fill(self):
+        flux, eto = self._series()
+        flux.iloc[20] = 300.0  # EToF 60 vs 0.6 elsewhere: IQR outlier
+        flux.iloc[22] = np.nan
+        filled, gap = volk_gap_fill_et(flux, eto)
+        assert gap.sum() == 1
+        assert np.isclose(filled.iloc[22], 3.0)
+        # the measured outlier itself is kept, only its EToF is excluded
+        assert filled.iloc[20] == 300.0
+
+    def test_no_eto_no_fill(self):
+        flux, eto = self._series()
+        flux.iloc[30] = np.nan
+        eto = eto.iloc[:25]  # ETo record ends before the gap
+        filled, gap = volk_gap_fill_et(flux, eto)
+        assert gap.sum() == 0
+        assert np.isnan(filled.iloc[30])
+
+
+class TestVolkMonthlyTotal:
+    def test_residual_days_filled_at_month_mean(self):
+        idx = pd.date_range("2020-06-01", periods=30, freq="D")
+        s = pd.Series(2.0, index=idx)
+        s.iloc[:3] = np.nan  # 27 valid days > 0.8 x 30
+        out = volk_monthly_total(s)
+        assert len(out) == 1
+        assert np.isclose(out.iloc[0], 27 * 2.0 + 3 * 2.0)
+
+    def test_month_at_or_below_threshold_is_null(self):
+        idx = pd.date_range("2020-06-01", periods=30, freq="D")
+        s = pd.Series(2.0, index=idx)
+        s.iloc[:6] = np.nan  # 24 valid days == 0.8 x 30 -> null (strict >)
+        assert np.isnan(volk_monthly_total(s).iloc[0])
+        s.iloc[5] = 2.0  # 25 valid days
+        assert np.isfinite(volk_monthly_total(s).iloc[0])
+
+
+class TestVolkFullMonthPairedSums:
+    def _inputs(self):
+        idx = pd.date_range("2020-06-01", "2020-07-31", freq="D")
+        swim = pd.Series(2.5, index=idx)
+        flux = pd.Series(3.0, index=idx)
+        eto = pd.Series(5.0, index=idx)
+        return swim, flux, eto
+
+    def test_five_filled_days_admitted_six_excluded(self):
+        swim, flux, eto = self._inputs()
+        flux["2020-06-10":"2020-06-14"] = np.nan  # 5 gaps in June
+        flux["2020-07-10":"2020-07-15"] = np.nan  # 6 gaps in July (25/31 valid passes 80%)
+        swim_m, flux_m, filled = volk_full_month_paired_sums(swim, flux, eto)
+        assert list(swim_m.index) == [pd.Timestamp("2020-06-01")]
+        assert filled.iloc[0] == 5
+        # flux month is the full-month total of measured + filled days
+        assert np.isclose(flux_m.iloc[0], 3.0 * 30)
+        # SWIM summed over the FULL calendar month
+        assert np.isclose(swim_m.iloc[0], 2.5 * 30)
+
+    def test_incomplete_swim_month_is_null(self):
+        swim, flux, eto = self._inputs()
+        swim = swim.iloc[:-1]  # SWIM record ends 30 July
+        swim_m, flux_m, _ = volk_full_month_paired_sums(swim, flux, eto)
+        assert np.isfinite(flux_m["2020-07-01"])
+        assert np.isnan(swim_m["2020-07-01"])
+        assert np.isfinite(swim_m["2020-06-01"])
+
+    def test_defaults_match_volk_constants(self):
+        assert VOLK_MONTH_COMPLETENESS == 0.8
+        assert VOLK_MAX_FILLED_DAYS == 5

@@ -800,6 +800,213 @@ def test_archive_run_uses_bundle_functions():
 
 
 # ---------------------------------------------------------------------------
+# Volk et al. (2024) monthly split: pooled cohort (no floor) vs
+# station-weighted cohort (per-site floor), min_obs on PairedSiteSeries
+# ---------------------------------------------------------------------------
+
+
+def _short_record(ev, fid, n, seed, min_obs=1, start="2018-01-01"):
+    rng = np.random.default_rng(seed)
+    idx = pd.date_range(start, periods=n, freq="MS")
+    obs = np.abs(rng.normal(80.0, 30.0, size=n)) + 5.0
+    swim = obs * 1.05 + rng.normal(0.0, 8.0, size=n)
+    openet = obs * 0.95 + rng.normal(0.0, 8.0, size=n)
+    return ev.PairedSiteSeries(
+        fid=fid, index=idx, observed=obs, swim=swim, openet=openet, min_obs=min_obs
+    )
+
+
+@pytest.fixture(scope="module")
+def monthly_split_cohort(ev):
+    return (
+        _short_record(ev, "US-Aaa", 40, seed=21),
+        _short_record(ev, "US-Bbb", 1, seed=22),
+        _short_record(ev, "US-Ccc", 12, seed=23),
+        _short_record(ev, "US-Ddd", 2, seed=24),
+        _short_record(ev, "US-Eee", 3, seed=25),
+    )
+
+
+def test_min_obs_one_admits_single_observation(ev):
+    rec = _short_record(ev, "US-One", 1, seed=3)
+    assert rec.n == 1 and rec.min_obs == 1
+
+
+def test_default_min_obs_unchanged(ev):
+    idx = pd.date_range("2020-01-01", periods=5, freq="D")
+    vals = np.linspace(1, 2, 5)
+    with pytest.raises(ev.GroupedEstimationError, match="min_obs=10"):
+        ev.PairedSiteSeries(fid="US-Few", index=idx, observed=vals, swim=vals, openet=vals)
+
+
+def test_min_obs_must_be_positive_integer(ev):
+    idx = pd.date_range("2020-01-01", periods=5, freq="D")
+    vals = np.linspace(1, 2, 5)
+    for bad in (0, -1, True, 2.0):
+        with pytest.raises(ev.GroupedEstimationError, match="positive integer"):
+            ev.PairedSiteSeries(
+                fid="US-Bad", index=idx, observed=vals, swim=vals, openet=vals, min_obs=bad
+            )
+
+
+def test_pooled_only_estimates_admit_one_observation_sites(ev, monthly_split_cohort):
+    est = ev.grouped_point_estimates(monthly_split_cohort, aggregations=(ev.AGG_POOLED,))
+    assert all(k[0] == ev.AGG_POOLED for k in est)
+    obs = np.concatenate([r.observed for r in monthly_split_cohort])
+    swim = np.concatenate([r.swim for r in monthly_split_cohort])
+    direct = ev.pooled_metrics_direct(obs, swim)
+    for k in ev.POOLED_METRICS:
+        assert est[(ev.AGG_POOLED, "swim", k)] == pytest.approx(direct[k], abs=1e-12)
+
+
+def test_weighted_estimates_on_one_observation_site_raise(ev, monthly_split_cohort):
+    with pytest.raises(ev.GroupedEstimationError, match="degenerate"):
+        ev.grouped_point_estimates(monthly_split_cohort)
+
+
+def test_split_tables_use_each_cohort(ev, monthly_split_cohort):
+    weighted = tuple(r for r in monthly_split_cohort if r.n >= 3)
+    metrics, contrasts = ev.grouped_metric_tables(
+        monthly_split_cohort, "monthly", reps=200, seed=42, weighted_records=weighted
+    )
+    assert len(metrics) == 18 and len(contrasts) == 9
+    pooled = metrics[metrics["aggregation"] == ev.AGG_POOLED]
+    wtd = metrics[metrics["aggregation"] == ev.AGG_WEIGHTED]
+    assert (pooled["n_sites"] == 5).all()
+    assert (pooled["n_pairs"] == 58).all()
+    assert (wtd["n_sites"] == 3).all()
+    assert (wtd["n_pairs"] == 55).all()
+    # pooled rows equal the pooled-only estimates on the full cohort; weighted
+    # rows equal the single-cohort estimator run on the weighted cohort alone
+    est_p = ev.grouped_point_estimates(monthly_split_cohort, aggregations=(ev.AGG_POOLED,))
+    est_w = ev.grouped_point_estimates(weighted)
+    got = metrics.set_index(["aggregation", "model", "metric"])["estimate"]
+    for key, want in est_p.items():
+        assert got[key] == pytest.approx(want, abs=1e-12)
+    for model in ev.GROUPED_MODEL_ORDER:
+        for k in ev.WEIGHTED_METRICS:
+            key = (ev.AGG_WEIGHTED, model, k)
+            assert got[key] == pytest.approx(est_w[key], abs=1e-12)
+    ok = (metrics["ci95_low"] <= metrics["estimate"]) & (
+        metrics["estimate"] <= metrics["ci95_high"]
+    )
+    assert ok.all()
+    c = contrasts.set_index(["aggregation", "metric"])
+    assert (c.loc[ev.AGG_POOLED, "n_sites"] == 5).all()
+    assert (c.loc[ev.AGG_WEIGHTED, "n_sites"] == 3).all()
+
+
+def test_split_tables_reject_foreign_weighted_site(ev, monthly_split_cohort):
+    foreign = (_short_record(ev, "US-Zzz", 12, seed=99),)
+    with pytest.raises(ev.GroupedEstimationError, match="not in the pooled cohort"):
+        ev.grouped_metric_tables(
+            monthly_split_cohort, "monthly", reps=0, seed=42, weighted_records=foreign
+        )
+
+
+def test_split_tables_reject_altered_weighted_record(ev, monthly_split_cohort):
+    base = monthly_split_cohort[0]
+    altered = ev.PairedSiteSeries(
+        fid=base.fid,
+        index=base.index,
+        observed=base.observed,
+        swim=base.swim + 1.0,
+        openet=base.openet,
+        min_obs=1,
+    )
+    with pytest.raises(ev.GroupedEstimationError, match="differs from its pooled record"):
+        ev.grouped_metric_tables(
+            monthly_split_cohort, "monthly", reps=0, seed=42, weighted_records=(altered,)
+        )
+
+
+def test_split_metadata_records_both_cohorts(ev, monthly_split_cohort):
+    weighted = tuple(r for r in monthly_split_cohort if r.n >= 3)
+    meta = ev.grouped_metadata(
+        monthly_split_cohort,
+        "monthly",
+        0,
+        42,
+        "volk",
+        {},
+        weighted_records=weighted,
+        weighted_min_obs=3,
+        site_minimum_gate="none",
+    )
+    assert meta["n_sites"] == 5 and meta["n_pairs"] == 58
+    assert meta["min_obs_for_metrics"] == 1
+    assert meta["site_minimum_gate"] == "none"
+    assert meta["cohorts"][ev.AGG_POOLED]["n_sites"] == 5
+    assert meta["cohorts"][ev.AGG_POOLED]["min_obs"] == 1
+    assert meta["cohorts"][ev.AGG_WEIGHTED]["n_sites"] == 3
+    assert meta["cohorts"][ev.AGG_WEIGHTED]["n_pairs"] == 55
+    assert meta["cohorts"][ev.AGG_WEIGHTED]["min_obs"] == 3
+    assert [s["fid"] for s in meta["cohorts"][ev.AGG_WEIGHTED]["sites"]] == [
+        "US-Aaa",
+        "US-Ccc",
+        "US-Eee",
+    ]
+    with pytest.raises(ev.GroupedEstimationError, match="below the declared floor"):
+        ev.grouped_metadata(
+            monthly_split_cohort,
+            "monthly",
+            0,
+            42,
+            "volk",
+            {},
+            weighted_records=weighted,
+            weighted_min_obs=4,
+        )
+
+
+def test_single_cohort_metadata_unchanged(ev, two_site_cohort):
+    meta = ev.grouped_metadata(two_site_cohort, "daily", 0, 42, "volk", {})
+    assert "cohorts" not in meta
+    assert meta["min_obs_for_metrics"] == ev.MIN_OBS_FOR_METRICS
+    assert meta["site_minimum_gate"] == ev.SITE_MINIMUM_GATE_DEFAULT
+
+
+def test_monthly_protocol_constants(ev):
+    assert ev.MONTHLY_POOLED_MIN_MONTHS == 1
+    assert ev.MONTHLY_WEIGHTED_MIN_MONTHS == 3
+    assert ev.CONSTRUCTION_TOKENS["monthly"] == "volk2024_gapfilled_full_month_openet_totals_v2pt1"
+    assert ev.GRIDMET_ETO_ARRAY == "meteorology/gridmet/eto"
+
+
+def test_monthly_station_weighted_records_filter(ev, monthly_split_cohort):
+    weighted = ev.monthly_station_weighted_records(monthly_split_cohort)
+    assert [r.fid for r in weighted] == ["US-Aaa", "US-Ccc", "US-Eee"]
+
+
+def test_monthly_bundle_splits_cohorts(ev, monthly_split_cohort, monkeypatch):
+    site_metrics = pd.DataFrame(
+        {"n": [r.n for r in monthly_split_cohort]},
+        index=pd.Index([r.fid for r in monthly_split_cohort], name="fid"),
+    )
+
+    def fake_collect(*args, **kwargs):
+        return site_metrics, tuple(monthly_split_cohort), {}
+
+    monkeypatch.setattr(ev, "_collect_monthly", fake_collect)
+    bundle = ev.evaluate_benchmark_monthly(
+        None,
+        None,
+        "par.csv",
+        [],
+        "fluxdir",
+        bootstrap_reps=20,
+        bootstrap_seed=42,
+        with_site_effect=True,
+    )
+    m = bundle.grouped_metrics
+    assert (m.loc[m["aggregation"] == ev.AGG_POOLED, "n_sites"] == 5).all()
+    assert (m.loc[m["aggregation"] == ev.AGG_WEIGHTED, "n_sites"] == 3).all()
+    assert bundle.metadata["cohorts"][ev.AGG_WEIGHTED]["min_obs"] == 3
+    assert (bundle.site_effect_summary["n_sites"] == 3).all()
+    assert len(bundle.paired_records) == 5
+
+
+# ---------------------------------------------------------------------------
 # Frozen-support regression: counts and grouped point targets
 # ---------------------------------------------------------------------------
 
@@ -830,28 +1037,36 @@ DAILY_TARGETS = {
     ("sqrt_n_weighted_site_metric", "openet_ensemble", "mbe"): -0.198191503,
 }
 
+# Volk et al. (2024) monthly protocol (2026-09-23): pooled rows on 51 sites /
+# 1,548 months, station-weighted rows on the 42 sites with >= 3 paired months /
+# 1,534 months. Values from the promoted Run 22 bundle.
 MONTHLY_TARGETS = {
-    ("pooled_observations", "swim", "kge"): 0.940662705,
-    ("pooled_observations", "swim", "rmse"): 19.783547068,
-    ("pooled_observations", "swim", "mbe"): 0.340454877,
-    ("pooled_observations", "swim", "r"): 0.951460138,
-    ("pooled_observations", "swim", "r2"): 0.905276395,
-    ("pooled_observations", "swim", "slope0"): 0.973471191,
-    ("pooled_observations", "openet_ensemble", "kge"): 0.912313360,
-    ("pooled_observations", "openet_ensemble", "rmse"): 20.841344493,
-    ("pooled_observations", "openet_ensemble", "mbe"): -3.821033541,
-    ("pooled_observations", "openet_ensemble", "r"): 0.947709949,
-    ("pooled_observations", "openet_ensemble", "r2"): 0.898154147,
-    ("pooled_observations", "openet_ensemble", "slope0"): 0.934050373,
-    ("sqrt_n_weighted_site_metric", "swim", "kge"): 0.847739457,
-    ("sqrt_n_weighted_site_metric", "swim", "rmse"): 19.771203157,
-    ("sqrt_n_weighted_site_metric", "swim", "mbe"): 1.463988761,
-    ("sqrt_n_weighted_site_metric", "openet_ensemble", "kge"): 0.808232887,
-    ("sqrt_n_weighted_site_metric", "openet_ensemble", "rmse"): 20.909893095,
-    ("sqrt_n_weighted_site_metric", "openet_ensemble", "mbe"): -2.681482484,
+    ("pooled_observations", "swim", "kge"): 0.940809744,
+    ("pooled_observations", "swim", "rmse"): 19.426158369,
+    ("pooled_observations", "swim", "mbe"): -0.337222853,
+    ("pooled_observations", "swim", "r"): 0.951384094,
+    ("pooled_observations", "swim", "r2"): 0.905131695,
+    ("pooled_observations", "swim", "slope0"): 0.968947809,
+    ("pooled_observations", "openet_ensemble", "kge"): 0.906268042,
+    ("pooled_observations", "openet_ensemble", "rmse"): 20.623480665,
+    ("pooled_observations", "openet_ensemble", "mbe"): -4.246326491,
+    ("pooled_observations", "openet_ensemble", "r"): 0.947299929,
+    ("pooled_observations", "openet_ensemble", "r2"): 0.897377156,
+    ("pooled_observations", "openet_ensemble", "slope0"): 0.929228147,
+    ("sqrt_n_weighted_site_metric", "swim", "kge"): 0.846935145,
+    ("sqrt_n_weighted_site_metric", "swim", "rmse"): 19.316101884,
+    ("sqrt_n_weighted_site_metric", "swim", "mbe"): 0.881236984,
+    ("sqrt_n_weighted_site_metric", "openet_ensemble", "kge"): 0.821403342,
+    ("sqrt_n_weighted_site_metric", "openet_ensemble", "rmse"): 20.229490318,
+    ("sqrt_n_weighted_site_metric", "openet_ensemble", "mbe"): -3.970606533,
 }
 
-FROZEN_SUPPORT = {"daily": (45, 59516), "monthly": (30, 1301)}
+# (n_sites, n_pairs) per aggregation; the daily cohorts coincide, the monthly
+# cohorts split under the Volk protocol.
+FROZEN_SUPPORT = {
+    "daily": {"pooled_observations": (45, 59516), "sqrt_n_weighted_site_metric": (45, 59516)},
+    "monthly": {"pooled_observations": (51, 1548), "sqrt_n_weighted_site_metric": (42, 1534)},
+}
 
 
 def _grouped_csv(scale):
@@ -870,9 +1085,11 @@ def _grouped_csv(scale):
 @pytest.mark.parametrize("scale", ["daily", "monthly"])
 def test_frozen_support_counts(scale):
     df = _grouped_csv(scale)
-    n_sites, n_pairs = FROZEN_SUPPORT[scale]
-    assert (df["n_sites"] == n_sites).all()
-    assert (df["n_pairs"] == n_pairs).all()
+    for agg, (n_sites, n_pairs) in FROZEN_SUPPORT[scale].items():
+        rows = df[df["aggregation"] == agg]
+        assert len(rows) == (12 if agg == "pooled_observations" else 6)
+        assert (rows["n_sites"] == n_sites).all()
+        assert (rows["n_pairs"] == n_pairs).all()
     assert len(df) == 18
 
 

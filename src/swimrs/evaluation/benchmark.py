@@ -19,7 +19,7 @@ plotting code.
 """
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -50,7 +50,7 @@ BENCHMARK_SOURCE_MACHINE_TOKENS = {
 }
 CONSTRUCTION_TOKENS = {
     "daily": "etf_first_volk_window",
-    "monthly": "independent_full_month_openet_totals_v2pt1",
+    "monthly": "volk2024_gapfilled_full_month_openet_totals_v2pt1",
 }
 FAVORABLE_DIRECTION = {
     "kge": "positive",
@@ -237,7 +237,11 @@ class PairedSiteSeries:
 
     All three arrays share the ensemble-headline common-support mask
     ``finite(flux) & finite(swim) & finite(openet_ensemble)``; values must be
-    finite, one-dimensional, equal length, and at least MIN_OBS_FOR_METRICS.
+    finite, one-dimensional, equal length, and at least ``min_obs`` long
+    (default MIN_OBS_FOR_METRICS). A cohort whose pooled rows admit every
+    paired site, as in the Volk et al. (2024) monthly protocol, passes
+    ``min_obs=1``; the station-weighted floor is then applied by the caller
+    when it selects the weighted cohort.
 
     ``support_class`` is optional per-date OpenET temporal-support metadata
     (required for the canonical daily paired-record artifact): one of
@@ -252,6 +256,7 @@ class PairedSiteSeries:
     swim: np.ndarray
     openet: np.ndarray
     support_class: tuple | None = None
+    min_obs: int = field(default=MIN_OBS_FOR_METRICS, compare=False)
 
     def __post_init__(self):
         for name in ("observed", "swim", "openet"):
@@ -263,12 +268,18 @@ class PairedSiteSeries:
         if not isinstance(idx, pd.DatetimeIndex):
             idx = pd.DatetimeIndex(idx)
             object.__setattr__(self, "index", idx)
+        if isinstance(self.min_obs, bool) or not isinstance(self.min_obs, int | np.integer):
+            raise GroupedEstimationError(f"{self.fid}: min_obs must be a positive integer")
+        if self.min_obs < 1:
+            raise GroupedEstimationError(f"{self.fid}: min_obs must be a positive integer")
+        object.__setattr__(self, "min_obs", int(self.min_obs))
         n = len(self.observed)
         if not (len(self.swim) == len(self.openet) == len(idx) == n):
             raise GroupedEstimationError(f"{self.fid}: unequal paired array lengths")
-        if n < MIN_OBS_FOR_METRICS:
+        if n < self.min_obs:
             raise GroupedEstimationError(
-                f"{self.fid}: {n} paired observations < MIN_OBS_FOR_METRICS={MIN_OBS_FOR_METRICS}"
+                f"{self.fid}: {n} paired observations < min_obs={self.min_obs} "
+                f"(MIN_OBS_FOR_METRICS={MIN_OBS_FOR_METRICS})"
             )
         for name in ("observed", "swim", "openet"):
             if not np.isfinite(getattr(self, name)).all():
@@ -316,7 +327,9 @@ class PairedSiteSeries:
         )
 
 
-def build_paired_site_series(fid, index, flux, swim, openet, support_class=None):
+def build_paired_site_series(
+    fid, index, flux, swim, openet, support_class=None, min_obs=MIN_OBS_FOR_METRICS
+):
     """Apply the ensemble-headline three-way mask and build a PairedSiteSeries."""
     flux = np.asarray(flux, dtype=np.float64)
     swim = np.asarray(swim, dtype=np.float64)
@@ -339,6 +352,7 @@ def build_paired_site_series(fid, index, flux, swim, openet, support_class=None)
         swim=swim[mask],
         openet=openet[mask],
         support_class=support,
+        min_obs=min_obs,
     )
 
 
@@ -349,6 +363,39 @@ def _check_cohort(records):
     if len(set(fids)) != len(fids):
         dupes = sorted({f for f in fids if fids.count(f) > 1})
         raise GroupedEstimationError(f"duplicate site IDs in cohort: {dupes}")
+
+
+ALL_AGGREGATIONS = (AGG_POOLED, AGG_WEIGHTED)
+
+
+def _check_aggregations(aggregations):
+    bad = sorted(set(aggregations) - set(ALL_AGGREGATIONS))
+    if bad or len(aggregations) == 0:
+        raise GroupedEstimationError(f"unknown or empty aggregation selection: {bad}")
+    return tuple(a for a in ALL_AGGREGATIONS if a in aggregations)
+
+
+def _check_weighted_subset(records, weighted_records):
+    """The station-weighted cohort must be a subset of the pooled cohort by site."""
+    _check_cohort(weighted_records)
+    pooled = {r.fid: r for r in records}
+    for rec in weighted_records:
+        if rec.fid not in pooled:
+            raise GroupedEstimationError(
+                f"{rec.fid}: station-weighted cohort site is not in the pooled cohort"
+            )
+        base = pooled[rec.fid]
+        same = base is rec or (
+            base.n == rec.n
+            and base.index.equals(rec.index)
+            and np.array_equal(base.observed, rec.observed)
+            and np.array_equal(base.swim, rec.swim)
+            and np.array_equal(base.openet, rec.openet)
+        )
+        if not same:
+            raise GroupedEstimationError(
+                f"{rec.fid}: station-weighted record differs from its pooled record"
+            )
 
 
 def site_sufficient_stats(observed, modeled):
@@ -526,18 +573,26 @@ def sqrt_n_weighted_metrics(site_triads, n_obs):
     return {q: float(np.sum(w * site_triads[q]) / np.sum(w)) for q in WEIGHTED_METRICS}
 
 
-def grouped_point_estimates(records):
-    """{(aggregation, model, metric): value} on the original cohort."""
+def grouped_point_estimates(records, aggregations=ALL_AGGREGATIONS):
+    """{(aggregation, model, metric): value} on the original cohort.
+
+    ``aggregations`` selects the pooled and/or station-weighted estimands; a
+    pooled-only call never evaluates per-site metrics, so a one- or
+    two-observation site is admissible.
+    """
     _check_cohort(records)
+    aggregations = _check_aggregations(aggregations)
     n_obs = np.array([r.n for r in records], dtype=np.float64)
     est = {}
     for model in GROUPED_MODEL_ORDER:
-        pm = pooled_metrics(records, model)
-        for k in POOLED_METRICS:
-            est[(AGG_POOLED, model, k)] = pm[k]
-        wm = sqrt_n_weighted_metrics(site_metric_triads(records, model), n_obs)
-        for k in WEIGHTED_METRICS:
-            est[(AGG_WEIGHTED, model, k)] = wm[k]
+        if AGG_POOLED in aggregations:
+            pm = pooled_metrics(records, model)
+            for k in POOLED_METRICS:
+                est[(AGG_POOLED, model, k)] = pm[k]
+        if AGG_WEIGHTED in aggregations:
+            wm = sqrt_n_weighted_metrics(site_metric_triads(records, model), n_obs)
+            for k in WEIGHTED_METRICS:
+                est[(AGG_WEIGHTED, model, k)] = wm[k]
     return est
 
 
@@ -556,7 +611,7 @@ def _require_finite(arr, context):
         raise GroupedEstimationError(f"{context}: non-finite bootstrap replicate")
 
 
-def bootstrap_grouped_from_counts(records, counts, context=""):
+def bootstrap_grouped_from_counts(records, counts, context="", aggregations=ALL_AGGREGATIONS):
     """Grouped bootstrap replicates from an explicit site multiplicity matrix.
 
     ``counts`` has shape (reps, n_sites) in record order; passing one matrix
@@ -564,9 +619,11 @@ def bootstrap_grouped_from_counts(records, counts, context=""):
     guarantees the partitions share identical site draws. A duplicated site
     contributes its full observation block and its sqrt(n) weight with the
     same multiplicity, and SWIM/OpenET share the identical site draws. Returns
-    ``{(aggregation, model_or_'swim_minus_openet', metric): (reps,) array}``.
+    ``{(aggregation, model_or_'swim_minus_openet', metric): (reps,) array}``
+    for the selected ``aggregations``.
     """
     _check_cohort(records)
+    aggregations = _check_aggregations(aggregations)
     counts = np.asarray(counts, dtype=np.float64)
     if counts.ndim != 2 or counts.shape[1] != len(records):
         raise GroupedEstimationError(
@@ -577,21 +634,25 @@ def bootstrap_grouped_from_counts(records, counts, context=""):
     w = np.sqrt(n_obs)
     out = {}
     for model in GROUPED_MODEL_ORDER:
-        rep_moments = counts @ _moment_matrix(records, model)
-        pm = pooled_metrics_from_moments(
-            rep_moments, context=f"{context} bootstrap pooled {model}".strip()
-        )
-        for k in POOLED_METRICS:
-            arr = np.asarray(pm[k], dtype=np.float64)
-            _require_finite(arr, f"{context} bootstrap pooled {model} {k}".strip())
-            out[(AGG_POOLED, model, k)] = arr
-        triads = site_metric_triads(records, model)
-        den = counts @ w
-        for k in WEIGHTED_METRICS:
-            arr = (counts @ (w * triads[k])) / den
-            _require_finite(arr, f"{context} bootstrap weighted {model} {k}".strip())
-            out[(AGG_WEIGHTED, model, k)] = arr
+        if AGG_POOLED in aggregations:
+            rep_moments = counts @ _moment_matrix(records, model)
+            pm = pooled_metrics_from_moments(
+                rep_moments, context=f"{context} bootstrap pooled {model}".strip()
+            )
+            for k in POOLED_METRICS:
+                arr = np.asarray(pm[k], dtype=np.float64)
+                _require_finite(arr, f"{context} bootstrap pooled {model} {k}".strip())
+                out[(AGG_POOLED, model, k)] = arr
+        if AGG_WEIGHTED in aggregations:
+            triads = site_metric_triads(records, model)
+            den = counts @ w
+            for k in WEIGHTED_METRICS:
+                arr = (counts @ (w * triads[k])) / den
+                _require_finite(arr, f"{context} bootstrap weighted {model} {k}".strip())
+                out[(AGG_WEIGHTED, model, k)] = arr
     for agg, metrics in ((AGG_POOLED, POOLED_METRICS), (AGG_WEIGHTED, WEIGHTED_METRICS)):
+        if agg not in aggregations:
+            continue
         for k in metrics:
             out[(agg, "swim_minus_openet", k)] = (
                 out[(agg, "swim", k)] - out[(agg, "openet_ensemble", k)]
@@ -599,7 +660,7 @@ def bootstrap_grouped_from_counts(records, counts, context=""):
     return out
 
 
-def bootstrap_grouped(records, reps, seed, context=""):
+def bootstrap_grouped(records, reps, seed, context="", aggregations=ALL_AGGREGATIONS):
     """Whole-site bootstrap replicates for every grouped estimand and contrast.
 
     Sites are resampled with replacement (draws per replicate = number of
@@ -608,7 +669,9 @@ def bootstrap_grouped(records, reps, seed, context=""):
     """
     _check_cohort(records)
     _, counts = _bootstrap_multiplicities(len(records), reps, seed)
-    return bootstrap_grouped_from_counts(records, counts, context=context)
+    return bootstrap_grouped_from_counts(
+        records, counts, context=context, aggregations=aggregations
+    )
 
 
 def site_effect_summary(records, reps, seed, scale):
@@ -655,24 +718,52 @@ def site_effect_summary(records, reps, seed, scale):
     return pd.DataFrame(rows)
 
 
-def grouped_metric_tables(records, scale, reps, seed, openet_source="volk"):
+def grouped_metric_tables(records, scale, reps, seed, openet_source="volk", weighted_records=None):
     """Long-form grouped estimate and contrast tables (artifact contract).
 
     18 metric rows per scale (6 pooled x 2 models + 3 weighted x 2 models) and
     9 contrast rows, deterministically ordered by aggregation (pooled first),
     model (swim first), and declared metric order. CI fields are null when
     ``reps == 0`` (development runs only).
+
+    With ``weighted_records`` (default None: one cohort for both
+    aggregations) the pooled rows are estimated on ``records`` and the
+    station-weighted rows on ``weighted_records``, a by-site subset of
+    ``records`` — the Volk et al. (2024) split, where pooled statistics use
+    every paired site and station statistics require a per-site floor. Each
+    cohort is bootstrapped over its own sites with the same seed; the
+    ``n_sites``/``n_pairs`` columns record each row's cohort.
     """
     _check_cohort(records)
     reps = _validate_bootstrap_reps(reps)
     unit_error = ERROR_METRIC_UNITS[scale]
-    est = grouped_point_estimates(records)
-    boot = bootstrap_grouped(records, reps, seed, context=scale) if reps > 0 else None
-    n_sites = len(records)
-    n_pairs = int(sum(r.n for r in records))
     benchmark = BENCHMARK_LABELS[openet_source]
     source_token = BENCHMARK_SOURCE_MACHINE_TOKENS[openet_source]
     construction = CONSTRUCTION_TOKENS[scale]
+
+    if weighted_records is None:
+        est = grouped_point_estimates(records)
+        boot = bootstrap_grouped(records, reps, seed, context=scale) if reps > 0 else None
+        cohorts = {AGG_POOLED: records, AGG_WEIGHTED: records}
+    else:
+        _check_weighted_subset(records, weighted_records)
+        est = grouped_point_estimates(records, aggregations=(AGG_POOLED,))
+        est.update(grouped_point_estimates(weighted_records, aggregations=(AGG_WEIGHTED,)))
+        boot = None
+        if reps > 0:
+            boot = bootstrap_grouped(
+                records, reps, seed, context=f"{scale} pooled", aggregations=(AGG_POOLED,)
+            )
+            boot.update(
+                bootstrap_grouped(
+                    weighted_records,
+                    reps,
+                    seed,
+                    context=f"{scale} weighted",
+                    aggregations=(AGG_WEIGHTED,),
+                )
+            )
+        cohorts = {AGG_POOLED: records, AGG_WEIGHTED: weighted_records}
 
     def _ci(key):
         if boot is None:
@@ -685,6 +776,8 @@ def grouped_metric_tables(records, scale, reps, seed, openet_source="volk"):
 
     metric_rows, contrast_rows = [], []
     for agg, metrics in ((AGG_POOLED, POOLED_METRICS), (AGG_WEIGHTED, WEIGHTED_METRICS)):
+        n_sites = len(cohorts[agg])
+        n_pairs = int(sum(r.n for r in cohorts[agg]))
         for model in GROUPED_MODEL_ORDER:
             for k in metrics:
                 lo, hi = _ci((agg, model, k))
@@ -737,8 +830,37 @@ def grouped_metric_tables(records, scale, reps, seed, openet_source="volk"):
     return metrics_df, contrasts_df
 
 
-def grouped_metadata(records, scale, reps, seed, openet_source, collect_meta):
-    """Provenance sidecar content for one grouped evaluation scale."""
+SITE_MINIMUM_GATE_DEFAULT = "90 valid flux days and 3 months with >= 20 valid days"
+
+
+def _cohort_summary(records):
+    return {
+        "min_obs": int(min(r.min_obs for r in records)),
+        "n_sites": len(records),
+        "n_pairs": int(sum(r.n for r in records)),
+        "sites": [{"fid": r.fid, "n": int(r.n)} for r in records],
+    }
+
+
+def grouped_metadata(
+    records,
+    scale,
+    reps,
+    seed,
+    openet_source,
+    collect_meta,
+    weighted_records=None,
+    weighted_min_obs=None,
+    site_minimum_gate=SITE_MINIMUM_GATE_DEFAULT,
+):
+    """Provenance sidecar content for one grouped evaluation scale.
+
+    With ``weighted_records`` (see ``grouped_metric_tables``) the top-level
+    ``sites``/``n_sites``/``n_pairs`` describe the pooled cohort and the
+    ``cohorts`` block records both cohorts with their per-site floors;
+    ``weighted_min_obs`` is the station-weighted floor rule (default: the
+    smallest site count in the weighted cohort).
+    """
     _check_cohort(records)
     reps = _validate_bootstrap_reps(reps)
     meta = {
@@ -750,8 +872,8 @@ def grouped_metadata(records, scale, reps, seed, openet_source, collect_meta):
         "formulas": dict(GROUPED_FORMULAS),
         "weight_formula": GROUPED_FORMULAS["weighted"],
         "mask_definition": GROUPED_MASK_DEFINITION,
-        "min_obs_for_metrics": MIN_OBS_FOR_METRICS,
-        "site_minimum_gate": "90 valid flux days and 3 months with >= 20 valid days",
+        "min_obs_for_metrics": int(min(r.min_obs for r in records)),
+        "site_minimum_gate": site_minimum_gate,
         "sites": [{"fid": r.fid, "n": int(r.n)} for r in records],
         "n_sites": len(records),
         "n_pairs": int(sum(r.n for r in records)),
@@ -762,6 +884,23 @@ def grouped_metadata(records, scale, reps, seed, openet_source, collect_meta):
             "interval": "percentile_2.5_97.5",
         },
     }
+    if weighted_records is not None:
+        _check_weighted_subset(records, weighted_records)
+        weighted_floor = int(min(r.n for r in weighted_records))
+        if weighted_min_obs is not None:
+            if int(weighted_min_obs) > weighted_floor:
+                raise GroupedEstimationError(
+                    f"station-weighted cohort holds a site with {weighted_floor} paired "
+                    f"observations, below the declared floor {weighted_min_obs}"
+                )
+            weighted_floor = int(weighted_min_obs)
+        meta["cohorts"] = {
+            AGG_POOLED: _cohort_summary(records),
+            AGG_WEIGHTED: {
+                **_cohort_summary(weighted_records),
+                "min_obs": weighted_floor,
+            },
+        }
     meta.update(collect_meta or {})
     return meta
 

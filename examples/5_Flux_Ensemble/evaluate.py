@@ -39,8 +39,10 @@ from swimrs.calibrate.benchmark import (
     reconstruct_daily_benchmark,
 )
 from swimrs.calibrate.flux_utils import (
-    full_month_paired_sums,
+    VOLK_MAX_FILLED_DAYS,
+    VOLK_MONTH_COMPLETENESS,
     passes_site_minimum,
+    volk_full_month_paired_sums,
     write_excluded_sites,
 )
 from swimrs.container import SwimContainer
@@ -72,6 +74,7 @@ from swimrs.evaluation.benchmark import (
     PAIRED_RECORD_SORT_ORDER,
     POOLED_METRICS,
     PRIMARY_METRICS,  # noqa: F401  (re-export)
+    SITE_MINIMUM_GATE_DEFAULT,  # noqa: F401  (re-export)
     SUPPORT_CLASSES,
     TEMPORAL_CLASS_DEFINITION,
     TEMPORAL_CLASSES,
@@ -346,14 +349,14 @@ def load_volk_openet_et(fid, openet_daily_dir):
     return et_by_model
 
 
-def calc_metrics(obs, mod):
+def calc_metrics(obs, mod, min_n=MIN_OBS_FOR_METRICS):
     """Legacy per-site metric row: R2/r/RMSE/bias/KGE via the shared helper.
 
     Delegates to ``swimrs.evaluation.benchmark.site_secondary_metrics`` and
     maps its unambiguous keys onto the legacy per-site column labels:
     ``r2`` <- ``nse`` (1 - SSE/SST) and ``bias`` <- signed ``mbe``.
     """
-    m = site_secondary_metrics(obs, mod, min_n=MIN_OBS_FOR_METRICS)
+    m = site_secondary_metrics(obs, mod, min_n=min_n)
     return {
         "n": m["n"],
         "r2": m["nse"],
@@ -950,18 +953,48 @@ def load_volk_monthly_et(fid, monthly_dir):
     return et_by_model
 
 
+# Volk et al. (2024) monthly protocol: pooled statistics use every site with a
+# paired month; station-weighted statistics and per-site metrics require at
+# least three paired months. No site-minimum gate is applied at the monthly
+# scale (the daily evaluation keeps the VALIDATION_POLICY site minimum).
+MONTHLY_POOLED_MIN_MONTHS = 1
+MONTHLY_WEIGHTED_MIN_MONTHS = 3
+GRIDMET_ETO_ARRAY = "meteorology/gridmet/eto"
+MONTHLY_SITE_MINIMUM_GATE = (
+    "none at the monthly scale (Volk et al. 2024 protocol); station-weighted rows "
+    f"require >= {MONTHLY_WEIGHTED_MIN_MONTHS} paired months"
+)
+
+
+def load_raw_gridmet_eto(container, fid):
+    """Raw (uncorrected) gridMET grass reference ET for one field, mm d-1.
+
+    The flux gap fill of Volk et al. (2024) scales the tower's fraction of
+    gridMET ETo, so the raw array is required; the bias-corrected ``eto_corr``
+    the model runs on is not a substitute. A missing array is a hard error.
+    """
+    df = container.query.dataframe(GRIDMET_ETO_ARRAY, fields=[fid])
+    if fid not in df.columns or not df[fid].notna().any():
+        raise BenchmarkConstructionError(f"{fid}: no raw gridMET ETo at {GRIDMET_ETO_ARRAY}")
+    return df[fid].astype(float)
+
+
 def _collect_monthly(cfg, container, par_csv, fids, flux_dir, quiet_sites=False, results_dir=None):
-    """Monthly ET comparison with strictly paired months.
+    """Monthly ET comparison following the Volk et al. (2024) monthly protocol.
 
-    The Volk references are full calendar-month totals, so SWIM is summed over
-    full months too, and only months with >= 28 valid daily flux observations
-    are kept so the flux total misses at most a few days. SWIM and each OpenET
-    model are scored on the exact same months per site. The ensemble defines
-    the paired month index — all models share it. Admission requires
-    MIN_OBS_FOR_METRICS paired months (the metric floor), so no all-NaN metric
-    rows are emitted; shorter sites go to the exclusion ledger instead.
+    Flux ET is gap-filled and totaled exactly as in flux-data-qaqc (tower
+    EToF smoothed and interpolated, times raw gridMET ETo; a month is a total
+    when more than 80% of its days carry ET, with residual days at the
+    month's mean), and a month enters the comparison when at most five of its
+    days were filled. SWIM is summed over the full calendar month and the
+    OpenET references are their native full-month totals. The ensemble
+    defines the paired month index — all models share it. Every site with at
+    least one paired month is retained for the pooled cohort; sites with at
+    least MONTHLY_WEIGHTED_MIN_MONTHS paired months also carry per-site
+    metrics and enter the station-weighted cohort.
 
-    Returns ``(site_metrics_df, records, collect_meta)``.
+    Returns ``(site_metrics_df, records, collect_meta)``; ``records`` is the
+    pooled cohort, each carrying ``min_obs=MONTHLY_POOLED_MIN_MONTHS``.
     """
     fids = apply_exclusions(fids)
     monthly_dir = assert_may_source(
@@ -974,6 +1007,7 @@ def _collect_monthly(cfg, container, par_csv, fids, flux_dir, quiet_sites=False,
     model_results = run_calibrated_model(cfg, container, fids, calibrated_params)
 
     all_models = OPEN_SOURCE_MODELS + ["ensemble"]
+    metric_keys = ["r2", "r", "rmse", "bias", "kge"]
     rows = []
     records = []
     excluded = []
@@ -982,100 +1016,85 @@ def _collect_monthly(cfg, container, par_csv, fids, flux_dir, quiet_sites=False,
         if flux_et.empty:
             excluded.append({"site": fid, "reason": "no_flux_data"})
             continue
-        if not passes_site_minimum(flux_et):
-            print(f"  {fid}: below VALIDATION_POLICY site minimum (90 valid days / 3 months)")
-            excluded.append({"site": fid, "reason": "below_site_minimum_90d_3mo"})
-            continue
 
-        model_df = model_results[fid]
-        swim_et = model_df["et_act"]
-
-        # Intersect daily indices first, then aggregate to monthly
-        daily_common = swim_et.index.intersection(flux_et.index)
-        if len(daily_common) < 30:
-            print(f"  {fid}: only {len(daily_common)} daily overlap, skipping")
-            excluded.append({"site": fid, "reason": f"daily_overlap_{len(daily_common)}_below_30"})
-            continue
-
-        flux_daily = flux_et.loc[daily_common]
-
-        # Full-calendar-month totals gated on nearly-complete flux months,
-        # matching the full-month Volk reference totals
-        swim_monthly, flux_monthly = full_month_paired_sums(swim_et, flux_daily)
-
-        # Load Volk monthly ensemble to define the paired month index
         volk_monthly = load_volk_monthly_et(fid, monthly_dir)
         ens_monthly = volk_monthly.get("ensemble")
+        if ens_monthly is None:
+            print(f"  {fid}: no OpenET monthly ensemble file, skipping")
+            excluded.append({"site": fid, "reason": "no_openet_monthly_ensemble"})
+            continue
 
-        if ens_monthly is not None:
-            # Paired months: flux, swim, AND ensemble all finite
-            all_idx = flux_monthly.index
-            ens_on_idx = ens_monthly.reindex(all_idx)
-            paired_mask = (
-                flux_monthly.notna() & swim_monthly.reindex(all_idx).notna() & ens_on_idx.notna()
-            )
-            paired_months = all_idx[paired_mask]
-        else:
-            # No ensemble data — use flux ∩ swim months
-            paired_months = swim_monthly.index.intersection(flux_monthly.index)
+        swim_et = model_results[fid]["et_act"]
+        eto_raw = load_raw_gridmet_eto(container, fid)
 
+        swim_monthly, flux_monthly, filled_days = volk_full_month_paired_sums(
+            swim_et, flux_et, eto_raw
+        )
+
+        # Paired months: flux, swim, AND ensemble all finite
+        all_idx = flux_monthly.index
+        paired_mask = (
+            flux_monthly.notna()
+            & swim_monthly.reindex(all_idx).notna()
+            & ens_monthly.reindex(all_idx).notna()
+        )
+        paired_months = all_idx[paired_mask]
         n_paired = len(paired_months)
-        if n_paired < MIN_OBS_FOR_METRICS:
-            # metric-floor admission: below MIN_OBS_FOR_METRICS the metrics
-            # would be all-NaN anyway; ledger the site instead of emitting
-            # an empty metric row
-            print(f"  {fid}: only {n_paired} paired months, skipping")
-            excluded.append(
-                {
-                    "site": fid,
-                    "reason": f"paired_months_{n_paired}_below_min_{MIN_OBS_FOR_METRICS}",
-                }
-            )
+        if n_paired < MONTHLY_POOLED_MIN_MONTHS:
+            print(f"  {fid}: no paired months, skipping")
+            excluded.append({"site": fid, "reason": "no_paired_months"})
             continue
 
         obs = flux_monthly.loc[paired_months].values
+        swim_on_paired = swim_monthly.reindex(paired_months).values
+        in_weighted = n_paired >= MONTHLY_WEIGHTED_MIN_MONTHS
 
-        row = {"fid": fid, "n": n_paired}
-        m = calc_metrics(obs, swim_monthly.reindex(paired_months).values)
-        for k in ["r2", "r", "rmse", "bias", "kge"]:
+        row = {
+            "fid": fid,
+            "n": n_paired,
+            "filled_flux_days": int(filled_days.reindex(paired_months).sum()),
+            "station_weighted": in_weighted,
+        }
+        m = calc_metrics(obs, swim_on_paired, min_n=MONTHLY_WEIGHTED_MIN_MONTHS)
+        for k in metric_keys:
             row[f"{k}_swim"] = m[k]
 
         # Score each model — per-model paired months (flux + swim + model all finite)
-        swim_on_paired = swim_monthly.reindex(paired_months).values
         for model_name in all_models:
             if model_name not in volk_monthly:
-                for k in ["r2", "r", "rmse", "bias", "kge"]:
+                for k in metric_keys:
                     row[f"{k}_{model_name}"] = np.nan
                 continue
-
             model_vals = volk_monthly[model_name].reindex(paired_months).values
             model_valid = np.isfinite(model_vals) & np.isfinite(obs) & np.isfinite(swim_on_paired)
-            if model_valid.sum() >= MIN_OBS_FOR_METRICS:
-                m = calc_metrics(obs[model_valid], model_vals[model_valid])
-            else:
-                m = {"r2": np.nan, "r": np.nan, "rmse": np.nan, "bias": np.nan, "kge": np.nan}
-
-            for k in ["r2", "r", "rmse", "bias", "kge"]:
+            m = calc_metrics(
+                obs[model_valid], model_vals[model_valid], min_n=MONTHLY_WEIGHTED_MIN_MONTHS
+            )
+            for k in metric_keys:
                 row[f"{k}_{model_name}"] = m[k]
 
         rows.append(row)
 
-        if ens_monthly is not None:
-            record = PairedSiteSeries(
-                fid=fid,
-                index=pd.DatetimeIndex(paired_months),
-                observed=obs,
-                swim=swim_monthly.reindex(paired_months).values,
-                openet=ens_monthly.reindex(paired_months).values,
+        record = PairedSiteSeries(
+            fid=fid,
+            index=pd.DatetimeIndex(paired_months),
+            observed=obs,
+            swim=swim_on_paired,
+            openet=ens_monthly.reindex(paired_months).values,
+            min_obs=MONTHLY_POOLED_MIN_MONTHS,
+        )
+        if record.n != row["n"]:
+            raise GroupedEstimationError(
+                f"{fid}: paired record n={record.n} != site row n={row['n']}"
             )
-            if record.n != row["n"]:
-                raise GroupedEstimationError(
-                    f"{fid}: paired record n={record.n} != site row n={row['n']}"
-                )
-            records.append(record)
+        records.append(record)
 
         if not quiet_sites:
-            print(f"  {fid}: n_paired={n_paired:>3d} mo  retained")
+            cohort = "pooled + station-weighted" if in_weighted else "pooled only"
+            print(
+                f"  {fid}: n_paired={n_paired:>3d} mo  filled days="
+                f"{row['filled_flux_days']:>3d}  {cohort}"
+            )
 
     write_excluded_sites(excluded, results_dir or os.path.join(cfg.project_ws, "results"))
 
@@ -1086,12 +1105,23 @@ def _collect_monthly(cfg, container, par_csv, fids, flux_dir, quiet_sites=False,
             "par_csv": par_csv,
             "flux_dir": flux_dir,
             "openet_monthly_dir": monthly_dir,
+            "gridmet_eto_array": GRIDMET_ETO_ARRAY,
         },
         "openet_source": "volk",
+        "monthly_protocol": "Volk et al. (2024); flux-data-qaqc gap fill and monthly totals",
         "monthly_gates": {
-            "full_month_flux_min_days": 28,
-            "min_paired_months": MIN_OBS_FOR_METRICS,
+            "flux_gap_fill": (
+                "tower ET / raw gridMET ETo, IQR outlier filter, 7-day centered mean "
+                "(min 2), linear interpolation, times gridMET ETo on missing days"
+            ),
+            "month_completeness_fraction": VOLK_MONTH_COMPLETENESS,
+            "max_filled_days_per_month": VOLK_MAX_FILLED_DAYS,
+            "swim_total": "full calendar month",
+            "pooled_min_paired_months": MONTHLY_POOLED_MIN_MONTHS,
+            "station_weighted_min_paired_months": MONTHLY_WEIGHTED_MIN_MONTHS,
+            "site_minimum_gate": "none",
         },
+        "pooled_only_sites": sorted(r.fid for r in records if r.n < MONTHLY_WEIGHTED_MIN_MONTHS),
         "excluded_sites": excluded,
         "static_exclusions": sorted(EXCLUDED_SITES),
     }
@@ -1102,6 +1132,11 @@ def _collect_monthly(cfg, container, par_csv, fids, flux_dir, quiet_sites=False,
 
     metrics_df = pd.DataFrame(rows).set_index("fid")
     return metrics_df, tuple(records), collect_meta
+
+
+def monthly_station_weighted_records(records):
+    """The station-weighted cohort: pooled records with the per-site month floor."""
+    return tuple(r for r in records if r.n >= MONTHLY_WEIGHTED_MIN_MONTHS)
 
 
 def evaluate_monthly(cfg, container, par_csv, fids, flux_dir):
@@ -1126,7 +1161,12 @@ def evaluate_benchmark_monthly(
     quiet_sites=False,
     results_dir=None,
 ):
-    """Canonical monthly grouped benchmark (independent full-month totals)."""
+    """Canonical monthly grouped benchmark (Volk et al. 2024 monthly protocol).
+
+    Pooled rows are estimated on every retained site; station-weighted rows
+    and the site-effect diagnostic on the cohort with at least
+    MONTHLY_WEIGHTED_MIN_MONTHS paired months.
+    """
     site_metrics, records, collect_meta = _collect_monthly(
         cfg,
         container,
@@ -1136,16 +1176,25 @@ def evaluate_benchmark_monthly(
         quiet_sites=quiet_sites,
         results_dir=results_dir,
     )
+    weighted = monthly_station_weighted_records(records)
     grouped, contrasts = grouped_metric_tables(
-        records, "monthly", bootstrap_reps, bootstrap_seed, "volk"
+        records, "monthly", bootstrap_reps, bootstrap_seed, "volk", weighted_records=weighted
     )
     effect = (
-        site_effect_summary(records, bootstrap_reps, bootstrap_seed, "monthly")
+        site_effect_summary(weighted, bootstrap_reps, bootstrap_seed, "monthly")
         if with_site_effect
         else None
     )
     metadata = grouped_metadata(
-        records, "monthly", bootstrap_reps, bootstrap_seed, "volk", collect_meta
+        records,
+        "monthly",
+        bootstrap_reps,
+        bootstrap_seed,
+        "volk",
+        collect_meta,
+        weighted_records=weighted,
+        weighted_min_obs=MONTHLY_WEIGHTED_MIN_MONTHS,
+        site_minimum_gate=MONTHLY_SITE_MINIMUM_GATE,
     )
     return BenchmarkEvaluation(
         site_metrics=site_metrics,
@@ -1180,6 +1229,13 @@ def print_grouped_summary(bundle, scale):
         else ("bootstrap disabled (development run — CI fields null)")
     )
     print(f"{meta['n_sites']} sites; {meta['n_pairs']:,} {pair_word}; {boot_note}")
+    if "cohorts" in meta:
+        w = meta["cohorts"][AGG_WEIGHTED]
+        print(
+            f"  pooled rows: all {meta['n_sites']} sites; station-weighted rows: "
+            f"{w['n_sites']} sites with >= {w['min_obs']} paired months ({w['n_pairs']:,} "
+            f"{pair_word})"
+        )
     print(f"Benchmark: {meta['benchmark']}; RMSE/MBE in {unit_error}")
     print("=" * 84)
 
