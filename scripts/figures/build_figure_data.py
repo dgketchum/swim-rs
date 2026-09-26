@@ -65,7 +65,7 @@ _CFG6 = ex6_paths.load_config()
 E1_RUN = Path(ex5_paths.run_dir(cfg=_CFG5))
 E1_ARCHIVE = E1_RUN / "archive"
 E1_CONTAINER = Path(ex5_paths.run_container(cfg=_CFG5))
-E1_WITHIN_STRAT = E1_RUN / "within_e2_transfer_irrigation_stratified"
+E1_WITHIN_STRAT = E1_RUN / "within_e1_transfer"  # six-arm within_e1_transfer.py output
 
 # E2 sources repointed 2026-09-21 to the HWSD-AWC-units recalibration (GrassBasis
 # footing, HWSD per-site aw priors).  The frozen copies under
@@ -2615,8 +2615,11 @@ def build_fig04() -> None:
     # Expose the already archived signed site deltas through the figure contract
     # with the same whole-site median-bootstrap design. This is a display-level
     # aggregation: it does not rerun evaluation, calibration, or the model.
+    # Every site in the frozen ablation cohort (gated against the promoted E1
+    # daily/monthly primaries by promote_e1_run.py) must carry a finite delta:
+    # 45 daily / 30 monthly on Run 22, 45 / 42 on Run 23 (Volk month protocol).
     signed_mbe_rows = []
-    for scale, expected_n in (("daily", 45), ("monthly", 30)):
+    for scale, expected_n in (("daily", len(wdd)), ("monthly", len(wdm))):
         values = site_rows.loc[site_rows["scale"] == scale, "d_mbe"].to_numpy(dtype=float)
         values = values[np.isfinite(values)]
         if len(values) != expected_n:
@@ -2651,8 +2654,11 @@ def build_fig04() -> None:
     )
     weighting = pd.concat([eff_rows, site_rows], ignore_index=True)
     n_w = write_table(weighting, "fig04_weighting_effects.csv")
-    if n_w != 85:
-        raise BuildError(f"fig04 weighting: expected 85 display rows, got {n_w}")
+    # archived cohort effects + the two signed-MBE effects + one row per site and
+    # scale (85 on Run 22: 8 + 2 + 45 + 30; 97 on Run 23: 8 + 2 + 45 + 42)
+    expected_w = len(wd) + 2 + len(wdd) + len(wdm)
+    if n_w != expected_w:
+        raise BuildError(f"fig04 weighting: expected {expected_w} display rows, got {n_w}")
 
     # panel (a) example selection
     eligible = ps.merge(unc_ps[["site_id", "eligible"]], on="site_id", how="left")
