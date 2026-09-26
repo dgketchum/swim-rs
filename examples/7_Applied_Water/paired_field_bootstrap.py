@@ -31,8 +31,8 @@ import ex7_paths  # noqa: E402
 MM_PER_FT = 304.8
 # The pooled Ex5 canonical-run vector (all 110 fields), not the paper's
 # irrigated-class arm (Run 22 labels: transfer_run22 / local_vs_transfer_run22).
-TRANSFER_LABEL = f"transfer_{ex7_paths.EX5_CANONICAL_RUN}"
-OUT_LABEL = f"local_vs_transfer_{ex7_paths.EX5_CANONICAL_RUN}"
+TRANSFER_LABEL = f"transfer_{ex7_paths.EX5_TRANSFER_RUN}"
+OUT_LABEL = f"local_vs_transfer_{ex7_paths.EX5_TRANSFER_RUN}"
 
 KEY_COLUMNS = ["site_id", "year"]
 REQUIRED_COLUMNS = {

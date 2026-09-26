@@ -9,8 +9,10 @@ the full configuration).
 
     RUN_NAME        the published batch IES calibration (e7cal)
     LOCAL_LABEL     evaluator label of the locally calibrated arm
-    EX5_CANONICAL_RUN  the Example 5 run whose posterior is transferred
-                       (``ex5_paths.CANONICAL_RUN``; Run 22 before the run23 recal)
+    EX5_CANONICAL_RUN  the current Example 5 canonical run (``ex5_paths.CANONICAL_RUN``)
+    EX5_TRANSFER_RUN   the Example 5 run whose posterior the published E3 transfer
+                       uses; pinned to Run 22 until the E3 transfer is rebuilt on
+                       the run23 posterior (deferred)
     TRANSFER_LABEL  evaluator label of the irrigated-class Ex5 transfer arm
 """
 
@@ -36,10 +38,15 @@ def _ex5_canonical_run():
 
 
 EX5_CANONICAL_RUN = _ex5_canonical_run()
-TRANSFER_LABEL = f"transfer_{EX5_CANONICAL_RUN}_by_irrigation"
+# E3 still transfers the Run 22 posterior: the run23 recal (next-day ETo ETf-target
+# fix) has not been carried into the applied-water transfer yet. Move this to
+# EX5_CANONICAL_RUN once build_applied_irrigation_mapping.py and the E4 forward
+# run have been redone on the run23 vectors.
+EX5_TRANSFER_RUN = "run22"
+TRANSFER_LABEL = f"transfer_{EX5_TRANSFER_RUN}_by_irrigation"
 
 FINAL_DIR = REPO / "paper" / "data" / "final"
-TRANSFER_VECTORS = FINAL_DIR / f"e2_{EX5_CANONICAL_RUN}_transfer_vectors_by_irrigation.json"
+TRANSFER_VECTORS = FINAL_DIR / f"e2_{EX5_TRANSFER_RUN}_transfer_vectors_by_irrigation.json"
 TRUTH_CSV = EX7 / "data" / "metered_truth.csv"
 
 # Ground-truth builds (code tracked, data untracked; see the READMEs in each dir).

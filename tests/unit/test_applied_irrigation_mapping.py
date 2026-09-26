@@ -640,13 +640,13 @@ class TestCrossCheckTruth:
 class TestForwardRunContract:
     def test_container_and_label_constants(self):
         """The E4 run must target the calibrated container under the agreed label."""
-        run = bld.ex7_paths.EX5_CANONICAL_RUN
+        run = bld.ex7_paths.EX5_TRANSFER_RUN
         assert bld.E4_FORWARD_LABEL == f"transfer_{run}_by_irrigation"
         assert bld.E4_FORWARD_CONTAINER.endswith("_e7cal.swim")
         assert bld.E4_FORWARD_CONTAINER == bld.DEFAULT_CONTAINER
 
     def test_default_paths_are_the_frozen_artifacts(self):
-        run = bld.ex7_paths.EX5_CANONICAL_RUN
+        run = bld.ex7_paths.EX5_TRANSFER_RUN
         assert Path(bld.DEFAULT_VECTORS).name == f"e2_{run}_transfer_vectors_by_irrigation.json"
         assert Path(bld.DEFAULT_IRRMAPPER_CSV).name == "espa_control_irrmapper.csv"
         assert Path(bld.DEFAULT_TRUTH_CSV).name == "metered_truth.csv"
