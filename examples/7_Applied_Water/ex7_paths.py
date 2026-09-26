@@ -11,9 +11,10 @@ the full configuration).
     LOCAL_LABEL     evaluator label of the locally calibrated arm
     EX5_CANONICAL_RUN  the current Example 5 canonical run (``ex5_paths.CANONICAL_RUN``)
     EX5_TRANSFER_RUN   the Example 5 run whose posterior the published E3 transfer
-                       uses; pinned to Run 22 until the E3 transfer is rebuilt on
-                       the run23 posterior (deferred)
+                       uses (the canonical run; run23 since 2026-09-26, Run 22
+                       outputs kept as superseded)
     TRANSFER_LABEL  evaluator label of the irrigated-class Ex5 transfer arm
+    EXCLUDED_FIELD_YEARS  metered (site_id, year) rows withheld from every scorer
 """
 
 import importlib.util
@@ -38,12 +39,32 @@ def _ex5_canonical_run():
 
 
 EX5_CANONICAL_RUN = _ex5_canonical_run()
-# E3 still transfers the Run 22 posterior: the run23 recal (next-day ETo ETf-target
-# fix) has not been carried into the applied-water transfer yet. Move this to
-# EX5_CANONICAL_RUN once build_applied_irrigation_mapping.py and the E4 forward
-# run have been redone on the run23 vectors.
-EX5_TRANSFER_RUN = "run22"
+# E3 transfers the canonical Ex5 posterior. Re-footed on run23 2026-09-26 (mapping
+# and forward run redone on the run23 irrigated vector); the Run 22 arm stays on disk
+# at results/applied_transfer_run22_by_irrigation (see its SUPERSEDES.md).
+EX5_TRANSFER_RUN = EX5_CANONICAL_RUN
 TRANSFER_LABEL = f"transfer_{EX5_TRANSFER_RUN}_by_irrigation"
+
+# Metered field-years withheld from scoring (decided 2026-09-26). The RGDSS
+# parcel-to-well link (MASTER_ID) is unstable in 2019: each of these four rows
+# resolves to the well and parcel that belong to a different cohort field in every
+# other year, so the "truth" is another field's pumping and the one-well-to-one-parcel
+# selection rule does not hold. metered_truth.csv keeps the rows as built by
+# select_fields.py; every scorer drops them through drop_excluded_field_years().
+# Evidence: review/_work/pipeline/suspect_2019.csv under the Ex7 workspace.
+EXCLUDED_FIELD_YEARS = {
+    ("SLV_013", 2019): "2019 WDID 3505024 is SLV_018's well (88 km from the field)",
+    ("SLV_024", 2019): "2019 WDID 3505025 is SLV_005's well (91 km from the field)",
+    ("SLV_025", 2019): "2019 WDID 2605692 is SLV_023's well (2.6 km from the field)",
+    ("SLV_034", 2019): "2019 WDID 3505026 is SLV_038's well (90 km from the field)",
+}
+
+
+def drop_excluded_field_years(df):
+    """``df`` without the rows keyed ``(site_id, year)`` in ``EXCLUDED_FIELD_YEARS``."""
+    keep = [(str(s), int(y)) not in EXCLUDED_FIELD_YEARS for s, y in zip(df["site_id"], df["year"])]
+    return df.loc[keep].copy()
+
 
 FINAL_DIR = REPO / "paper" / "data" / "final"
 TRANSFER_VECTORS = FINAL_DIR / f"e2_{EX5_TRANSFER_RUN}_transfer_vectors_by_irrigation.json"

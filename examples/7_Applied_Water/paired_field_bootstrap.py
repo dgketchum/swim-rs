@@ -29,10 +29,12 @@ if str(HERE) not in sys.path:
 import ex7_paths  # noqa: E402
 
 MM_PER_FT = 304.8
-# The pooled Ex5 canonical-run vector (all 110 fields), not the paper's
-# irrigated-class arm (Run 22 labels: transfer_run22 / local_vs_transfer_run22).
-TRANSFER_LABEL = f"transfer_{ex7_paths.EX5_TRANSFER_RUN}"
-OUT_LABEL = f"local_vs_transfer_{ex7_paths.EX5_TRANSFER_RUN}"
+# The pooled Ex5 vector (all 110 fields), not the paper's irrigated-class arm. This
+# supporting cut exists only on Run 22 (results/applied_transfer_run22); it was not
+# rebuilt when the paper's E3 transfer moved to run23, so it stays pinned here.
+SUPPORTING_POOLED_RUN = "run22"
+TRANSFER_LABEL = f"transfer_{SUPPORTING_POOLED_RUN}"
+OUT_LABEL = f"local_vs_transfer_{SUPPORTING_POOLED_RUN}"
 
 KEY_COLUMNS = ["site_id", "year"]
 REQUIRED_COLUMNS = {
@@ -119,9 +121,12 @@ def _same_values(left: pd.Series, right: pd.Series) -> bool:
 
 
 def load_paired_inputs(local_path: Path, transfer_path: Path) -> pd.DataFrame:
-    """Load and strictly reconcile the two frozen field-year outputs."""
-    local = pd.read_csv(local_path)
-    transfer = pd.read_csv(transfer_path)
+    """Load and strictly reconcile the two frozen field-year outputs.
+
+    Rows in ``ex7_paths.EXCLUDED_FIELD_YEARS`` are dropped from both inputs first.
+    """
+    local = ex7_paths.drop_excluded_field_years(pd.read_csv(local_path))
+    transfer = ex7_paths.drop_excluded_field_years(pd.read_csv(transfer_path))
 
     for label, frame in (("local", local), ("transfer", transfer)):
         missing = REQUIRED_COLUMNS - set(frame.columns)

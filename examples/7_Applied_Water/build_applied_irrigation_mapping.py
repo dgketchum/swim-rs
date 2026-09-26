@@ -1,7 +1,7 @@
 """Build the Example 7 per-field parameter mapping for the irrigation-stratified transfer.
 
 Expands the frozen two-vector Example 2 artifact of the Ex5 run E3 transfers
-(``ex7_paths.EX5_TRANSFER_RUN``; pinned to Run 22 while the run23 re-footing of E3 is deferred)
+(``ex7_paths.EX5_TRANSFER_RUN``; run23 since 2026-09-26)
 ``paper/data/final/e2_<run>_transfer_vectors_by_irrigation.json`` -- shape
 ``{"irrigated": {8 params}, "rainfed": {8 params}}`` -- into the nested
 ``{site_id: {8 params}}`` mapping that ``evaluate_applied_water.py --params-json``
