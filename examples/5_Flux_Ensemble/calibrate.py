@@ -100,7 +100,16 @@ def run_pest_sequence(
     ies_num_threads: int | None = None,
     container_path: str | None = None,
     keep_pestrun: bool = False,
+    build_only: bool = False,
 ):
+    """Build and (unless ``build_only``) run the PEST++ IES sequence.
+
+    ``build_only`` stops after the problem definition is written and the
+    noptmax=0 dry run has verified the forward model: the .pst, localizer
+    and weight audit land in ``results_dir/archive/3_problem_definition`` so
+    a problem definition can be replayed and diffed against an archived run
+    without launching the ensemble.
+    """
     project = cfg.project_name
 
     if os.path.isdir(cfg.pest_run_dir):
@@ -198,6 +207,15 @@ def run_pest_sequence(
     noptmax = 3
     builder.write_control_settings(noptmax=noptmax, reals=reals, ies_num_threads=ies_num_threads)
     pst_name = f"{project}.pst"
+
+    if build_only:
+        cat3 = os.path.join(results_dir, "archive", "3_problem_definition")
+        os.makedirs(cat3, exist_ok=True)
+        externals = [f.name for f in Path(p_dir).glob(f"{project.lower()}.*_data.csv")]
+        for fname in [pst_name, "loc.mat", *externals]:
+            _copy_if_exists([p_dir], fname, cat3)
+        print(f"build_only=True: problem definition written to {cat3}; ensemble not launched")
+        return
     run_pst(
         p_dir,
         exe_,
@@ -301,6 +319,12 @@ if __name__ == "__main__":
         help="Do not delete the pest/master/workers dirs after archiving "
         "(RUN_POLICY safety: preserve raw PEST outputs for publication runs)",
     )
+    parser.add_argument(
+        "--build-only",
+        action="store_true",
+        help="Write the problem definition and run the noptmax=0 dry run, then stop "
+        "(replay/diff a problem definition without launching the ensemble)",
+    )
     args = parser.parse_args()
 
     cfg = _load_config(args.config)
@@ -342,6 +366,7 @@ if __name__ == "__main__":
         debug_fields=debug_fields,
         container_path=args.container,
         keep_pestrun=args.keep_pestrun,
+        build_only=args.build_only,
     )
     elapsed = time.time() - t0
     print(f"\nTotal elapsed: {elapsed:.1f} s ({elapsed / 60:.1f} min)")
