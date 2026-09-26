@@ -156,7 +156,9 @@ EXPECTED = {
     "E2_pool_countries": 8,
     "E2_pool_continents": 3,
     "E3_fields": 50,
-    "E3_field_years": 408,
+    # 408 metered SLV field-years minus the four mislinked 2019 rows in
+    # ex7_paths.EXCLUDED_FIELD_YEARS (dropped 2026-09-26).
+    "E3_field_years": 404,
     "E1_E2_overlap": 13,
     "E1_E2_overlap_pool": 10,
 }
@@ -2521,6 +2523,9 @@ def build_fig04() -> None:
     cond.insert(0, "legacy_prefix", "e2_")
     cond.insert(0, "experiment", "E1")
     summary = pd.read_csv(src_unc_sum)
+    _sum = summary.set_index("metric")
+    _drho = _sum.loc["median_delta_rho"]
+    _cov90 = float(_sum.loc["pooled_coverage_90", "point"])
     n_cond = write_table(cond, "fig04_conditioned_spread.csv")
 
     wd = pd.read_csv(src_wd)
@@ -2793,10 +2798,12 @@ def build_fig04() -> None:
         display_transformations=["experiment label columns prepended; values unchanged"],
         note=(
             "Conditioned-ensemble diagnostic. delta_rho = rho(retrieval spread, |err|) - "
-            "rho(conditioned IQR, |err|). Cohort estimate +0.216 [+0.128, +0.334] over 27 "
-            "eligible sites (10,000 site-bootstrap, seed 42). Pooled 90% conditioned "
-            "envelope covers 25.7% of flux-derived ETf; this is an empirical coverage "
-            "diagnostic and must never be shown as a predictive interval."
+            f"rho(conditioned IQR, |err|). Cohort estimate {_drho['point']:+.3f} "
+            f"[{_drho['ci_lo']:+.3f}, {_drho['ci_hi']:+.3f}] over {int(_drho['n_sites'])} "
+            f"eligible sites ({int(_drho['n_boot']):,} site-bootstrap, seed {int(_drho['seed'])}). "
+            f"Pooled 90% conditioned envelope covers {100.0 * _cov90:.1f}% of flux-derived ETf; "
+            "this is an empirical coverage diagnostic and must never be shown as a "
+            "predictive interval."
         ),
         cohort_summary=summary.to_dict("records"),
         **base,
@@ -3467,6 +3474,14 @@ def _load_e3_paths() -> dict[str, pd.DataFrame]:
             f"E3 {name}",
         )
         df = df[df["site_id"].astype(str).str.startswith("SLV_")].copy()
+        # Explicit exclusion (not a silent filter): the evaluator already drops these
+        # keys at scoring; an input still carrying them is on the superseded 408 footing.
+        stale = len(df) - len(ex7_paths.drop_excluded_field_years(df))
+        if stale:
+            raise BuildError(
+                f"fig06: {p} still carries {stale} of ex7_paths.EXCLUDED_FIELD_YEARS; "
+                "re-score it with evaluate_applied_water.py --rescore"
+            )
         require_unique(df, ["site_id", "year"], f"E3 {name} SLV")
         df = df.sort_values(["site_id", "year"]).reset_index(drop=True)
         frames[name] = df
@@ -3562,8 +3577,11 @@ def build_fig06() -> pd.DataFrame:
         "experiment_mapping": {"E3": "legacy e4_*"},
         "cohort_key": "(site_id, year)",
         "inclusion_rule": (
-            "50 San Luis Valley metered fields (site_id prefix SLV_) and their 408 paired "
-            "field-years with a positive recorded pumping volume, 2011-2021. The local and "
+            f"{EXPECTED['E3_fields']} San Luis Valley metered fields (site_id prefix SLV_) and "
+            f"their {EXPECTED['E3_field_years']} paired field-years with a positive recorded "
+            "pumping volume, 2011-2021, excluding the field-years in "
+            "ex7_paths.EXCLUDED_FIELD_YEARS (2019 RGDSS parcel-well links that resolve to "
+            "another cohort field's well). The local and "
             "transfer evaluator outputs were asserted to carry identical (site_id, year) "
             "keys and identical metered truth before joining. metered_truth.csv is never "
             "read directly. The excluded ESPA basin and the 10 rainfed control fields are "
@@ -3583,14 +3601,22 @@ def build_fig06() -> pd.DataFrame:
             "field_bias_pct is a record-total bias, (sum(sim) - sum(metered)) / sum(metered) * 100",
         ],
         "deterministic_seed": None,
-        "configured_counts": {"E3": 50},
-        "evaluated_counts": {"fields": 50, "field_years": 408},
+        "configured_counts": {"E3": EXPECTED["E3_fields"]},
+        "evaluated_counts": {
+            "fields": EXPECTED["E3_fields"],
+            "field_years": EXPECTED["E3_field_years"],
+        },
+        "excluded_field_years": [
+            {"site_id": k[0], "year": k[1], "reason": v}
+            for k, v in sorted(ex7_paths.EXCLUDED_FIELD_YEARS.items())
+        ],
         "independent_unit": "field (not field-year)",
     }
     MANIFEST.add("fig06_field_years.csv", rows=n_fy, **base)
     MANIFEST.add("fig06_field_summaries.csv", rows=n_fs, **base)
     print(
-        f"  fig06: field-years {n_fy} rows, field summaries {n_fs} rows (50 fields, 408 field-years)"
+        f"  fig06: field-years {n_fy} rows, field summaries {n_fs} rows "
+        f"({EXPECTED['E3_fields']} fields, {EXPECTED['E3_field_years']} field-years)"
     )
     return fy
 
@@ -3773,7 +3799,8 @@ def build_fig06_bootstrap() -> None:
         experiment_mapping={"E3": "legacy e4_*"},
         cohort_key="(site_id, year); resample unit = site_id",
         inclusion_rule=(
-            "Identical 50-field / 408-field-year SLV keys under both treatments. This is a "
+            f"Identical {EXPECTED['E3_fields']}-field / {EXPECTED['E3_field_years']}-field-year "
+            "SLV keys under both treatments (ex7_paths.EXCLUDED_FIELD_YEARS removed). This is a "
             "NEW comparison of local satellite calibration against the current E1-derived "
             "IRRIGATED parameter set. The archived applied_local_vs_transfer_run22 "
             "bootstrap compares local calibration with the SUPERSEDED pooled transfer "
@@ -3798,8 +3825,15 @@ def build_fig06_bootstrap() -> None:
             "is relabelled so that it contributes as separate fields to the field-level "
             "statistics. Design frozen before any interval was inspected."
         ),
-        configured_counts={"E3": 50},
-        evaluated_counts={"fields": 50, "field_years": 408},
+        configured_counts={"E3": EXPECTED["E3_fields"]},
+        evaluated_counts={
+            "fields": EXPECTED["E3_fields"],
+            "field_years": EXPECTED["E3_field_years"],
+        },
+        excluded_field_years=[
+            {"site_id": k[0], "year": k[1], "reason": v}
+            for k, v in sorted(ex7_paths.EXCLUDED_FIELD_YEARS.items())
+        ],
         independent_unit="field",
     )
     print(f"  fig06 bootstrap: {n} statistics, 10,000 whole-field resamples, seed 42")
@@ -4231,7 +4265,7 @@ CAPTION_ONLY_VISIBLE_PATTERNS = [
     r"\b63\b",
     r"\b56\b",
     r"\b31\b",
-    r"\b408\b",
+    rf"\b{EXPECTED['E3_field_years']}\b",
     r"\b200\b",
     r"field[- ]year",
     r"\bpaired\b",
@@ -5641,7 +5675,7 @@ def build_fig01() -> None:
                 "daily_evaluation_n": None,
                 "monthly_supported_n": None,
                 "monthly_finite_metric_n": None,
-                "field_year_n": 408,
+                "field_year_n": EXPECTED["E3_field_years"],
                 "external_evaluation": "state-agency groundwater pumping records",
                 "parameter_source": "local calibration arm; fixed E1-derived irrigated set for the transfer arm",
                 "scientific_roles": "applied-water consistency under local and transferred parameters",
@@ -7996,7 +8030,7 @@ def build_fig01() -> None:
                 "E0": "37 daily sites; 33 finite-metric monthly sites (37 with paired months)",
                 "E1": "45 daily sites; 29 finite-metric monthly sites (31 supported)",
                 "E2": "63 daily sites; 50 finite-metric monthly sites (56 supported)",
-                "E3": "408 metered field-years across 50 fields",
+                "E3": f"{EXPECTED['E3_field_years']} metered field-years across 50 fields",
                 "note": "configured scope (60 / 66 / 50) is distinct from paired evaluation support",
             },
             "example_site": (
@@ -9261,7 +9295,11 @@ def build_fig01() -> None:
         units={"coordinates": "decimal degrees, EPSG:4326"},
         deterministic_seed=None,
         configured_counts={"E1": 60, "E2": 66, "E3": 50},
-        evaluated_counts={"E1_daily": 45, "E2_daily": 63, "E3_field_years": 408},
+        evaluated_counts={
+            "E1_daily": 45,
+            "E2_daily": 63,
+            "E3_field_years": EXPECTED["E3_field_years"],
+        },
         generator_version=FIG01_BUILDER_VERSION,
     )
     MANIFEST.add(
