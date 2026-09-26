@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import importlib.util
 import json
 import shutil
 from datetime import UTC, datetime
@@ -86,8 +87,20 @@ FILES = [
     "fig03_metadata.json",
 ]
 
+
+def _ex5_canonical_run() -> str:
+    """``CANONICAL_RUN`` from ``examples/5_Flux_Ensemble/ex5_paths.py``, loaded by path."""
+    path = REPO / "examples" / "5_Flux_Ensemble" / "ex5_paths.py"
+    spec = importlib.util.spec_from_file_location("_fig03_ex5_paths", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.CANONICAL_RUN
+
+
+# Internal archive tags (the canonical Ex5 run and its predecessor) never reach a figure.
 FORBIDDEN_STRINGS = [
     "run22",
+    _ex5_canonical_run(),
     "non-overpass",
     "non_overpass",
     "acquisition",

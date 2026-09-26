@@ -62,10 +62,10 @@ import ex7_paths  # noqa: E402
 _CFG5 = ex5_paths.load_config()
 _CFG6 = ex6_paths.load_config()
 
-E1_RUN22 = Path(ex5_paths.run_dir(cfg=_CFG5))
-E1_ARCHIVE = E1_RUN22 / "archive"
+E1_RUN = Path(ex5_paths.run_dir(cfg=_CFG5))
+E1_ARCHIVE = E1_RUN / "archive"
 E1_CONTAINER = Path(ex5_paths.run_container(cfg=_CFG5))
-E1_WITHIN_STRAT = Path(ex5_paths.results_root(_CFG5)) / "within_e2_transfer_irrigation_stratified"
+E1_WITHIN_STRAT = E1_RUN / "within_e2_transfer_irrigation_stratified"
 
 # E2 sources repointed 2026-09-21 to the HWSD-AWC-units recalibration (GrassBasis
 # footing, HWSD per-site aw priors).  The frozen copies under
@@ -73,7 +73,7 @@ E1_WITHIN_STRAT = Path(ex5_paths.results_root(_CFG5)) / "within_e2_transfer_irri
 # root is read only where a per-site table was not frozen, and its per-site
 # transfer table must hash-match the frozen copy.
 E2_RESULTS = ex6_paths.run_dir(cfg=_CFG6)
-E2_TRANSFER = ex6_paths.results_root(_CFG6) / "e2_run22_transfer_by_irrigation_to_grassbasis"
+E2_TRANSFER = ex6_paths.results_root(_CFG6) / ex6_paths.TRANSFER_RUN
 E2_CONTAINER = (
     Path(_CFG6.data_dir) / "6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim"
 )
@@ -132,6 +132,8 @@ EXPECTED = {
     "E0_whole_daily_wins": 32,
     "E0_whole_monthly_wins": 28,
     "E1_configured": 60,
+    # Evaluation-derived E1 counts, confirmed identical for Run 22 and Run 23
+    # (same benchmark record and cohorts; spread-error counts are read per run).
     "E1_daily": 45,
     "E1_monthly_finite": 29,
     "E1_transfer_daily": 45,
@@ -2368,14 +2370,30 @@ def build_fig03() -> None:
 E1_MEMBERS = ["ssebop", "ptjpl", "sims", "geesebal", "eemetric", "disalexi"]
 
 
+def _e1_spread_counts() -> dict:
+    """Capture, site and association counts from the canonical run's spread_error summary."""
+    p = E1_RUN / "spread_error" / "spread_error_summary.csv"
+    if not p.exists():
+        raise BuildError(f"fig04 source missing: {p}")
+    summ = pd.read_csv(p, header=None, index_col=0).squeeze("columns")
+    n_assoc = int(float(summ["persite_n_sites"]))
+    return {
+        "captures": int(float(summ["n_observations"])),
+        "capture_sites": int(float(summ["n_sites"])),
+        "association_sites": n_assoc,
+        "association_positive": int(round(float(summ["persite_frac_positive"]) * n_assoc)),
+    }
+
+
 def build_fig04() -> None:
-    src_obs = E1_RUN22 / "spread_error" / "spread_error_observations.csv"
+    exp = _e1_spread_counts()
+    src_obs = E1_RUN / "spread_error" / "spread_error_observations.csv"
     src_q = FINAL / "e2_spread_error_quintiles.csv"
     src_ps = FINAL / "e2_spread_error_persite.csv"
     src_sum = FINAL / "e2_spread_error_summary.csv"
-    src_unc_ps = E1_RUN22 / "conditioned_ensemble_uncertainty" / "uncertainty_persite.csv"
-    src_unc_obs = E1_RUN22 / "conditioned_ensemble_uncertainty" / "uncertainty_observations.csv"
-    src_unc_sum = E1_RUN22 / "conditioned_ensemble_uncertainty" / "uncertainty_summary.csv"
+    src_unc_ps = E1_RUN / "conditioned_ensemble_uncertainty" / "uncertainty_persite.csv"
+    src_unc_obs = E1_RUN / "conditioned_ensemble_uncertainty" / "uncertainty_observations.csv"
+    src_unc_sum = E1_RUN / "conditioned_ensemble_uncertainty" / "uncertainty_summary.csv"
     src_wd = FINAL / "e2_weighting_ablation_paired_deltas.csv"
     src_wdd = FINAL / "e2_weighting_ablation_daily_site_deltas.csv"
     src_wdm = FINAL / "e2_weighting_ablation_monthly_site_deltas.csv"
@@ -2401,10 +2419,12 @@ def build_fig04() -> None:
         "spread_error_observations",
     )
     require_unique(obs, ["site", "date"], "spread_error_observations")
-    if len(obs) != 2131:
-        raise BuildError(f"fig04: expected 2131 paired captures, got {len(obs)}")
-    if obs["site"].nunique() != 33:
-        raise BuildError(f"fig04: expected 33 sites, got {obs['site'].nunique()}")
+    if len(obs) != exp["captures"]:
+        raise BuildError(f"fig04: expected {exp['captures']} paired captures, got {len(obs)}")
+    if obs["site"].nunique() != exp["capture_sites"]:
+        raise BuildError(
+            f"fig04: expected {exp['capture_sites']} sites, got {obs['site'].nunique()}"
+        )
 
     members = _e1_member_etf(obs)
     cap = obs.merge(members, on=["site", "date"], how="left", validate="one_to_one")
@@ -2485,14 +2505,16 @@ def build_fig04() -> None:
     n_assoc = write_table(assoc, "fig04_site_associations.csv")
 
     elig = unc_ps[unc_ps["eligible"].astype(bool)]
-    if len(elig) != 27:
-        raise BuildError(f"fig04: expected 27 eligible sites, got {len(elig)}")
-    if len(ps) != 27:
-        raise BuildError(f"fig04: expected 27 spread-analysis sites, got {len(ps)}")
+    n_assoc = exp["association_sites"]
+    if len(elig) != n_assoc:
+        raise BuildError(f"fig04: expected {n_assoc} eligible sites, got {len(elig)}")
+    if len(ps) != n_assoc:
+        raise BuildError(f"fig04: expected {n_assoc} spread-analysis sites, got {len(ps)}")
     n_pos = int((ps["rho_retrieval_vs_abs_ensemble_error"] > 0).sum())
-    if n_pos != 26:
+    if n_pos != exp["association_positive"]:
         raise BuildError(
-            f"fig04: expected 26 of 27 positive within-site spread-error associations, got {n_pos}"
+            f"fig04: expected {exp['association_positive']} of {n_assoc} positive within-site "
+            f"spread-error associations, got {n_pos}"
         )
 
     cond = unc_ps.copy()
@@ -2698,10 +2720,12 @@ def build_fig04() -> None:
         "experiment_mapping": {"E1": "legacy e2_*"},
         "cohort_key": "site_id (+ date for capture-level rows)",
         "inclusion_rule": (
-            "Capture-level: 2,131 ETf ensemble calibration targets across 33 sites that "
+            f"Capture-level: {exp['captures']:,} ETf ensemble calibration targets across "
+            f"{exp['capture_sites']} sites that "
             "have a finite same-day flux ET_corr and a reference ETo >= 0.5 mm d-1; sites "
             "must pass the VALIDATION_POLICY minimum and MB_Pch is excluded. Site-level "
-            "associations: the 27 sites with at least 20 paired captures."
+            f"associations: the {exp['association_sites']} sites with at least 20 paired "
+            "captures."
         ),
         "temporal_support_rule": "Landsat acquisition dates retained as ETf calibration targets, 2016-2025, paired to same-day flux observations (Volk v2.1 record ends mid-2022).",
         "units": {
@@ -2716,19 +2740,26 @@ def build_fig04() -> None:
         "deterministic_seed": 42,
         "configured_counts": {"E1": 60},
         "evaluated_counts": {
-            "captures": 2131,
-            "capture_sites": 33,
-            "association_sites": 27,
-            "weighting_daily_sites": 45,
-            "weighting_monthly_sites": 31,
-            "weighting_monthly_finite_sites": 29,
+            "captures": exp["captures"],
+            "capture_sites": exp["capture_sites"],
+            "association_sites": exp["association_sites"],
+            # Derived from the frozen site-delta files (45 / 30 Run 22; 45 / 42 Run 23
+            # once the monthly ablation scored on the Volk 2024 month protocol).
+            "weighting_daily_sites": int(len(wdd)),
+            "weighting_monthly_sites": int(len(wdm)),
+            "weighting_monthly_finite_sites": int(
+                wdm[["delta_r2_swim", "delta_kge_swim", "delta_rmse_swim", "delta_bias_swim"]]
+                .notna()
+                .all(axis=1)
+                .sum()
+            ),
         },
     }
     MANIFEST.add(
         "fig04_spread_capture_values.csv",
         rows=n_cap,
         display_transformations=[
-            "six OpenET member ETf values joined from the run22 container and cross-checked against the archived member_count (exact match required)",
+            f"six OpenET member ETf values joined from the {ex5_paths.CANONICAL_RUN} container and cross-checked against the archived member_count (exact match required)",
             "conditioned-ensemble quantiles joined from uncertainty_observations.csv on (site, date)",
             "legacy column 'spread' renamed spread_retrieval; 'target' renamed ensemble_mean_etf",
         ],
@@ -2738,7 +2769,7 @@ def build_fig04() -> None:
         "fig04_spread_quintiles.csv",
         rows=n_q,
         display_transformations=["experiment label columns prepended; values unchanged"],
-        note="Quintiles of retrieval spread over the 2,131 pooled captures; MAE/RMSE in ETf units. Descriptive, not a calibrated uncertainty function.",
+        note=f"Quintiles of retrieval spread over the {exp['captures']:,} pooled captures; MAE/RMSE in ETf units. Descriptive, not a calibrated uncertainty function.",
         **base,
     )
     MANIFEST.add(
@@ -2850,7 +2881,7 @@ E1_ARMS = {
         "heldout_transfer_pooled_loso",
         "superseded pooled leave-one-site-out transfer (provenance only)",
     ),
-    "local": ("local_calibration", "Run 22 local site calibration"),
+    "local": ("local_calibration", f"{ex5_paths.CANONICAL_RUN} local site calibration"),
 }
 
 
@@ -2969,7 +3000,9 @@ def build_fig05_e1() -> None:
         experiment_mapping={"E1": "legacy e2_*; legacy experiment label E2_within_held_out"},
         cohort_key="site_id",
         inclusion_rule=(
-            "Common paired cohort of the Run 22 45-site daily and 31-site monthly "
+            # Cohort counts confirmed on the Run 23 within_e1_transfer output (unchanged from Run 22).
+            f"Common paired cohort of the {ex5_paths.CANONICAL_RUN} 45-site daily and "
+            "31-site monthly "
             "evaluations, evaluated identically under all six arms. 29 irrigated / 16 "
             "rainfed daily sites. Held-out folds exclude each evaluated site from the "
             "parameter set applied to it; the class-specific vector for each fold is the "
@@ -3516,7 +3549,7 @@ def build_fig06() -> pd.DataFrame:
 
     srcs = {
         "applied_calibrated_per_field_year": E3_LOCAL / "per_field_year.csv",
-        "applied_transfer_run22_by_irrigation_per_field_year": E3_TRANSFER / "per_field_year.csv",
+        f"applied_{ex7_paths.TRANSFER_LABEL}_per_field_year": E3_TRANSFER / "per_field_year.csv",
     }
     base = {
         "sources": {k: {"path": str(p), "sha256": sha256(p)} for k, p in srcs.items()},
@@ -3726,7 +3759,7 @@ def build_fig06_bootstrap() -> None:
                 "path": str(E3_LOCAL / "per_field_year.csv"),
                 "sha256": sha256(E3_LOCAL / "per_field_year.csv"),
             },
-            "applied_transfer_run22_by_irrigation_per_field_year": {
+            f"applied_{ex7_paths.TRANSFER_LABEL}_per_field_year": {
                 "path": str(E3_TRANSFER / "per_field_year.csv"),
                 "sha256": sha256(E3_TRANSFER / "per_field_year.csv"),
             },
@@ -3831,6 +3864,10 @@ def build_obs_support() -> None:
         "E3": _capture_dates_e3(),
     }
     expected_sites = {"E1": 60, "E2": 66, "E3": 50}
+    # Retained (nonzero-weight) ETf ensemble targets in the canonical archive:
+    # 20,328 for Run 22, 20,326 for Run 23 (three targets zeroed, one activated
+    # by the next-day ETo correction).
+    e1_retained_targets = int(len(caps["E1"]))
     etf_rows = []
     for exp, df in caps.items():
         require_count(df["site_id"].nunique(), expected_sites[exp], f"{exp} ETf support sites")
@@ -3973,7 +4010,7 @@ def build_obs_support() -> None:
 
     base = {
         "experiment_mapping": {
-            "E1": "legacy e2_* (examples/5_Flux_Ensemble run22)",
+            "E1": f"legacy e2_* (examples/5_Flux_Ensemble {ex5_paths.CANONICAL_RUN})",
             "E2": "legacy e3_* (examples/6_Flux_International ls_ensemble_por_annual2yr)",
             "E3": "legacy e4_* (examples/7_Applied_Water e7cal)",
         },
@@ -3988,7 +4025,8 @@ def build_obs_support() -> None:
         },
         "cohort_key": "site_id (+ year for site-year rows)",
         "inclusion_rule": (
-            "E1: the 20,328 retained ETf ensemble calibration targets in the run22 archived "
+            f"E1: the {e1_retained_targets:,} retained ETf ensemble calibration targets in the "
+            f"{ex5_paths.CANONICAL_RUN} archived "
             "observation metadata, 60 configured sites. E2: dates where BOTH coincident "
             "Landsat SSEBop and PT-JPL ETf are finite, restricted to the 66-site "
             "publication cohort. E3: dates with at least two valid OpenET members, "
@@ -4414,7 +4452,7 @@ def _assert_no_caption_facts_visible(classification: dict[str, str]) -> None:
 
 
 def _fig01_load_e1_site_series(fid: str):
-    """Archived run22 daily series joined to the raw + interpolated benchmark.
+    """Archived canonical-run daily series joined to the raw + interpolated benchmark.
 
     Resurrected verbatim from the retired seasonal fig03 builder (commit
     782ca3c) so the example-source regeneration below reproduces the original
