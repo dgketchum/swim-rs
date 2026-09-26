@@ -12,6 +12,11 @@ Two parameter sources (see ``--params-json`` / ``--par-csv``):
 Outputs (under --out): per-field-year table, summary metrics, implied-efficiency
 distribution, per-crop panel, negative-control check, and a sim-vs-metered scatter.
 
+Metered field-years in ``ex7_paths.EXCLUDED_FIELD_YEARS`` are dropped from the truth
+table before pairing. ``--rescore`` re-applies that exclusion to an existing
+``per_field_year.csv`` and rewrites the table, summary and scatter without a forward
+run (the negative-control file is left as is).
+
     uv run python examples/7_Applied_Water/evaluate_applied_water.py --par-csv <par.csv>
     uv run python examples/7_Applied_Water/evaluate_applied_water.py \
         --params-json examples/6_Flux_International/transfer/ex5_cropland_params.json \
@@ -31,10 +36,12 @@ import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 E6 = HERE.parent / "6_Flux_International"
-if str(E6) not in sys.path:
-    sys.path.insert(0, str(E6))
+for _p in (E6, HERE):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 import evaluate as e6  # noqa: E402  (reuse parse_pest_params)
+import ex7_paths  # noqa: E402
 
 from swimrs.container import open_container  # noqa: E402
 from swimrs.process.input import build_swim_input  # noqa: E402
@@ -149,15 +156,28 @@ def main() -> None:
     ap.add_argument("--params-json", default=None)
     ap.add_argument("--label", default=None, help="calibrated|transfer (names outputs)")
     ap.add_argument("--out", default=None)
+    ap.add_argument(
+        "--rescore",
+        action="store_true",
+        help="re-score the existing per_field_year.csv in the output dir (no forward run)",
+    )
     args = ap.parse_args()
 
     cfg = _load_config()
     label = args.label or ("transfer" if args.params_json else "calibrated")
-    container_path = args.container or os.path.join(cfg.data_dir, f"{cfg.project_name}.swim")
     out_dir = Path(args.out or (Path(cfg.project_ws) / "results" / f"applied_{label}"))
+
+    if args.rescore:
+        prior = pd.read_csv(out_dir / "per_field_year.csv")
+        paired = ex7_paths.drop_excluded_field_years(prior)
+        print(f"[{label}] rescore: dropped {len(prior) - len(paired)} excluded field-years")
+        _score(paired, out_dir, label)
+        return
+
+    container_path = args.container or os.path.join(cfg.data_dir, f"{cfg.project_name}.swim")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    truth = pd.read_csv(TRUTH)
+    truth = ex7_paths.drop_excluded_field_years(pd.read_csv(TRUTH))
     # basin/crop live in the fields shapefile, not the truth table
     fields_gdf = gpd.read_file(cfg.fields_shapefile, engine="fiona")
     meta = fields_gdf.drop_duplicates("site_id").set_index("site_id")
@@ -190,6 +210,26 @@ def main() -> None:
     paired["basin"] = paired.site_id.map(meta.basin) if "basin" in meta else ""
     paired["crop"] = paired.site_id.map(meta.crop) if "crop" in meta else ""
     paired["efficiency"] = paired.sim_applied_mm / paired.metered_depth_mm.replace(0, np.nan)
+    _score(paired, out_dir, label)
+
+    # ---- negative controls: simulated irrigation must be ~0 ----
+    controls = truth[truth.source == "ESPA_rainfed_control"].site_id.unique()
+    csim = sim[sim.site_id.isin(controls)]
+    ctl = {
+        "n_control_fields": int(len(controls)),
+        "n_control_field_years": int(len(csim)),
+        "sim_applied_mm_mean": round(float(csim.sim_applied_mm.mean()) if len(csim) else 0.0, 2),
+        "sim_applied_mm_max": round(float(csim.sim_applied_mm.max()) if len(csim) else 0.0, 2),
+        "frac_years_gt_10mm": round(
+            float((csim.sim_applied_mm > 10).mean()) if len(csim) else 0.0, 3
+        ),
+    }
+    (out_dir / "negative_controls.json").write_text(json.dumps(ctl, indent=2))
+    print("controls:", ctl)
+
+
+def _score(paired: pd.DataFrame, out_dir: Path, label: str) -> None:
+    """Write per_field_year.csv, summary_metrics.csv and the scatter for ``paired``."""
     paired.to_csv(out_dir / "per_field_year.csv", index=False)
 
     summary = {"all": _metrics(paired)}
@@ -209,23 +249,8 @@ def main() -> None:
     summary["field_aggregated"] = _metrics(fa)
     pd.DataFrame(summary).T.to_csv(out_dir / "summary_metrics.csv")
 
-    # ---- negative controls: simulated irrigation must be ~0 ----
-    controls = truth[truth.source == "ESPA_rainfed_control"].site_id.unique()
-    csim = sim[sim.site_id.isin(controls)]
-    ctl = {
-        "n_control_fields": int(len(controls)),
-        "n_control_field_years": int(len(csim)),
-        "sim_applied_mm_mean": round(float(csim.sim_applied_mm.mean()) if len(csim) else 0.0, 2),
-        "sim_applied_mm_max": round(float(csim.sim_applied_mm.max()) if len(csim) else 0.0, 2),
-        "frac_years_gt_10mm": round(
-            float((csim.sim_applied_mm > 10).mean()) if len(csim) else 0.0, 3
-        ),
-    }
-    (out_dir / "negative_controls.json").write_text(json.dumps(ctl, indent=2))
-
     print(f"[{label}] paired field-years: {len(paired)}")
     print("all:", summary["all"])
-    print("controls:", ctl)
 
     _scatter(paired, out_dir / "sim_vs_metered.png", label)
     print("wrote", out_dir)

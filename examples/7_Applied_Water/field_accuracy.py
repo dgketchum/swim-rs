@@ -71,7 +71,7 @@ def main() -> None:
     args = ap.parse_args()
 
     d = ex7_paths.eval_dir(args.label, args.config)
-    p = pd.read_csv(d / "per_field_year.csv")
+    p = ex7_paths.drop_excluded_field_years(pd.read_csv(d / "per_field_year.csv"))
     p = p[p.metered_depth_mm > 0].copy()  # irrigated paired field-years
     p["sim_vol_af"] = p.sim_applied_mm / MM_PER_FT * p.acres
     p["metered_vol_af"] = p.metered_volume_af

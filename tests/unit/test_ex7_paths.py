@@ -53,3 +53,24 @@ def test_root_relocates_every_workspace_path(ex7_paths, tmp_path):
     assert ex7_paths.pest_run_dir(toml) == ws / "pestrun"
     assert ex7_paths.results_root(toml) == ws / "results"
     assert not ws.exists()
+
+
+def test_excluded_field_years_are_dropped(ex7_paths):
+    import pandas as pd
+
+    assert set(ex7_paths.EXCLUDED_FIELD_YEARS) == {
+        ("SLV_013", 2019),
+        ("SLV_024", 2019),
+        ("SLV_025", 2019),
+        ("SLV_034", 2019),
+    }
+    df = pd.DataFrame(
+        {
+            "site_id": ["SLV_013", "SLV_013", "SLV_018", "SLV_034"],
+            "year": [2019, 2018, 2019, 2019],
+            "metered_depth_mm": [684.6, 700.0, 650.0, 807.1],
+        }
+    )
+    kept = ex7_paths.drop_excluded_field_years(df)
+    assert list(zip(kept.site_id, kept.year)) == [("SLV_013", 2018), ("SLV_018", 2019)]
+    assert len(df) == 4
