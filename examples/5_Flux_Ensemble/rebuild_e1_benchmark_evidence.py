@@ -123,6 +123,27 @@ TEMPORAL_FREEZE_FILES = {
     "e2_temporal_support_contrast_persite.csv": "e2_temporal_support_contrast_persite.csv",
 }
 SUPERSEDED_SUBDIR = "superseded_e2_direct_interpolation"
+# The E1 monthly primary the ablation's monthly arm is scored against: the
+# promoted Volk (2024) month-protocol package (promote_e1_run.py), not this
+# script's own full-month product comparison (``e2_primary_monthly_*``), which
+# keeps the older 28-day rule and a smaller cohort.
+PROMOTED_MONTHLY_PRIMARY = (
+    Path("e1_openet_benchmark") / "monthly" / "evaluation_monthly_metrics.csv"
+)
+
+
+def promoted_monthly_primary(final_dir):
+    """Per-site table of the promoted E1 monthly package (fid, n, <metric>_swim)."""
+    path = Path(final_dir) / PROMOTED_MONTHLY_PRIMARY
+    if not path.exists():
+        raise BenchmarkConstructionError(f"G-ABLATION: promoted monthly primary missing: {path}")
+    df = pd.read_csv(path)
+    needed = ["fid", "n", *(f"{m}_swim" for m in ABLATION_GATE_METRICS)]
+    missing = [c for c in needed if c not in df.columns]
+    if missing:
+        raise BenchmarkConstructionError(f"G-ABLATION: {path} lacks columns {missing}")
+    return df
+
 
 BENCHMARK_DESIGN = (
     "OpenET-method temporal benchmark using a common OpenET bias-corrected gridMET ETo basis"
@@ -163,8 +184,10 @@ def sha256_file(path):
 def check_rescored_ablation(final_dir, daily_df, monthly_df, tol=1e-9):
     """G-ABLATION: the weighting-ablation spread arm must equal the primary.
 
-    ``daily_df``/``monthly_df`` are the rebuilt primary site metrics (rows
-    with NaN ``r2_swim`` are excluded sites). For each scale the ablation
+    ``daily_df`` is the rebuilt primary daily site metrics; ``monthly_df`` is
+    the promoted Volk-protocol monthly primary (``promoted_monthly_primary``),
+    the cohort the ablation's monthly arm is scored on (rows with NaN
+    ``r2_swim`` are excluded sites). For each scale the ablation
     site-delta file must cover exactly the primary cohort, its ``n_paired``
     must equal the primary ``n`` at every site, and the spread-arm metrics
     (``e1_<metric>_swim``) must match the primary ``<metric>_swim`` to
@@ -213,9 +236,11 @@ def check_rescored_ablation(final_dir, daily_df, monthly_df, tol=1e-9):
         f"{max(g['max_abs_metric_diff'] for g in gate.values()):.3e})"
     )
     return {
-        "status": "rescored on the frozen ETf-first benchmark 2026-09-21; both "
-        "weighting arms re-evaluated against the frozen record, spread arm "
-        "verified equal to the primary site metrics (G-ABLATION)",
+        "status": "both weighting arms scored on the frozen ETf-first benchmark "
+        "record; spread arm verified equal to the primary site metrics "
+        "(G-ABLATION: daily vs the rebuilt primary, monthly vs the promoted "
+        "Volk-protocol monthly package)",
+        "monthly_primary": str(PROMOTED_MONTHLY_PRIMARY),
         "gate": gate,
         "files_sha256": hashes,
     }
@@ -943,10 +968,12 @@ def build_metadata(
         # after the freeze move the originals live in the superseded subdir
         p = SUPERSEDED_FINAL_DIR / name
         if not p.exists():
-            p = SUPERSEDED_FINAL_DIR / SUPERSEDED_SUBDIR / name
+            p = SUPERSEDED_FINAL_DIR / args.superseded_subdir / name
         if p.exists():
             superseded[name] = sha256_file(p)
-    rescored = check_rescored_ablation(SUPERSEDED_FINAL_DIR, daily_df, monthly_df)
+    rescored = check_rescored_ablation(
+        SUPERSEDED_FINAL_DIR, daily_df, promoted_monthly_primary(SUPERSEDED_FINAL_DIR)
+    )
     manifest_path = run_dir / "archive" / "1_provenance" / "container_manifest.json"
     per_series_counts = support_df.groupby("series")["n_scored"].sum().astype(int).to_dict()
     temporal = None
@@ -1101,9 +1128,8 @@ def build_metadata(
             for r in summary_df.to_dict("records")
         },
         "superseded": {
-            "reason": "direct-ET interpolation (construction) AND January capture "
-            "source (source-version) — both defects; see benchmark_construction",
-            "relocated_to": SUPERSEDED_SUBDIR,
+            "reason": args.superseded_reason,
+            "relocated_to": args.superseded_subdir,
             "files_sha256_at_supersession": superseded,
         },
         "rescored_artifacts": rescored,
@@ -1349,6 +1375,17 @@ def main():
         metavar=("CANONICAL", "REPLICATE"),
         help="G-BOOT: two overpass_decomposition output dirs to byte-compare; "
         "their agreement (and the canonical hashes) is recorded in metadata",
+    )
+    parser.add_argument(
+        "--superseded-subdir",
+        default=SUPERSEDED_SUBDIR,
+        help="paper/data/final subdirectory the files this build replaces are moved to",
+    )
+    parser.add_argument(
+        "--superseded-reason",
+        default="direct-ET interpolation (construction) AND January capture "
+        "source (source-version) — both defects; see benchmark_construction",
+        help="why the replaced files were superseded (recorded in the metadata)",
     )
     parser.add_argument(
         "--status",

@@ -1,6 +1,7 @@
 """``promote_final.py`` derives the frozen E1 supporting products from run outputs."""
 
 import importlib.util
+import io
 import json
 import sys
 from pathlib import Path
@@ -70,14 +71,18 @@ def test_build_and_compare_round_trip(mod, tmp_path):
     run_dir = tmp_path / "results" / mod.ex5_paths.CANONICAL_RUN
     (run_dir / "spread_error").mkdir(parents=True)
     (run_dir / "archive" / "3_problem_definition").mkdir(parents=True)
-    strat = run_dir / mod.STRATIFIED_DIR
-    pooled = run_dir / mod.POOLED_DIR
+    strat = run_dir / mod.TRANSFER_DIR
     strat.mkdir(parents=True)
-    pooled.mkdir(parents=True)
     for part in ("persite", "quintiles", "summary"):
         (run_dir / "spread_error" / f"spread_error_{part}.csv").write_text(f"x\n{part}\n")
     for scale in ("daily", "monthly"):
-        (pooled / f"persite_{scale}.csv").write_text(f"fid,kge\nA,{scale}\n")
+        six_arm = pd.DataFrame({c: [1.0] for c in mod.POOLED_COLUMNS[2:]})
+        six_arm.insert(0, "fid", ["A"])
+        six_arm.insert(1, "region", ["West_Coast"])
+        six_arm["irr_class"] = "rainfed"
+        six_arm["loro_strat_kge"] = 0.5
+        six_arm["loro_abs_bias"] = 0.1
+        six_arm.to_csv(strat / f"persite_{scale}.csv", index=False)
     pd.DataFrame({"basis": ["daily"], "median_common": [0.5]}).to_csv(
         strat / "summary_metrics.csv", index=False
     )
@@ -89,6 +94,8 @@ def test_build_and_compare_round_trip(mod, tmp_path):
 
     products = mod.build_products(run_dir)
     assert len(products) == 7
+    pooled = pd.read_csv(io.BytesIO(products["e2_within_transfer_daily_site_metrics.csv"]))
+    assert list(pooled.columns) == mod.POOLED_COLUMNS
     final = tmp_path / "final"
     assert {s for _, s, _ in mod.compare(products, final)} == {"missing"}
     final.mkdir()
@@ -98,3 +105,11 @@ def test_build_and_compare_round_trip(mod, tmp_path):
     (final / "e2_spread_error_summary.csv").write_text("changed\n")
     statuses = dict((n, s) for n, s, _ in mod.compare(products, final))
     assert statuses["e2_spread_error_summary.csv"] == "differs"
+
+
+def test_pooled_site_metrics_requires_every_pooled_arm_column(mod):
+    six_arm = pd.DataFrame({c: [1.0] for c in mod.POOLED_COLUMNS[2:-1]})
+    six_arm.insert(0, "fid", ["A"])
+    six_arm.insert(1, "region", ["West_Coast"])
+    with pytest.raises(ValueError, match="default_beta"):
+        mod.pooled_site_metrics(six_arm)

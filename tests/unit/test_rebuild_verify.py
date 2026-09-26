@@ -382,3 +382,27 @@ def test_compare_rescored_hash_and_gate_fail(reb, pinned_state):
         "rescored_artifacts: e2_weighting_ablation_summary.csv missing" in f for f in failures
     )
     assert any("rescored_artifacts.gate.monthly.n_sites: 29 != pinned 30" in f for f in failures)
+
+
+def test_promoted_monthly_primary_reads_the_volk_package(reb, tmp_path):
+    import pandas as pd
+
+    final = tmp_path / "final"
+    target = final / reb.PROMOTED_MONTHLY_PRIMARY
+    target.parent.mkdir(parents=True)
+    with pytest.raises(reb.BenchmarkConstructionError, match="promoted monthly primary missing"):
+        reb.promoted_monthly_primary(final)
+    pd.DataFrame({"fid": ["A"], "n": [12], "r2_swim": [0.5]}).to_csv(target, index=False)
+    with pytest.raises(reb.BenchmarkConstructionError, match="lacks columns"):
+        reb.promoted_monthly_primary(final)
+    pd.DataFrame(
+        {
+            "fid": ["A"],
+            "n": [12],
+            "r2_swim": [0.5],
+            "rmse_swim": [1.0],
+            "bias_swim": [0.0],
+            "kge_swim": [0.6],
+        }
+    ).to_csv(target, index=False)
+    assert list(reb.promoted_monthly_primary(final)["fid"]) == ["A"]
