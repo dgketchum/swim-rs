@@ -109,12 +109,46 @@ uv run python $EX5/evaluate.py --config $CFG --par-csv $RUN22/5_Flux_Ensemble.3.
 
 Daily: capture-date OpenET ET is divided by same-day bias-corrected ETo,
 reconstructed with the OpenET-core 32-day support, and multiplied back. Monthly
-uses the independently extracted full-month product. Each run writes
+uses the independently extracted full-month product against flux ET gap-filled
+and totaled by the Volk et al. (2024) rules (raw GridMET ETo × smoothed EToF fill,
+>80% of days observed, ≤5 filled days); pooled rows take every paired site and
+station-weighted rows take sites with ≥3 paired months. Each run writes
 `evaluation_grouped_{daily,monthly}_metrics.csv` (pooled and √n-weighted
 estimates with bootstrap intervals), `_contrasts.csv` (paired SWIM minus
 OpenET), `_metadata.json` (inputs, hashes, record contract),
 `evaluation_paired_daily_records.csv`, per-site `evaluation_metrics.csv`, and
 the exclusion ledger.
+
+**3b. Promote the monthly bundle** (re-freeze under RUN_POLICY)
+
+```bash
+uv run python $EX5/promote_e1_monthly.py --source-dir <monthly-dir>            # check only
+uv run python $EX5/promote_e1_monthly.py --source-dir <monthly-dir> --write    # promote
+```
+
+The gate refuses a bundle whose sidecar git sha is not HEAD or whose analysis
+files (`evaluate.py`, `benchmark.py`, `flux_utils.py`) have uncommitted changes,
+whose sidecar hashes do not match, or whose 18 grouped estimates are not
+replicated (tolerance 1e-6) from `archive/6_evaluation/site_daily_timeseries`
+plus the Volk flux and OpenET monthly files. On `--write` it moves the prior
+monthly package to `paper/data/final/superseded_e1_monthly_*/`, copies the new
+bundle to `paper/data/final/e1_openet_benchmark/monthly/`, rewrites
+`MANIFEST.json`, and refreshes `archive/6_evaluation/`.
+
+**3c. Freeze the irrigation-class split** (Table S11)
+
+```bash
+uv run python $EX5/e1_class_split.py            # gates + report
+uv run python $EX5/e1_class_split.py --write    # freeze under e1_openet_benchmark/class_split/
+```
+
+Partitions the frozen daily record, the Volk-protocol monthly record replicated
+from the archive, and the common temporal cohort by the E2 fold class of each
+site (`paper/data/final/e2_irrigation_stratified_fold_mad_domain.csv`) and
+freezes pooled and √n-weighted KGE/RMSE/MBE per class with bootstrap intervals
+on the SWIM minus OpenET contrast. The reunited classes must reproduce every
+frozen grouped estimate before anything is written; `--write` refuses an
+existing `class_split/` directory.
 
 **4. Decompose by retrieval support** (Table S4)
 
@@ -137,7 +171,7 @@ Outputs land in `$RUN22/spread_error/` and
 **6. Weighting ablation** (Table S6, Fig. 4d; two further calibrations)
 
 ```bash
-uv run python $EX5/container_build/build_container.py --run run22ablation --source $DATA/5_Flux_Ensemble.swim
+uv run python $EX5/container_build/build_container.py --run run22ablation --source $DATA/5_Flux_Ensemble.swim --mad
 uv run python $EX5/run_weighting_ablation.py --tag run22 --container $DATA/5_Flux_Ensemble_run22ablation.swim
 ```
 
@@ -189,7 +223,7 @@ existing evidence.
 ```bash
 uv run python $EX5/container_build/data_extract.py                       # or --steps etf_v21,refet --sites US-Bi1,US-Ne1
 uv run python $EX5/container_build/container_prep.py --overwrite --getinfo
-uv run python $EX5/container_build/build_container.py --run run22 --source $DATA/5_Flux_Ensemble.swim
+uv run python $EX5/container_build/build_container.py --run run22 --source $DATA/5_Flux_Ensemble.swim --mad
 ```
 
 After `container_prep.py`, every site must have seasonal NDVI and finite

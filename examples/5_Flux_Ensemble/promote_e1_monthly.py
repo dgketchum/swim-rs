@@ -226,15 +226,15 @@ def read_archive_series(path):
     return ts[["swim_ET", "eto_raw"]]
 
 
-def replicate_from_archive(ts_dir, flux_dir, monthly_dir, static_exclusions=()):
-    """Recompute the grouped monthly estimates from archived series.
+def monthly_records_from_archive(ts_dir, flux_dir, monthly_dir, static_exclusions=()):
+    """Per-site Volk-protocol monthly ``PairedSiteSeries`` from archived series.
 
     ``ts_dir``: ``archive/6_evaluation/site_daily_timeseries`` (``swim_ET`` and
     the raw gridMET ETo, ``eto_raw`` when the archive also carries a corrected
     ``eto``); ``flux_dir``: the Volk v2.1 daily flux
     files (``ET_corr``); ``monthly_dir``: the OpenET v2.1 monthly totals
-    (``ensemble_mean_3x3``). Returns ``(estimates, cohorts)`` where ``cohorts``
-    maps each aggregation to a sorted tuple of ``(fid, n)``.
+    (``ensemble_mean_3x3``). Returns the records in ascending fid order; every
+    site with at least POOLED_MIN_MONTHS paired months is kept.
     """
     ts_dir, flux_dir, monthly_dir = Path(ts_dir), Path(flux_dir), Path(monthly_dir)
     records = []
@@ -273,10 +273,23 @@ def replicate_from_archive(ts_dir, flux_dir, monthly_dir, static_exclusions=()):
         )
     if not records:
         raise PromotionError(f"no paired sites replicated from {ts_dir}")
+    return tuple(records)
+
+
+def replicate_from_archive(ts_dir, flux_dir, monthly_dir, static_exclusions=()):
+    """Recompute the grouped monthly estimates from archived series.
+
+    See ``monthly_records_from_archive`` for the inputs. Returns
+    ``(estimates, cohorts)`` where ``cohorts`` maps each aggregation to a
+    sorted tuple of ``(fid, n)``.
+    """
+    records = monthly_records_from_archive(
+        ts_dir, flux_dir, monthly_dir, static_exclusions=static_exclusions
+    )
     weighted = tuple(r for r in records if r.n >= WEIGHTED_MIN_MONTHS)
     if not weighted:
         raise PromotionError("no site reaches the station-weighted month floor")
-    estimates = grouped_point_estimates(tuple(records), aggregations=(AGG_POOLED,))
+    estimates = grouped_point_estimates(records, aggregations=(AGG_POOLED,))
     estimates.update(grouped_point_estimates(weighted, aggregations=(AGG_WEIGHTED,)))
     cohorts = {
         AGG_POOLED: tuple(sorted((r.fid, r.n) for r in records)),
