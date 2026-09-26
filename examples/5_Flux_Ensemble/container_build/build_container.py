@@ -19,7 +19,7 @@ Dynamics settings (Example 5 constraints):
   - Group bridging disabled, decay-threshold forward extension
 
 Usage:
-    uv run python build_container.py --run <tag> --source <base-container>
+    uv run python build_container.py --run <tag> --source <base-container> --mad [--etf-dir DIR]
 """
 
 import argparse
@@ -356,6 +356,11 @@ def main():
         action="store_true",
         help="Use a diagnostic MAD-filtered target instead of the primary simple mean",
     )
+    parser.add_argument(
+        "--etf-dir",
+        default=None,
+        help="Directory of {model}_etf_no_mask.csv tables (default: data/etf_v21_openet_eto)",
+    )
     args = parser.parse_args()
 
     cfg = _load_config()
@@ -363,7 +368,9 @@ def main():
 
     source = args.source or os.path.join(cfg.data_dir, f"{cfg.project_name}.swim")
     dest = os.path.join(cfg.data_dir, f"5_Flux_Ensemble_{args.run}.swim")
-    etf_dir = str(project_dir / "data" / "etf_v21_openet_eto")
+    etf_dir = args.etf_dir or str(project_dir / "data" / "etf_v21_openet_eto")
+    if not os.path.isdir(etf_dir):
+        raise FileNotFoundError(f"ETf table directory not found: {etf_dir}")
     refet_dir = str(project_dir / "data" / "openet_refet")
 
     if not os.path.exists(source):
@@ -379,7 +386,7 @@ def main():
     print(f"Copying {source}\n    -> {dest}")
     shutil.copytree(source, dest)
 
-    print("\n=== Step 1: Ingest ETf (6 models, 2016-2025, MAX dedup) ===")
+    print(f"\n=== Step 1: Ingest ETf (6 models, 2016-2025, MAX dedup) from {etf_dir} ===")
     ingest_new_etf(dest, etf_dir)
 
     print("\n=== Step 2: Ingest OpenET reference ETo/ETr ===")
