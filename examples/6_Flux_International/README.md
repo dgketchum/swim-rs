@@ -116,7 +116,7 @@ uv run python $EX6/derived_metrics.py --config $CFG --uncalibrated --out {root}/
 
 ```bash
 uv run python $EX6/transfer/build_e2_irrigation_mapping.py --container <container> --out-dir <results>/transfer_refresh
-uv run python $EX6/transfer_ex5_params.py --config $CFG --params paper/data/final/e2_run22_transfer_vector.json --params-by-site <results>/transfer_refresh/e3_irrigation_stratified_param_mapping.json --container <container> --e2-results-dir <results> --out <transfer-out>
+uv run python $EX6/transfer_ex5_params.py --config $CFG --params paper/data/final/e2_run23_transfer_vector.json --params-by-site <results>/transfer_refresh/e3_irrigation_stratified_param_mapping.json --container <container> --e2-results-dir <results> --out <transfer-out>
 ```
 
 **5. Summaries** (Table 5, S8, Fig. 5b; read-only on the archive)

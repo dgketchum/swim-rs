@@ -110,11 +110,37 @@ EXPECTED_VECTORS = {
     },
 }
 EXPECTED_COUNTS = {"irrigated": 39, "rainfed": 21}
+# Run 23 (2026-09-26): Run 22's problem definition on the same-day-ETo container; the
+# posterior holds 198 numbered realizations + base after pestpp-ies dropped #114.
+# Frozen from the reviewed first build (paper/data/final/e2_run23_transfer_vectors_by_irrigation.json).
+EXPECTED_VECTORS_RUN23 = {
+    "irrigated": {
+        "aw": 320.6115,
+        "ndvi_k": 3.42695,
+        "ndvi_0": 0.5162665,
+        "mad": 0.12111949999999999,
+        "ks_alpha": 0.314143,
+        "kr_alpha": 0.4147285,
+        "swe_alpha": 0.3253265,
+        "swe_beta": 1.473125,
+    },
+    "rainfed": {
+        "aw": 293.4855,
+        "ndvi_k": 4.330805,
+        "ndvi_0": 0.46359700000000004,
+        "mad": 0.36997,
+        "ks_alpha": 0.453479,
+        "kr_alpha": 0.2958445,
+        "swe_alpha": 0.4072325,
+        "swe_beta": 1.26897,
+    },
+}
 # Audit tables per source run. A run without an entry is built without the
 # reproduction gate (reported as such in the metadata).
-# TODO(run23): freeze the run23 class vectors/counts here once the run23
-# calibration has finished and its first build has been reviewed.
-AUDIT_BY_RUN = {"run22": (EXPECTED_VECTORS, EXPECTED_COUNTS)}
+AUDIT_BY_RUN = {
+    "run22": (EXPECTED_VECTORS, EXPECTED_COUNTS),
+    "run23": (EXPECTED_VECTORS_RUN23, EXPECTED_COUNTS),
+}
 
 # Configured parameter priors, used only to report whether each frozen class
 # vector sits inside its own class domain. This is the scientific defect the
