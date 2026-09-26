@@ -6,7 +6,7 @@ script is its tracked producer. Every file is a byte copy of a results-root outp
 
     <canonical>/archive/6_evaluation/closure_pool/*      -> closure_pool/*
         closure_pool_summary.py + monthly_28day_sensitivity.py outputs (Table 5, S8, §3.3, S9.1)
-    <results>/e2_run22_transfer_by_irrigation_to_grassbasis/
+    <results>/e2_<run>_transfer_by_irrigation_to_grassbasis/   (<run> = ex5_paths.CANONICAL_RUN)
         pooled_metrics_{daily,monthly}[_strat].csv, transfer_comparison_*.csv,
         transfer_winrates.csv, run_metadata.json           -> transfer/*
         transfer_ex5_params.py outputs (Fig 5b; the uncalibrated row)
@@ -51,7 +51,7 @@ import ex6_paths  # noqa: E402
 
 PACKAGE = "e2_closure_pool"
 SCHEMA = "e2_closure_pool_reporting/v1"
-TRANSFER_RUN = "e2_run22_transfer_by_irrigation_to_grassbasis"
+TRANSFER_RUN = ex6_paths.TRANSFER_RUN
 E0_ARMS = {"e0_arm_fao56_sig": "fao56_sig", "e0_arm_fao56": "fao56"}
 E0_PAIRS = ("grassbasis_vs_fao56_sig", "grassbasis_vs_fao56", "fao56_sig_vs_fao56")
 E0_TAGS = ("disjoint37", "pool47")
@@ -104,8 +104,8 @@ RELATED_PACKAGES = {
         "paper E1 (legacy e2_* namespace) — independent of this package and "
         "unchanged by the recalibration; sha256 recorded below for the audit"
     ),
-    "e2_run22_transfer_vector.json": None,
-    "e2_run22_transfer_vectors_by_irrigation.json": None,
+    ex6_paths.TRANSFER_VECTOR_JSON: None,
+    ex6_paths.TRANSFER_VECTORS_BY_IRRIGATION_JSON: None,
 }
 VOLATILE_KEYS = ("promoted_at", "promoted_at_git_sha")
 

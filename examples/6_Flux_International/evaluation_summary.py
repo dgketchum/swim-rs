@@ -56,7 +56,8 @@ DEFAULT_RUN_NAME = ex6_paths.CANONICAL_RUN
 BASELINE_RUN_NAME = ex6_paths.BASELINE_RUN
 # under the baseline run dir: the frozen classifier-recal evaluation the summary compares against
 BASELINE_FROZEN_SUBDIR = Path("archive_recal20260702_classifier") / "6_evaluation"
-TRANSFER_NEW_NAME = "e2_run22_transfer_by_irrigation_to_grassbasis"  # under {project_ws}/results
+TRANSFER_NEW_NAME = ex6_paths.TRANSFER_RUN  # under {project_ws}/results
+# Historical: the Run 22 transfer scored on the superseded ETr-basis (baseline) footing.
 TRANSFER_OLD_NAME = "e2_run22_transfer_by_irrigation_to_e3"
 TRANSITION_NAME = "irrigation_classifier_transition.csv"  # under the QA root
 

@@ -36,9 +36,12 @@ if str(HERE.parent) not in sys.path:
     sys.path.insert(0, str(HERE.parent))
 import ex6_paths  # noqa: E402
 
-# Example 5 publication run (Run 22): the final-iteration parameter ensemble under the
-# shared TOML ``root`` (the frozen paper/data/final vectors record this file's sha256).
-EX5_PAR_CSV = Path("5_Flux_Ensemble") / "results" / "run22" / "5_Flux_Ensemble.3.par.csv"
+# Example 5 canonical run (ex5_paths.CANONICAL_RUN via ex6_paths): the final-iteration
+# parameter ensemble under the shared TOML ``root`` (the frozen paper/data/final
+# vectors record this file's sha256).
+EX5_PAR_CSV = (
+    Path("5_Flux_Ensemble") / "results" / ex6_paths.EX5_CANONICAL_RUN / "5_Flux_Ensemble.3.par.csv"
+)
 
 # The eight calibrated parameters, with the PEST parameter-family token used in
 # the .par.csv column names (``pname:p_<family>_<site>_:0_...``).

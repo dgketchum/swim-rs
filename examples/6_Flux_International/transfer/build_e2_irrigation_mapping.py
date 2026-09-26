@@ -1,6 +1,7 @@
 """Build the Example 6 (paper E2) per-site irrigation-stratified param mapping.
 
-Expands the two frozen Run 22 class vectors into a per-site
+Expands the two frozen Ex5 canonical-run class vectors (``ex5_paths.CANONICAL_RUN``;
+Run 22 before the run23 recal) into a per-site
 ``{sid: {param: value}}`` mapping covering the full 66-site E2 publication
 cohort, so ``../transfer_ex5_params.py --params-by-site`` can score the
 irrigation-stratified transfer against the pooled transfer on identical support.
@@ -43,7 +44,7 @@ Usage:
     uv run python examples/6_Flux_International/transfer/build_e2_irrigation_mapping.py
 
     uv run python examples/6_Flux_International/transfer/build_e2_irrigation_mapping.py \\
-        --vectors paper/data/final/e2_run22_transfer_vectors_by_irrigation.json \\
+        --vectors paper/data/final/e2_<run>_transfer_vectors_by_irrigation.json \\
         --config examples/6_Flux_International/<run>.toml   # container + cohort shapefile
 
 Output file names keep the legacy ``e3_`` prefix (Example 6 was "Experiment 3" before the
@@ -81,9 +82,7 @@ import ex6_paths  # noqa: E402
 
 REPO_ROOT = ex6_paths.REPO
 
-DEFAULT_VECTORS = (
-    REPO_ROOT / "paper" / "data" / "final" / ("e2_run22_transfer_vectors_by_irrigation.json")
-)
+DEFAULT_VECTORS = ex6_paths.FINAL_DIR / ex6_paths.TRANSFER_VECTORS_BY_IRRIGATION_JSON
 DEFAULT_OUT_DIR = REPO_ROOT / "paper" / "data" / "final"
 UID_COL = "sid"
 
@@ -377,7 +376,10 @@ def main():
         f.write("\n")
 
     metadata = {
-        "experiment": "irrigation-stratified Run 22 parameter transfer, Example 6 / Experiment 3",
+        "experiment": (
+            f"irrigation-stratified {ex6_paths.EX5_CANONICAL_RUN} parameter transfer, "
+            "Example 6 / Experiment 3"
+        ),
         "purpose": (
             "Per-site parameter mapping consumed by "
             "examples/6_Flux_International/transfer_ex5_params.py --params-by-site as the "

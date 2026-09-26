@@ -76,7 +76,7 @@ from swimrs.calibrate.flux_utils import paired_monthly_sums  # noqa: E402
 REPO = ex6_paths.REPO
 DEFAULT_CONFIG = ex6_paths.CANONICAL_CONFIG
 DEFAULT_RUN_NAME = ex6_paths.CANONICAL_RUN
-TRANSFER_NEW_NAME = "e2_run22_transfer_by_irrigation_to_grassbasis"  # under {project_ws}/results
+TRANSFER_NEW_NAME = ex6_paths.TRANSFER_RUN  # under {project_ws}/results
 TRANSITION_NAME = "irrigation_classifier_transition.csv"  # under the QA root
 
 CLOSURE_TIER = {"ET_corr": "closure_corrected", "ET": "raw"}

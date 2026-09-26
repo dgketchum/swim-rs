@@ -9,9 +9,12 @@ the full configuration).
 
     RUN_NAME        the published batch IES calibration (e7cal)
     LOCAL_LABEL     evaluator label of the locally calibrated arm
-    TRANSFER_LABEL  evaluator label of the irrigated-class Run 22 transfer arm
+    EX5_CANONICAL_RUN  the Example 5 run whose posterior is transferred
+                       (``ex5_paths.CANONICAL_RUN``; Run 22 before the run23 recal)
+    TRANSFER_LABEL  evaluator label of the irrigated-class Ex5 transfer arm
 """
 
+import importlib.util
 import tomllib
 from pathlib import Path
 
@@ -21,10 +24,22 @@ CONFIG = EX7 / "7_Applied_Water.toml"
 RUN_NAME = "e7cal"
 NOPTMAX = 3
 LOCAL_LABEL = "calibrated"
-TRANSFER_LABEL = "transfer_run22_by_irrigation"
+
+
+def _ex5_canonical_run():
+    """``CANONICAL_RUN`` from ``examples/5_Flux_Ensemble/ex5_paths.py``, loaded by path."""
+    path = REPO / "examples" / "5_Flux_Ensemble" / "ex5_paths.py"
+    spec = importlib.util.spec_from_file_location("_ex7_ex5_paths", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.CANONICAL_RUN
+
+
+EX5_CANONICAL_RUN = _ex5_canonical_run()
+TRANSFER_LABEL = f"transfer_{EX5_CANONICAL_RUN}_by_irrigation"
 
 FINAL_DIR = REPO / "paper" / "data" / "final"
-TRANSFER_VECTORS = FINAL_DIR / "e2_run22_transfer_vectors_by_irrigation.json"
+TRANSFER_VECTORS = FINAL_DIR / f"e2_{EX5_CANONICAL_RUN}_transfer_vectors_by_irrigation.json"
 TRUTH_CSV = EX7 / "data" / "metered_truth.csv"
 
 # Ground-truth builds (code tracked, data untracked; see the READMEs in each dir).

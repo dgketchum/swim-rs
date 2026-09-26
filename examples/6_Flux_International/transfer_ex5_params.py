@@ -17,18 +17,19 @@ with the published numbers:
 ``--params`` takes a single flat ``{param: value}`` vector applied to every site
 (the pooled transfer). ``--params-by-site`` additionally takes a nested
 ``{site_id: {param: value}}`` mapping and scores it as the
-``ex5_transfer_strat`` configuration -- the irrigation-stratified Run 22
-transfer, in which each site receives the irrigated or the rainfed class vector
+``ex5_transfer_strat`` configuration -- the irrigation-stratified Ex5
+canonical-run transfer (``ex5_paths.CANONICAL_RUN``; Run 22 before the run23
+recal), in which each site receives the irrigated or the rainfed class vector
 according to the canonical two-stage satellite irrigation classifier. Supplying
 both yields all five handoff comparators from one invocation on identical common
-support: E2 defaults, pooled Run 22 transfer, irrigation-stratified Run 22
+support: E2 defaults, pooled Ex5 transfer, irrigation-stratified Ex5
 transfer, local E2 satellite calibration, and the interpolated Landsat ensemble
 context. Unlike the optional LULC comparator, the stratified mapping must cover
 every cohort site: partial coverage raises rather than silently shrinking the
 common support.
 
 Transfer vectors are frozen upstream (``transfer/ex5_cropland_params.json``,
-``paper/data/final/e2_run22_transfer_vector.json``,
+``paper/data/final/e2_<run>_transfer_vector.json``,
 ``paper/data/final/e3_irrigation_stratified_param_mapping.json``) and are never
 derived or tuned from Example 6 flux ET (see
 ``transfer/build_ex5_cropland_params.py``,
@@ -62,10 +63,10 @@ Usage:
     uv run python examples/6_Flux_International/transfer_ex5_params.py
     uv run python examples/6_Flux_International/transfer_ex5_params.py --sites US-KM1,DE-Kli
     uv run python examples/6_Flux_International/transfer_ex5_params.py \\
-        --params /home/dgketchum/code/swim-rs/paper/data/final/e2_run22_transfer_vector.json \\
+        --params /home/dgketchum/code/swim-rs/paper/data/final/e2_<run>_transfer_vector.json \\
         --params-by-site \\
         /home/dgketchum/code/swim-rs/paper/data/final/e3_irrigation_stratified_param_mapping.json \\
-        --out <results>/e2_run22_transfer_by_irrigation_to_grassbasis \\
+        --out <results>/e2_<run>_transfer_by_irrigation_to_grassbasis \\
         --require-empty-out
 
 This is a forward run with fixed parameters against existing container inputs.
@@ -124,7 +125,8 @@ CONFIG_LABELS = {
 }
 CONFIG_DESCRIPTIONS = {
     STRAT_CONFIG: (
-        "irrigation-stratified Run 22 transfer: per-site vector selected by the "
+        f"irrigation-stratified {ex6_paths.EX5_CANONICAL_RUN} transfer: per-site vector "
+        "selected by the "
         "canonical two-stage satellite irrigation class (equipped -> irrigated "
         "vector, not equipped -> rainfed vector)"
     ),
@@ -383,7 +385,8 @@ def main():
         "--params-by-site",
         default=None,
         help="Optional nested {site_id: {param: value}} JSON scored as the "
-        "irrigation-stratified Run 22 transfer (config 'ex5_transfer_strat'). Must cover "
+        f"irrigation-stratified {ex6_paths.EX5_CANONICAL_RUN} transfer (config "
+        "'ex5_transfer_strat'). Must cover "
         "every cohort site; missing sites raise.",
     )
     parser.add_argument(

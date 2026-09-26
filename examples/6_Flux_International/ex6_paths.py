@@ -4,10 +4,14 @@ Every on-disk location is built from ``root`` in the configuration TOML; change
 that one line to relocate the workspace. ``load_config`` is not called at import
 time because ``ProjectConfig.read_config`` creates the project workspace directory.
 
-    CANONICAL_RUN   the published E2 calibration (GrassBasis, HWSD AWC recal)
-    BASELINE_RUN    the superseded ETr-basis run some audits compare against
+    CANONICAL_RUN      the published E2 calibration (GrassBasis, HWSD AWC recal)
+    BASELINE_RUN       the superseded ETr-basis run some audits compare against
+    EX5_CANONICAL_RUN  the Example 5 (E1) run whose posterior E2 transfers
+                       (``ex5_paths.CANONICAL_RUN``); names every transfer
+                       artifact below (``e2_<run>_transfer_*``)
 """
 
+import importlib.util
 import os
 import tomllib
 from pathlib import Path
@@ -20,6 +24,29 @@ BASELINE_RUN = "6_Flux_International_LSEnsemble_POR_annual2yr"
 BASELINE_CONFIG = EX6 / f"{BASELINE_RUN}.toml"
 FINAL_DIR = REPO / "paper" / "data" / "final"
 NOPTMAX = 3
+
+
+def _ex5_paths():
+    """Load ``examples/5_Flux_Ensemble/ex5_paths.py`` by path (no ``sys.path`` change)."""
+    path = REPO / "examples" / "5_Flux_Ensemble" / "ex5_paths.py"
+    spec = importlib.util.spec_from_file_location("_ex6_ex5_paths", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+EX5_CANONICAL_RUN = _ex5_paths().CANONICAL_RUN
+# E1 -> E2 transfer artifacts, all named from the Ex5 run tag.
+TRANSFER_PREFIX = f"e2_{EX5_CANONICAL_RUN}"
+TRANSFER_RUN = f"{TRANSFER_PREFIX}_transfer_by_irrigation_to_grassbasis"  # under results_root
+TRANSFER_VECTOR_JSON = f"{TRANSFER_PREFIX}_transfer_vector.json"
+TRANSFER_VECTORS_BY_IRRIGATION_JSON = f"{TRANSFER_PREFIX}_transfer_vectors_by_irrigation.json"
+TRANSFER_VECTORS_BY_IRRIGATION_META_JSON = (
+    f"{TRANSFER_PREFIX}_transfer_vectors_by_irrigation_metadata.json"
+)
+TRANSFER_SITE_MEDIANS_BY_IRRIGATION_CSV = (
+    f"{TRANSFER_PREFIX}_transfer_site_medians_by_irrigation.csv"
+)
 
 
 def load_config(config_path=None, calibrate=True):

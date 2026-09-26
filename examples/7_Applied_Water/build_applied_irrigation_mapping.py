@@ -1,7 +1,8 @@
 """Build the Example 7 per-field parameter mapping for the irrigation-stratified transfer.
 
-Expands the frozen two-vector Example 2 (Run 22) artifact
-``paper/data/final/e2_run22_transfer_vectors_by_irrigation.json`` -- shape
+Expands the frozen two-vector Example 2 artifact of the Ex5 canonical run
+(``ex7_paths.EX5_CANONICAL_RUN``; Run 22 before the run23 recal)
+``paper/data/final/e2_<run>_transfer_vectors_by_irrigation.json`` -- shape
 ``{"irrigated": {8 params}, "rainfed": {8 params}}`` -- into the nested
 ``{site_id: {8 params}}`` mapping that ``evaluate_applied_water.py --params-json``
 consumes, covering every field in the 110-field Example 7 cohort.
@@ -39,8 +40,8 @@ Usage:
 
 The downstream Example 7 forward run must target the calibrated run container
 ``{data}/7_Applied_Water_e7cal.swim`` (NOT the base ``7_Applied_Water.swim``), and
-must use ``--label transfer_run22_by_irrigation`` so ``field_accuracy.py`` finds it
-at ``results/applied_transfer_run22_by_irrigation``. Defaults come from ex7_paths.
+must use ``--label transfer_<run>_by_irrigation`` (``ex7_paths.TRANSFER_LABEL``) so
+``field_accuracy.py`` finds it at ``results/applied_transfer_<run>_by_irrigation``. Defaults come from ex7_paths.
 """
 
 import argparse
@@ -452,7 +453,8 @@ def main():
     metadata = {
         "artifact": "Example 7 (E4) irrigation-stratified per-field parameter mapping",
         "purpose": (
-            "Expand the frozen Example 2 Run 22 two-vector irrigation-stratified transfer "
+            f"Expand the frozen Example 2 {ex7_paths.EX5_CANONICAL_RUN} two-vector "
+            "irrigation-stratified transfer "
             "into the nested {site_id: {param: value}} mapping consumed by "
             "evaluate_applied_water.py --params-json."
         ),

@@ -94,12 +94,14 @@ def _results_root(mod, tmp_path):
 
 
 def _final_dir(tmp_path):
+    import ex6_paths
+
     final = tmp_path / "final" / "e2_closure_pool"
     final.mkdir(parents=True)
     for name in (
         "e2_evidence_metadata.json",
-        "e2_run22_transfer_vector.json",
-        "e2_run22_transfer_vectors_by_irrigation.json",
+        ex6_paths.TRANSFER_VECTOR_JSON,
+        ex6_paths.TRANSFER_VECTORS_BY_IRRIGATION_JSON,
     ):
         (final.parent / name).write_text("{}\n")
     return final

@@ -12,23 +12,26 @@ posterior median with the ``base`` realization excluded, then the median across
 source sites), the only change being that the across-site median is taken within
 an irrigation class rather than over the whole cohort.
 
-Source classification uses ``properties/irrigation/irr > 0.5`` from the Run 22
-container -- the same rule ``examples/5_Flux_Ensemble/archive_run.py`` already
-uses to summarize the Run 22 posterior by irrigation class. It is derived from
+Source classification uses ``properties/irrigation/irr > 0.5`` from the source
+run container (``ex5_paths.CANONICAL_RUN`` unless ``--source-run``) -- the same
+rule ``examples/5_Flux_Ensemble/archive_run.py`` already uses to summarize the
+run posterior by irrigation class. It is derived from
 remote sensing (IrrMapper/LANID) only. No flux ET and no meter record enters
 classification or vector construction.
 
-This is the canonical single-``mad`` Run 22 physics. It is NOT the later
+This is the canonical single-``mad`` physics (as in Run 22). It is NOT the later
 ``mad``/stress-threshold split held under the Example 5 ``e5split`` materials,
 and ``stress_depletion_fraction`` stays unset.
 
-Writes:
-    e2_run22_transfer_vectors_by_irrigation.json           - the two vectors
-    e2_run22_transfer_vectors_by_irrigation_metadata.json  - full provenance
-    e2_run22_transfer_site_medians_by_irrigation.csv       - per-site medians + class
+Writes, into the required ``--out-dir`` (no default; the frozen copies in
+``paper/data/final`` are never written implicitly), with <run> the source tag:
+    e2_<run>_transfer_vectors_by_irrigation.json           - the two vectors
+    e2_<run>_transfer_vectors_by_irrigation_metadata.json  - full provenance
+    e2_<run>_transfer_site_medians_by_irrigation.csv       - per-site medians + class
 
 Usage:
-    uv run python examples/6_Flux_International/transfer/build_ex5_irrigation_stratified_params.py
+    uv run python examples/6_Flux_International/transfer/build_ex5_irrigation_stratified_params.py \
+        --out-dir <dir>
 """
 
 import argparse
@@ -57,18 +60,32 @@ if str(HERE.parent) not in sys.path:
     sys.path.insert(0, str(HERE.parent))
 import ex6_paths  # noqa: E402
 
-REPO_ROOT = ex6_paths.REPO
 
-# Run 22 posterior and source container, under the shared TOML ``root``
-EX5_PAR_CSV = Path("5_Flux_Ensemble") / "results" / "run22" / "5_Flux_Ensemble.3.par.csv"
-EX5_CONTAINER = Path("5_Flux_Ensemble") / "data" / "5_Flux_Ensemble_run22.swim"
-DEFAULT_OUT_DIR = REPO_ROOT / "paper" / "data" / "final"
+def ex5_par_csv(run=ex6_paths.EX5_CANONICAL_RUN):
+    """Source run posterior, relative to the shared TOML ``root``."""
+    return Path("5_Flux_Ensemble") / "results" / run / "5_Flux_Ensemble.3.par.csv"
+
+
+def ex5_container(run=ex6_paths.EX5_CANONICAL_RUN):
+    """Source run container, relative to the shared TOML ``root``."""
+    return Path("5_Flux_Ensemble") / "data" / f"5_Flux_Ensemble_{run}.swim"
+
+
+def output_names(run=ex6_paths.EX5_CANONICAL_RUN):
+    """(vectors JSON, metadata JSON, per-site medians CSV) file names for a source run."""
+    prefix = f"e2_{run}"
+    return (
+        f"{prefix}_transfer_vectors_by_irrigation.json",
+        f"{prefix}_transfer_vectors_by_irrigation_metadata.json",
+        f"{prefix}_transfer_site_medians_by_irrigation.csv",
+    )
+
 
 CLASSES = ("irrigated", "rainfed")
 IRR_THRESHOLD = 0.5
-CLASS_RULE = "properties/irrigation/irr > 0.5 (Run 22 source container)"
+CLASS_RULE = "properties/irrigation/irr > 0.5 (source run container)"
 
-# Frozen audit values from the existing Run 22 posterior summary. A rebuild must
+# Frozen audit values from the Run 22 posterior summary. A Run 22 rebuild must
 # reproduce these before any downstream flux or meter truth is opened.
 EXPECTED_VECTORS = {
     "irrigated": {
@@ -93,6 +110,11 @@ EXPECTED_VECTORS = {
     },
 }
 EXPECTED_COUNTS = {"irrigated": 39, "rainfed": 21}
+# Audit tables per source run. A run without an entry is built without the
+# reproduction gate (reported as such in the metadata).
+# TODO(run23): freeze the run23 class vectors/counts here once the run23
+# calibration has finished and its first build has been reviewed.
+AUDIT_BY_RUN = {"run22": (EXPECTED_VECTORS, EXPECTED_COUNTS)}
 
 # Configured parameter priors, used only to report whether each frozen class
 # vector sits inside its own class domain. This is the scientific defect the
@@ -268,14 +290,21 @@ def _worktree_dirty():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--par-csv", default=None, help=f"Run 22 posterior .par.csv (default <root>/{EX5_PAR_CSV})"
+        "--source-run",
+        default=ex6_paths.EX5_CANONICAL_RUN,
+        help=f"Ex5 run tag (default {ex6_paths.EX5_CANONICAL_RUN}, ex5_paths.CANONICAL_RUN)",
     )
     parser.add_argument(
-        "--container",
-        default=None,
-        help=f"Run 22 source container (default <root>/{EX5_CONTAINER})",
+        "--par-csv", default=None, help="source posterior .par.csv (default <root>/<run>/...)"
     )
-    parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR), help="Artifact output dir")
+    parser.add_argument(
+        "--container", default=None, help="source run container (default <root>/<run>.swim)"
+    )
+    parser.add_argument(
+        "--out-dir",
+        required=True,
+        help="Artifact output dir (required; paper/data/final is never a default)",
+    )
     parser.add_argument(
         "--expect-par-sha256",
         default=None,
@@ -288,15 +317,17 @@ def main():
     )
     args = parser.parse_args()
     root = ex6_paths.swim_root()
-    args.par_csv = args.par_csv or str(root / EX5_PAR_CSV)
-    args.container = args.container or str(root / EX5_CONTAINER)
+    run = args.source_run
+    args.par_csv = args.par_csv or str(root / ex5_par_csv(run))
+    args.container = args.container or str(root / ex5_container(run))
+    expected_vectors, expected_counts_run = AUDIT_BY_RUN.get(run, (None, None))
 
     par_csv = Path(args.par_csv)
     container_path = Path(args.container)
     if not par_csv.exists():
-        raise FileNotFoundError(f"Run 22 posterior not found: {par_csv}")
+        raise FileNotFoundError(f"{run} posterior not found: {par_csv}")
     if not container_path.exists():
-        raise FileNotFoundError(f"Run 22 source container not found: {container_path}")
+        raise FileNotFoundError(f"{run} source container not found: {container_path}")
 
     par_sha = _sha256(par_csv)
     if args.expect_par_sha256 and par_sha != args.expect_par_sha256:
@@ -312,10 +343,14 @@ def main():
     joined = align_classes_to_par_sites(medians_df, irr_df)
     class_by_site = joined["irr_class"].to_dict()
 
-    expected_counts = None if args.allow_unexpected else EXPECTED_COUNTS
+    expected_counts = None if args.allow_unexpected else expected_counts_run
     vectors = stratified_vectors(medians_df, class_by_site, expected_counts=expected_counts)
-    audit_ok, audit_rows = check_expected(vectors)
-    if not audit_ok and not args.allow_unexpected:
+    if expected_vectors is None:
+        print(f"WARNING: no frozen audit table for source run {run}; reproduction gate skipped")
+        audit_ok, audit_rows = None, []
+    else:
+        audit_ok, audit_rows = check_expected(vectors, expected=expected_vectors)
+    if audit_ok is False and not args.allow_unexpected:
         frame = pd.DataFrame(audit_rows)
         raise ValueError(
             "Frozen class vectors do not reproduce the audit table; stop and "
@@ -325,9 +360,10 @@ def main():
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    vectors_path = out_dir / "e2_run22_transfer_vectors_by_irrigation.json"
-    meta_path = out_dir / "e2_run22_transfer_vectors_by_irrigation_metadata.json"
-    medians_path = out_dir / "e2_run22_transfer_site_medians_by_irrigation.csv"
+    vectors_name, meta_name, medians_name = output_names(run)
+    vectors_path = out_dir / vectors_name
+    meta_path = out_dir / meta_name
+    medians_path = out_dir / medians_name
 
     # --- per-site medians + class (the aggregation audit trail) ---------------
     medians_out = medians_df.copy()
@@ -364,7 +400,7 @@ def main():
             "independently inferred irrigation class."
         ),
         "source_experiment": "Example 5 / Experiment 2 (CONUS cropland)",
-        "source_run": "Run 22 (2026-07-02 publication recal; source-exclusive physics + gw gate)",
+        "source_run": run,
         "calibration_target": "simple six-model OpenET ensemble mean (per-overpass nanmean)",
         "observation_weighting": "spread-based observation weights (per-overpass member std)",
         "aggregation": (
@@ -391,14 +427,14 @@ def main():
             }
             for cls in CLASSES
         },
-        "expected_class_counts": EXPECTED_COUNTS,
-        "expected_vectors": EXPECTED_VECTORS,
-        "reproduces_expected_vectors": bool(audit_ok),
+        "expected_class_counts": expected_counts_run,
+        "expected_vectors": expected_vectors,
+        "reproduces_expected_vectors": audit_ok,
         "audit_comparison": audit_rows,
         "prior_domain_check": domain,
         "pooled_vector_domain_check": pooled_domain,
         "pooled_comparator_vector": pooled_vector,
-        "pooled_comparator_artifact": "paper/data/final/e2_run22_transfer_vector.json",
+        "pooled_comparator_artifact": f"paper/data/final/e2_{run}_transfer_vector.json",
         "per_site_medians_csv": str(medians_path),
         "model_structure": "canonical Run 22 single-mad coupling",
         "stress_depletion_fraction": None,
@@ -412,7 +448,7 @@ def main():
             "Both class vectors frozen before any Example 6 flux or Example 7 meter "
             "truth was opened. The pooled vector and its metadata are preserved "
             "unchanged as the comparator. Source classification comes from "
-            "remote-sensing-derived irrigation fractions in the Run 22 container."
+            f"remote-sensing-derived irrigation fractions in the {run} container."
         ),
     }
     with open(meta_path, "w") as f:
