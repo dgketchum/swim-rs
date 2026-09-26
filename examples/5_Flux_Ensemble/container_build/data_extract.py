@@ -302,7 +302,8 @@ def _extract_fraction_model(coll_path, geometry, year):
 def _extract_et_model(coll_path, geometry, year):
     """Extract ETf for an ET model (ptjpl/geesebal/disalexi) at one site-year.
 
-    Divides raw ET by same-day OpenET reference ETo (server-side join).
+    Divides raw ET by the OpenET reference ETo image of the scene's calendar
+    day (server-side join on the date, not the acquisition timestamp).
     Returns dict {YYYYMMDD: etf_value}.
     """
     openet_ref = ee.ImageCollection(OPENET_REFET)
@@ -314,7 +315,12 @@ def _extract_et_model(coll_path, geometry, year):
 
     def _compute_etf(img):
         d = img.date()
-        eto = openet_ref.filterDate(d, d.advance(1, "day")).first().select("eto")
+        # The scene time_start carries the UTC acquisition hour while the
+        # reference-ET images are stamped at 00:00, so a window opened at the
+        # scene timestamp would return the next day's image. Filter on the
+        # calendar day instead.
+        day = ee.Date(d.format("yyyy-MM-dd"))
+        eto = openet_ref.filterDate(day, day.advance(1, "day")).first().select("eto")
         et_mm = img.select("et").divide(1000)
         return et_mm.divide(eto).rename(ee.String("etf_").cat(d.format("yyyyMMdd")))
 
@@ -497,6 +503,7 @@ def extract_etf_v21(cfg: ProjectConfig, sites=None, models=None) -> None:
             "end_yr": cfg.end_dt.year,
             "et_denominated": model in ET_MODELS,
             "eto_source": OPENET_REFET if model in ET_MODELS else "N/A (et_fraction native)",
+            "eto_join": "calendar day" if model in ET_MODELS else "N/A",
         }
         summary_path = str(output_dir / f"{model}_summary.json")
         with open(summary_path, "w") as f:

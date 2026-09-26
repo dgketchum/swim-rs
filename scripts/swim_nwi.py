@@ -445,6 +445,11 @@ def _normalize_etf(model, image):
     return ee.Image(etf.copyProperties(image, ["system:time_start", "system:index"]))
 
 
+def _stamp_calendar_day(img):
+    """Add a ``cal_day`` property (UTC yyyy-MM-dd) for date-keyed joins."""
+    return img.set("cal_day", ee.Date(img.get("system:time_start")).format("yyyy-MM-dd"))
+
+
 def etf_collection(model, year, fc):
     """OpenET v2.1 scene collection normalized to ETf for one model-year."""
     coll = (
@@ -453,11 +458,16 @@ def etf_collection(model, year, fc):
         .filterBounds(fc.geometry())
     )
     if model in ET_BAND_MODELS:
-        # Join daily refET by date; model time_start is overpass time, refET midnight
-        refet = ee.ImageCollection(REFET).filterDate(f"{year}-01-01", f"{year}-12-31").select("eto")
-        filt = ee.Filter.maxDifference(
-            difference=86400000, leftField="system:time_start", rightField="system:time_start"
+        # Join daily refET by calendar day; model time_start is overpass time, refET
+        # midnight, so a timestamp-difference window would also match the next day.
+        refet = (
+            ee.ImageCollection(REFET)
+            .filterDate(f"{year}-01-01", f"{year}-12-31")
+            .select("eto")
+            .map(_stamp_calendar_day)
         )
+        coll = coll.map(_stamp_calendar_day)
+        filt = ee.Filter.equals(leftField="cal_day", rightField="cal_day")
         joined = ee.ImageCollection(ee.Join.saveFirst("refet_match").apply(coll, refet, filt))
         coll = joined.map(lambda img: img.addBands(ee.Image(img.get("refet_match")).select("eto")))
     return coll.map(lambda img, _m=model: _normalize_etf(_m, img))

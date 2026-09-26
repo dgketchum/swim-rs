@@ -53,6 +53,11 @@ ENSEMBLE_MODELS = {"ensemble"}
 IRR_MAX_YEAR = 2023
 
 
+def _stamp_calendar_day(img):
+    """Add a ``cal_day`` property (UTC yyyy-MM-dd) for date-keyed joins."""
+    return img.set("cal_day", ee.Date(img.get("system:time_start")).format("yyyy-MM-dd"))
+
+
 def _normalize_etf(model, image):
     """Apply per-model band selection and scaling to produce uniform ETf.
 
@@ -125,21 +130,19 @@ def extract_etf(
             .filterBounds(feature_coll.geometry())
         )
 
-        # For ET-band models, join reference ET (eto) by date before normalizing.
+        # For ET-band models, join reference ET (eto) by calendar day before normalizing.
         # DisALEXI/geeSEBAL/ptJPL time_start is Landsat overpass time; refET is midnight.
-        # Use maxDifference of 1 day and match on calendar date via millis rounding.
+        # A timestamp-difference join matches both the same-day and next-day refET
+        # images, so the join key is the formatted date.
         if model in ET_BAND_MODELS:
             refet = (
                 ee.ImageCollection(REFET_COLLECTION)
                 .filterDate(f"{year}-01-01", f"{year}-12-31")
                 .select("eto")
+                .map(_stamp_calendar_day)
             )
-            ms_per_day = 86400000
-            filt = ee.Filter.maxDifference(
-                difference=ms_per_day,
-                leftField="system:time_start",
-                rightField="system:time_start",
-            )
+            coll = coll.map(_stamp_calendar_day)
+            filt = ee.Filter.equals(leftField="cal_day", rightField="cal_day")
             joined = ee.ImageCollection(ee.Join.saveFirst("refet_match").apply(coll, refet, filt))
             coll = joined.map(
                 lambda img: img.addBands(ee.Image(img.get("refet_match")).select("eto"))
