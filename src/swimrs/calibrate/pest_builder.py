@@ -959,6 +959,19 @@ import numpy as np
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
+def _pest_writable(values):
+    """Prediction vector PEST++ can parse: NaN and subnormal doubles -> 0.0.
+
+    PEST++ converts each instruction-file field with a strict string-to-double
+    routine that rejects subnormals (|x| below the smallest normal double,
+    ~2.2e-308), fails the model run, and drops the realization once
+    max_run_fail is reached.
+    """
+    out = np.nan_to_num(np.asarray(values, dtype=float), nan=0.0)
+    out[np.abs(out) < np.finfo(float).tiny] = 0.0
+    return out
+
+
 def run():
     """Forward runner for PEST++ workers."""
     start_time = time.time()
@@ -1002,13 +1015,13 @@ def run():
         parameters=params,
     )
 
-    # Write predictions (ETf and SWE)
-    # Replace NaN with 0.0 so PEST++ instruction files can parse the output.
+    # Write predictions (ETf and SWE); NaN and subnormal values -> 0.0 so the
+    # PEST++ instruction-file parser accepts every field.
     for i, fid in enumerate(swim_input.fids):
         etf_path = os.path.join(pred_dir, f"pred_etf_{fid}.np")
         swe_path = os.path.join(pred_dir, f"pred_swe_{fid}.np")
-        np.savetxt(etf_path, np.nan_to_num(output.etf[:, i], nan=0.0))
-        np.savetxt(swe_path, np.nan_to_num(output.swe[:, i], nan=0.0))
+        np.savetxt(etf_path, _pest_writable(output.etf[:, i]))
+        np.savetxt(swe_path, _pest_writable(output.swe[:, i]))
         # __SSM_WRITE__
 
     elapsed = time.time() - start_time
@@ -1043,7 +1056,7 @@ if __name__ == "__main__":
                 "        pred_ssm = model_ssm_prediction(\n"
                 "            output.depl_ze[:, i], ssm_doy, cap, ze=ssm_ze\n"
                 "        )\n"
-                "        np.savetxt(ssm_path, np.nan_to_num(pred_ssm, nan=0.0))"
+                "        np.savetxt(ssm_path, _pest_writable(pred_ssm))"
             )
             script_content = script_content.replace("# __SSM_IMPORTS__", ssm_imports).replace(
                 "# __SSM_WRITE__", ssm_write
