@@ -4,7 +4,8 @@ Every on-disk location is built from ``root`` in ``5_Flux_Ensemble.toml``; chang
 that one line to relocate the workspace. Nothing here is read at import time
 because ``ProjectConfig.read_config`` creates the project workspace directory.
 
-    run22    internal archive tag of the published E1 calibration (Run 22)
+    CANONICAL_RUN  internal archive tag of the canonical E1 calibration (run23; it
+                   replaced the published Run 22 after the next-day ETo ETf-target fix)
 """
 
 import os
@@ -16,7 +17,7 @@ from swimrs.swim.config import ProjectConfig
 EX5 = Path(__file__).resolve().parent
 REPO = EX5.parents[1]
 CANONICAL_CONFIG = EX5 / "5_Flux_Ensemble.toml"
-CANONICAL_RUN = "run22"
+CANONICAL_RUN = "run23"
 FINAL_DIR = REPO / "paper" / "data" / "final"
 NOPTMAX = 3
 

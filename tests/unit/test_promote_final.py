@@ -67,12 +67,11 @@ def test_stratified_summary_prepends_experiment_label(mod):
 
 
 def test_build_and_compare_round_trip(mod, tmp_path):
-    run_dir = tmp_path / "run22"
-    results = tmp_path / "results"
+    run_dir = tmp_path / "results" / mod.ex5_paths.CANONICAL_RUN
     (run_dir / "spread_error").mkdir(parents=True)
     (run_dir / "archive" / "3_problem_definition").mkdir(parents=True)
-    strat = results / mod.STRATIFIED_DIR
-    pooled = results / mod.POOLED_DIR
+    strat = run_dir / mod.STRATIFIED_DIR
+    pooled = run_dir / mod.POOLED_DIR
     strat.mkdir(parents=True)
     pooled.mkdir(parents=True)
     for part in ("persite", "quintiles", "summary"):
@@ -88,7 +87,7 @@ def test_build_and_compare_round_trip(mod, tmp_path):
         run_dir / "archive" / "3_problem_definition" / "parameter_bounds.csv", index=False
     )
 
-    products = mod.build_products(run_dir, results)
+    products = mod.build_products(run_dir)
     assert len(products) == 7
     final = tmp_path / "final"
     assert {s for _, s, _ in mod.compare(products, final)} == {"missing"}

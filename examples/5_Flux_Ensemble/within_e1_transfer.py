@@ -23,7 +23,7 @@ Design (see ``paper/final_implementations.md`` WP6.2 and
      held-out site(s) with no local recalibration.
   3. Held-out transfer is scored against flux ET on identical paired days/months
      alongside two reference configurations run on the same container:
-        local   - the canonical Run 22 per-site calibration (upper bound)
+        local   - the canonical run's per-site calibration (upper bound)
         default - the model's generic/initial parameters (lower bound)
 
 Two pooled held-out schemes are produced:
@@ -51,7 +51,7 @@ inside the rainfed domain (see ``paper/notes/irrigation_stratified_transfer_hand
                  other sites in the same irrigation class.
 
 The class is read from the container's ``properties/irrigation/irr`` (the same
-remote-sensing irrigation fraction ``archive_run.py`` uses to group the Run 22
+remote-sensing irrigation fraction ``archive_run.py`` uses to group the run's
 posterior), never from flux ET. Vectors stay fixed per site and never vary by year;
 annual irrigation status continues to drive scheduler activation exactly as in the
 canonical model. Class-specific training counts are recorded for every fold and a
@@ -65,13 +65,14 @@ delta is ``loro_strat`` minus ``loro``; results are reported for all sites, for
 irrigated and rainfed sites separately, and per LORO region.
 
 This is a FORWARD run with fixed parameters against existing container inputs. It
-does NOT calibrate and does NOT call Earth Engine. It reuses the Run 22 posterior
-ensemble (``*.par.csv``) already on disk and opens the container read-only.
+does NOT calibrate and does NOT call Earth Engine. It reuses the canonical run's
+posterior ensemble (``*.par.csv``, ``ex5_paths.CANONICAL_RUN`` unless ``--run``)
+already on disk and opens the container read-only.
 
 Usage:
     uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/within_e1_transfer.py
     uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/within_e1_transfer.py \
-        --out /data/ssd1/swim/5_Flux_Ensemble/results/within_e2_transfer_irrigation_stratified \
+        --run run23 --out /data/ssd1/swim/5_Flux_Ensemble/results/run23/within_e2_transfer_irrigation_stratified \
         --n-boot 2000 --seed 1234 --irr-threshold 0.5 --min-class-train 5
 """
 
@@ -106,10 +107,9 @@ from swimrs.container import SwimContainer  # noqa: E402
 from swimrs.process.input import build_swim_input  # noqa: E402
 from swimrs.process.loop_fast import run_daily_loop_fast  # noqa: E402
 
-# Run 22 canonical publication basis: par.csv + the run22 container it was
-# calibrated and evaluated against (seeded from run21 with the calibration group
-# dropped, then recalibrated under source-exclusive physics + gw gate). Both
-# default to the Run 22 locations derived from the TOML root (ex5_paths).
+# Canonical publication basis: par.csv + the run container it was calibrated and
+# evaluated against. Both default to the ``ex5_paths.CANONICAL_RUN`` locations
+# derived from the TOML root (Run 22 was the basis before the run23 recal).
 
 PARAM_FAMILIES = [
     "aw",
@@ -157,7 +157,7 @@ CONFIG_LABELS = {
     "loro_strat": "Held-out transfer (LORO, irrigation-stratified)",
     "loso": "Held-out transfer (leave-one-site-out)",
     "loso_strat": "Held-out transfer (LOSO, irrigation-stratified)",
-    "local": "Local site calibration (Run 22)",
+    "local": "Local site calibration (canonical run)",
     "default": "Generic defaults (uncalibrated)",
 }
 
@@ -268,7 +268,7 @@ def read_irrigation_class(container_path, threshold):
 
     ``properties/irrigation/irr`` is the remote-sensing irrigated fraction of each
     field, stored in ``geometry/uid`` order. The class rule is the same one
-    ``archive_run.py`` uses to group the Run 22 posterior (``irr > threshold`` is
+    ``archive_run.py`` uses to group the run's posterior (``irr > threshold`` is
     irrigated), which keeps the source classification here identical to the
     classification the frozen posterior summary was built on. Opened read-only;
     nothing is written back. Returns ``(irr_by_fid, class_by_fid)``.
@@ -330,7 +330,7 @@ def run_fixed_params(cfg, container, params_by_fid):
 def run_default_params(cfg, container, fids):
     """Forward run with the model's generic/initial parameters. {fid: Series}.
 
-    The run22 container carries an ingested calibration, so build_swim_input
+    The run container carries an ingested calibration, so build_swim_input
     would normally load it even with calibrated_params_path=None. Force the
     no-calibration branch so every site runs with defaults (mirrors
     examples/6_Flux_International/derived_metrics.run_uncalibrated_model).
@@ -531,8 +531,14 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--par-csv", default=None, help="default: Run 22 posterior")
-    parser.add_argument("--container", default=None, help="default: Run 22 container")
+    parser.add_argument(
+        "--run",
+        default=ex5_paths.CANONICAL_RUN,
+        help=f"Ex5 run tag (default {ex5_paths.CANONICAL_RUN}); sets the default "
+        "--par-csv, --container and --out",
+    )
+    parser.add_argument("--par-csv", default=None, help="default: the run's posterior")
+    parser.add_argument("--container", default=None, help="default: the run's container")
     parser.add_argument(
         "--config", default=None, help="Config TOML (default: 5_Flux_Ensemble.toml)"
     )
@@ -540,8 +546,9 @@ def main():
     parser.add_argument(
         "--out",
         default=None,
-        help="Output dir (default: {project_ws}/results/within_e2_transfer_irrigation_stratified; "
-        "the pooled-only within_e2_transfer dir is never written by this script)",
+        help="Output dir (default: {project_ws}/results/<run>/"
+        "within_e2_transfer_irrigation_stratified; the pooled-only within_e2_transfer "
+        "dir is never written by this script)",
     )
     parser.add_argument("--n-boot", type=int, default=2000)
     parser.add_argument("--seed", type=int, default=1234)
@@ -561,16 +568,15 @@ def main():
     args = parser.parse_args()
 
     cfg = ev.load_config(args.config)
-    args.par_csv = args.par_csv or ex5_paths.posterior_par_csv(cfg=cfg)
-    args.container = args.container or ex5_paths.run_container(cfg=cfg)
+    args.par_csv = args.par_csv or ex5_paths.posterior_par_csv(args.run, cfg=cfg)
+    args.container = args.container or ex5_paths.run_container(args.run, cfg=cfg)
     flux_dir = ev.resolve_flux_dir(cfg)
     shp = args.shapefile or cfg.fields_shapefile
-    # Non-clobbering default: the pooled-only artifacts under
-    # results/within_e2_transfer/ stay exactly as they were produced.
+    # Per-run default so a recal never overwrites the previous run's evidence.
     out_dir = (
         Path(args.out)
         if args.out
-        else Path(cfg.project_ws) / "results" / "within_e2_transfer_irrigation_stratified"
+        else Path(ex5_paths.run_dir(args.run, cfg=cfg)) / "within_e2_transfer_irrigation_stratified"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -698,7 +704,7 @@ def main():
         )
 
         # --- Forward runs (6) --------------------------------------------------
-        print("\nForward run: local site calibration (Run 22)...")
+        print(f"\nForward run: local site calibration ({args.run})...")
         local_res = run_fixed_params(cfg, container, local_params)
         print("Forward run: leave-one-site-out transfer (pooled)...")
         loso_res = run_fixed_params(cfg, container, loso_params)

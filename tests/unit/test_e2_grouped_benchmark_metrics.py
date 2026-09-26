@@ -707,19 +707,21 @@ def test_no_legacy_aggregate_strings_in_module(ev):
     assert "win rate" not in source.lower()
 
 
-def test_default_run_resolves_canonical_run22(ev, tmp_path):
-    # Policy (examples/VALIDATION_POLICY.md): run22 is canonical; a bare run
-    # must not silently resolve the superseded run21 configuration.
-    for run in ("run21", "run22"):
+def test_default_run_resolves_canonical_run(ev, tmp_path):
+    # Policy (examples/VALIDATION_POLICY.md): ex5_paths.CANONICAL_RUN is
+    # canonical; a bare run must not silently resolve a superseded run.
+    canonical = ev.CANONICAL_RUN
+    for run in ("run21", "run22", canonical):
         d = tmp_path / run
-        d.mkdir()
+        d.mkdir(exist_ok=True)
         (d / "proj.3.par.csv").write_text("x")
     found = ev.find_reference_par_csv(str(tmp_path), "proj")
-    assert found == str(tmp_path / "run22" / "proj.3.par.csv")
+    assert found == str(tmp_path / canonical / "proj.3.par.csv")
 
     source = SCRIPT.read_text()
     assert "_run21.swim" not in source
-    assert "_run22.swim" in source
+    assert "_run22.swim" not in source
+    assert "_{CANONICAL_RUN}.swim" in source
 
 
 def test_grouped_summary_print_content(ev, two_site_cohort, capsys):
@@ -1010,28 +1012,30 @@ def test_monthly_bundle_splits_cohorts(ev, monthly_split_cohort, monkeypatch):
 # Frozen-support regression: counts and grouped point targets
 # ---------------------------------------------------------------------------
 
-# Independent point checks derived from the corrected frozen daily/monthly
-# support (45 sites / 59,516 site-days; 30 sites / 1,301 site-months). Run
-# only when SWIM_E2_GROUPED_DIR points at a directory holding the grouped
-# CSVs produced by evaluate.py on the canonical Run 22 footing.
+# Independent point checks on the frozen daily/monthly support (daily: 45
+# sites / 59,516 site-days; monthly: 51 sites / 1,548 site-months pooled, 42 /
+# 1,534 station-weighted). Run only when SWIM_E2_GROUPED_DIR points at a
+# directory holding the grouped CSVs produced by evaluate.py on the canonical
+# run (Run 23: the next-day ETo defect corrected in the PT-JPL, geeSEBAL and
+# DisALEXI members; benchmark rows are unchanged from Run 22).
 GROUPED_DIR_ENV = "SWIM_E2_GROUPED_DIR"
 
 DAILY_TARGETS = {
-    ("pooled_observations", "swim", "kge"): 0.855837773,
-    ("pooled_observations", "swim", "rmse"): 1.117361176,
-    ("pooled_observations", "swim", "mbe"): -0.006843838,
-    ("pooled_observations", "swim", "r"): 0.867429746,
-    ("pooled_observations", "swim", "r2"): 0.752434364,
-    ("pooled_observations", "swim", "slope0"): 0.923446511,
+    ("pooled_observations", "swim", "kge"): 0.852686773,
+    ("pooled_observations", "swim", "rmse"): 1.113816381,
+    ("pooled_observations", "swim", "mbe"): -0.043297858,
+    ("pooled_observations", "swim", "r"): 0.867966890,
+    ("pooled_observations", "swim", "r2"): 0.753366522,
+    ("pooled_observations", "swim", "slope0"): 0.913177920,
     ("pooled_observations", "openet_ensemble", "kge"): 0.820808357,
     ("pooled_observations", "openet_ensemble", "rmse"): 1.139236084,
     ("pooled_observations", "openet_ensemble", "mbe"): -0.211473920,
     ("pooled_observations", "openet_ensemble", "r"): 0.864912544,
     ("pooled_observations", "openet_ensemble", "r2"): 0.748073709,
     ("pooled_observations", "openet_ensemble", "slope0"): 0.866404414,
-    ("sqrt_n_weighted_site_metric", "swim", "kge"): 0.782932081,
-    ("sqrt_n_weighted_site_metric", "swim", "rmse"): 1.138474516,
-    ("sqrt_n_weighted_site_metric", "swim", "mbe"): 0.026877340,
+    ("sqrt_n_weighted_site_metric", "swim", "kge"): 0.776437363,
+    ("sqrt_n_weighted_site_metric", "swim", "rmse"): 1.138660917,
+    ("sqrt_n_weighted_site_metric", "swim", "mbe"): -0.008387441,
     ("sqrt_n_weighted_site_metric", "openet_ensemble", "kge"): 0.757754884,
     ("sqrt_n_weighted_site_metric", "openet_ensemble", "rmse"): 1.138840091,
     ("sqrt_n_weighted_site_metric", "openet_ensemble", "mbe"): -0.198191503,
@@ -1039,23 +1043,24 @@ DAILY_TARGETS = {
 
 # Volk et al. (2024) monthly protocol (2026-09-23): pooled rows on 51 sites /
 # 1,548 months, station-weighted rows on the 42 sites with >= 3 paired months /
-# 1,534 months. Values from the promoted Run 22 bundle.
+# 1,534 months. SWIM values from the Run 23 monthly Volk bundle; benchmark
+# values unchanged from the promoted Run 22 bundle.
 MONTHLY_TARGETS = {
-    ("pooled_observations", "swim", "kge"): 0.940809744,
-    ("pooled_observations", "swim", "rmse"): 19.426158369,
-    ("pooled_observations", "swim", "mbe"): -0.337222853,
-    ("pooled_observations", "swim", "r"): 0.951384094,
-    ("pooled_observations", "swim", "r2"): 0.905131695,
-    ("pooled_observations", "swim", "slope0"): 0.968947809,
+    ("pooled_observations", "swim", "kge"): 0.935254178,
+    ("pooled_observations", "swim", "rmse"): 19.382064682,
+    ("pooled_observations", "swim", "mbe"): -1.609892960,
+    ("pooled_observations", "swim", "r"): 0.951863686,
+    ("pooled_observations", "swim", "r2"): 0.906044478,
+    ("pooled_observations", "swim", "slope0"): 0.957624437,
     ("pooled_observations", "openet_ensemble", "kge"): 0.906268042,
     ("pooled_observations", "openet_ensemble", "rmse"): 20.623480665,
     ("pooled_observations", "openet_ensemble", "mbe"): -4.246326491,
     ("pooled_observations", "openet_ensemble", "r"): 0.947299929,
     ("pooled_observations", "openet_ensemble", "r2"): 0.897377156,
     ("pooled_observations", "openet_ensemble", "slope0"): 0.929228147,
-    ("sqrt_n_weighted_site_metric", "swim", "kge"): 0.846935145,
-    ("sqrt_n_weighted_site_metric", "swim", "rmse"): 19.316101884,
-    ("sqrt_n_weighted_site_metric", "swim", "mbe"): 0.881236984,
+    ("sqrt_n_weighted_site_metric", "swim", "kge"): 0.837162294,
+    ("sqrt_n_weighted_site_metric", "swim", "rmse"): 19.421137504,
+    ("sqrt_n_weighted_site_metric", "swim", "mbe"): -0.250682260,
     ("sqrt_n_weighted_site_metric", "openet_ensemble", "kge"): 0.821403342,
     ("sqrt_n_weighted_site_metric", "openet_ensemble", "rmse"): 20.229490318,
     ("sqrt_n_weighted_site_metric", "openet_ensemble", "mbe"): -3.970606533,
@@ -1104,7 +1109,7 @@ def test_frozen_grouped_point_targets(scale):
 
 
 # Canonical paired-record counts (plan §5.4): support-class rows must sum
-# exactly to the all-days total on the Run 22 footing.
+# exactly to the all-days total (benchmark record shared by Run 22 and Run 23).
 FROZEN_RECORD_COUNTS = {
     "n_sites": 45,
     "n_rows": 59516,

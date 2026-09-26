@@ -5,14 +5,17 @@ written by ``evaluate.py`` and ``overpass_decomposition.py`` and frozen by
 ``rebuild_e1_benchmark_evidence.py``. The supporting products below used to be
 copied into ``paper/data/final`` by hand; this script is their tracked producer.
 
-    <run22>/spread_error/spread_error_{persite,quintiles,summary}.csv
+<run> is the canonical run results dir (``ex5_paths.CANONICAL_RUN``); every
+source lives under it so each run carries its own supporting products.
+
+    <run>/spread_error/spread_error_{persite,quintiles,summary}.csv
         -> e2_spread_error_{persite,quintiles,summary}.csv          (byte copy; Fig. 4)
-    <results>/within_e2_transfer/persite_{daily,monthly}.csv
+    <run>/within_e2_transfer/persite_{daily,monthly}.csv
         -> e2_within_transfer_{daily,monthly}_site_metrics.csv       (byte copy)
-    <results>/within_e2_transfer_irrigation_stratified/summary_metrics.csv
+    <run>/within_e2_transfer_irrigation_stratified/summary_metrics.csv
         -> e2_irrigation_stratified_transfer_summary.csv             (adds the experiment column; Table S7, Fig. 5a)
-    <results>/within_e2_transfer_irrigation_stratified/{transfer_vectors.json, class_fold_support.csv}
-      + <run22>/archive/3_problem_definition/parameter_bounds.csv
+    <run>/within_e2_transfer_irrigation_stratified/{transfer_vectors.json, class_fold_support.csv}
+      + <run>/archive/3_problem_definition/parameter_bounds.csv
         -> e2_irrigation_stratified_fold_mad_domain.csv              (derived; Fig. 5a mad legality)
 
 The ``e2_*`` names are the legacy namespace paper E1 evidence is frozen under;
@@ -42,7 +45,11 @@ import ex5_paths  # noqa: E402
 
 # Legacy experiment label carried by the frozen summary (paper E1).
 EXPERIMENT_LABEL = "E2_within_held_out"
+# Both relative to the run results dir (``ex5_paths.run_dir(CANONICAL_RUN)``).
 STRATIFIED_DIR = "within_e2_transfer_irrigation_stratified"
+# TODO(run23): no current script writes <run>/within_e2_transfer/persite_*.csv
+# (the Run 22 copies at {project_ws}/results/within_e2_transfer/ predate
+# within_e1_transfer.py's six-arm output); regenerate or derive before promoting.
 POOLED_DIR = "within_e2_transfer"
 
 FOLD_MAD_COLUMNS = [
@@ -111,12 +118,11 @@ def csv_bytes(df):
     return buf.getvalue().encode()
 
 
-def build_products(run_dir, results_root):
+def build_products(run_dir):
     """Return {final_name: bytes} for every promoted product."""
     run_dir = Path(run_dir)
-    results_root = Path(results_root)
-    strat = results_root / STRATIFIED_DIR
-    pooled = results_root / POOLED_DIR
+    strat = run_dir / STRATIFIED_DIR
+    pooled = run_dir / POOLED_DIR
     products = {}
     for part in ("persite", "quintiles", "summary"):
         products[f"e2_spread_error_{part}.csv"] = (
@@ -158,17 +164,18 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--run-dir", default=None, help="default: the Run 22 results dir")
-    ap.add_argument("--results-root", default=None, help="default: {project_ws}/results")
+    ap.add_argument(
+        "--run-dir",
+        default=None,
+        help=f"default: the {ex5_paths.CANONICAL_RUN} results dir (ex5_paths.CANONICAL_RUN)",
+    )
     ap.add_argument("--final-dir", default=str(ex5_paths.FINAL_DIR))
     ap.add_argument("--write", action="store_true", help="replace the promoted files")
     args = ap.parse_args()
-    if args.run_dir is None or args.results_root is None:
-        cfg = ex5_paths.load_config()
-        args.run_dir = args.run_dir or ex5_paths.run_dir(cfg=cfg)
-        args.results_root = args.results_root or ex5_paths.results_root(cfg)
+    if args.run_dir is None:
+        args.run_dir = ex5_paths.run_dir(cfg=ex5_paths.load_config())
 
-    products = build_products(args.run_dir, args.results_root)
+    products = build_products(args.run_dir)
     rows = compare(products, args.final_dir)
     for name, status, digest in rows:
         print(f"{status:8s} {digest[:16]}  {name}")

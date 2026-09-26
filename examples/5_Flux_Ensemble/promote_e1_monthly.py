@@ -16,7 +16,7 @@ is the tracked producer of the re-frozen monthly package:
         -> e1_openet_benchmark/monthly/*                    (byte copy)
     e1_openet_benchmark/monthly/* (28-day package)
         -> superseded_e1_monthly_28day/* + README.md        (moved, never deleted)
-    <run22>/archive/6_evaluation/monthly_paired_metrics.csv
+    <run>/archive/6_evaluation/monthly_paired_metrics.csv
         -> monthly_paired_metrics_28day_superseded.csv; the new per-site table
            takes its name, and the whole bundle lands in
            archive/6_evaluation/monthly_volk2024/ with a PROMOTION.json sidecar
@@ -26,8 +26,8 @@ Gates before anything is written:
   1. the evaluator sidecar names the Volk construction token, was produced on a
      clean worktree (``--allow-dirty`` overrides), and its recorded output
      hashes match the files;
-  2. the 18 grouped point estimates are recomputed independently from the Run 22
-     archive daily series (``swim_ET``, raw ``eto``), the v2.1 flux files
+  2. the 18 grouped point estimates are recomputed independently from the run's
+     archive daily series (``swim_ET``, raw gridMET ETo), the v2.1 flux files
      (``ET_corr``) and the OpenET v2.1 monthly totals with the shared
      ``flux_utils`` helpers, and must agree with the bundle to REPLICATION_TOL
      with identical pooled and station-weighted cohorts.
@@ -204,18 +204,34 @@ def cohort_from_meta(meta, aggregation):
 
 
 # ---------------------------------------------------------------------------
-# independent replication from the Run 22 archive
+# independent replication from the run archive
 
 
 def _archive_site_ids(ts_dir):
     return sorted(p.stem for p in Path(ts_dir).glob("*.csv"))
 
 
+def read_archive_series(path):
+    """Archived daily series with ``swim_ET`` and the raw gridMET ETo as ``eto_raw``.
+
+    The Volk et al. (2024) flux gap fill scales the tower's fraction of raw
+    gridMET ETo, so the replication must use the raw series. archive_run.py
+    writes the reference ET the model consumed under ``eto``; when that is the
+    bias-corrected series it also exports the raw one as ``eto_raw``. Older
+    archives (Run 22) wrote only the raw series, as ``eto``.
+    """
+    ts = pd.read_csv(path, index_col="date", parse_dates=True)
+    if "eto_raw" not in ts.columns:
+        ts["eto_raw"] = ts["eto"]
+    return ts[["swim_ET", "eto_raw"]]
+
+
 def replicate_from_archive(ts_dir, flux_dir, monthly_dir, static_exclusions=()):
     """Recompute the grouped monthly estimates from archived series.
 
     ``ts_dir``: ``archive/6_evaluation/site_daily_timeseries`` (``swim_ET`` and
-    the raw gridMET ``eto`` per day); ``flux_dir``: the Volk v2.1 daily flux
+    the raw gridMET ETo, ``eto_raw`` when the archive also carries a corrected
+    ``eto``); ``flux_dir``: the Volk v2.1 daily flux
     files (``ET_corr``); ``monthly_dir``: the OpenET v2.1 monthly totals
     (``ensemble_mean_3x3``). Returns ``(estimates, cohorts)`` where ``cohorts``
     maps each aggregation to a sorted tuple of ``(fid, n)``.
@@ -232,17 +248,12 @@ def replicate_from_archive(ts_dir, flux_dir, monthly_dir, static_exclusions=()):
         flux = pd.read_csv(flux_path, index_col="date", parse_dates=True)
         if "ET_corr" not in flux.columns:
             continue
-        ts = pd.read_csv(
-            ts_dir / f"{fid}.csv",
-            usecols=["date", "swim_ET", "eto"],
-            index_col="date",
-            parse_dates=True,
-        )
+        ts = read_archive_series(ts_dir / f"{fid}.csv")
         volk = pd.read_csv(volk_path, index_col="DATE", parse_dates=True)
         if "ensemble_mean_3x3" not in volk.columns:
             continue
         swim_m, flux_m, _filled = volk_full_month_paired_sums(
-            ts["swim_ET"].astype(float), flux["ET_corr"].astype(float), ts["eto"].astype(float)
+            ts["swim_ET"].astype(float), flux["ET_corr"].astype(float), ts["eto_raw"].astype(float)
         )
         ens = volk["ensemble_mean_3x3"].astype(float).reindex(flux_m.index)
         swim_m = swim_m.reindex(flux_m.index)
@@ -372,7 +383,7 @@ def build_manifest(
     )
     validation["monthly_replication_from_archive"] = (
         f"PASS: {N_GROUPED_ESTIMATES} grouped estimates recomputed from "
-        "archive/6_evaluation/site_daily_timeseries (swim_ET, raw eto), the v2.1 flux files "
+        "archive/6_evaluation/site_daily_timeseries (swim_ET, raw gridMET eto), the v2.1 flux files "
         "(ET_corr) and the OpenET v2.1 monthly totals with the flux_utils helpers; "
         f"max abs diff {replication_max_diff:.3e} at tolerance {REPLICATION_TOL:g}; "
         "identical pooled and station-weighted cohorts"
@@ -565,10 +576,14 @@ def main(argv=None):
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--source-dir", default=None, help=f"default: <run22>/{DEFAULT_SOURCE_SUBDIR}")
-    ap.add_argument("--run-dir", default=None, help="default: the Run 22 results dir")
+    ap.add_argument("--source-dir", default=None, help=f"default: <run>/{DEFAULT_SOURCE_SUBDIR}")
+    ap.add_argument(
+        "--run-dir",
+        default=None,
+        help=f"default: the {ex5_paths.CANONICAL_RUN} results dir (ex5_paths.CANONICAL_RUN)",
+    )
     ap.add_argument("--archive-dir", default=None, help="default: <run-dir>/archive/6_evaluation")
-    ap.add_argument("--no-archive", action="store_true", help="leave the Run 22 archive untouched")
+    ap.add_argument("--no-archive", action="store_true", help="leave the run archive untouched")
     ap.add_argument("--final-dir", default=str(ex5_paths.FINAL_DIR))
     ap.add_argument(
         "--allow-dirty",

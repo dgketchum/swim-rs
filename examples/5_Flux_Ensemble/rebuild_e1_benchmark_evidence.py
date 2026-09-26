@@ -6,7 +6,7 @@ in time (invalid — interp(ETf·ETo) != interp(ETf)·ETo under varying ETo);
 (2) the evaluators read the January capture set (``openet_flux/``) instead
 of May v2.1 (``openet_flux_2pt1/`` + masters in ``flux_2pt1/``).
 
-Evaluation-only. Reads ONLY: the archived Run 22
+Evaluation-only. Reads ONLY: the archived canonical-run (``ex5_paths.CANONICAL_RUN``)
 ``site_daily_timeseries/{fid}.csv`` (``date, swim_ET, flux_ET`` — the
 archived ``eto`` column is raw gridMET, ancillary, and FORBIDDEN for
 reconstruction), the May v2.1 per-site files and masters, the pinned
@@ -33,7 +33,7 @@ recomputes and compares against the pinned metadata (G-VALUES).
 
 Usage:
     uv run python rebuild_e1_benchmark_evidence.py \
-        --output-dir /data/ssd1/swim/5_Flux_Ensemble/results/run22/e1_rebuild_scratch
+        --output-dir /data/ssd1/swim/5_Flux_Ensemble/results/run23/e1_rebuild_scratch
     uv run python rebuild_e1_benchmark_evidence.py --output-dir ... --verify
     uv run python rebuild_e1_benchmark_evidence.py --output-dir ... --emit-test-fixture
 """
@@ -94,23 +94,17 @@ SUPERSEDED_FILES = [
     "e2_temporal_paired_deltas.csv",
     "e2_evidence_metadata.json",
 ]
-# Model-side E1 artifacts untouched by both benchmark defects: their inputs
-# are SWIM outputs and flux ET only (flux verified identical by G-FLUX), and
-# they score on a flux ∧ SWIM mask that never touches the OpenET record
-UNAFFECTED_E1_FILES = [
-    "e2_spread_error_persite.csv",
-    "e2_spread_error_quintiles.csv",
-    "e2_spread_error_summary.csv",
-    "e2_within_transfer_daily_site_metrics.csv",
-    "e2_within_transfer_monthly_site_metrics.csv",
-    "e2_within_transfer_paired_deltas.csv",
-]
+# The model-side spread-error and within-E1-transfer artifacts were carried
+# here as "unaffected" hash pins while Run 22 was canonical. They are now
+# regenerated per run (spread_error.py, within_e1_transfer.py), so this
+# rebuild no longer pins them; verify() still honours an
+# ``unaffected_artifacts`` block in older pinned metadata.
 # Observation-weighting ablation (Table S6 / Fig. 4d). SWIM-only metrics, but
 # evaluate.py scores on the flux ∧ SWIM ∧ benchmark-finite mask, so the
 # benchmark's temporal support sets the scored days. These were wrongly
 # carried as "unaffected" until 2026-09-21; both arms are now rescored on
-# the frozen record and gated below (G-ABLATION): the spread arm is Run 22,
-# so its per-site metrics and paired-day counts must equal the primary
+# the frozen record and gated below (G-ABLATION): the spread arm is the
+# canonical run, so its per-site metrics and paired-day counts must equal the primary
 # daily/monthly site metrics exactly.
 RESCORED_ABLATION_FILES = [
     "e2_weighting_ablation_daily_site_deltas.csv",
@@ -952,10 +946,6 @@ def build_metadata(
             p = SUPERSEDED_FINAL_DIR / SUPERSEDED_SUBDIR / name
         if p.exists():
             superseded[name] = sha256_file(p)
-    unaffected = {}
-    for name in UNAFFECTED_E1_FILES:
-        p = SUPERSEDED_FINAL_DIR / name
-        unaffected[name] = sha256_file(p) if p.exists() else None
     rescored = check_rescored_ablation(SUPERSEDED_FINAL_DIR, daily_df, monthly_df)
     manifest_path = run_dir / "archive" / "1_provenance" / "container_manifest.json"
     per_series_counts = support_df.groupby("series")["n_scored"].sum().astype(int).to_dict()
@@ -971,7 +961,7 @@ def build_metadata(
         "Experiment 1; retained for schema continuity with prior frozen packages",
         "status": args.status,
         "rebuilt_utc": datetime.now(UTC).isoformat(timespec="seconds"),
-        "internal_archive_id": "run22",
+        "internal_archive_id": Path(run_dir).name,
         "git": git_state(str(REPO_ROOT)),
         "benchmark_construction": {
             "design": BENCHMARK_DESIGN,
@@ -1115,12 +1105,6 @@ def build_metadata(
             "source (source-version) — both defects; see benchmark_construction",
             "relocated_to": SUPERSEDED_SUBDIR,
             "files_sha256_at_supersession": superseded,
-        },
-        "unaffected_artifacts": {
-            "status": "verified unchanged — model-side artifacts whose inputs are "
-            "SWIM outputs and flux ET only; flux side verified identical to the "
-            "May master by G-FLUX",
-            "files_sha256": unaffected,
         },
         "rescored_artifacts": rescored,
         "pending_downstream_consumers": [
@@ -1336,7 +1320,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Rebuild the E1 OpenET benchmark evidence from May v2.1, ETf-first"
     )
-    parser.add_argument("--run-dir", default=None, help="default: the Run 22 results dir")
+    parser.add_argument("--run-dir", default=None, help="default: the canonical run results dir")
     parser.add_argument("--data-dir", default=None, help="default: the configured data dir")
     parser.add_argument(
         "--openet-eto-csv",
@@ -1345,7 +1329,7 @@ def main():
     parser.add_argument(
         "--container",
         default=None,
-        help="Frozen run container (read-only provenance; 0a identity gate); default: Run 22",
+        help="Frozen run container (read-only provenance; 0a identity gate); default: canonical run",
     )
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(

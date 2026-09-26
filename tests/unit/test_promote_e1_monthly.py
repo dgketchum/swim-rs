@@ -43,7 +43,7 @@ def world(tmp_path, mod):
     valid months only (pooled-only). The source bundle's grouped estimates come from
     the same helpers the script replicates with, so the round trip is exact.
     """
-    run = tmp_path / "run22"
+    run = tmp_path / mod.ex5_paths.CANONICAL_RUN
     ts_dir = run / "archive" / "6_evaluation" / "site_daily_timeseries"
     flux_dir = tmp_path / "daily_flux_files_2pt1"
     monthly_dir = tmp_path / "openet_flux_2pt1" / "monthly_data"
@@ -217,6 +217,31 @@ def test_replication_gate_catches_a_changed_estimate(mod, world):
     df.to_csv(files["evaluation_grouped_monthly_metrics.csv"], index=False)
     with pytest.raises(mod.PromotionError, match="replication differs"):
         mod.compare_replication(est, cohorts, files, meta)
+
+
+def test_replication_uses_raw_eto_when_archive_carries_corrected(mod, world, tmp_path):
+    """Archives that export the corrected ETo as ``eto`` must be replicated on ``eto_raw``."""
+    ts_dir = tmp_path / "ts_corrected"
+    ts_dir.mkdir()
+    for f in sorted(world["ts_dir"].glob("*.csv")):
+        ts = pd.read_csv(f, index_col="date", parse_dates=True)
+        ts["eto_raw"] = ts["eto"]
+        # a day-varying correction, as the model consumed it (a uniform scale
+        # would cancel in the fraction-of-ETo gap fill)
+        ts["eto"] = ts["eto"] * (0.7 + 0.3 * np.sin(np.arange(len(ts)) / 9.0))
+        ts.to_csv(ts_dir / f.name)
+    ref, ref_cohorts = mod.replicate_from_archive(
+        world["ts_dir"], world["flux_dir"], world["monthly_dir"]
+    )
+    est, cohorts = mod.replicate_from_archive(ts_dir, world["flux_dir"], world["monthly_dir"])
+    assert cohorts == ref_cohorts
+    assert max(abs(est[k] - ref[k]) for k in ref) < 1e-12
+    # and the corrected column, used by mistake, would not reproduce the bundle
+    for f in ts_dir.glob("*.csv"):
+        ts = pd.read_csv(f, index_col="date", parse_dates=True)
+        ts.drop(columns=["eto_raw"]).to_csv(f)
+    wrong, _ = mod.replicate_from_archive(ts_dir, world["flux_dir"], world["monthly_dir"])
+    assert max(abs(wrong[k] - ref[k]) for k in ref) > 1e-9
 
 
 def test_replication_gate_catches_a_cohort_mismatch(mod, world):

@@ -26,6 +26,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -105,6 +106,11 @@ from swimrs.evaluation.benchmark import (
 from swimrs.process.input import build_swim_input
 from swimrs.process.loop_fast import run_daily_loop_fast
 from swimrs.swim.config import ProjectConfig
+
+# Path-imported by tests and sibling scripts; make ex5_paths importable too.
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ex5_paths import CANONICAL_RUN  # noqa: E402
 
 OPEN_SOURCE_MODELS = ["geesebal", "ptjpl", "ssebop", "sims", "eemetric", "disalexi"]
 
@@ -1452,14 +1458,15 @@ def find_par_csv(results_dir, project_name):
 def find_reference_par_csv(results_dir, project_name):
     """Resolve the canonical Example 5 parameter file when none is provided.
 
-    Prefers the canonical run22 results (examples/VALIDATION_POLICY.md); any
-    automatically discovered fallback is diagnostic-only.
+    Prefers the canonical run results (``ex5_paths.CANONICAL_RUN``; see
+    examples/VALIDATION_POLICY.md); any automatically discovered fallback is
+    diagnostic-only.
     """
     candidate_dirs = []
 
-    run22_dir = os.path.join(results_dir, "run22")
-    if os.path.isdir(run22_dir):
-        candidate_dirs.append(run22_dir)
+    canonical_dir = os.path.join(results_dir, CANONICAL_RUN)
+    if os.path.isdir(canonical_dir):
+        candidate_dirs.append(canonical_dir)
 
     candidate_dirs.append(results_dir)
 
@@ -1562,7 +1569,7 @@ if __name__ == "__main__":
         print(
             "WARNING: --par-csv not given; automatic parameter discovery is "
             "diagnostic-only (see examples/VALIDATION_POLICY.md). Pass the "
-            "explicit canonical run22 paths for citable results."
+            f"explicit canonical {CANONICAL_RUN} paths for citable results."
         )
     if par_csv is None:
         raise FileNotFoundError(f"No .par.csv found in {results_dir}")
@@ -1571,7 +1578,7 @@ if __name__ == "__main__":
     if args.container:
         container_path = args.container
     else:
-        container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}_run22.swim")
+        container_path = os.path.join(cfg.data_dir, f"{cfg.project_name}_{CANONICAL_RUN}.swim")
     container = SwimContainer.open(container_path, mode="r")
 
     if args.sites:

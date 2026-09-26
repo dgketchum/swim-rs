@@ -15,8 +15,17 @@ Usage:
 import argparse
 import json
 import os
+import sys
 import time
 from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+import ex5_paths  # noqa: E402
+
+# Results-dir tag follows the canonical Ex5 run (ablation_{tag}_{exp}/).
+DEFAULT_TAG = ex5_paths.CANONICAL_RUN
 
 EXPERIMENTS = {
     "e1_spread": {
@@ -108,10 +117,10 @@ def _find_par_csv(results_dir, project):
 def run_evaluation(
     cfg, experiment_id, results_dir, container_path, mode="daily", debug_fields=None
 ):
-    """Run canonical evaluation for one experiment on the Run 22 footing.
+    """Run canonical evaluation for one experiment on the tagged run's footing.
 
     mode: 'daily' (volk source), 'monthly', or 'etf'.
-    The container is the same Run 22-footed container used for calibration, and
+    The container is the same run-footed container used for calibration, and
     the flux reference is resolved from the TOML (Volk v2.1 daily_flux_files_2pt1)
     via resolve_flux_dir — NOT the legacy daily_flux_files directory.
     When debug_fields is set, limits evaluation to that subset only.
@@ -171,6 +180,15 @@ def _build_paired_deltas(e1_path, e2_path, summary_dir, label):
     common = e1.index.intersection(e2.index)
     e1, e2 = e1.loc[common], e2.loc[common]
 
+    # Paired deltas exist only where both arms scored the site: the Volk
+    # monthly evaluator keeps unscored sites as NaN rows, and the G-ABLATION
+    # gate compares against the primary's scored cohort.
+    r2_col = "r2_swim" if "r2_swim" in e1.columns else ("r2" if "r2" in e1.columns else None)
+    if r2_col:
+        scored = e1[r2_col].notna() & e2[r2_col].notna()
+        e1, e2 = e1.loc[scored], e2.loc[scored]
+        common = e1.index
+
     paired = pd.DataFrame(index=common)
     for metric in [
         "r2_swim",
@@ -189,7 +207,6 @@ def _build_paired_deltas(e1_path, e2_path, summary_dir, label):
             paired[f"e2_{metric}"] = e2[metric]
             paired[f"delta_{metric}"] = e1[metric] - e2[metric]
 
-    r2_col = "r2_swim" if "r2_swim" in e1.columns else ("r2" if "r2" in e1.columns else None)
     if r2_col:
         paired["e1_wins_r2"] = e1[r2_col] > e2[r2_col]
         if "n" in e1.columns:
@@ -540,9 +557,10 @@ def main():
     )
     parser.add_argument(
         "--tag",
-        default="run22",
+        default=DEFAULT_TAG,
         help="Results-dir tag: outputs land in ablation_{tag}_{exp}/ and "
-        "ablation_{tag}_summary/ (default 'run22'). The untagged April dirs "
+        f"ablation_{{tag}}_summary/ (default '{DEFAULT_TAG}', ex5_paths.CANONICAL_RUN; "
+        "the Run 22 ablation lives under the 'run22' tag). The untagged April dirs "
         "(ablation_e1_spread etc.) are the stale reference and must not be touched.",
     )
     parser.add_argument(
@@ -557,20 +575,21 @@ def main():
         "--container",
         default=None,
         help="Container path for BOTH calibration and evaluation. REQUIRED for "
-        "calibration/evaluation runs (not for --summary-only). For Run 22 "
-        "footing pass the run22-seeded ablation container (calibration group "
-        "already absent), e.g. {data}/5_Flux_Ensemble_run22ablation.swim. "
-        "There is deliberately no default: the tag defaults to 'run22', and "
-        "silently falling back to the stale base {data}/{project}.swim would "
-        "overwrite Run-22-labeled results on the wrong footing.",
+        "calibration/evaluation runs (not for --summary-only). Pass the "
+        "<tag>-seeded ablation container (calibration group already absent), "
+        "e.g. {data}/5_Flux_Ensemble_<tag>ablation.swim (Run 22 used "
+        "5_Flux_Ensemble_run22ablation.swim). There is deliberately no default: "
+        f"the tag defaults to '{DEFAULT_TAG}', and silently falling back to the "
+        "stale base {data}/{project}.swim would overwrite tag-labeled results on "
+        "the wrong footing.",
     )
     args = parser.parse_args()
 
     if not args.summary_only and args.container is None:
         parser.error(
             "--container is required for calibration/evaluation runs. Pass the "
-            "container matching the tag (Run 22 footing: the run22-seeded "
-            "ablation container, e.g. {data}/5_Flux_Ensemble_run22ablation.swim)."
+            "container matching the tag (the <tag>-seeded ablation container, "
+            "e.g. {data}/5_Flux_Ensemble_<tag>ablation.swim)."
         )
 
     cfg = _load_config()

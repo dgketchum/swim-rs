@@ -13,17 +13,18 @@ Per observation i (site x Landsat overpass date with valid flux):
     err_i    = target_i - truth_i
 
 The per-observation spread and target are read from the RUN_POLICY Category-3
-weight-decomposition table (``observation_metadata.csv``) in the Run 22 archive
+weight-decomposition table (``observation_metadata.csv``) in the run archive
 and spot-verified against the container member ETf. The ensemble target is the
 simple per-overpass member mean (nanmean) and ``ensemble_std`` is the sample
 standard deviation (ddof=1) across available members -- the exact quantities in
 the weight formula. Reference ETo matches the forward-model reference
 (``meteorology/gridmet/eto_corr``, grass reference, refet_type=eto).
 
-Read-only analysis over existing Run 22 data. No calibration, no Earth Engine.
+Read-only analysis over an existing run's data (default
+``ex5_paths.CANONICAL_RUN``). No calibration, no Earth Engine.
 
 Usage:
-    uv run python spread_error.py --config 5_Flux_Ensemble.toml
+    uv run python spread_error.py --config 5_Flux_Ensemble.toml [--run run23]
 """
 
 import argparse
@@ -40,8 +41,8 @@ from swimrs.container import SwimContainer
 
 MEMBERS = ["ssebop", "sims", "geesebal", "eemetric", "ptjpl", "disalexi"]
 
-# Canonical Run 22 artifacts for paper Experiment E1 (see ex5_paths).
-DEFAULT_RUN_DIR = ex5_paths.CANONICAL_RUN
+# Canonical run artifacts for paper Experiment E1 (see ex5_paths).
+DEFAULT_RUN = ex5_paths.CANONICAL_RUN
 
 WEIGHT_FLOOR = 0.1  # weight = target / (spread + WEIGHT_FLOOR)
 MIN_ETO = 0.5  # reject overpass days with ETo < 0.5 mm/d (matches ETf extraction screen)
@@ -299,22 +300,25 @@ def weight_quintile_contrast(obs_df, n_bins=5):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=str, default=None, help="Canonical Run 22 TOML")
-    parser.add_argument("--container", type=str, default=None, help="default: the Run 22 container")
+    parser.add_argument("--config", type=str, default=None, help="Canonical Ex5 TOML")
+    parser.add_argument(
+        "--run", type=str, default=DEFAULT_RUN, help=f"Ex5 run tag (default {DEFAULT_RUN})"
+    )
+    parser.add_argument("--container", type=str, default=None, help="default: the run container")
     parser.add_argument(
         "--obs-metadata",
         type=str,
         default=None,
-        help="Cat-3 observation_metadata.csv (default: Run 22 archive)",
+        help="Cat-3 observation_metadata.csv (default: the run archive)",
     )
     parser.add_argument("--out-dir", type=str, default=None)
     args = parser.parse_args()
 
     cfg = load_config(args.config)
     flux_dir = resolve_flux_dir(cfg)
-    results_dir = ex5_paths.run_dir(DEFAULT_RUN_DIR, cfg)
+    results_dir = ex5_paths.run_dir(args.run, cfg)
     if args.container is None:
-        args.container = ex5_paths.run_container(DEFAULT_RUN_DIR, cfg)
+        args.container = ex5_paths.run_container(args.run, cfg)
 
     obs_meta_path = args.obs_metadata or os.path.join(
         results_dir, "archive", "3_problem_definition", "observation_metadata.csv"

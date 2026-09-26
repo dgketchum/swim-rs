@@ -219,11 +219,14 @@ class TestPairedDeltaSummary:
 
 class TestCli:
     def test_container_required_for_calibration_runs(self, wa, monkeypatch, capsys):
-        # The tag defaults to run22; without an explicit container a bare run
-        # would silently calibrate the stale base container into
-        # Run-22-labeled result dirs. The CLI must refuse instead.
+        # The tag defaults to ex5_paths.CANONICAL_RUN; without an explicit
+        # container a bare run would silently calibrate the stale base container
+        # into canonical-run-labeled result dirs. The CLI must refuse instead.
         monkeypatch.setattr("sys.argv", ["run_weighting_ablation.py"])
         with pytest.raises(SystemExit) as exc:
             wa.main()
         assert exc.value.code == 2
         assert "--container is required" in capsys.readouterr().err
+
+    def test_default_tag_follows_canonical_run(self, wa):
+        assert wa.DEFAULT_TAG == wa.ex5_paths.CANONICAL_RUN

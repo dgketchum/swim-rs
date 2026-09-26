@@ -1,20 +1,25 @@
 """Conditioned-ensemble uncertainty diagnostic for Example 5 / paper Experiment E1.
 
-On the frozen 2,131-capture / 33-site spread-error cohort, compares multi-algorithm
-retrieval spread (sample std among available OpenET ETf members at a
+On the run's frozen spread-error cohort (Run 22: 2,131 captures / 33 sites),
+compares multi-algorithm retrieval spread (sample std among available OpenET ETf members at a
 capture) with conditioned simulation spread (dispersion among ETf
-simulations from the 199 non-base final PEST++ IES realizations) as
+simulations from the surviving non-base final PEST++ IES realizations; 199 for Run 22,
+198 for Run 23 after one forward-run failure) as
 indicators of external SWIM-RS ETf error (effective-parameter prediction
 minus flux-derived ETf), and scores the central 90% parameter-conditional
 envelope as an empirical coverage diagnostic.
 
-Read-only with respect to canonical Run 22 artifacts: the only writes are
-to the dedicated output directory and the results note. The forward model
+Read-only with respect to the run's calibration artifacts: the only writes
+are to the dedicated output directory (default
+``<results_root>/<run>/conditioned_ensemble_uncertainty/``, results note
+included). Cohort size, site count and realization count are read from the
+run's own archive and ``spread_error`` outputs; the Run 22 plan values are kept
+only as printed expectations. The forward model
 runs once with effective (componentwise median) parameters through the
 canonical evaluator; no calibration, no Earth Engine.
 
 Usage:
-    uv run python conditioned_ensemble_uncertainty.py
+    uv run python conditioned_ensemble_uncertainty.py [--run run23]
 """
 
 import argparse
@@ -43,18 +48,27 @@ PROJECT_DIR = Path(__file__).resolve().parent
 
 
 class _CanonicalInputs(dict):
-    """Canonical Run 22 inputs (plan section 3), resolved from the TOML root on
+    """Inputs of one Ex5 run (plan section 3), resolved from the TOML root on
     first access so importing this module reads no configuration. No automatic
-    result discovery."""
+    result discovery. The run tag defaults to ``ex5_paths.CANONICAL_RUN``."""
+
+    def __init__(self, run=ex5_paths.CANONICAL_RUN):
+        super().__init__()
+        self.run = run
+
+    def set_run(self, run):
+        self.clear()
+        self.run = run
 
     def _resolve(self):
         cfg = ex5_paths.load_config()
-        run_dir = ex5_paths.run_dir(cfg=cfg)
+        run_dir = ex5_paths.run_dir(self.run, cfg=cfg)
         self.update(
             {
+                "run": self.run,
                 "config": str(ex5_paths.CANONICAL_CONFIG),
-                "container": ex5_paths.run_container(cfg=cfg),
-                "par_final": ex5_paths.posterior_par_csv(cfg=cfg),
+                "container": ex5_paths.run_container(self.run, cfg=cfg),
+                "par_final": ex5_paths.posterior_par_csv(self.run, cfg=cfg),
                 "obs_final": f"{run_dir}/archive/4_pest_outputs/5_Flux_Ensemble.3.obs.csv",
                 "obs_metadata": f"{run_dir}/archive/3_problem_definition/observation_metadata.csv",
                 "spread_obs": f"{run_dir}/spread_error/spread_error_observations.csv",
@@ -67,6 +81,7 @@ class _CanonicalInputs(dict):
                 "provenance_config": f"{run_dir}/archive/1_provenance/config.toml",
                 "provenance_container_path": f"{run_dir}/archive/1_provenance/container_path.txt",
                 "provenance_manifest": f"{run_dir}/archive/1_provenance/container_manifest.json",
+                "run_metadata": f"{run_dir}/archive/1_provenance/run_metadata.json",
             }
         )
 
@@ -82,25 +97,66 @@ class _CanonicalInputs(dict):
 
 
 CANONICAL = _CanonicalInputs()
-RESULTS_NOTE = str(PROJECT_DIR / "notes" / "conditioned_ensemble_uncertainty_results.md")
+RESULTS_NOTE_NAME = "conditioned_ensemble_uncertainty_results.md"
 
 SEED = 42
 N_BOOT = 10_000
 PERSITE_MIN_OBS = 20
-N_REALIZATIONS = 199
-COHORT_N = 2131
-COHORT_SITES = 33
 
-# Reproduction targets after manuscript rounding (plan section 6.1).
-REPRO_TARGETS = {
+# Run 22 values after manuscript rounding (plan section 6.1). Historical
+# expectations only: printed and recorded in metadata for comparison, never a
+# gate. The gated targets come from the run's own outputs (run_targets()).
+RUN22_PLAN_EXPECTATIONS = {
     "pooled_spearman_3dp": 0.238,
-    "n_obs": COHORT_N,
-    "n_sites": COHORT_SITES,
+    "n_obs": 2131,
+    "n_sites": 33,
     "persite_sites": 27,
     "persite_positive": 26,
     "quintile_rmse_lo_3dp": 0.205,
     "quintile_rmse_hi_3dp": 0.437,
 }
+
+
+def run_targets(inputs=None):
+    """Cohort and realization targets read from the run's archive and spread_error output.
+
+    ``n_realizations`` is the number of numbered (non-base) realizations in
+    the archived posterior parameter ensemble. PEST++ IES drops a realization
+    whose forward run fails (``max_run_fail`` 1), so this can be smaller than
+    the configured ensemble size minus the base; ``n_dropped_realizations``
+    records that difference and Gate C then checks the observation ensemble
+    against the same surviving set. ``n_obs``/``n_sites``/``persite_*`` come
+    from the run's ``spread_error_summary.csv`` (the frozen cohort this
+    diagnostic reuses).
+    """
+    inputs = inputs if inputs is not None else CANONICAL
+    with open(inputs["run_metadata"]) as f:
+        n_configured = int(json.load(f)["realizations"])
+    par_ids = pd.read_csv(inputs["par_final"], usecols=[0]).iloc[:, 0].astype(str)
+    if "base" not in set(par_ids):
+        raise GateError("run_targets: base realization absent from the posterior par ensemble")
+    numbered = [i for i in par_ids if i != "base"]
+    non_numeric = [i for i in numbered if not i.isdigit()]
+    if non_numeric:
+        raise GateError(f"run_targets: non-numeric realization ids {non_numeric[:5]}")
+    n_dropped = n_configured - 1 - len(numbered)
+    if n_dropped < 0:
+        raise GateError(
+            f"run_targets: posterior has {len(numbered)} numbered realizations, "
+            f"more than the configured {n_configured} minus base"
+        )
+    summary = pd.read_csv(inputs["spread_summary"], header=None, index_col=0).squeeze("columns")
+    persite_sites = int(float(summary["persite_n_sites"]))
+    return {
+        "n_realizations": len(numbered),
+        "n_realizations_configured": n_configured,
+        "n_dropped_realizations": n_dropped,
+        "n_obs": int(float(summary["n_observations"])),
+        "n_sites": int(float(summary["n_sites"])),
+        "persite_sites": persite_sites,
+        "persite_positive": int(round(float(summary["persite_frac_positive"]) * persite_sites)),
+    }
+
 
 # Numerical tolerances (recorded in metadata; plan Gate E).
 TOL_ARCHIVE_EXACT = 1e-9  # recomputed vs archived full-precision CSV values
@@ -227,14 +283,14 @@ def map_cohort_to_obsnme(cohort, etf_meta):
     return merged.drop(columns=["target_etf", "ensemble_std"])
 
 
-def gate_b_cohort_identity(merged):
-    ok = len(merged) == COHORT_N and merged["site"].nunique() == COHORT_SITES
+def gate_b_cohort_identity(merged, targets):
+    ok = len(merged) == targets["n_obs"] and merged["site"].nunique() == targets["n_sites"]
     result = {
         "status": "PASS" if ok else "FAIL",
         "n_captures": int(len(merged)),
         "n_sites": int(merged["site"].nunique()),
-        "expected_captures": COHORT_N,
-        "expected_sites": COHORT_SITES,
+        "expected_captures": targets["n_obs"],
+        "expected_sites": targets["n_sites"],
     }
     if not ok:
         raise GateError(f"Gate B failed: {result}")
@@ -261,7 +317,7 @@ def load_conditioned_matrix(obs_csv, obsnames):
     return df[list(obsnames)]
 
 
-def select_numbered_realizations(df, expected=N_REALIZATIONS):
+def select_numbered_realizations(df, expected=None):
     """Exclude the base realization; require exactly `expected` numbered rows."""
     idx = df.index.astype(str)
     if "base" not in set(idx):
@@ -277,7 +333,7 @@ def select_numbered_realizations(df, expected=N_REALIZATIONS):
     return df.loc[sorted(numbered, key=int)]
 
 
-def gate_c_realization_identity(par_df, obs_matrix):
+def gate_c_realization_identity(par_df, obs_matrix, n_realizations):
     par_ids = set(par_df.index.astype(str))
     obs_ids = set(obs_matrix.index.astype(str))
     if par_ids != obs_ids:
@@ -287,8 +343,9 @@ def gate_c_realization_identity(par_df, obs_matrix):
         )
     n_numbered = len(par_ids - {"base"})
     result = {
-        "status": "PASS" if n_numbered == N_REALIZATIONS else "FAIL",
+        "status": "PASS" if n_numbered == n_realizations else "FAIL",
         "n_numbered": n_numbered,
+        "expected_numbered": n_realizations,
         "ids_match": True,
     }
     if result["status"] == "FAIL":
@@ -361,8 +418,12 @@ def retrieval_quintiles(cohort, spread_col="spread", err_col="err_etf", n_bins=5
     return pd.DataFrame(rows)
 
 
-def gate_d_reproduction(cohort, container):
-    """Reproduce plan section 6.1 values and the archived 20-row spot check."""
+def gate_d_reproduction(cohort, container, targets):
+    """Reproduce the run's spread_error values and the archived 20-row spot check.
+
+    Counts are gated against ``targets`` (the run's own outputs); the Run 22
+    plan values are compared and recorded as expectations only.
+    """
     rho, _ = stats.spearmanr(cohort["spread"].values, cohort["abs_err_etf"].values)
     persite = retrieval_persite(cohort)
     n_positive = int((persite["spearman_rho"] > 0).sum())
@@ -392,21 +453,16 @@ def gate_d_reproduction(cohort, container):
         "pooled_rho_archived": archived_rho,
         "pooled_rho_matches_archive": bool(abs(rho - archived_rho) <= TOL_ARCHIVE_EXACT),
         "pooled_rho_3dp": round(float(rho), 3),
-        "pooled_rho_3dp_matches_plan": round(float(rho), 3) == REPRO_TARGETS["pooled_spearman_3dp"],
         "n_obs": int(len(cohort)),
-        "n_obs_matches": len(cohort) == REPRO_TARGETS["n_obs"],
+        "n_obs_matches": len(cohort) == targets["n_obs"],
         "n_sites": int(cohort["site"].nunique()),
-        "n_sites_matches": cohort["site"].nunique() == REPRO_TARGETS["n_sites"],
+        "n_sites_matches": cohort["site"].nunique() == targets["n_sites"],
         "persite_sites": int(len(persite)),
-        "persite_sites_matches": len(persite) == REPRO_TARGETS["persite_sites"],
+        "persite_sites_matches": len(persite) == targets["persite_sites"],
         "persite_positive": n_positive,
-        "persite_positive_matches": n_positive == REPRO_TARGETS["persite_positive"],
+        "persite_positive_matches": n_positive == targets["persite_positive"],
         "quintile_rmse_lo": float(quint["RMSE"].iloc[0]),
         "quintile_rmse_hi": float(quint["RMSE"].iloc[-1]),
-        "quintile_rmse_lo_3dp_matches": round(float(quint["RMSE"].iloc[0]), 3)
-        == REPRO_TARGETS["quintile_rmse_lo_3dp"],
-        "quintile_rmse_hi_3dp_matches": round(float(quint["RMSE"].iloc[-1]), 3)
-        == REPRO_TARGETS["quintile_rmse_hi_3dp"],
         "quintile_bins_match": bool(quintile_bins_match),
         "quintile_monotonic": quintile_monotonic,
         "quintile_rmse_matches_archive": bool(
@@ -423,13 +479,10 @@ def gate_d_reproduction(cohort, container):
 
     required = [
         "pooled_rho_matches_archive",
-        "pooled_rho_3dp_matches_plan",
         "n_obs_matches",
         "n_sites_matches",
         "persite_sites_matches",
         "persite_positive_matches",
-        "quintile_rmse_lo_3dp_matches",
-        "quintile_rmse_hi_3dp_matches",
         "quintile_bins_match",
         "quintile_monotonic",
         "quintile_rmse_matches_archive",
@@ -441,7 +494,26 @@ def gate_d_reproduction(cohort, container):
     if checks["status"] == "FAIL":
         failed = [k for k in required if not checks[k]]
         raise GateError(f"Gate D failed on {failed}: {checks}")
+    checks["run22_plan_expectations"] = run22_expectation_comparison(checks)
     return checks
+
+
+def run22_expectation_comparison(checks):
+    """Compare the reproduced values with the Run 22 plan values (recorded, not gated)."""
+    exp = RUN22_PLAN_EXPECTATIONS
+    observed = {
+        "pooled_spearman_3dp": checks["pooled_rho_3dp"],
+        "n_obs": checks["n_obs"],
+        "n_sites": checks["n_sites"],
+        "persite_sites": checks["persite_sites"],
+        "persite_positive": checks["persite_positive"],
+        "quintile_rmse_lo_3dp": round(checks["quintile_rmse_lo"], 3),
+        "quintile_rmse_hi_3dp": round(checks["quintile_rmse_hi"], 3),
+    }
+    return {
+        k: {"run22_plan": exp[k], "this_run": observed[k], "equal": observed[k] == exp[k]}
+        for k in exp
+    }
 
 
 def reproduce_spot_check(spot_csv, container):
@@ -1098,13 +1170,16 @@ def write_results_note(path, meta, summary_rows, contraction_summary):
 # ---------------------------------------------------------------------------
 
 
-def main(out_dir=None, n_boot=N_BOOT):
+def main(out_dir=None, n_boot=N_BOOT, run=ex5_paths.CANONICAL_RUN):
     t0 = time.time()
+    CANONICAL.set_run(run)
     if out_dir is None:
-        out_dir = os.path.join(ex5_paths.run_dir(), "conditioned_ensemble_uncertainty")
+        out_dir = os.path.join(ex5_paths.run_dir(run), "conditioned_ensemble_uncertainty")
     os.makedirs(out_dir, exist_ok=True)
+    results_note = os.path.join(out_dir, RESULTS_NOTE_NAME)
     meta = {
         "started": datetime.now(tz=UTC).isoformat(),
+        "run": run,
         "plan": "examples/5_Flux_Ensemble/notes/conditioned_ensemble_uncertainty_plan.md",
         "canonical_inputs": CANONICAL.resolved(),
         "out_dir": out_dir,
@@ -1143,31 +1218,42 @@ def main(out_dir=None, n_boot=N_BOOT):
         meta["gates"]["A"] = gate_a_canonical_identity()
         print(f"  PASS (config matches archive: {meta['gates']['A']['config_matches_archive']})")
 
+        targets = run_targets()
+        meta["run_targets"] = targets
+        print(f"  run targets (from {run} archive + spread_error): {targets}")
+
         print("=== Gate B: cohort identity ===")
         cohort = load_frozen_cohort(CANONICAL["spread_obs"])
         etf_meta = load_obs_metadata_etf(CANONICAL["obs_metadata"])
         merged = map_cohort_to_obsnme(cohort, etf_meta)
-        meta["gates"]["B"] = gate_b_cohort_identity(merged)
+        meta["gates"]["B"] = gate_b_cohort_identity(merged, targets)
         print(f"  PASS ({len(merged)} captures, {merged['site'].nunique()} sites)")
 
         print("=== Gate C: realization identity ===")
         obs_matrix_all = load_conditioned_matrix(CANONICAL["obs_final"], merged["obsnme"].tolist())
         par_all = pd.read_csv(CANONICAL["par_final"], index_col=0)
         par_all.index = par_all.index.astype(str)
-        meta["gates"]["C"] = gate_c_realization_identity(par_all, obs_matrix_all)
-        obs_matrix = select_numbered_realizations(obs_matrix_all)
+        meta["gates"]["C"] = gate_c_realization_identity(
+            par_all, obs_matrix_all, targets["n_realizations"]
+        )
+        obs_matrix = select_numbered_realizations(
+            obs_matrix_all, expected=targets["n_realizations"]
+        )
         print(f"  PASS ({len(obs_matrix)} numbered realizations, base excluded)")
 
         cond = conditioned_stats(obs_matrix)
 
         print("=== Gate D: existing-result reproduction ===")
         container = SwimContainer.open(CANONICAL["container"], mode="r")
-        meta["gates"]["D"] = gate_d_reproduction(cohort, container)
+        meta["gates"]["D"] = gate_d_reproduction(cohort, container, targets)
         print(
             f"  PASS (pooled rho {meta['gates']['D']['pooled_rho_3dp']}, "
             f"{meta['gates']['D']['persite_positive']}/{meta['gates']['D']['persite_sites']} "
             "positive per-site)"
         )
+        for k, v in meta["gates"]["D"]["run22_plan_expectations"].items():
+            flag = "" if v["equal"] else "  (differs; expectation only)"
+            print(f"  Run 22 plan {k}: {v['run22_plan']} vs {run} {v['this_run']}{flag}")
 
         print("=== Gate E: central-prediction identity ===")
         cfg = ev.load_config(CANONICAL["config"])
@@ -1320,7 +1406,7 @@ def main(out_dir=None, n_boot=N_BOOT):
             par_prior = pd.read_csv(CANONICAL["par_prior"], index_col=0)
             par_prior.index = par_prior.index.astype(str)
             par_prior_n = select_numbered_realizations(par_prior, expected=None)
-            par_final_n = select_numbered_realizations(par_all)
+            par_final_n = select_numbered_realizations(par_all, expected=targets["n_realizations"])
             contraction_persite, contraction_summary = contraction_table(
                 par_prior_n, par_final_n, fids
             )
@@ -1354,9 +1440,9 @@ def main(out_dir=None, n_boot=N_BOOT):
         with open(os.path.join(out_dir, "uncertainty_metadata.json"), "w") as f:
             json.dump(meta, f, indent=2)
 
-        write_results_note(RESULTS_NOTE, meta, summary_rows, contraction_summary)
+        write_results_note(results_note, meta, summary_rows, contraction_summary)
         print(f"\nAll gates passed. Outputs in {out_dir}")
-        print(f"Results note: {RESULTS_NOTE}")
+        print(f"Results note: {results_note}")
         print(f"Runtime {meta['runtime_s']:.0f} s, peak RSS {meta['peak_rss_mb']:.0f} MB")
 
     except (GateError, ValueError) as exc:
@@ -1369,10 +1455,16 @@ def main(out_dir=None, n_boot=N_BOOT):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--run",
+        type=str,
+        default=ex5_paths.CANONICAL_RUN,
+        help=f"Ex5 run tag under the results root (default {ex5_paths.CANONICAL_RUN})",
+    )
+    parser.add_argument(
         "--out-dir",
         type=str,
         default=None,
-        help="default: <run22>/conditioned_ensemble_uncertainty",
+        help="default: <results_root>/<run>/conditioned_ensemble_uncertainty",
     )
     parser.add_argument(
         "--n-boot",
@@ -1381,4 +1473,4 @@ if __name__ == "__main__":
         help="bootstrap replicates (non-canonical if changed; recorded in metadata)",
     )
     args = parser.parse_args()
-    main(out_dir=args.out_dir, n_boot=args.n_boot)
+    main(out_dir=args.out_dir, n_boot=args.n_boot, run=args.run)
