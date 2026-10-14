@@ -232,3 +232,6 @@ token.json
 # Example 6 retired scripts (ECOSTRESS ablation, pilots, diagnostics not reported in the paper)
 /examples/5_Flux_Ensemble/legacy/
 /examples/6_Flux_International/legacy/
+
+/examples/10_OR_Irrigation_Test/data/*
+!/examples/10_OR_Irrigation_Test/data/gis/

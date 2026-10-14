@@ -421,6 +421,76 @@ class TestComputeIrrigationDataLulc:
         flags = self._flags(self._run(ds, "annual_2yr", lulc=(30, "glc10")), years)
         assert all(v == 0 for v in flags.values())
 
+    def test_cdl_gate_admits_cultivated_field_glc10_calls_grassland(self):
+        """cropland_source="cdl": a cultivated CDL history opens the gate even
+        when GLC10 reads the field as grassland (the wheat-fallow failure)."""
+        years = [2019, 2020, 2021]
+        ds = self._make_ds(years, irrigated_all=True)
+        calc = _make_calculator()
+        calc._get_lulc_by_site = MagicMock(return_value={"A": (30, "glc10")})
+        calc._get_cdl_cultivated_by_site = MagicMock(return_value={"A": True})
+        kw = dict(
+            irr_threshold=0.3,
+            lookback=10,
+            ndvi_threshold=0.3,
+            ndvi_min_start=0.25,
+            min_pos_days=10,
+            use_mask=False,
+            use_lulc=True,
+            lulc_irr_method="annual_2yr",
+        )
+        flags = self._flags(calc._compute_irrigation_data(ds, cropland_source="cdl", **kw), years)
+        assert all(v == 1 for v in flags.values())
+        # default source ignores CDL and keeps the GLC10 verdict
+        flags = self._flags(calc._compute_irrigation_data(ds, **kw), years)
+        assert all(v == 0 for v in flags.values())
+
+    def test_cdl_gate_blocks_uncultivated_field_glc10_calls_cropland(self):
+        years = [2019, 2020, 2021]
+        ds = self._make_ds(years, irrigated_all=True)
+        calc = _make_calculator()
+        calc._get_lulc_by_site = MagicMock(return_value={"A": (10, "glc10")})
+        calc._get_cdl_cultivated_by_site = MagicMock(return_value={"A": False})
+        flags = self._flags(
+            calc._compute_irrigation_data(
+                ds,
+                irr_threshold=0.3,
+                lookback=10,
+                ndvi_threshold=0.3,
+                ndvi_min_start=0.25,
+                min_pos_days=10,
+                use_mask=False,
+                use_lulc=True,
+                lulc_irr_method="annual_2yr",
+                cropland_source="cdl",
+            ),
+            years,
+        )
+        assert all(v == 0 for v in flags.values())
+
+    def test_cdl_gate_falls_back_to_lulc_without_cdl_evidence(self):
+        years = [2019, 2020, 2021]
+        ds = self._make_ds(years, irrigated_all=True)
+        calc = _make_calculator()
+        calc._get_lulc_by_site = MagicMock(return_value={"A": (10, "glc10")})
+        calc._get_cdl_cultivated_by_site = MagicMock(return_value={})
+        flags = self._flags(
+            calc._compute_irrigation_data(
+                ds,
+                irr_threshold=0.3,
+                lookback=10,
+                ndvi_threshold=0.3,
+                ndvi_min_start=0.25,
+                min_pos_days=10,
+                use_mask=False,
+                use_lulc=True,
+                lulc_irr_method="annual_2yr",
+                cropland_source="cdl",
+            ),
+            years,
+        )
+        assert all(v == 1 for v in flags.values())
+
     def test_third_floor_ignores_isolated_subsidy_year(self):
         """Stage 1 one-third floor: one high-ratio year does not equip a dryland.
 

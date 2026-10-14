@@ -270,6 +270,7 @@ class Calculator(Component):
         annual_retain_ratio: float = 1.1,
         season_storage_mm: float = 150.0,
         etf_gap_fallback_model: str | None = None,
+        cropland_source: str = "lulc",
     ) -> ProvenanceEvent:
         """
         Compute field dynamics: irrigation detection, groundwater subsidy, K-parameters.
@@ -341,6 +342,12 @@ class Calculator(Component):
                 solely on use_mask/use_lulc for irrigation classification.
             lulc_irr_method: Subsidy test for use_lulc mode — "annual_2yr"
                 (default), "annual", or "monthly" (legacy). See above.
+            cropland_source: Where the cropland gate reads from. "lulc"
+                (default): FROM-GLC10 class, MODIS as fallback. "cdl": the
+                multi-year CDL cultivated flag (properties/land_cover/
+                cdl_cultivated), falling back to LULC where CDL is fill or
+                absent — for CONUS fields where the single-epoch GLC10 map
+                misreads cultivated land (e.g. wheat-fallow as grassland).
             annual_subsidy_ratio: ET/PPT ratio above which a balance window is
                 treated as subsidized — used by the Stage 1 site one-third
                 test and the Stage 2 demand-season test (default 1.3).
@@ -435,6 +442,7 @@ class Calculator(Component):
                 annual_subsidy_ratio=annual_subsidy_ratio,
                 annual_retain_ratio=annual_retain_ratio,
                 season_storage_mm=season_storage_mm,
+                cropland_source=cropland_source,
             )
 
             # Write results
@@ -1099,6 +1107,7 @@ class Calculator(Component):
         annual_subsidy_ratio: float = 1.3,
         annual_retain_ratio: float = 1.1,
         season_storage_mm: float = 150.0,
+        cropland_source: str = "lulc",
     ) -> dict[str, dict]:
         """
         Compute irrigation windows for each field and year.
@@ -1139,6 +1148,13 @@ class Calculator(Component):
 
         # LULC needed for both paths: use_lulc (original) and use_mask (fallback)
         lulc_by_site = self._get_lulc_by_site(ds.coords["site"].values)
+        if cropland_source not in ("lulc", "cdl"):
+            raise ValueError(f"cropland_source must be 'lulc' or 'cdl', got {cropland_source!r}")
+        cdl_by_site = (
+            self._get_cdl_cultivated_by_site(ds.coords["site"].values)
+            if cropland_source == "cdl"
+            else {}
+        )
 
         # Track years needing backfill (irrigated but no windows detected)
         backfill_tracker = {}
@@ -1152,6 +1168,9 @@ class Calculator(Component):
             # Check if field is cropped
             lulc_info = lulc_by_site.get(site_str)
             cropped = schema.is_cropland(*lulc_info) if lulc_info else False
+            if site_str in cdl_by_site:
+                # CDL cultivated history takes precedence over the LULC class
+                cropped = cdl_by_site[site_str]
             if not use_lulc and lulc_info is None:
                 # No LULC in the container: keep the legacy CONUS assumption
                 # that a gwsub-subsidized field is cropped so the fallback can
@@ -1403,6 +1422,28 @@ class Calculator(Component):
                 if not np.isnan(val) and int(val) != -1:
                     result[site_str] = (int(val), "modis")
 
+        return result
+
+    def _get_cdl_cultivated_by_site(self, sites: np.ndarray) -> dict[str, bool]:
+        """Get the CDL cultivated flag per site from container properties.
+
+        Returns dict mapping site_str -> bool for sites whose
+        ``properties/land_cover/cdl_cultivated`` is not fill (-1); sites with
+        no CDL evidence are omitted so the caller falls back to LULC.
+        """
+        path = "properties/land_cover/cdl_cultivated"
+        if path not in self._state.root:
+            return {}
+        arr = self._state.root[path]
+        result = {}
+        for site in sites:
+            site_str = str(site)
+            if site_str not in self._state._uid_to_index:
+                continue
+            val = arr[self._state._uid_to_index[site_str]]
+            if val is None or (isinstance(val, float) and np.isnan(val)) or int(val) < 0:
+                continue
+            result[site_str] = int(val) == 1
         return result
 
     def _get_yearly_irrigation_properties(self) -> dict[str, dict[str, float]]:
