@@ -1,0 +1,114 @@
+"""Tests for ``scripts/package_reproduction_data.py`` (file selection and trimming rules)."""
+
+import importlib.util
+import tarfile
+from pathlib import Path
+
+import pytest
+
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "package_reproduction_data.py"
+
+
+@pytest.fixture(scope="module")
+def pkg():
+    spec = importlib.util.spec_from_file_location("package_reproduction_data", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _touch(path, size=1):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"x" * size)
+
+
+@pytest.fixture
+def fake_root(tmp_path):
+    root = tmp_path / "swim"
+    run = root / "5_Flux_Ensemble" / "results" / "run23"
+    _touch(run / "5_Flux_Ensemble.3.par.csv", 3)
+    _touch(run / "pestrun_kept" / "worker_0" / "big.bin", 100)
+    _touch(run / "archive" / "4_pest_outputs" / "5_Flux_Ensemble.3.obs.csv", 50)
+    _touch(run / "archive" / "4_pest_outputs" / "5_Flux_Ensemble.0.obs.csv", 50)
+    _touch(run / "archive" / "4_pest_outputs" / "5_Flux_Ensemble.0.par.csv", 2)
+    _touch(run / "archive" / "3_problem_definition" / "loc.mat", 40)
+    _touch(run / "archive" / "3_problem_definition" / "run23.pst", 4)
+    _touch(run / "archive" / "6_evaluation" / "site_daily_timeseries" / "US-Ne1.csv", 5)
+    _touch(run / "__pycache__" / "x.pyc", 1)
+    _touch(root / "5_Flux_Ensemble" / "data" / "5_Flux_Ensemble_run23.swim.lock", 0)
+    _touch(root / "5_Flux_Ensemble" / "data" / "5_Flux_Ensemble_run23.swim" / "zarr.json", 6)
+    e7 = root / "7_Applied_Water" / "results" / "e7cal"
+    _touch(e7 / "archive" / "4_pest_outputs" / "batch_000" / "7_Applied_Water.3.obs.csv", 30)
+    _touch(e7 / "archive" / "4_pest_outputs" / "batch_000" / "7_Applied_Water.base.rei", 30)
+    _touch(e7 / "archive" / "4_pest_outputs" / "merged" / "merged_posterior.json", 7)
+    _touch(e7 / "archive_superseded_singlerun" / "old.json", 8)
+    return root
+
+
+def test_collect_applies_the_trimming_rules(pkg, fake_root):
+    files = dict(
+        pkg.collect(
+            fake_root,
+            ["5_Flux_Ensemble/results/run23", "5_Flux_Ensemble/data/5_Flux_Ensemble_run23.swim"],
+        )
+    )
+    assert "5_Flux_Ensemble/results/run23/5_Flux_Ensemble.3.par.csv" in files
+    assert "5_Flux_Ensemble/results/run23/archive/4_pest_outputs/5_Flux_Ensemble.3.obs.csv" in files
+    assert "5_Flux_Ensemble/results/run23/archive/4_pest_outputs/5_Flux_Ensemble.0.par.csv" in files
+    assert "5_Flux_Ensemble/results/run23/archive/3_problem_definition/run23.pst" in files
+    assert (
+        "5_Flux_Ensemble/results/run23/archive/6_evaluation/site_daily_timeseries/US-Ne1.csv"
+        in files
+    )
+    assert "5_Flux_Ensemble/data/5_Flux_Ensemble_run23.swim/zarr.json" in files
+    dropped = {
+        "5_Flux_Ensemble/results/run23/pestrun_kept/worker_0/big.bin",
+        "5_Flux_Ensemble/results/run23/archive/4_pest_outputs/5_Flux_Ensemble.0.obs.csv",
+        "5_Flux_Ensemble/results/run23/archive/3_problem_definition/loc.mat",
+        "5_Flux_Ensemble/results/run23/__pycache__/x.pyc",
+    }
+    assert not dropped & set(files)
+    assert sum(files.values()) == 3 + 50 + 2 + 4 + 5 + 6
+
+
+def test_collect_excludes_batch_ensembles_and_superseded_dirs(pkg, fake_root):
+    files = dict(
+        pkg.collect(
+            fake_root, ["7_Applied_Water/results/e7cal"], exclude_dirs=["archive_superseded_*"]
+        )
+    )
+    assert set(files) == {
+        "7_Applied_Water/results/e7cal/archive/4_pest_outputs/merged/merged_posterior.json"
+    }
+
+
+def test_collect_refuses_a_missing_item(pkg, fake_root):
+    with pytest.raises(FileNotFoundError, match="package item missing"):
+        pkg.collect(fake_root, ["5_Flux_Ensemble/results/run99"])
+
+
+def test_write_tar_keeps_relative_members_and_sidecars(pkg, fake_root, tmp_path):
+    files = pkg.collect(fake_root, ["5_Flux_Ensemble/results/run23"])
+    out = tmp_path / "stage" / "swim_data_test.tar.gz"
+    out.parent.mkdir()
+    digest = pkg.write_tar(fake_root, files, out)
+    with tarfile.open(out) as tf:
+        names = sorted(m.name for m in tf.getmembers() if m.isfile())
+    assert names == sorted(rel for rel, _ in files)
+    assert (tmp_path / "stage" / "swim_data_test.sha256").read_text().split()[0] == digest
+    listing = (tmp_path / "stage" / "swim_data_test.files.txt").read_text().splitlines()
+    assert len(listing) == len(files) and listing[0].split("\t")[1] in names
+    assert not list((tmp_path / "stage").glob("*.list"))
+
+
+def test_every_package_item_exists_on_this_machine_or_is_skipped(pkg):
+    """Dry-run guard: on the authoring machine every declared item must exist."""
+    root = pkg.swim_root()
+    if not root.exists():
+        pytest.skip(f"data root {root} not present")
+    for key, spec in pkg.ROOT_PACKAGES.items():
+        for item in spec["items"]:
+            assert (root / item).exists(), f"{key}: {item}"
+    for key, spec in pkg.REPO_PACKAGES.items():
+        for item in spec["items"]:
+            assert (pkg.REPO / item).exists(), f"{key}: {item}"
