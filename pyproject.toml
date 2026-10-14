@@ -124,7 +124,7 @@ filterwarnings = [
 addopts = "-v --tb=short"
 
 [tool.uv.sources]
-openet-ptjpl = { path = "../openet-ptjpl", editable = true }
+openet-ptjpl = { git = "https://github.com/Open-ET/openet-ptjpl.git", rev = "f52b640de65c290f2713505ea63e94bc54f7ca05" }
 
 [dependency-groups]
 dev = [

@@ -1258,23 +1258,13 @@ sdist = { url = "https://files.pythonhosted.org/packages/d8/a3/d69f693a9d36354fb
 [[package]]
 name = "openet-ptjpl"
 version = "0.5.0"
-source = { editable = "../openet-ptjpl" }
+source = { git = "https://github.com/Open-ET/openet-ptjpl.git?rev=f52b640de65c290f2713505ea63e94bc54f7ca05#f52b640de65c290f2713505ea63e94bc54f7ca05" }
 dependencies = [
     { name = "earthengine-api" },
     { name = "openet-core" },
     { name = "openet-refet-gee" },
     { name = "python-dateutil" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "earthengine-api", specifier = ">=1.5.2" },
-    { name = "openet-core", specifier = ">=0.7.0" },
-    { name = "openet-refet-gee", specifier = ">=0.7.1" },
-    { name = "pytest", marker = "extra == 'test'" },
-    { name = "python-dateutil" },
-]
-provides-extras = ["test"]
 
 [[package]]
 name = "openet-refet-gee"
@@ -1411,7 +1401,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess" },
+    { name = "ptyprocess", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
@@ -2633,7 +2623,7 @@ requires-dist = [
     { name = "numpy" },
     { name = "openet-disalexi", marker = "extra == 'openet'" },
     { name = "openet-geesebal", marker = "extra == 'openet'" },
-    { name = "openet-ptjpl", marker = "extra == 'openet'", editable = "../openet-ptjpl" },
+    { name = "openet-ptjpl", marker = "extra == 'openet'", git = "https://github.com/Open-ET/openet-ptjpl.git?rev=f52b640de65c290f2713505ea63e94bc54f7ca05" },
     { name = "openet-refet-gee", marker = "extra == 'openet'" },
     { name = "openet-sims", marker = "extra == 'openet'" },
     { name = "openet-ssebop", marker = "extra == 'openet'" },
@@ -2668,7 +2658,7 @@ dev = [
     { name = "ipykernel", specifier = ">=7.1.0" },
     { name = "kaleido", specifier = ">=1.2.0" },
     { name = "nbconvert", specifier = ">=7.17.0" },
-    { name = "openet-ptjpl", editable = "../openet-ptjpl" },
+    { name = "openet-ptjpl", git = "https://github.com/Open-ET/openet-ptjpl.git?rev=f52b640de65c290f2713505ea63e94bc54f7ca05" },
     { name = "openpyxl", specifier = ">=3.1.5" },
 ]
 
