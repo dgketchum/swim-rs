@@ -4,9 +4,14 @@ Fifty sprinkler-irrigated fields in Colorado's San Luis Valley (SLV), each
 served by one metered groundwater well, 2000–2024 model window with metered
 pumping 2011–2021. SWIM-RS simulates irrigation internally from the satellite
 ET-fraction record; the metered volume is revealed only at scoring, never used
-as a model input. Two parameter paths are scored on the same 408 field-years:
+as a model input. Two parameter paths are scored on the same 404 field-years:
 calibration at each field (E1 method, six-member OpenET v2.1 ETf target) and
 the E1-derived irrigated parameter set applied without local calibration.
+Four 2019 rows of `metered_truth.csv` (SLV_013, SLV_024, SLV_025, SLV_034) are
+withheld from every scorer through `ex7_paths.EXCLUDED_FIELD_YEARS`: the RGDSS
+2019 parcel-well link resolves each to another cohort field's well. Re-apply the
+exclusion to an existing evaluator output with `evaluate_applied_water.py
+--rescore --label <label>` (no forward run).
 
 The build covers 110 fields: the 50 SLV fields, 50 metered Idaho Eastern Snake
 Plain Aquifer (ESPA) fields, and 10 ESPA rainfed negative controls. The paper
@@ -23,7 +28,7 @@ This directory produces:
 
 | Paper artifact | Analysis | Output |
 |---|---|---|
-| Table 6, Fig. 6, and the §3.4 bootstrap sentence | `evaluate_applied_water.py`, once per parameter path | `results/applied_calibrated/per_field_year.csv`, `results/applied_transfer_run22_by_irrigation/per_field_year.csv` |
+| Table 6, Fig. 6, and the §3.4 bootstrap sentence | `evaluate_applied_water.py`, once per parameter path | `results/applied_calibrated/per_field_year.csv`, `results/applied_transfer_run23_by_irrigation/per_field_year.csv` |
 | (same, last hop) | `scripts/figures/build_figure_data.py --only fig06 --only fig06_bootstrap`: SLV re-cut, the nine statistics, 10,000 whole-field resamples (seed 42) | `paper/data/final/figures/fig06_{field_years,field_summaries,bootstrap_effects}.csv` |
 | Fig. 1 SLV panel | `build_figure_data.py --only fig01` reads the e7cal container geometry and the HUC8 context layer | `paper/data/final/figures/fig01_*` |
 | Supplement S5.2 (field selection rules) | `select_fields.py` constants and `select_slv()` | `metered_truth.csv`, `notes/selection_qc.md` |
@@ -75,7 +80,7 @@ external IDWR 2015 irrigated-lands shapefile in `select_fields.py`.
 | ESPA control gate | `data/idwr_wmis/espa_control_irrmapper.csv` | `espa_control_irrmapper.py` |
 | Cohort shapefile and truth table | `{root}/7_Applied_Water/data/gis/applied_water_fields.shp`, `examples/7_Applied_Water/data/metered_truth.csv` | `select_fields.py` |
 | Meteorology, soils, snow, irrigation status, NDVI, ETf | `{root}/7_Applied_Water/data/` and `examples/7_Applied_Water/data/{etf_v21_openet_eto,openet_refet}/` | `data_extract.py` (GridMET, SSURGO, SNODAS, IrrMapper, OpenET v2.1) |
-| Transfer-arm parameter vectors | `paper/data/final/e2_run22_transfer_vectors_by_irrigation.json` | Example 5 (paper E1, Run 22) |
+| Transfer-arm parameter vectors | `paper/data/final/e2_run23_transfer_vectors_by_irrigation.json` | Example 5 (paper E1, Run 23) |
 | Containers | `{root}/7_Applied_Water/data/7_Applied_Water.swim` (base), `7_Applied_Water_e7cal.swim` (run) | `container_prep.py`, `build_container.py` |
 
 `metered_truth.csv` holds `site_id, year, metered_depth_mm, metered_volume_af,
@@ -151,7 +156,7 @@ uv run python $EX7/evaluate_applied_water.py --container $E7/data/7_Applied_Wate
 
 ```bash
 uv run python $EX7/build_applied_irrigation_mapping.py --verify-keys $E7/results/applied_calibrated/per_field_year.csv
-uv run python $EX7/evaluate_applied_water.py --container $E7/data/7_Applied_Water_e7cal.swim --params-json paper/data/final/e4_irrigation_stratified_param_mapping.json --label transfer_run22_by_irrigation
+uv run python $EX7/evaluate_applied_water.py --container $E7/data/7_Applied_Water_e7cal.swim --params-json paper/data/final/e4_irrigation_stratified_param_mapping.json --label transfer_run23_by_irrigation
 ```
 
 The mapping builder assigns the irrigated vector to every metered field and the
@@ -168,7 +173,7 @@ uv run python scripts/figures/build_figure_data.py --only fig06 --only fig06_boo
 ```
 
 The builder hardcodes the two `results/applied_*` directories and the e7cal
-container, restricts to `SLV_`, asserts 50 fields and 408 field-years under both
+container, restricts to `SLV_`, asserts 50 fields and 404 field-years under both
 paths with identical metered depths, and writes the `fig06_*` tables from which
 Table 6 and Fig. 6 are typed and drawn.
 
@@ -191,7 +196,8 @@ producer; neither is cited.
 |---|---|---|
 | `results/e7cal/archive/` | RUN_POLICY Cats 1–2, 4–6 for the batch calibration | canonical |
 | `results/applied_calibrated/` | step 6 | canonical; Table 6 / Fig. 6 local arm |
-| `results/applied_transfer_run22_by_irrigation/` | step 7 | canonical; Table 6 / Fig. 6 transfer arm |
+| `results/applied_transfer_run23_by_irrigation/` | step 7 (driver `transfer_rebuild_run23.sh`, copy in its `provenance/`) | canonical; Table 6 / Fig. 6 transfer arm |
+| `results/applied_transfer_run22_by_irrigation/` | step 7 on the Run 22 vector | superseded 2026-09-26 (`SUPERSEDES.md`) |
 | `results/applied_transfer/`, `applied_transfer_run22/`, `applied_local_vs_transfer_run22/`, `COMPARISON.md` | step 9 and earlier 110-field cuts | supporting |
 | `results/e7cal/archive_superseded_singlerun_20260706/` | pre-launch capture of the abandoned single-run attempt | superseded |
 

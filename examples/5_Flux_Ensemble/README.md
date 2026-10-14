@@ -15,21 +15,30 @@ This directory produces:
 | Table 4, Tables S3 and S5, Fig. 3 (E1 daily and monthly benchmark vs OpenET) | `evaluate.py` | `paper/data/final/e1_openet_benchmark/{daily,monthly}/` |
 | Table S4 (retrieval-date vs between-retrieval support) | `overpass_decomposition.py` on the daily evaluator bundle | `paper/data/final/e1_openet_benchmark/temporal/` |
 | Table S6, Fig. 4d (spread vs fixed observation weighting) | `run_weighting_ablation.py`, rescored by `rebuild_e1_benchmark_evidence.py` | `paper/data/final/e2_weighting_ablation_*.csv` |
-| Fig. 4a–c (member spread vs error; conditioned-ensemble spread) | `spread_error.py`, `conditioned_ensemble_uncertainty.py` | `paper/data/final/e2_spread_error_*.csv`; `results/run22/conditioned_ensemble_uncertainty/` |
+| Fig. 4a–c (member spread vs error; conditioned-ensemble spread) | `spread_error.py`, `conditioned_ensemble_uncertainty.py` | `paper/data/final/e2_spread_error_*.csv`; `results/run23/conditioned_ensemble_uncertainty/` |
 | Table S7, Fig. 5a (within-E1 parameter transfer) | `within_e1_transfer.py`, promoted by `promote_final.py` | `paper/data/final/e2_irrigation_stratified_*.csv`, `e2_within_transfer_*.csv` |
-| Fig. 5b, Table S2 (E1 vectors transferred into E2) | Example 6 `transfer/` reads the Run 22 posterior | `paper/data/final/e2_run22_transfer_vector*.json` |
+| Fig. 5b, Table S2 (E1 vectors transferred into E2) | Example 6 `transfer/` reads the Run 23 posterior | `paper/data/final/e2_run23_transfer_vector*.json` |
 
-**Status (2026-09-21).** The published calibration is Run 22 (recalibrated
-2026-07-02). The benchmark package was frozen on 2026-09-01; its
-`MANIFEST.json` pins the sha256 of every input and of the analysis code, and
-`rebuild_e1_benchmark_evidence.py --verify` checks the rest of the `e2_*`
-files against `e2_evidence_metadata.json`. The E0 vegetation-formulation
+**Status (2026-10-14).** The published calibration is Run 23 (2026-09-26):
+the Run 22 settings recalibrated on the container rebuilt after the ETf
+extraction's reference-ET join was moved to the calendar day of the scene
+(`container_build/correct_eto_offset.py` corrects the existing extract tables;
+`container_build/diff_run_containers.py` and `compare_problem_definition.py`
+are the two gates that the rebuilt container and problem differ only there).
+`promote_e1_run.py` re-promoted the benchmark package from Run 23 on
+2026-09-26; its `MANIFEST.json` pins the sha256 of every input and of the
+analysis code, and `rebuild_e1_benchmark_evidence.py --verify` checks the
+rest of the `e2_*` files against `e2_evidence_metadata.json`. Run 22 stays on
+disk under `results/run22/` and its frozen products under
+`paper/data/final/superseded_e1_run22_nextday_eto*/`; nothing in the paper
+reads them. The E0 vegetation-formulation
 experiment (Table 3, Fig. 2) is run in Example 6 on the 37 sites outside this
 cohort; the earlier 60-site arms are retired to the untracked `legacy/`.
 
 Two identifiers predate the paper numbering and are kept because frozen
-hashes and the figure builder key on them: `run22` is the archive tag of the
-E1 calibration, and `e2_*` filenames and `results/within_e2_transfer*` output
+hashes and the figure builder key on them: `run23` is the archive tag of the
+E1 calibration (`ex5_paths.CANONICAL_RUN`; `run22` is its superseded
+predecessor), and `e2_*` filenames and `results/within_e2_transfer*` output
 directories are the legacy namespace for E1 evidence. Neither is a paper
 experiment label; the mapping lives in
 [`../VALIDATION_POLICY.md`](../VALIDATION_POLICY.md).
@@ -43,15 +52,22 @@ experiment label; the mapping lives in
 ├── container_build/                        raw data → base container → run container (skip if you have the container)
 │   ├── data_extract.py                     Earth Engine, GridMET, OpenET member and reference-ET extraction
 │   ├── container_prep.py                   base container (meteorology, NDVI, properties, flux fields)
-│   └── build_container.py                  run container: six-member target, corrected ETo/ETr, dynamics
+│   ├── build_container.py                  run container: six-member target, corrected ETo/ETr, dynamics
+│   ├── correct_eto_offset.py               Run 23: re-divide the extract tables by the scene-day ETo
+│   └── diff_run_containers.py              Run 23 gate: array-by-array diff of two run containers
 ├── calibrate.py                            PEST++ IES wrapper; archives the trajectory
 ├── archive_run.py                          run-policy archive for a finished calibration
+├── compare_problem_definition.py           Run 23 gate: observation-by-observation diff of two .pst files
 ├── evaluate.py                             daily and monthly benchmark vs flux ET and OpenET
 ├── overpass_decomposition.py               strict consumer of the daily evaluator bundle
 ├── spread_error.py                         member spread vs acquisition-date ETf error
 ├── conditioned_ensemble_uncertainty.py     retrieval spread vs conditioned-parameter spread
 ├── run_weighting_ablation.py               spread vs fixed-SD weighting (two recalibrations)
 ├── within_e1_transfer.py                   leave-region-out / leave-one-site-out transfer, pooled and irrigation-stratified
+├── e1_class_split.py                       irrigation-class split of the frozen benchmark records
+├── e1_period_split.py                      pre-/post-2016 split of the frozen daily record (not in the paper)
+├── promote_e1_run.py                       gated promotion of a run's E1 benchmark package (daily, temporal, manifest)
+├── promote_e1_monthly.py                   gated promotion of the Volk-protocol monthly bundle
 ├── promote_final.py                        tracked producer for the hand-promoted e2_* supporting files
 ├── rebuild_e1_benchmark_evidence.py        rebuild or --verify the frozen e2_* evidence
 ├── data/                                   extracted inputs (gitignored except gis/, see Inputs)
@@ -64,8 +80,8 @@ experiment label; the mapping lives in
 | Input | Location | Configured by |
 |---|---|---|
 | Base container | `{root}/5_Flux_Ensemble/data/5_Flux_Ensemble.swim` | `[paths] container` |
-| Run 22 container | `{root}/5_Flux_Ensemble/data/5_Flux_Ensemble_run22.swim` | `container_build/build_container.py --run run22` |
-| Run 22 posterior | `{root}/5_Flux_Ensemble/results/run22/5_Flux_Ensemble.3.par.csv` | `calibrate.py --results-tag run22` |
+| Run 23 container | `{root}/5_Flux_Ensemble/data/5_Flux_Ensemble_run23.swim` | `container_build/build_container.py --run run23` |
+| Run 23 posterior | `{root}/5_Flux_Ensemble/results/run23/5_Flux_Ensemble.3.par.csv` | `calibrate.py --results-tag run23` |
 | Cohort shapefile (60 sites) | `data/gis/flux_fields.shp` (tracked) and `{root}/5_Flux_Ensemble/data/gis/` | `[paths] fields_shapefile` |
 | Flux truth, Volk v2.1 closure-corrected daily ET | `{root}/5_Flux_Ensemble/data/daily_flux_files_2pt1/` | `[validation] flux_dir` |
 | OpenET benchmark, 3 x 3 MAD-filtered v2.1 ensemble at the towers | `{root}/5_Flux_Ensemble/data/openet_flux_2pt1/{daily,monthly}_data/` | `OPENET_SOURCE_DIRNAME` in `evaluate.py` |
@@ -84,27 +100,27 @@ separately. File presence is not a completeness test.
 
 Commands run from the repository root with `EX5=examples/5_Flux_Ensemble`,
 `CFG=$EX5/5_Flux_Ensemble.toml`, `DATA={root}/5_Flux_Ensemble/data`, and
-`RUN22={root}/5_Flux_Ensemble/results/run22`. Steps 1 and 2 are expensive;
+`RUN23={root}/5_Flux_Ensemble/results/run23`. Steps 1 and 2 are expensive;
 steps 3 onward reproduce the paper from the calibrated container and posterior.
 
 **1. Build the run container** (only if you do not have
-`5_Flux_Ensemble_run22.swim`; see Rebuilding the container below)
+`5_Flux_Ensemble_run23.swim`; see Rebuilding the container below)
 
 **2. Calibrate** (PEST++ IES; hours on a workstation)
 
 ```bash
-uv run python $EX5/calibrate.py --config $CFG --container $DATA/5_Flux_Ensemble_run22.swim --results-tag run22 --keep-pestrun
-uv run python $EX5/archive_run.py --results-tag run22 --container $DATA/5_Flux_Ensemble_run22.swim
+uv run python $EX5/calibrate.py --config $CFG --container $DATA/5_Flux_Ensemble_run23.swim --etf-target-model ensemble --results-tag run23 --keep-pestrun
+uv run python $EX5/archive_run.py --results-tag run23 --container $DATA/5_Flux_Ensemble_run23.swim
 ```
 
-`archive_run.py` writes the run-policy archive under `$RUN22/archive/`
+`archive_run.py` writes the run-policy archive under `$RUN23/archive/`
 (problem definition, parameter bounds, input health, posterior summary).
 
 **3. Evaluate against flux ET and OpenET** (Table 4, S3, S5, Fig. 3)
 
 ```bash
-uv run python $EX5/evaluate.py --config $CFG --par-csv $RUN22/5_Flux_Ensemble.3.par.csv --container $DATA/5_Flux_Ensemble_run22.swim --openet-source volk --output-dir <daily-dir> --bootstrap-reps 10000 --bootstrap-seed 42 --quiet-sites
-uv run python $EX5/evaluate.py --config $CFG --par-csv $RUN22/5_Flux_Ensemble.3.par.csv --container $DATA/5_Flux_Ensemble_run22.swim --monthly --output-dir <monthly-dir> --bootstrap-reps 10000 --bootstrap-seed 42 --quiet-sites
+uv run python $EX5/evaluate.py --config $CFG --par-csv $RUN23/5_Flux_Ensemble.3.par.csv --container $DATA/5_Flux_Ensemble_run23.swim --openet-source volk --output-dir <daily-dir> --bootstrap-reps 10000 --bootstrap-seed 42 --quiet-sites
+uv run python $EX5/evaluate.py --config $CFG --par-csv $RUN23/5_Flux_Ensemble.3.par.csv --container $DATA/5_Flux_Ensemble_run23.swim --monthly --output-dir <monthly-dir> --bootstrap-reps 10000 --bootstrap-seed 42 --quiet-sites
 ```
 
 Daily: capture-date OpenET ET is divided by same-day bias-corrected ETo,
@@ -118,6 +134,17 @@ estimates with bootstrap intervals), `_contrasts.csv` (paired SWIM minus
 OpenET), `_metadata.json` (inputs, hashes, record contract),
 `evaluation_paired_daily_records.csv`, per-site `evaluation_metrics.csv`, and
 the exclusion ledger.
+
+**3a. Promote the daily and temporal packages** (re-freeze under RUN_POLICY)
+
+```bash
+uv run python $EX5/promote_e1_run.py --run run23            # gates + report
+uv run python $EX5/promote_e1_run.py --run run23 --write    # promote
+```
+
+Re-promotes the whole run-dependent E1 package (`daily/`, `temporal/`,
+`MANIFEST.json`) from the run's evaluator and decomposition outputs after a
+recalibration; the prior package moves to `paper/data/final/superseded_e1_*/`.
 
 **3b. Promote the monthly bundle** (re-freeze under RUN_POLICY)
 
@@ -135,7 +162,7 @@ monthly package to `paper/data/final/superseded_e1_monthly_*/`, copies the new
 bundle to `paper/data/final/e1_openet_benchmark/monthly/`, rewrites
 `MANIFEST.json`, and refreshes `archive/6_evaluation/`.
 
-**3c. Freeze the irrigation-class split** (Table S11)
+**3c. Freeze the irrigation-class split** (class values quoted in the E1 results text)
 
 ```bash
 uv run python $EX5/e1_class_split.py            # gates + report
@@ -165,18 +192,18 @@ uv run python $EX5/spread_error.py --config $CFG
 uv run python $EX5/conditioned_ensemble_uncertainty.py
 ```
 
-Outputs land in `$RUN22/spread_error/` and
-`$RUN22/conditioned_ensemble_uncertainty/`.
+Outputs land in `$RUN23/spread_error/` and
+`$RUN23/conditioned_ensemble_uncertainty/`.
 
 **6. Weighting ablation** (Table S6, Fig. 4d; two further calibrations)
 
 ```bash
-uv run python $EX5/container_build/build_container.py --run run22ablation --source $DATA/5_Flux_Ensemble.swim --mad
-uv run python $EX5/run_weighting_ablation.py --tag run22 --container $DATA/5_Flux_Ensemble_run22ablation.swim
+uv run python $EX5/container_build/build_container.py --run run23ablation --source $DATA/5_Flux_Ensemble.swim --mad
+uv run python $EX5/run_weighting_ablation.py --tag run23 --container $DATA/5_Flux_Ensemble_run23ablation.swim
 ```
 
-Arm outputs are `results/ablation_run22_e1_spread/`,
-`results/ablation_run22_e2_fixed_sd/`, and `results/ablation_run22_summary/`
+Arm outputs are `results/ablation_run23_e1_spread/`,
+`results/ablation_run23_e2_fixed_sd/`, and `results/ablation_run23_summary/`
 (`e1`/`e2` here are arm ids, not paper experiments). `--summary-only`
 regenerates the summaries without recalibrating.
 
@@ -186,7 +213,7 @@ regenerates the summaries without recalibrating.
 uv run python $EX5/within_e1_transfer.py
 ```
 
-The posterior and container default to Run 22 and the output to
+The posterior and container default to Run 23 and the output to
 `results/within_e2_transfer_irrigation_stratified/`, which holds both the
 pooled (`loro`, `loso`) and the irrigation-stratified (`loro_strat`,
 `loso_strat`) arms beside the local and default references. The stratified
@@ -216,14 +243,14 @@ be substituted for it.
 
 ## Rebuilding the container
 
-Only needed without `5_Flux_Ensemble_run22.swim`. `data_extract.py` contacts
+Only needed without `5_Flux_Ensemble_run23.swim`. `data_extract.py` contacts
 Earth Engine and downloads GridMET; run it with approval, not to inspect
 existing evidence.
 
 ```bash
 uv run python $EX5/container_build/data_extract.py                       # or --steps etf_v21,refet --sites US-Bi1,US-Ne1
 uv run python $EX5/container_build/container_prep.py --overwrite --getinfo
-uv run python $EX5/container_build/build_container.py --run run22 --source $DATA/5_Flux_Ensemble.swim --mad
+uv run python $EX5/container_build/build_container.py --run run23 --source $DATA/5_Flux_Ensemble.swim --mad
 ```
 
 After `container_prep.py`, every site must have seasonal NDVI and finite

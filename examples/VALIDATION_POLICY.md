@@ -107,10 +107,18 @@ All headline model-vs-model comparisons use **paired evaluation**:
   finite.
 - **Monthly:** SWIM and the reference model are scored on the **exact same
   valid months** within each site. The default gate is at least 20 valid
-  daily flux observations with finite SWIM and reference totals. A stricter
-  benchmark-specific gate may be used when the reference is supplied only as
-  a full-calendar-month total; Experiment E1 uses at least 28 valid flux days
-  and sums SWIM over the full calendar month.
+  daily flux observations with finite SWIM and reference totals. A
+  benchmark-specific gate applies when the reference is supplied only as a
+  full-calendar-month total. Experiment E1 follows the Volk et al. (2024)
+  monthly protocol: tower ET is gap-filled as in flux-data-qaqc (tower EToF
+  against raw gridMET ETo, IQR outlier filter, 7-day centered mean, linear
+  interpolation, times ETo on missing days), a month is a total when more than
+  80% of its days carry ET, and it is admitted with at most five filled days;
+  SWIM is summed over the full calendar month. No site minimum applies at the
+  monthly scale. Pooled rows use every paired site, and station-weighted rows
+  and per-site metrics require at least three paired months. The within-E1
+  transfer comparison (`within_e1_transfer.py`) still uses the older
+  28-valid-day full-month gate.
 
 Unpaired or "independent" summaries (where SWIM and the reference are scored
 on different day/month sets) are diagnostic only and must not be cited as
@@ -522,15 +530,20 @@ and in the governing experiment plan or
   the flux site minimum of 90 valid days and three 20-day months.
 - **Daily paired cohort:** 45 sites and 59,516 paired site-days with finite
   SWIM, OpenET ensemble, and flux ET.
-- **Primary monthly paired cohort:** the evaluator emits 32 site rows with at
-  least six paired full months. Each retained month has at least 28 valid flux
-  days, a full-calendar-month SWIM total, and a finite OpenET ensemble total.
-  Two sites have only nine paired months and therefore non-finite metrics;
-  30 sites and 1,301 site-months contribute to the benchmark summary.
+- **Primary monthly paired cohort (Volk et al. 2024 protocol):** 51 sites and
+  1,548 site-months enter the pooled rows, every site with at least one paired
+  month (a gap-filled flux total with at most five filled days, a
+  full-calendar-month SWIM total, and a finite OpenET ensemble total). The
+  station-weighted rows and the per-site metrics use the 42 sites with at
+  least three paired months (1,534 site-months); nine sites with one or two
+  paired months are pooled-only, and eight sites with no OpenET monthly file
+  are excluded. The earlier 28-valid-day / ten-month package (30 sites, 1,301
+  site-months) is superseded and kept under
+  `paper/data/final/superseded_e1_monthly_28day/`.
 - **Within-domain transfer cohort:** 45 daily and 31 monthly sites on common
   support across the two transfer paths, local calibration, generic defaults,
-  and flux ET. The monthly comparison uses the same 28-day full-month gate but
-  does not require Volk benchmark support.
+  and flux ET. The monthly comparison keeps the older 28-valid-day full-month
+  gate and does not require Volk benchmark support.
 
 ### Validation Reference
 
@@ -651,8 +664,11 @@ reporting after its user-approved freeze.
 |-------|-------|------:|--------------------:|-----------:|------------:|-----------:|
 | Daily | SWIM-RS | 45 | 59,516 | 0.796 | 1.127 mm/d | +0.060 mm/d |
 | Daily | OpenET ensemble | 45 | 59,516 | 0.771 | 1.045 mm/d | −0.197 mm/d |
-| Monthly | SWIM-RS | 30 | 1,301 | 0.822 | 20.80 mm/month | +3.42 mm/month |
-| Monthly | OpenET ensemble | 30 | 1,301 | 0.845 | 19.25 mm/month | −4.36 mm/month |
+| Monthly | SWIM-RS | 42 | 1,534 | 0.846 | 18.94 mm/month | +1.12 mm/month |
+| Monthly | OpenET ensemble | 42 | 1,534 | 0.846 | 18.90 mm/month | −5.12 mm/month |
+
+Monthly site medians are over the station-weighted cohort (sites with at least
+three paired months); the nine pooled-only sites carry no per-site metrics.
 
 #### Retrieval and between-retrieval dates
 

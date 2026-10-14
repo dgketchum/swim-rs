@@ -13,7 +13,7 @@ This directory produces:
 | Table 3, Fig. 2 (E0 vegetation formulation) | `pooled_arm_compare.py` on the 37 sites outside the E1 cohort | `results/e0_disjoint/*/disjoint37/` |
 | Table 5, Table S8, §3.3 (E2 performance, transfer) | `closure_pool_summary.py` | `results/<run>/archive/6_evaluation/closure_pool/` |
 | Fig. 5b (parameter transfer into E2) | `transfer_ex5_params.py` re-cut in the closure-pool summary | `closure_pool/transfer_refresh_summary.csv` |
-| Table S2 transferred parameter sets | `transfer/build_ex5_irrigation_stratified_params.py` | `paper/data/final/e2_run22_transfer_vectors_by_irrigation.json` |
+| Table S2 transferred parameter sets | `transfer/build_ex5_irrigation_stratified_params.py` | `paper/data/final/e2_run23_transfer_vectors_by_irrigation.json` |
 | Table S9 (E1 vs E2 product parity) | `product_parity/e1_e2_product_parity.py` | `--out-dir` |
 | Supplement S9.1 (28-day month rule) | `awc_recal/monthly_28day_sensitivity.py` | `closure_pool/monthly_28day_sensitivity_*` |
 | Frozen source of record for all of the above except S2/S9 | `promote_final.py` | `paper/data/final/e2_closure_pool/` + `MANIFEST.json` |
@@ -51,7 +51,7 @@ package is frozen from it; the superseded runs are under
 ├── evaluate.py                 daily, monthly, and ETf evaluation against flux ET
 ├── derived_metrics.py          shared: per-member benchmarks, uncalibrated baseline, decompositions
 ├── pooled_metrics.py           shared: concatenated-pool and √n-weighted metrics
-├── transfer/                   freeze the E1 (Run 22) transfer vectors and the per-site class mapping
+├── transfer/                   freeze the E1 (Run 23) transfer vectors and the per-site class mapping
 ├── transfer_ex5_params.py      score the E1 vectors on the E2 cohort without recalibration
 ├── pooled_arm_compare.py       E0 two-arm pooled comparison
 ├── e0_disjoint/                E0 site lists and the arms runner
@@ -70,7 +70,7 @@ above, not run on their own except where the chain calls them.
 | Calibrated container | `{root}/6_Flux_International/data/6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim` | `[paths] container` in the canonical TOML |
 | Cohort shapefile (66 sites, flux source per site) | `{root}/6_Flux_International/data/gis/flux_crop_pub_66_150m.shp` | `[paths] fields_shapefile` |
 | Flux truth (QAQC daily, closure-corrected `ET_corr`) | `{flux_dir}/{network}/{sid}_daily_data.csv` | `[validation] flux_dir` in the TOML |
-| E1 posterior for transfer | `paper/data/final/e2_run22_transfer_vector*.json` | `--params`, `--params-by-site` |
+| E1 posterior for transfer | `paper/data/final/e2_run23_transfer_vector*.json` | `--params`, `--params-by-site` |
 
 `root` is set in the TOML (`root = "/data/ssd1/swim"`). Change that one line
 to relocate every derived path.
