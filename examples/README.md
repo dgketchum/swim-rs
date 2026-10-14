@@ -23,7 +23,7 @@ has a naming note.
 
 ## Reproducing the paper
 
-The paper's evidence is reproducible from a clone of this repository plus six
+The paper's findings are reproducible from a clone of this repository plus six
 data packages (built by `scripts/package_reproduction_data.py`; their
 `MANIFEST.json` records the commit and the sha256 of every archive). Until
 submission the packages are at `gs://wudr/swim/reprod/` (a private bucket; ask
