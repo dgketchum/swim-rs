@@ -198,14 +198,21 @@ Flux data from [Volk et al., 2023](https://www.sciencedirect.com/science/article
 
 ## Examples
 
+`examples/README.md` maps the paper's experiment labels (E0–E3) to the example
+directories and describes how each experiment's outputs reach the manuscript;
+`examples/VALIDATION_POLICY.md` and `examples/RUN_POLICY.md` are the governing
+policies. Each paper example's README is a run sequence from the calibrated
+container to the frozen paper evidence.
+
 | Example                  | Description                                                                                                                                                                                                                                                                                                                 | README                                       |
 |--------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|
 | **1_Boulder**            | End-to-end tutorial demonstrating the SwimContainer API for data ingestion, computation, and model execution using a small study area near Boulder, Montana. Includes 5 notebooks covering container creation, data extraction, ingestion, dynamics computation, and model runs. Works with or without Earth Engine access. | [README](examples/1_Boulder/README.md)       |
 | **2_Fort_Peck**          | Single-site calibration tutorial for the US-FPe flux tower (unirrigated grassland). Demonstrates uncalibrated model runs, PEST++ IES calibration using PT-JPL ETf and SNODAS SWE, and validation against flux tower observations. Shipped data included — no EE required.                                                   | [README](examples/2_Fort_Peck/README.md)     |
 | **3_Crane**              | Irrigated site calibration tutorial for an alfalfa field at Crane, Oregon. Similar workflow to Fort Peck but demonstrates irrigation dynamics, crop coefficient calibration, and ensemble ETf targets.                                                                                                                      | [README](examples/3_Crane/README.md)         |
-| **4_Flux_Network**       | Full CONUS flux network workflow (~160 stations). Production-scale container build, calibration, and evaluation using Landsat NDVI, SSEBop ETf, GridMET, SNODAS, and SSURGO. Includes scripts for group calibration and flux/SSEBop comparisons.                                                                            | [README](examples/4_Flux_Network/README.md)  |
-| **5_Flux_Ensemble**      | Cropland subset (~60 stations) with OpenET ensemble calibration. Compares SWIM against SSEBop, PT-JPL, and SIMS ensemble targets. Includes OpenET evaluation scripts and cropland filtering utilities.                                                                                                                      | [README](examples/5_Flux_Ensemble/README.md) |
-| **6_Flux_International** | International flux sites using ERA5-Land meteorology, HWSD soils, and Landsat+Sentinel NDVI fusion. Demonstrates non-CONUS workflows with `mask_mode = "none"` and global data sources.                                                                                                                                     | —                                            |
+| **4_Flux_Network**       | Full CONUS flux network workflow (~160 stations). Production-scale container build, calibration, and evaluation using Landsat NDVI, SSEBop ETf, GridMET, SNODAS, and SSURGO. Includes scripts for group calibration and flux/SSEBop comparisons. Not in the paper. | [README](examples/4_Flux_Network/README.md)  |
+| **5_Flux_Ensemble**      | Paper E1: 60 CONUS cropland flux towers calibrated to the six-member OpenET Landsat ensemble; daily and monthly benchmark against flux ET and OpenET. | [README](examples/5_Flux_Ensemble/README.md) |
+| **6_Flux_International** | Paper E0 and E2: 66 international cropland flux towers (ERA5-Land, HWSD soils, Landsat+Sentinel NDVI) with a two-member Landsat ET-fraction target; vegetation-formulation arms and E1 parameter transfer. | [README](examples/6_Flux_International/README.md) |
+| **7_Applied_Water**      | Paper E3: 110 irrigated fields in the San Luis Valley and Eastern Snake Plain; simulated irrigation against metered applied water. | [README](examples/7_Applied_Water/README.md) |
 
 ## CLI overview
 

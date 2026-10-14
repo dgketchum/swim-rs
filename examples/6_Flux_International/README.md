@@ -69,7 +69,7 @@ above, not run on their own except where the chain calls them.
 |---|---|---|
 | Calibrated container | `{root}/6_Flux_International/data/6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim` | `[paths] container` in the canonical TOML |
 | Cohort shapefile (66 sites, flux source per site) | `{root}/6_Flux_International/data/gis/flux_crop_pub_66_150m.shp` | `[paths] fields_shapefile` |
-| Flux truth (QAQC daily, closure-corrected `ET_corr`) | `{flux_dir}/{network}/{sid}_daily_data.csv` | `[validation] flux_dir` in the TOML |
+| Flux truth (QAQC daily, closure-corrected `ET_corr`) | `{root}/6_Flux_International/data/flux_qaqc/{network}/{sid}_daily_data.csv` (the flux-data-qaqc archive, or a symlink to it) | `[validation] flux_dir = "{data}/flux_qaqc"` |
 | E1 posterior for transfer | `paper/data/final/e2_run23_transfer_vector*.json` | `--params`, `--params-by-site` |
 
 `root` is set in the TOML (`root = "/data/ssd1/swim"`). Change that one line

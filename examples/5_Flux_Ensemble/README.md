@@ -227,7 +227,7 @@ the frozen `e2_within_transfer_*` files from it.
 
 ```bash
 uv run python $EX5/promote_final.py            # byte-for-byte check of the promoted files; --write replaces them
-uv run python $EX5/rebuild_e1_benchmark_evidence.py --output-dir <scratch-dir> --verify
+uv run python $EX5/rebuild_e1_benchmark_evidence.py --output-dir paper/data/final --verify   # read-only: recomputes and compares against the frozen e2_evidence_metadata.json
 ```
 
 `promote_final.py` produces the `e2_spread_error_*`, `e2_within_transfer_*`,
