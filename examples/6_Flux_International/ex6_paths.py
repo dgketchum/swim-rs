@@ -63,14 +63,39 @@ def swim_root(config_path=None):
         return Path(tomllib.load(fh)["root"])
 
 
-def flux_root_static(config_path=None):
-    """``[validation] flux_dir`` read from the TOML without side effects.
-
-    The flux archive is an absolute path outside the workspace, so no ``{root}``
-    interpolation is needed; ``load_config`` returns the interpolated value.
-    """
+def _interpolated(config_path=None):
+    """``root``, ``project``, ``[paths]`` and ``[validation]`` strings with their
+    ``{key}`` templates resolved, read with ``tomllib`` (no side effects)."""
     with open(config_path or CANONICAL_CONFIG, "rb") as fh:
-        return tomllib.load(fh)["validation"]["flux_dir"]
+        toml = tomllib.load(fh)
+    vals = {"root": toml["root"], "project": toml["project"]}
+    for section in ("paths", "validation"):
+        vals.update({k: v for k, v in toml.get(section, {}).items() if isinstance(v, str)})
+    for _ in range(10):
+        resolved = {}
+        for k, v in vals.items():
+            try:
+                resolved[k] = v.format_map(vals) if "{" in v else v
+            except KeyError:
+                resolved[k] = v
+        if resolved == vals:
+            break
+        vals = resolved
+    return vals
+
+
+def flux_root_static(config_path=None):
+    """``[validation] flux_dir`` resolved from the TOML without side effects.
+
+    The flux-data-qaqc archive lives under the workspace (``{data}/flux_qaqc``, a
+    directory or a symlink to the archive) so one ``root`` relocates it too.
+    """
+    return _interpolated(config_path)["flux_dir"]
+
+
+def container_static(config_path=None):
+    """``[paths] container`` resolved from the TOML without side effects."""
+    return Path(_interpolated(config_path)["container"])
 
 
 def results_root(cfg=None):

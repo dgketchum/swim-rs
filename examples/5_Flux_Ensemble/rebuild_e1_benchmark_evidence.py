@@ -1170,6 +1170,16 @@ def write_outputs(out_dir, outputs, metadata):
     print(f"\nOutputs written to {out_dir}")
 
 
+PROJECT_MARKER = "/5_Flux_Ensemble/"
+
+
+def _portable_key(path):
+    """``path`` below the project directory (``.../5_Flux_Ensemble/<rest>`` -> ``<rest>``);
+    keys without the marker (test fixtures) are returned unchanged."""
+    s = str(path)
+    return s.split(PROJECT_MARKER, 1)[1] if PROJECT_MARKER in s else s
+
+
 def compare_to_pinned(pinned, metadata, out_dir):
     """G-VALUES comparison core: recomputed state vs the pinned metadata.
 
@@ -1215,9 +1225,17 @@ def compare_to_pinned(pinned, metadata, out_dir):
             f"!= pinned {pinned_sr.get('series')!r}"
         )
 
-    # pinned input hashes vs the fresh ledger hashes from this recomputation
-    pinned_in = pinned.get("source_data", {}).get("input_sha256", {})
-    new_in = metadata.get("source_data", {}).get("input_sha256", {})
+    # pinned input hashes vs the fresh ledger hashes from this recomputation; the
+    # ledger keys are absolute paths, compared below the project directory so the
+    # same evidence verifies under another workspace root
+    pinned_in = {
+        _portable_key(k): v
+        for k, v in pinned.get("source_data", {}).get("input_sha256", {}).items()
+    }
+    new_in = {
+        _portable_key(k): v
+        for k, v in metadata.get("source_data", {}).get("input_sha256", {}).items()
+    }
     for path, sha in pinned_in.items():
         if new_in.get(path) != sha:
             failures.append(f"input_sha256: {path} changed or missing")
@@ -1256,6 +1274,8 @@ def compare_to_pinned(pinned, metadata, out_dir):
     temporal = pinned.get("temporal_artifacts")
     if temporal:
         tdir = Path(temporal["canonical_dir"])
+        if not tdir.exists():  # pinned on another machine: this run's temporal dir
+            tdir = Path(metadata.get("temporal_artifacts", {}).get("canonical_dir", tdir))
         for name, sha in temporal.get("files_sha256", {}).items():
             p = tdir / name
             if not p.exists():

@@ -208,6 +208,7 @@ cython_debug/
 # Per-example working notes and plans are local, never repository artifacts.
 /examples/*/notes/
 /examples/*.md
+!/examples/README.md
 /examples/*/*.md
 !/examples/*/README.md
 

@@ -78,4 +78,4 @@ swe_weighting_phi_share = 0.15
 
 [validation]
 # flux-data-qaqc archive, {flux_dir}/{network}/{site}_daily_data.csv; validation truth only
-flux_dir = "/nas/climate/flux_stations/qaqc"
+flux_dir = "{data}/flux_qaqc"

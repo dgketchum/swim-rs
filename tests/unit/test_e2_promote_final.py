@@ -174,3 +174,24 @@ def test_compare_and_manifest_round_trip(mod, tmp_path):
     assert statuses["closure_pool/headline_aggregates.csv"] == "differs"
     other = dict(manifest, promoted_at="later", pool={**manifest["pool"], "n_daily_sites_pool": 1})
     assert mod.manifest_diff(other, manifest) == ["pool"]
+
+
+def test_manifest_diff_ignores_machine_paths_and_carries_addenda(mod, tmp_path):
+    results, run_dir, transfer, e0 = _results_root(mod, tmp_path)
+    final = _final_dir(tmp_path)
+    sources = mod.collect_sources(run_dir, transfer, e0)
+    addenda = {"transfer_paired_effects": {"dir": "transfer_paired_effects/", "files_sha256": {}}}
+    prior = {"source_runs": {}, "addenda": addenda}
+    manifest = mod.build_manifest(sources, prior, results, run_dir, transfer, e0, final)
+    assert manifest["addenda"] == addenda
+
+    # the same evidence promoted under another workspace root
+    elsewhere = json.loads(json.dumps(manifest))
+    for entry in elsewhere["source_runs"].values():
+        entry["path"] = "/other/machine" + entry["path"]
+    for entry in elsewhere["files"].values():
+        entry["source"] = "/other/machine" + entry["source"]
+    assert mod.manifest_diff(elsewhere, manifest) == []
+
+    elsewhere["files"]["transfer/run_metadata.json"]["sha256"] = "0" * 64
+    assert mod.manifest_diff(elsewhere, manifest) == ["files"]

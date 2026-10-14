@@ -97,7 +97,9 @@ HEADLINE_COLS = (
 GATE_KEYS = ("arm_a", "arm_b", "n_sites", "n_daily", "n_monthly", "wins_a", "gate_rule", "passed")
 # Prose written at freeze time; carried over from the existing manifest verbatim.
 CARRIED_NOTES = ("e0_gate_note", "irrigation_mapping_change", "closure_pool_problems")
-CARRIED_TAIL = ("retired", "pending_downstream_consumers")
+# ``addenda`` is written by later freeze scripts (e2_transfer_paired_effects.py) and
+# points at sub-packages derived from frozen files; carried, never regenerated here.
+CARRIED_TAIL = ("retired", "pending_downstream_consumers", "addenda")
 # Sibling frozen files whose sha256 the manifest records for the audit.
 RELATED_PACKAGES = {
     "e2_evidence_metadata.json": (
@@ -255,10 +257,28 @@ def _json_bytes(obj):
     return (json.dumps(obj, indent=2) + "\n").encode()
 
 
+def _portable(key, value):
+    """``value`` without the machine-specific locations the manifest records.
+
+    ``source_runs[*].path`` and ``files[*].source`` name this machine's results
+    root; a check on another machine compares hashes and provenance, not paths.
+    """
+    if key == "source_runs" and isinstance(value, dict):
+        return {k: {kk: vv for kk, vv in v.items() if kk != "path"} for k, v in value.items()}
+    if key == "files" and isinstance(value, dict):
+        return {k: {kk: vv for kk, vv in v.items() if kk != "source"} for k, v in value.items()}
+    return value
+
+
 def manifest_diff(new, prior):
-    """Top-level keys whose regenerated value differs from the frozen manifest."""
+    """Top-level keys whose regenerated value differs from the frozen manifest
+    (ignoring the volatile stamps and the machine-specific paths)."""
     keys = [k for k in dict.fromkeys([*prior, *new]) if k not in VOLATILE_KEYS]
-    return [k for k in keys if json.loads(_json_bytes(new.get(k))) != prior.get(k)]
+    return [
+        k
+        for k in keys
+        if _portable(k, json.loads(_json_bytes(new.get(k)))) != _portable(k, prior.get(k))
+    ]
 
 
 def main():

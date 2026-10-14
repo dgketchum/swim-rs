@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 
@@ -37,27 +38,37 @@ from swimrs.container import SwimContainer
 REPO = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO / "paper" / "data" / "derived" / "ndvi_revisit"
 
+
+def _paths_module(example, name):
+    """Load ``examples/<example>/<name>.py`` by path (no ``sys.path`` change)."""
+    spec = importlib.util.spec_from_file_location(name, REPO / "examples" / example / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+ex5_paths = _paths_module("5_Flux_Ensemble", "ex5_paths")
+ex6_paths = _paths_module("6_Flux_International", "ex6_paths")
+ex7_paths = _paths_module("7_Applied_Water", "ex7_paths")
+
 EXPERIMENTS = {
     "E1": {
         "label": "E1 / Ex5 Flux Ensemble (CONUS cropland)",
-        "container": "/data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run22.swim",
+        "container": ex5_paths.run_container(),
         "pool_csv": REPO / "paper/data/final/e1_openet_benchmark/daily/evaluation_metrics.csv",
         "pool_col": "fid",
         "pool_name": "45-site E1 evaluation pool",
     },
     "E2": {
         "label": "E2 / Ex6 Flux International (cropland cohort)",
-        "container": (
-            "/data/ssd1/swim/6_Flux_International/data/"
-            "6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim"
-        ),
+        "container": str(ex6_paths.container_static()),
         "pool_csv": REPO / "paper/data/final/e2_closure_pool/closure_pool/closure_pool_sites.csv",
         "pool_col": "fid",
         "pool_name": "47-site E2 closure pool",
     },
     "E3": {
         "label": "E3 / Ex7 Applied Water (SLV + ESPA fields)",
-        "container": "/data/ssd1/swim/7_Applied_Water/data/7_Applied_Water_e7cal.swim",
+        "container": str(ex7_paths.run_container()),
         "pool_csv": None,
         "pool_col": None,
         "pool_name": "all 110 calibrated fields",

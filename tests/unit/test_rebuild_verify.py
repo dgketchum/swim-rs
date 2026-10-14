@@ -123,6 +123,27 @@ def test_compare_clean_pass(reb, pinned_state):
     assert reb.compare_to_pinned(pinned, copy.deepcopy(pinned), out_dir) == []
 
 
+def test_compare_passes_under_another_workspace_root(reb, pinned_state):
+    """Input keys compare below the project directory; the temporal dir falls back
+    to this run's when the pinned (other-machine) directory does not exist."""
+    pinned, out_dir, _, tfile = pinned_state
+    pinned["source_data"]["input_sha256"] = {
+        "/data/ssd1/swim/5_Flux_Ensemble/data/openet_flux_2pt1/daily_data/A.csv": "abc123"
+    }
+    new = copy.deepcopy(pinned)
+    new["source_data"]["input_sha256"] = {
+        "/mnt/elsewhere/5_Flux_Ensemble/data/openet_flux_2pt1/daily_data/A.csv": "abc123"
+    }
+    pinned["temporal_artifacts"]["canonical_dir"] = "/data/ssd1/swim/5_Flux_Ensemble/gone"
+    assert reb.compare_to_pinned(pinned, new, out_dir) == []
+
+    new["source_data"]["input_sha256"] = {
+        "/mnt/elsewhere/5_Flux_Ensemble/data/openet_flux_2pt1/daily_data/A.csv": "def456"
+    }
+    failures = reb.compare_to_pinned(pinned, new, out_dir)
+    assert failures == ["input_sha256: data/openet_flux_2pt1/daily_data/A.csv changed or missing"]
+
+
 def test_compare_headline_drift_fails(reb, pinned_state):
     pinned, out_dir, _, _ = pinned_state
     new = copy.deepcopy(pinned)
