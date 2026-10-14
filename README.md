@@ -37,12 +37,36 @@ flowchart LR
     H5 --> Loop["run_daily_loop / PEST++"]
 ```
 
+## Reproducing the paper
+
+The manuscript's experiments (E0–E3) are Examples 5, 6, and 7. The evaluation
+needs a clone of this repository (branch `dev`) and the data packages described
+in [`examples/README.md`](examples/README.md#reproducing-the-paper):
+
+```bash
+git clone --branch dev https://github.com/dgketchum/swim-rs.git && cd swim-rs
+uv sync --all-extras && uv run pytest tests/ -v
+```
+
+Then follow the numbered steps there: unpack the packages, set `SWIM_ROOT`, and
+run the evaluation steps of the three experiment READMEs. Calibration and Earth
+Engine extraction are documented but are not re-run; PEST++ binaries are not
+needed for the evaluation.
+
 ## Installation
 
 See the [Installation Guide](docs/installation.md) for detailed setup instructions including conda, PEST++, and Earth
 Engine authentication.
 
-**Quick install (uv, recommended; Python 3.13):**
+**From a clone (examples, tests, paper reproduction; Python 3.13):**
+
+```bash
+git clone --branch dev https://github.com/dgketchum/swim-rs.git && cd swim-rs
+uv sync --all-extras
+uv run pytest tests/ -v
+```
+
+**As a library (uv):**
 
 ```bash
 mkdir swim-rs && cd swim-rs
@@ -202,7 +226,8 @@ Flux data from [Volk et al., 2023](https://www.sciencedirect.com/science/article
 directories and describes how each experiment's outputs reach the manuscript;
 `examples/VALIDATION_POLICY.md` and `examples/RUN_POLICY.md` are the governing
 policies. Each paper example's README is a run sequence from the calibrated
-container to the frozen paper evidence.
+container to the frozen paper evidence, and names the steps to run with the
+data packages (see "Reproducing the paper" above).
 
 | Example                  | Description                                                                                                                                                                                                                                                                                                                 | README                                       |
 |--------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|

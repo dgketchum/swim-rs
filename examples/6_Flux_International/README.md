@@ -25,7 +25,7 @@ SHAs, headline values); with no flags it checks the package against the
 results root byte for byte.
 
 **Status (2026-09-22).** The HWSD available-water-capacity units defect
-(`notes/HANDOFF_HWSD_AWC_UNITS_RECAL.md`) invalidated every earlier E2 run.
+(mm/m stored as m/m) invalidated every earlier E2 run.
 The recalibration via `awc_recal/run_awc_recal_chain.sh` is complete and the
 package is frozen from it; the superseded runs are under
 `results/superseded_awc320_20260921/`.
@@ -69,20 +69,30 @@ above, not run on their own except where the chain calls them.
 |---|---|---|
 | Calibrated container | `{root}/6_Flux_International/data/6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim` | `[paths] container` in the canonical TOML |
 | Cohort shapefile (66 sites, flux source per site) | `{root}/6_Flux_International/data/gis/flux_crop_pub_66_150m.shp` | `[paths] fields_shapefile` |
-| Flux truth (QAQC daily, closure-corrected `ET_corr`) | `{root}/6_Flux_International/data/flux_qaqc/{network}/{sid}_daily_data.csv` (the flux-data-qaqc archive, or a symlink to it) | `[validation] flux_dir = "{data}/flux_qaqc"` |
+| Flux truth (QAQC daily, closure-corrected `ET_corr`) | `{root}/6_Flux_International/data/flux_qaqc/{network}/{sid}_daily_data.csv` (the 66 cohort files ship in `swim_data_e2.tar.gz`; on the authoring machine a symlink to the flux-data-qaqc archive) | `[validation] flux_dir = "{data}/flux_qaqc"` |
 | E1 posterior for transfer | `paper/data/final/e2_run23_transfer_vector*.json` | `--params`, `--params-by-site` |
 
-`root` is set in the TOML (`root = "/data/ssd1/swim"`). Change that one line
-to relocate every derived path.
+`{root}` is the TOML `root` (`/data/ssd1/swim` on the authoring machine);
+set `SWIM_ROOT` to relocate every derived path without editing the TOML.
 
 ## Workflow
 
-`awc_recal/run_awc_recal_chain.sh` runs every step below unattended and is the
-authoritative order. The commands here are the same ones, from the repository
-root, with `EX6=examples/6_Flux_International`,
-`CFG=$EX6/6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml`,
-`RUN=6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr`, and
-`ARCHIVE={root}/6_Flux_International/results/$RUN/archive`.
+Commands run from the repository root with
+
+```bash
+export SWIM_ROOT=/path/to/swim                 # the data root (the TOML root, /data/ssd1/swim, on the authoring machine)
+EX6=examples/6_Flux_International
+CFG=$EX6/6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml
+RUN=6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr
+RESULTS=$SWIM_ROOT/6_Flux_International/results
+ARCHIVE=$RESULTS/$RUN/archive
+```
+
+**With the data packages** (`../README.md`, "Reproducing the paper"): skip
+steps 1 and 2 and the calibrations inside step 6. Run step 3, step 4 into a
+scratch `<transfer-out>`, step 5, the three `pooled_arm_compare.py` pairs of
+step 6 on the shipped arm posteriors, step 7, and step 8, whose default check
+mode must report `match` for every file and an unchanged `MANIFEST.json`.
 
 **1. Validate the container** (mandatory before any calibration)
 
@@ -91,7 +101,8 @@ uv run python $EX6/container_build/e2_refooting/phase8_container_health.py --con
 ```
 
 **2. Calibrate** (PEST++ IES, 200 realizations, 3 iterations, batches of 50;
-always via `uv run`)
+always via `uv run`; `awc_recal/run_awc_recal_chain.sh` runs steps 1–5 and 8
+unattended and is the authoritative order)
 
 ```bash
 uv run python -m swimrs.calibrate.batch_runner --config $CFG --action calibrate-all --reals 200 --noptmax 3 --workers 20 --batch-size 50 --exclude-uncovered
@@ -108,8 +119,8 @@ at `$ARCHIVE/4_pest_outputs/merged/merged_posterior.csv`.
 uv run python $EX6/evaluate.py --config $CFG --par-csv $ARCHIVE/4_pest_outputs/merged/merged_posterior.csv
 uv run python $EX6/evaluate.py --config $CFG --par-csv $ARCHIVE/4_pest_outputs/merged/merged_posterior.csv --monthly
 uv run python $EX6/evaluate.py --config $CFG --par-csv $ARCHIVE/4_pest_outputs/merged/merged_posterior.csv --etf
-uv run python $EX6/pooled_metrics.py --results-dir {root}/6_Flux_International/results/$RUN
-uv run python $EX6/derived_metrics.py --config $CFG --uncalibrated --out {root}/6_Flux_International/results/$RUN/derived
+uv run python $EX6/pooled_metrics.py --results-dir $RESULTS/$RUN
+uv run python $EX6/derived_metrics.py --config $CFG --uncalibrated --out $RESULTS/$RUN/derived
 ```
 
 **4. Transfer the E1 parameter sets** (no recalibration; vectors frozen upstream)
@@ -133,9 +144,18 @@ uv run python $EX6/awc_recal/monthly_28day_sensitivity.py --run-name $RUN
 bash $EX6/e0_disjoint/run_e0_arms.sh
 ```
 
-Calibrates the two unscaled arms with the same method as step 2, evaluates
-them, and runs `pooled_arm_compare.py` for each pair of arms on the 37-site
-disjoint set and the 47-site pool.
+Calibrates the two unscaled arms (`${RUN}_fao56`, `${RUN}_fao56_sig`) with
+the same method as step 2, evaluates them, and runs `pooled_arm_compare.py`
+for each pair of arms on the 37-site disjoint set and the 47-site pool. The
+comparison alone, on the shipped arm posteriors, is the last block of the
+script, for example:
+
+```bash
+uv run python $EX6/pooled_arm_compare.py --a-name grassbasis --a-config $CFG --a-par $ARCHIVE/4_pest_outputs/merged/merged_posterior.csv --b-name fao56 --b-config $EX6/${RUN}_fao56.toml --b-par $RESULTS/${RUN}_fao56/archive/4_pest_outputs/merged/merged_posterior.csv --sites-file $EX6/e0_disjoint/disjoint_sites.txt --out-dir $RESULTS/e0_disjoint/grassbasis_vs_fao56/disjoint37
+```
+
+The six outputs (three pairs × `disjoint37`, `pool47`) land under
+`$RESULTS/e0_disjoint/` and are checked by step 8.
 
 **7. Product parity** (Table S9)
 

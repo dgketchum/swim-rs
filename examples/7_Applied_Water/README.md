@@ -31,15 +31,15 @@ This directory produces:
 | Table 6, Fig. 6, and the §3.4 bootstrap sentence | `evaluate_applied_water.py`, once per parameter path | `results/applied_calibrated/per_field_year.csv`, `results/applied_transfer_run23_by_irrigation/per_field_year.csv` |
 | (same, last hop) | `scripts/figures/build_figure_data.py --only fig06 --only fig06_bootstrap`: SLV re-cut, the nine statistics, 10,000 whole-field resamples (seed 42) | `paper/data/final/figures/fig06_{field_years,field_summaries,bootstrap_effects}.csv` |
 | Fig. 1 SLV panel | `build_figure_data.py --only fig01` reads the e7cal container geometry and the HUC8 context layer | `paper/data/final/figures/fig01_*` |
-| Supplement S5.2 (field selection rules) | `select_fields.py` constants and `select_slv()` | `metered_truth.csv`, `notes/selection_qc.md` |
+| Supplement S5.2 (field selection rules) | `select_fields.py` constants and `select_slv()` | `metered_truth.csv` |
 | Transfer-arm per-field parameters | `build_applied_irrigation_mapping.py` | `paper/data/final/e4_irrigation_stratified_param_mapping{,_metadata}.json` |
 | Tables 1 and 2 E3 rows | hand-authored from the TOML and this README | — |
 
 Table 6 is typed from `fig06_bootstrap_effects.csv` (`value_local_calibration`,
 `value_e1_irrigated_transfer`, and the `ci95_*` columns for the bootstrap
-sentence). The figure builder and the table images are owned by the dedicated
-figure and table agents; this directory ends at the two `per_field_year.csv`
-files and the frozen mapping JSON.
+sentence). The typeset table and figure are produced outside this
+repository; this directory ends at the two `per_field_year.csv` files and the
+frozen mapping JSON.
 
 ## Layout
 
@@ -76,7 +76,7 @@ external IDWR 2015 irrigated-lands shapefile in `select_fields.py`.
 |---|---|---|
 | SLV metered pumping and parcels | `data/co_slv_wells/{co_slv_well_year_applied_depth.parquet, co_slv_irrigated_parcels.fgb, co_slv_parcel_well_links.parquet}` | `data/co_slv_wells/{pull_structures,pull_divrec,build_parcels,build_wells}.py` (CDSS HydroBase REST, RGDSS irrigated lands; see that README) |
 | ESPA metered diversions | `data/idwr_wmis/idwr_wmis_applied_water.fgb`, `pou_polygons.fgb` | `data/idwr_wmis/{download_wmis,download_pou,build_fgb,download_pou_geom}.py` (IDWR WMIS; see that README) |
-| ESPA field polygons | `/nas/irrmapper/raw_field_polygons/ID/ESPA/2015_Irrigated_Lands_*.shp` | IDWR 2015 irrigated-lands inventory |
+| ESPA field polygons | IDWR 2015 irrigated-lands inventory shapefile, path set in `select_fields.py` (not shipped; ESPA is not in the paper) | IDWR |
 | ESPA control gate | `data/idwr_wmis/espa_control_irrmapper.csv` | `espa_control_irrmapper.py` |
 | Cohort shapefile and truth table | `{root}/7_Applied_Water/data/gis/applied_water_fields.shp`, `examples/7_Applied_Water/data/metered_truth.csv` | `select_fields.py` |
 | Meteorology, soils, snow, irrigation status, NDVI, ETf | `{root}/7_Applied_Water/data/` and `examples/7_Applied_Water/data/{etf_v21_openet_eto,openet_refet}/` | `data_extract.py` (GridMET, SSURGO, SNODAS, IrrMapper, OpenET v2.1) |
@@ -91,11 +91,24 @@ only, by the mapping builder.
 
 ## Workflow
 
+Commands run from the repository root with
+
 ```bash
-EX7=/home/dgketchum/code/swim-rs/examples/7_Applied_Water
+export SWIM_ROOT=/path/to/swim                 # the data root (the TOML root, /data/ssd1/swim, on the authoring machine)
+EX7=examples/7_Applied_Water
 CFG=$EX7/7_Applied_Water.toml
-E7=/data/ssd1/swim/7_Applied_Water          # the TOML `root` + project
+E7=$SWIM_ROOT/7_Applied_Water                  # the TOML `root` + project
 ```
+
+**With the data packages** (`../README.md`, "Reproducing the paper"): skip
+steps 1–5; the truth table, containers, and calibration archive ship in
+`swim_data_e3.tar.gz` and `swim_repo_local.tar.gz`. Run steps 6 and 7 with
+`--out <scratch-dir>` so the shipped `results/applied_*` directories stay
+intact, and compare `summary_metrics.csv`, `negative_controls.json`, and
+`per_field_year.csv` against `results/applied_calibrated/` and
+`results/applied_transfer_run23_by_irrigation/` (byte-equal apart from
+floating-point round-off in the simulated columns). Step 8 then rebuilds the
+`fig06_*` and `fig01_*` tables from the shipped directories.
 
 **1. Ground truth** (once; open state APIs, no credentials)
 
@@ -123,7 +136,9 @@ Engine QC passes over the written cohort.
 uv run python $EX7/data_extract.py
 ```
 
-**4. Build the containers**, then run the completeness check in `CLAUDE.md`
+**4. Build the containers**, then check completeness: every field must have
+finite meteorology, seasonal NDVI, and at least one finite ETf capture per
+member. Report an incomplete field; do not drop or fill it.
 
 ```bash
 uv run python $EX7/container_prep.py --overwrite --getinfo
@@ -166,7 +181,7 @@ gate only; it writes the two `e4_*` JSONs into `paper/data/final/` by default
 `summary_metrics.csv`, `negative_controls.json`, and a scatter under
 `results/applied_<label>/`.
 
-**8. Paper statistics and figures** (figure agent)
+**8. Paper statistics and figure data**
 
 ```bash
 uv run python scripts/figures/build_figure_data.py --only fig06 --only fig06_bootstrap --only fig01

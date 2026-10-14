@@ -89,19 +89,38 @@ experiment label; the mapping lives in
 | OpenET bias-corrected GridMET ETo and ETr | `data/openet_refet/openet_{eto,etr}.csv` | `container_build/build_container.py`; sha256 pinned |
 | Six OpenET ETf member tables | `data/etf_v21_openet_eto/*_etf_no_mask.csv` | `container_build/data_extract.py --steps etf_v21` |
 
-`root` is set in the TOML (`root = "/data/ssd1/swim"`). Change that one line to
-relocate every derived path; the scripts resolve run directories, containers,
-and the posterior through `ex5_paths.py`, so no path is hard-coded elsewhere.
-Everything under `data/` except `gis/` is gitignored; the Volk flux and OpenET
-deliveries are subject to their source data policy and must be supplied
-separately. File presence is not a completeness test.
+`{root}` is the TOML `root` (`/data/ssd1/swim` on the authoring machine);
+set `SWIM_ROOT` to relocate every derived path without editing the TOML. The
+scripts resolve run directories, containers, and the posterior through
+`ex5_paths.py`, so no path is hard-coded elsewhere. Everything under the
+repo-local `data/` except `gis/` is gitignored and ships in
+`swim_repo_local.tar.gz`; the `{root}` inputs, including the Volk flux and
+OpenET deliveries, ship in `swim_data_e1.tar.gz` (see `../README.md`). File
+presence is not a completeness test.
 
 ## Workflow
 
-Commands run from the repository root with `EX5=examples/5_Flux_Ensemble`,
-`CFG=$EX5/5_Flux_Ensemble.toml`, `DATA={root}/5_Flux_Ensemble/data`, and
-`RUN23={root}/5_Flux_Ensemble/results/run23`. Steps 1 and 2 are expensive;
-steps 3 onward reproduce the paper from the calibrated container and posterior.
+Commands run from the repository root with
+
+```bash
+export SWIM_ROOT=/path/to/swim                 # the data root (the TOML root, /data/ssd1/swim, on the authoring machine)
+EX5=examples/5_Flux_Ensemble
+CFG=$EX5/5_Flux_Ensemble.toml
+DATA=$SWIM_ROOT/5_Flux_Ensemble/data
+RUN23=$SWIM_ROOT/5_Flux_Ensemble/results/run23
+```
+
+Steps 1 and 2 are expensive; steps 3 onward reproduce the paper from the
+calibrated container and posterior.
+
+**With the data packages** (`../README.md`, "Reproducing the paper"): skip
+steps 1 and 2 and the two calibrations in step 6. Run step 3 into scratch
+output directories, then 3a, 3b, and 3c in their default check modes (no
+`--write`), step 4 on the step 3 daily directory, step 5, step 6 with
+`--summary-only`, step 7, and step 8. Steps 5 and 7 rewrite their output
+directories under `$RUN23/` and `results/`; step 8 then checks everything
+against the frozen `paper/data/final/` and must report `match` for every file
+and `G-VALUES: PASS`.
 
 **1. Build the run container** (only if you do not have
 `5_Flux_Ensemble_run23.swim`; see Rebuilding the container below)
