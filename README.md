@@ -58,7 +58,8 @@ needed for the evaluation.
 See the [Installation Guide](docs/installation.md) for detailed setup instructions including conda, PEST++, and Earth
 Engine authentication.
 
-**From a clone (examples, tests, paper reproduction; Python 3.13):**
+**From a clone (examples, tests, paper reproduction; Python 3.13).** Inside
+a clone, `uv sync` is the whole install; do not `uv add` the package to itself.
 
 ```bash
 git clone --branch dev https://github.com/dgketchum/swim-rs.git && cd swim-rs
@@ -66,10 +67,10 @@ uv sync --all-extras
 uv run pytest tests/ -v
 ```
 
-**As a library (uv):**
+**As a library in another project (uv; not inside a clone):**
 
 ```bash
-mkdir swim-rs && cd swim-rs
+mkdir my-project && cd my-project
 uv init --python 3.13
 uv add git+https://github.com/dgketchum/swim-rs.git
 
