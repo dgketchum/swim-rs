@@ -1,13 +1,14 @@
 """Figure 2 proof -- vegetation formulation and flux-tower ET performance.
 
-Final-size (190 x 125 mm) render of Figure 2 (layout of 2026-08-27; E0 at
-the 37 E2 sites not in E1 since 2026-09-20) from the frozen E0 display
-package under paper/data/final/figures/:
+Final-size (190 x 66 mm) render of Figure 2 (layout of 2026-08-27; E0 at
+the 37 E2 sites not in E1 since 2026-09-20; panel (c), the paired site
+RMSE effects, dropped at co-author request 2026-10-14) from the frozen E0
+display package under paper/data/final/figures/:
 
     fig02_formulation_response.csv   panel (a) fitted K_T distributions
     fig02_ndvi_support.csv           panel (a) site-equal observed-NDVI density
     fig02_pooled_metrics.csv         panel (b) Table 3 pooled values
-    fig02_site_rmse_effects.csv      panel (c) paired site RMSE effects
+    fig02_site_rmse_effects.csv      package gate only (former panel (c))
     fig02_metadata.json              labels, rules, provenance
 
 Reads nothing else.  Follows the shared visual system (plan section 3) as
@@ -51,7 +52,7 @@ REPO = HERE.parents[3]
 PKG = REPO / "paper" / "data" / "final" / "figures"
 STEM = "fig02_formulation"
 
-PAGE_W, PAGE_H = 190.0, 125.0
+PAGE_W, PAGE_H = 190.0, 66.0
 MM = 1.0 / 25.4
 
 # ---------------------------------------------------------------------------
@@ -227,32 +228,21 @@ LABELS = {
     "unscaled_sigmoid": "Unscaled sigmoid",
 }
 
-# panel (a) geometry (mm)
+# panel (a) geometry (mm); the two-panel page keeps the 2026-08-27 vertical
+# proportions, shifted down 59 mm after panel (c) was removed
 A_X0, A_X1 = 12.5, 65.0
-A_RESP_Y0, A_RESP_Y1 = 79.0, 117.0
-A_SUPP_Y0, A_SUPP_Y1 = 67.5, 76.0
+A_RESP_Y0, A_RESP_Y1 = 20.0, 58.0
+A_SUPP_Y0, A_SUPP_Y1 = 8.5, 17.0
 
 # panel (b) geometry
 B_COL_X0 = (82.0, 119.0, 156.0)
 B_COL_W = 30.0
-B_ROW_Y = {"daily": (95.0, 117.0), "monthly": (67.5, 89.5)}
+B_ROW_Y = {"daily": (36.0, 58.0), "monthly": (8.5, 30.5)}
 B_METRICS = ["kge", "rmse", "mbe"]
 B_HEADS = {"kge": "KGE", "rmse": "RMSE", "mbe": "MBE"}
 
-# panel (c) geometry
-C_COL_X = ((13.0, 96.0), (104.0, 187.0))
-C_ROW_Y = {"daily": (34.5, 49.0), "monthly": (12.0, 26.5)}
-C_COMPS = ["isolated_cover", "whole_formulation"]
-C_HEADS = {
-    "isolated_cover": "Isolated-cover contrast",
-    "whole_formulation": "Whole-formulation contrast",
-}
-C_SUBS = {
-    "isolated_cover": "cover-scaled sigmoid − unscaled sigmoid",
-    "whole_formulation": "cover-scaled sigmoid − unscaled linear",
-}
-C_UNIT = {"daily": "mm d$^{-1}$", "monthly": "mm month$^{-1}$"}
-C_ROW_NAME = {"daily": "Daily", "monthly": "Monthly"}
+UNIT = {"daily": "mm d$^{-1}$", "monthly": "mm month$^{-1}$"}
+ROW_NAME = {"daily": "Daily", "monthly": "Monthly"}
 
 
 def draw_panel_a(fig, resp, supp, meta):
@@ -405,7 +395,7 @@ def draw_panel_b(fig, pooled):
             if metric == "kge":
                 unit = ""
             else:
-                unit = C_UNIT[scale]
+                unit = UNIT[scale]
             if unit:
                 ax.text(
                     0.02,
@@ -420,7 +410,7 @@ def draw_panel_b(fig, pooled):
             if scale == "daily":
                 fig.text(
                     (B_COL_X0[j] + B_COL_W / 2.0) / PAGE_W,
-                    119.3 / PAGE_H,
+                    60.3 / PAGE_H,
                     B_HEADS[metric],
                     fontsize=FS_HEAD,
                     fontweight="semibold",
@@ -430,99 +420,12 @@ def draw_panel_b(fig, pooled):
         fig.text(
             73.8 / PAGE_W,
             ((y0 + y1) / 2.0) / PAGE_H,
-            C_ROW_NAME[scale],
+            ROW_NAME[scale],
             fontsize=FS_AXIS,
             color=C_TEXT,
             ha="center",
             va="center",
             rotation=90,
-        )
-
-
-def draw_panel_c(fig, eff):
-    rng = np.random.default_rng(20260827)
-    for scale, (y0, y1) in C_ROW_Y.items():
-        row = eff[eff["scale"] == scale]
-        span = float(np.abs(row["d_rmse"]).max()) * 1.12
-        for k, comp in enumerate(C_COMPS):
-            cx0, cx1 = C_COL_X[k]
-            ax = ax_mm(fig, cx0, y0, cx1, y1)
-            sub = eff[(eff["scale"] == scale) & (eff["comparator"] == comp)]
-            d = sub["d_rmse"].to_numpy(dtype=float)
-            n = len(d)
-            # Collision-scale jitter only (2026-08-31 note item 5): the strip
-            # spans 1.0 y-unit over ~14.5 mm, so half a marker width (~0.46 mm)
-            # is about 0.032 units.
-            jitter = 0.52 + rng.uniform(-0.045, 0.045, size=n)
-            ax.axvline(0.0, color=C_RULE, lw=0.7, zorder=1)
-            ax.plot(
-                d,
-                jitter,
-                marker="o",
-                ms=2.6,
-                ls="",
-                color="#0072B2",
-                alpha=0.55,
-                mew=0,
-                zorder=3,
-            )
-            q25, q50, q75 = np.percentile(d, [25, 50, 75])
-            ax.plot([q25, q75], [0.16, 0.16], color=C_TEXT, lw=1.2, zorder=4)
-            ax.plot(
-                [q50],
-                [0.16],
-                marker="D",
-                ms=3.6,
-                color=C_TEXT,
-                mew=0.8,
-                mfc="white",
-                zorder=5,
-            )
-            ax.set_xlim(-span, span)
-            ax.set_ylim(0.0, 1.0)
-            ax.set_yticks([])
-            # Win-count annotations removed (2026-08-31 note item 6): the
-            # paired distribution and the median/IQR glyph carry the evidence;
-            # the win counts move to the caption.
-            ax.text(
-                0.015,
-                0.94,
-                C_ROW_NAME[scale],
-                fontsize=FS_ANNO,
-                color=C_TEXT,
-                ha="left",
-                va="top",
-                transform=ax.transAxes,
-            )
-            if scale == "daily":
-                fig.text(
-                    (cx0 + cx1) / 2.0 / PAGE_W,
-                    52.8 / PAGE_H,
-                    C_HEADS[comp],
-                    fontsize=FS_HEAD,
-                    fontweight="semibold",
-                    ha="center",
-                    va="bottom",
-                )
-                fig.text(
-                    (cx0 + cx1) / 2.0 / PAGE_W,
-                    49.9 / PAGE_H,
-                    C_SUBS[comp],
-                    fontsize=FS_ANNO,
-                    color=C_TEXT,
-                    ha="center",
-                    va="bottom",
-                )
-        # One shared x title per row (§6/§16: identical axis titles are never
-        # repeated across a grid), centered on the two contrast columns.
-        fig.text(
-            (C_COL_X[0][0] + C_COL_X[1][1]) / 2.0 / PAGE_W,
-            (y0 - 3.5) / PAGE_H,
-            f"ΔRMSE ({C_UNIT[scale]})",
-            fontsize=FS_AXIS,
-            color=C_TEXT,
-            ha="center",
-            va="top",
         )
 
 
@@ -533,14 +436,14 @@ def draw_headers(fig, meta):
     # caption material, not in-figure text.
     fig.text(
         0.5 / PAGE_W,
-        122.0 / PAGE_H,
+        63.0 / PAGE_H,
         "(a) Fitted vegetation response",
         fontsize=FS_PANEL,
         va="bottom",
     )
     fig.text(
         71.0 / PAGE_W,
-        122.0 / PAGE_H,
+        63.0 / PAGE_H,
         "(b) Flux-ET agreement",
         fontsize=FS_PANEL,
         va="bottom",
@@ -550,30 +453,6 @@ def draw_headers(fig, meta):
     # The record counts are stated in the Figure 2 caption
     # (guide section 9: exact n lives in a stats block or the caption); the
     # assert above keeps the caption's numbers pinned to the frozen package.
-    fig.text(
-        0.5 / PAGE_W,
-        57.8 / PAGE_H,  # clears the NDVI xlabel above at Arial's wider set
-        "(c) Paired site RMSE effects",
-        fontsize=FS_PANEL,
-        va="bottom",
-    )
-    # Reviewer item 8.1-3: the summary glyph is an open diamond at the median
-    # with a horizontal IQR rule over paired site effects — keyed in the
-    # artwork, not relabeled as a confidence interval.
-    site_handle = Line2D([], [], ls="", marker="o", ms=2.6, color="#0072B2", alpha=0.55, mew=0)
-    glyph_handle = Line2D([], [], color=C_TEXT, lw=1.2, marker="D", ms=3.6, mew=0.8, mfc="white")
-    fig.legend(
-        [site_handle, glyph_handle],
-        ["Site ΔRMSE", "Median and IQR of site effects"],
-        loc="lower right",
-        bbox_to_anchor=(187.0 / PAGE_W, 57.4 / PAGE_H),
-        ncol=2,
-        frameon=False,
-        fontsize=FS_ANNO,
-        handletextpad=0.5,
-        columnspacing=1.2,
-        borderaxespad=0.0,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -664,14 +543,15 @@ def _write_review_rasters(png_path: Path) -> None:
 
 def main():
     register_typeface()
-    resp, supp, pooled, eff, meta = load_package()
+    # The site-effects table is still hash- and count-gated in load_package()
+    # so the package stays pinned, but it is no longer drawn.
+    resp, supp, pooled, _eff, meta = load_package()
 
     fig = plt.figure(figsize=(PAGE_W * MM, PAGE_H * MM))
     fig.patch.set_facecolor("white")
 
     draw_panel_a(fig, resp, supp, meta)
     draw_panel_b(fig, pooled)
-    draw_panel_c(fig, eff)
     draw_headers(fig, meta)
 
     w_in, h_in = fig.get_size_inches()
@@ -681,7 +561,7 @@ def main():
     for ext, kw in (("pdf", {}), ("svg", {}), ("png", {"dpi": 600})):
         fig.savefig(HERE / f"{STEM}.{ext}", facecolor="white", **kw)
     _write_review_rasters(HERE / f"{STEM}.png")
-    print(f"{STEM}: rendered 190 x 125 mm, {n_texts} text items, all checks passed")
+    print(f"{STEM}: rendered 190 x 66 mm, {n_texts} text items, all checks passed")
     print(f"  package: {PKG}")
     print("  review rasters: grayscale, printcheck, cvd_{protanopia,deuteranopia,tritanopia}")
 
