@@ -50,7 +50,7 @@ calibration constraints, from the project TOMLs and the experiment READMEs) and
 **Table S1** (fixed and derived field properties, from the forward-model code and
 data sources). **Table S2** is mixed: its bounds columns come from the calibration
 TOML and its transferred-value columns from
-`paper/data/final/e2_run22_transfer_vectors_by_irrigation.json`, which Example 6
+`paper/data/final/e2_run23_transfer_vectors_by_irrigation.json`, which Example 6
 `transfer/` produces.
 
 ## Policies
@@ -60,3 +60,69 @@ TOML and its transferred-value columns from
 - `examples/RUN_POLICY.md`: what every calibration run archives, and the
   provenance a reported number must carry.
 - `notes/calibration_guidance.md`: how to launch and monitor PEST++ runs safely.
+
+## Reproducing on another machine
+
+The paper's evidence is reproducible from a clone of this repository plus the
+data packages at `gs://wudr/swim/reprod/` (built by
+`scripts/package_reproduction_data.py`; `MANIFEST.json` there records the commit
+and the sha256 of every archive). Nothing else is required for the evaluation
+tier: calibration and Earth Engine extraction are not re-run.
+
+1. Clone the repository at the commit named in `MANIFEST.json`, then
+   `uv sync --all-extras` and `uv run pytest tests/ -v` (Python 3.13; `uv.lock`
+   is authoritative).
+2. Pick a data root and unpack the packages. The three experiment packages go
+   into the data root; the repo-local and reference packages go into the clone
+   root:
+
+   ```bash
+   gsutil -m cp "gs://wudr/swim/reprod/*" /path/to/packages/
+   mkdir -p /path/to/swim && for p in e1 e2 e3; do tar -xzf /path/to/packages/swim_data_$p.tar.gz -C /path/to/swim; done
+   tar -xzf /path/to/packages/swim_repo_local.tar.gz -C /path/to/swim-rs      # the clone root
+   tar -xzf /path/to/packages/swim_reference_final.tar.gz -C /path/to/swim-rs
+   ```
+
+   `swim_repo_local.tar.gz` holds the untracked repo-local inputs
+   (`examples/5_Flux_Ensemble/data`, `examples/7_Applied_Water/data`,
+   `data/cartographic`). `swim_reference_final.tar.gz` is the frozen
+   `paper/data/final/` (untracked in git): the check modes in step 4 compare
+   what they regenerate against it, so it has to be in place first.
+   `swim_e3_truth_sources.tar.gz` is optional (the E3 metered-truth pulls, for
+   re-running the Example 7 truth build offline).
+3. Point the configuration at the data root without editing any TOML:
+
+   ```bash
+   export SWIM_ROOT=/path/to/swim
+   ```
+
+   Every `{root}`-derived path in the project TOMLs, the `ex*_paths.py`
+   helpers, and the figure builder follows it (`project_root_override` on
+   `ProjectConfig.read_config` still wins when a script passes one).
+4. Run the evaluation steps of `examples/5_Flux_Ensemble/README.md`,
+   `examples/6_Flux_International/README.md`, and
+   `examples/7_Applied_Water/README.md` as written, skipping the calibration
+   and extraction steps they mark as compute-gated. They recompute the
+   `paper/data/final/` evidence from the shipped containers and run archives;
+   the promotion scripts' default check modes report any file that differs
+   from what is on disk.
+5. The check modes are the comparison: every `promote_*.py` default run must
+   report `match` for every file and an unchanged manifest, and
+   `rebuild_e1_benchmark_evidence.py --verify` must print `G-VALUES: PASS`.
+   Scripts that write fresh outputs (for example the Example 7 evaluation)
+   are compared against the shipped `results/` copies: records byte-equal,
+   metrics equal to 1e-6. When everything has run, confirm that nothing under
+   `paper/data/final/` was rewritten:
+
+   ```bash
+   tar -dzf /path/to/packages/swim_reference_final.tar.gz -C /path/to/swim-rs   # silent when identical
+   ```
+
+   A cohort, sign, or file-set difference is a failure. Record every deviation
+   and guess in a findings log alongside the comparison.
+
+The packages drop the PEST++ ensemble files (`*.obs.csv`, `loc.mat`, `*.rei`,
+`*.jcb`, worker directories) that no evaluation or figure script reads; the
+one exception, the Run 23 posterior observation ensemble read by
+`conditioned_ensemble_uncertainty.py`, is kept. The full archives stay on the
+authoring machine under the run policy.
