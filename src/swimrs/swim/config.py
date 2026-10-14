@@ -241,7 +241,8 @@ class ProjectConfig:
 
         Args:
             conf_file_path: Path to the TOML configuration file.
-            project_root_override: Override the root path from the TOML file.
+            project_root_override: Override the root path from the TOML file. When
+                omitted, the ``SWIM_ROOT`` environment variable overrides it instead.
             calibrate: Enable calibration mode.
             forecast: Enable forecast mode.
             calibration_dir_override: Override the calibration directory path.
@@ -267,8 +268,13 @@ class ProjectConfig:
         self.project_name = raw_config.get("project")
         toml_root_path = raw_config.get("root")
 
+        env_root = os.environ.get("SWIM_ROOT")
         if project_root_override:
             self.root_path = os.path.expanduser(project_root_override)
+        elif env_root:
+            # Relocates every ``{root}``-derived path without editing the TOML
+            # (reproduction on another machine; see examples/README.md).
+            self.root_path = os.path.abspath(os.path.expanduser(env_root))
         else:
             expanded_root = (
                 os.path.expanduser(toml_root_path) if toml_root_path is not None else None

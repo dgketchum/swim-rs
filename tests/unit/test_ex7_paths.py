@@ -55,6 +55,14 @@ def test_root_relocates_every_workspace_path(ex7_paths, tmp_path):
     assert not ws.exists()
 
 
+def test_swim_root_env_relocates_without_editing_the_toml(ex7_paths, monkeypatch):
+    monkeypatch.setenv("SWIM_ROOT", "/elsewhere/swim")
+    ws = Path("/elsewhere/swim/7_Applied_Water")
+    assert ex7_paths.swim_root() == Path("/elsewhere/swim")
+    assert ex7_paths.run_container() == ws / "data" / "7_Applied_Water_e7cal.swim"
+    assert ex7_paths.merged_posterior().is_relative_to(ws / "results" / "e7cal")
+
+
 def test_excluded_field_years_are_dropped(ex7_paths):
     import pandas as pd
 

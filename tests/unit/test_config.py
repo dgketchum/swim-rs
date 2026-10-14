@@ -184,6 +184,43 @@ end_date = "2020-12-31"
         config.read_config(str(toml_file), project_root_override=str(override_path))
         assert config.root_path == str(override_path)
 
+    def test_swim_root_env_overrides_toml_root(self, tmp_path, monkeypatch):
+        """SWIM_ROOT relocates every {root}-derived path; an explicit override still wins."""
+        shapefile = tmp_path / "fields.shp"
+        shapefile.touch()
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text(
+            f"""
+project = "test_project"
+root = "/some/other/path"
+
+[paths]
+data = "{{root}}/{{project}}/data"
+fields_shapefile = "{shapefile}"
+
+[ids]
+feature_id = "FID"
+
+[date_range]
+start_date = "2020-01-01"
+end_date = "2020-12-31"
+"""
+        )
+        monkeypatch.setenv("SWIM_ROOT", str(tmp_path / "relocated"))
+        config = ProjectConfig()
+        config.read_config(str(toml_file))
+        assert config.root_path == str(tmp_path / "relocated")
+        assert config.data_dir == str(tmp_path / "relocated" / "test_project" / "data")
+
+        config = ProjectConfig()
+        config.read_config(str(toml_file), project_root_override=str(tmp_path / "explicit"))
+        assert config.root_path == str(tmp_path / "explicit")
+
+        monkeypatch.delenv("SWIM_ROOT")
+        config = ProjectConfig()
+        config.read_config(str(toml_file))
+        assert config.root_path == "/some/other/path"
+
 
 class TestProjectConfigPathResolution:
     """Tests for path template resolution."""

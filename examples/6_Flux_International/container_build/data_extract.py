@@ -14,11 +14,7 @@ def _load_config(config_path: str | None = None) -> ProjectConfig:
     conf_path = Path(config_path) if config_path else project_dir / "6_Flux_International.toml"
     config = ProjectConfig()
 
-    # Prefer the configured root when available; otherwise run in-repo.
-    if os.path.isdir("/data/ssd1/swim") or os.path.isdir("/data/ssd2/swim"):
-        config.read_config(str(conf_path))
-    else:
-        config.read_config(str(conf_path), project_root_override=str(project_dir.parent))
+    config.read_config(str(conf_path))
 
     return config
 

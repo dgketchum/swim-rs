@@ -25,10 +25,7 @@ HERE = Path(__file__).resolve().parent
 def main() -> None:
     cfg = ProjectConfig()
     conf = HERE / "7_Applied_Water.toml"
-    if os.path.isdir("/data/ssd2/swim"):
-        cfg.read_config(str(conf))
-    else:
-        cfg.read_config(str(conf), project_root_override=str(HERE.parent))
+    cfg.read_config(str(conf))
 
     is_authorized()
     out_dir = os.path.join(cfg.data_dir, "properties", "getinfo")

@@ -50,3 +50,10 @@ def test_root_relocates_the_flux_archive_and_container(ex6_paths, tmp_path):
     assert ex6_paths.flux_root_static(toml) == str(ws / "data" / "flux_qaqc")
     assert ex6_paths.container_static(toml) == ws / "data" / "6_Flux_International_x.swim"
     assert not ws.exists()
+
+
+def test_swim_root_env_relocates_without_editing_the_toml(ex6_paths, monkeypatch):
+    monkeypatch.setenv("SWIM_ROOT", "/elsewhere/swim")
+    assert ex6_paths.swim_root() == Path("/elsewhere/swim")
+    assert ex6_paths.flux_root_static() == "/elsewhere/swim/6_Flux_International/data/flux_qaqc"
+    assert ex6_paths.container_static().parent == Path("/elsewhere/swim/6_Flux_International/data")

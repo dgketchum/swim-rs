@@ -185,10 +185,7 @@ def load_config(config_path=None):
     project_dir = Path(__file__).resolve().parent
     conf = Path(config_path) if config_path else project_dir / "5_Flux_Ensemble.toml"
     cfg = ProjectConfig()
-    if os.path.isdir("/data/ssd2/swim"):
-        cfg.read_config(str(conf), calibrate=True)
-    else:
-        cfg.read_config(str(conf), project_root_override=str(project_dir.parent), calibrate=True)
+    cfg.read_config(str(conf), calibrate=True)
     return cfg
 
 

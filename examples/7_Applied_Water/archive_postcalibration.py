@@ -55,10 +55,7 @@ BOUND_TOL = 0.01  # within 1% of a bound counts as "at bound"
 def _load_config() -> ProjectConfig:
     conf = HERE / "7_Applied_Water.toml"
     cfg = ProjectConfig()
-    if os.path.isdir("/data/ssd2/swim"):
-        cfg.read_config(str(conf))
-    else:
-        cfg.read_config(str(conf), project_root_override=str(HERE.parent))
+    cfg.read_config(str(conf))
     return cfg
 
 

@@ -1,7 +1,7 @@
 """Canonical Example 7 (paper E3) locations, derived from the project TOML.
 
 Every workspace location is built from ``root`` in ``7_Applied_Water.toml``; change
-that one line to relocate the workspace. The helpers below read the TOML with
+that one line, or set ``SWIM_ROOT``, to relocate the workspace. The helpers below read the TOML with
 ``tomllib`` and interpolate its ``{key}`` templates themselves, so importing this
 module or calling them has no side effects (``ProjectConfig.read_config`` creates
 the project workspace directory, so ``load_config`` is only for scripts that need
@@ -18,6 +18,7 @@ the full configuration).
 """
 
 import importlib.util
+import os
 import tomllib
 from pathlib import Path
 
@@ -88,7 +89,7 @@ def _interpolated(config_path=None):
     """``root``, ``project``, ``[paths]`` and ``[calibration]`` with ``{key}`` templates resolved."""
     with open(config_path or CONFIG, "rb") as fh:
         toml = tomllib.load(fh)
-    vals = {"root": toml["root"], "project": toml["project"]}
+    vals = {"root": os.environ.get("SWIM_ROOT") or toml["root"], "project": toml["project"]}
     vals.update({k: v for k, v in toml.get("paths", {}).items() if isinstance(v, str)})
     vals.update({k: v for k, v in toml.get("calibration", {}).items() if isinstance(v, str)})
     for _ in range(10):

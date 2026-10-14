@@ -60,7 +60,7 @@ def load_config(config_path=None, calibrate=True):
 def swim_root(config_path=None):
     """``root`` read from the TOML without side effects (sibling examples live under it)."""
     with open(config_path or CANONICAL_CONFIG, "rb") as fh:
-        return Path(tomllib.load(fh)["root"])
+        return Path(os.environ.get("SWIM_ROOT") or tomllib.load(fh)["root"])
 
 
 def _interpolated(config_path=None):
@@ -68,7 +68,7 @@ def _interpolated(config_path=None):
     ``{key}`` templates resolved, read with ``tomllib`` (no side effects)."""
     with open(config_path or CANONICAL_CONFIG, "rb") as fh:
         toml = tomllib.load(fh)
-    vals = {"root": toml["root"], "project": toml["project"]}
+    vals = {"root": os.environ.get("SWIM_ROOT") or toml["root"], "project": toml["project"]}
     for section in ("paths", "validation"):
         vals.update({k: v for k, v in toml.get(section, {}).items() if isinstance(v, str)})
     for _ in range(10):
