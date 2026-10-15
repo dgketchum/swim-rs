@@ -87,6 +87,21 @@ def test_collect_refuses_a_missing_item(pkg, fake_root):
         pkg.collect(fake_root, ["5_Flux_Ensemble/results/run99"])
 
 
+def test_collect_glob_takes_matching_files_without_descending(pkg, fake_root):
+    base = fake_root / "6_Flux_International" / "results" / "baseline"
+    _touch(base / "US-Ne1.csv", 3)
+    _touch(base / "evaluation_metrics.csv", 4)
+    _touch(base / "archive" / "6_evaluation" / "evaluation_metrics.csv", 5)
+    _touch(base / "notes.txt", 1)
+    files = dict(pkg.collect(fake_root, ["6_Flux_International/results/baseline/*.csv"]))
+    assert set(files) == {
+        "6_Flux_International/results/baseline/US-Ne1.csv",
+        "6_Flux_International/results/baseline/evaluation_metrics.csv",
+    }
+    with pytest.raises(FileNotFoundError, match="glob matches nothing"):
+        pkg.collect(fake_root, ["6_Flux_International/results/baseline/*.parquet"])
+
+
 def test_write_tar_keeps_relative_members_and_sidecars(pkg, fake_root, tmp_path):
     files = pkg.collect(fake_root, ["5_Flux_Ensemble/results/run23"])
     out = tmp_path / "stage" / "swim_data_test.tar.gz"
@@ -108,7 +123,10 @@ def test_every_package_item_exists_on_this_machine_or_is_skipped(pkg):
         pytest.skip(f"data root {root} not present")
     for key, spec in pkg.ROOT_PACKAGES.items():
         for item in spec["items"]:
-            assert (root / item).exists(), f"{key}: {item}"
+            if any(ch in item for ch in "*?["):
+                assert any(p.is_file() for p in root.glob(item)), f"{key}: {item}"
+            else:
+                assert (root / item).exists(), f"{key}: {item}"
     for key, spec in pkg.REPO_PACKAGES.items():
         for item in spec["items"]:
             assert (pkg.REPO / item).exists(), f"{key}: {item}"

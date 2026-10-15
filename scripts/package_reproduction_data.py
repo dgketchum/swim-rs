@@ -26,8 +26,11 @@ Package contents (paths relative to the data root unless noted):
 ``e2``   Ex6 canonical GrassBasis container plus the two E0 arm containers,
          gis/properties/awc_recal/e0_disjoint/e2_etf_refooting, the three run
          result directories, the run23 irrigation-stratified transfer, the frozen
-         E0 disjoint comparison, and the 66-site subset of the flux-data-qaqc archive
-         at ``6_Flux_International/data/flux_qaqc/<network>/<sid>_daily_data.csv``.
+         E0 disjoint comparison, the evaluator outputs of the superseded
+         classifier-recal baseline and the Run 22 transfer summary that
+         ``evaluation_summary.py`` compares against, and the 66-site subset of the
+         flux-data-qaqc archive at
+         ``6_Flux_International/data/flux_qaqc/<network>/<sid>_daily_data.csv``.
 ``e3``   Ex7 ``data/`` (both containers, gis, properties, metered_truth.csv) and the
          ``e7cal``, ``applied_calibrated``, ``applied_transfer_run23_by_irrigation``
          and ``rescore_404fy_20260926`` result directories.
@@ -71,6 +74,9 @@ ARCHIVE_KEEP = {
 }
 
 GRASSBASIS = "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
+# the superseded classifier-recal baseline that evaluation_summary.py compares against
+# (its per-site series and evaluator outputs only; no archives, no PEST++ files)
+E2_BASELINE = "6_Flux_International_LSEnsemble_POR_annual2yr"
 
 ROOT_PACKAGES = {
     "e1": {
@@ -108,6 +114,9 @@ ROOT_PACKAGES = {
             f"6_Flux_International/results/{GRASSBASIS}_fao56_sig",
             "6_Flux_International/results/e2_run23_transfer_by_irrigation_to_grassbasis",
             "6_Flux_International/results/e0_disjoint",
+            f"6_Flux_International/results/{E2_BASELINE}/*.csv",
+            f"6_Flux_International/results/{E2_BASELINE}/archive_recal20260702_classifier/6_evaluation",
+            "6_Flux_International/results/e2_run22_transfer_by_irrigation_to_e3/transfer_comparison_summary.csv",
         ],
         "flux_subset": "6_Flux_International/data/flux_qaqc",
     },
@@ -172,14 +181,21 @@ def _file_excluded(rel, name, in_archive, extra_file_globs):
 def collect(base, items, exclude_dirs=(), exclude_files=()):
     """``[(relative path, bytes)]`` for every packaged file under ``base``.
 
-    ``items`` are files or directories relative to ``base``; a missing item is an
-    error (the package would be silently incomplete). Directories are walked with
-    the exclusion rules above; the archive rules apply below any ``archive``
-    directory component.
+    ``items`` are files, directories, or file globs (``dir/*.csv``: the matching
+    files, no descent) relative to ``base``; a missing item or a glob that matches
+    nothing is an error (the package would be silently incomplete). Directories
+    are walked with the exclusion rules above; the archive rules apply below any
+    ``archive`` directory component.
     """
     base = Path(base)
     out = []
     for item in items:
+        if any(ch in item for ch in "*?["):
+            hits = sorted(p for p in base.glob(item) if p.is_file())
+            if not hits:
+                raise FileNotFoundError(f"package glob matches nothing: {base / item}")
+            out.extend((str(p.relative_to(base)), p.stat().st_size) for p in hits)
+            continue
         src = base / item
         if not src.exists():
             raise FileNotFoundError(f"package item missing: {src}")
