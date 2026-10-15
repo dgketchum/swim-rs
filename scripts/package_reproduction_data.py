@@ -151,6 +151,8 @@ REPO_PACKAGES = {
     "reference": {
         "name": "swim_reference_final",
         "items": ["paper/data/final"],
+        # the obs_support diagnostics were dropped from the figure package (2026-10-15)
+        "exclude_files": ["figs02_*"],
     },
 }
 

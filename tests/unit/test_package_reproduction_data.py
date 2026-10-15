@@ -130,3 +130,18 @@ def test_every_package_item_exists_on_this_machine_or_is_skipped(pkg):
     for key, spec in pkg.REPO_PACKAGES.items():
         for item in spec["items"]:
             assert (pkg.REPO / item).exists(), f"{key}: {item}"
+
+
+def test_reference_package_drops_the_obs_support_tables(pkg, tmp_path):
+    repo = tmp_path / "clone"
+    figures = repo / "paper" / "data" / "final" / "figures"
+    _touch(figures / "fig02_ndvi_support.csv")
+    _touch(figures / "figs02_ndvi_support.csv")
+    _touch(figures / "figs02_etf_support.csv")
+    _touch(figures / "fig_manifest.json")
+    spec = pkg.REPO_PACKAGES["reference"]
+    files = dict(pkg.collect(repo, spec["items"], exclude_files=spec["exclude_files"]))
+    assert set(files) == {
+        "paper/data/final/figures/fig02_ndvi_support.csv",
+        "paper/data/final/figures/fig_manifest.json",
+    }
