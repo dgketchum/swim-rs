@@ -106,6 +106,14 @@ def test_build_and_compare_round_trip(mod, tmp_path):
     statuses = dict((n, s) for n, s, _ in mod.compare(products, final))
     assert statuses["e2_spread_error_summary.csv"] == "differs"
 
+    # one unit in the last place (a rebuild on other hardware) is reported, not failed
+    name = "e2_within_transfer_daily_site_metrics.csv"
+    text = products[name].decode()
+    assert ",1.0," in text
+    (final / name).write_text(text.replace(",1.0,", ",1.0000000000000002,", 1))
+    statuses = dict((n, s) for n, s, _ in mod.compare(products, final))
+    assert statuses[name] == "match~"
+
 
 def test_pooled_site_metrics_requires_every_pooled_arm_column(mod):
     six_arm = pd.DataFrame({c: [1.0] for c in mod.POOLED_COLUMNS[2:-1]})

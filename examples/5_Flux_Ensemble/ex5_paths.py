@@ -12,6 +12,7 @@ import os
 from functools import cache
 from pathlib import Path
 
+from swimrs.swim import reproduce
 from swimrs.swim.config import ProjectConfig
 
 EX5 = Path(__file__).resolve().parent
@@ -27,6 +28,21 @@ def load_config(config_path=None, calibrate=True):
     cfg = ProjectConfig()
     cfg.read_config(str(config_path or CANONICAL_CONFIG), calibrate=calibrate)
     return cfg
+
+
+def swim_root(cfg=None):
+    cfg = cfg or load_config()
+    return Path(cfg.project_ws).parent
+
+
+def rebase(path, cfg=None):
+    """A path recorded in a frozen sidecar or archive on another machine, resolved
+    on this one (``Path``; unchanged when it already exists)."""
+    if Path(path).exists():
+        return Path(path)
+    cfg = cfg or load_config()
+    root = Path(cfg.project_ws).parent if cfg is not None else None  # else SWIM_ROOT
+    return reproduce.rebase(path, root=root, repo=REPO)
 
 
 def results_root(cfg=None):

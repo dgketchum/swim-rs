@@ -285,6 +285,7 @@ def _check_run_tag(meta, run, label):
     )
     recorded = meta.get("input_hashes", {}).get("par_csv")
     if recorded is not None:
+        par = ex5_paths.rebase(par)
         _require(Path(par).is_file(), f"{label}: posterior {par} is gone")
         actual = sha256_file(par)
         _require(
@@ -364,8 +365,8 @@ def check_monthly(src, run, heavy=True):
     if heavy:
         estimates, cohorts = pm.replicate_from_archive(
             Path(src["archive"]) / "site_daily_timeseries",
-            meta["paths"]["flux_dir"],
-            meta["paths"]["openet_monthly_dir"],
+            ex5_paths.rebase(meta["paths"]["flux_dir"]),
+            ex5_paths.rebase(meta["paths"]["openet_monthly_dir"]),
             static_exclusions=set(meta.get("static_exclusions", [])),
         )
         detail["replication_max_abs_diff"] = pm.compare_replication(estimates, cohorts, files, meta)

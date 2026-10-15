@@ -34,7 +34,8 @@ def test_live_toml_keeps_the_flux_archive_under_root(ex6_paths):
         assert flux_dir.startswith(str(root)), toml.name
 
 
-def test_root_relocates_the_flux_archive_and_container(ex6_paths, tmp_path):
+def test_root_relocates_the_flux_archive_and_container(ex6_paths, tmp_path, monkeypatch):
+    monkeypatch.delenv("SWIM_ROOT", raising=False)
     toml = tmp_path / "relocated.toml"
     toml.write_text(
         'project = "6_Flux_International"\n'

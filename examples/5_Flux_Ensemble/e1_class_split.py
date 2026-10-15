@@ -61,6 +61,7 @@ from swimrs.evaluation.benchmark import (
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
+import ex5_paths  # noqa: E402
 import promote_e1_monthly as pm  # noqa: E402
 
 REPO = HERE.parent.parent
@@ -241,7 +242,7 @@ def monthly_scale(classes, reps, seed):
     meta = json.load(open(PACKAGE / "monthly" / "evaluation_grouped_monthly_metadata.json"))
     run_meta_paths = meta["paths"]
     ts_dir = (
-        Path(run_meta_paths["par_csv"]).parent
+        ex5_paths.rebase(run_meta_paths["par_csv"]).parent
         / "archive"
         / "6_evaluation"
         / "site_daily_timeseries"
@@ -249,8 +250,8 @@ def monthly_scale(classes, reps, seed):
     excluded = set(meta.get("static_exclusions", []))
     records = pm.monthly_records_from_archive(
         ts_dir,
-        run_meta_paths["flux_dir"],
-        run_meta_paths["openet_monthly_dir"],
+        ex5_paths.rebase(run_meta_paths["flux_dir"]),
+        ex5_paths.rebase(run_meta_paths["openet_monthly_dir"]),
         static_exclusions=excluded,
     )
     weighted = tuple(r for r in records if r.n >= pm.WEIGHTED_MIN_MONTHS)

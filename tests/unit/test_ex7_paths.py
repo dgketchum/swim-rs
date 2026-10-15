@@ -32,7 +32,8 @@ def test_live_toml_resolves_under_root_and_project(ex7_paths):
     assert ex7_paths.TRUTH_CSV == EX7 / "data" / "metered_truth.csv"
 
 
-def test_root_relocates_every_workspace_path(ex7_paths, tmp_path):
+def test_root_relocates_every_workspace_path(ex7_paths, tmp_path, monkeypatch):
+    monkeypatch.delenv("SWIM_ROOT", raising=False)
     toml = tmp_path / "relocated.toml"
     toml.write_text(
         'project = "7_Applied_Water"\n'

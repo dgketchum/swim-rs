@@ -890,7 +890,8 @@ end_date = "2020-12-31"
         assert cfg.etf_source_dirs == {}
         assert ProjectConfig().etf_source_dirs == {}
 
-    def test_override_resolves_templates(self, tmp_path):
+    def test_override_resolves_templates(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("SWIM_ROOT", raising=False)
         cfg = ProjectConfig()
         cfg.read_config(
             str(

@@ -43,6 +43,7 @@ import pandas as pd
 from scipy import stats
 
 from swimrs.container import SwimContainer
+from swimrs.swim import reproduce
 
 PROJECT_DIR = Path(__file__).resolve().parent
 
@@ -212,10 +213,10 @@ def gate_a_canonical_identity():
         archived_container = f.read().strip()
     with open(CANONICAL["provenance_manifest"]) as f:
         manifest_container = json.load(f).get("container_path")
-    container_matches_archive = (
-        archived_container == CANONICAL["container"]
-        and manifest_container == CANONICAL["container"]
-    )
+    # the archive records the authoring machine's absolute path; compare below the root
+    container_matches_archive = reproduce.same_path(
+        archived_container, CANONICAL["container"]
+    ) and reproduce.same_path(manifest_container, CANONICAL["container"])
     container_exists = os.path.isdir(CANONICAL["container"])
 
     ok = config_matches_archive and container_matches_archive and container_exists

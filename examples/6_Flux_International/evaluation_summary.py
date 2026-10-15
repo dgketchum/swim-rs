@@ -587,142 +587,156 @@ def main():
         pd.DataFrame(srows).to_csv(cat6 / "overpass_split_summary.csv", index=False)
 
     # ---- internal baseline comparison (iteration-4 as evaluated; iteration-3 forward run) ----
+    # The superseded classifier-recal baseline is an authoring-machine artifact (not in the
+    # data packages); without it the comparison is skipped and its outputs are not written.
     base_res = Path(args.baseline_results)
     frozen = Path(args.baseline_frozen_eval)
-    base_daily_frozen = pd.read_csv(frozen / "evaluation_metrics.csv", index_col=0)
-    base_monthly_frozen = pd.read_csv(frozen / "evaluation_monthly_metrics.csv", index_col=0)
-    live_daily = pd.read_csv(base_res / "evaluation_metrics.csv", index_col=0)
-    frozen_matches_live = set(live_daily.index) == set(base_daily_frozen.index) and np.allclose(
-        live_daily.loc[base_daily_frozen.index, ["kge_swim", "r2_swim"]].to_numpy(float),
-        base_daily_frozen[["kge_swim", "r2_swim"]].to_numpy(float),
-    )
-    checks["baseline_frozen_equals_live_root"] = bool(frozen_matches_live)
+    have_baseline = (frozen / "evaluation_metrics.csv").is_file() and (
+        base_res / "evaluation_metrics.csv"
+    ).is_file()
+    comp, comp_summary = pd.DataFrame(), []
+    if not have_baseline:
+        print(f"Internal baseline {base_res} not present; skipping the baseline comparison.")
+        checks["baseline_frozen_equals_live_root"] = None
+    if have_baseline:
+        base_daily_frozen = pd.read_csv(frozen / "evaluation_metrics.csv", index_col=0)
+        base_monthly_frozen = pd.read_csv(frozen / "evaluation_monthly_metrics.csv", index_col=0)
+        live_daily = pd.read_csv(base_res / "evaluation_metrics.csv", index_col=0)
+        frozen_matches_live = set(live_daily.index) == set(base_daily_frozen.index) and np.allclose(
+            live_daily.loc[base_daily_frozen.index, ["kge_swim", "r2_swim"]].to_numpy(float),
+            base_daily_frozen[["kge_swim", "r2_swim"]].to_numpy(float),
+        )
+        checks["baseline_frozen_equals_live_root"] = bool(frozen_matches_live)
 
-    base_series = {}
-    for fid in fids:
-        path = base_res / f"{fid}.csv"
-        if path.exists():
-            b = pd.read_csv(path, index_col=0, parse_dates=True)
-            b.index = b.index.normalize()
-            base_series[fid] = b
+        base_series = {}
+        for fid in fids:
+            path = base_res / f"{fid}.csv"
+            if path.exists():
+                b = pd.read_csv(path, index_col=0, parse_dates=True)
+                b.index = b.index.normalize()
+                base_series[fid] = b
 
-    base_it3 = {}
-    if not args.skip_baseline_forward:
-        bcfg = ev._load_config(Path(args.baseline_config))
-        bcontainer = SwimContainer.open(bcfg.container_path, mode="r")
-        try:
-            paths = sorted(
-                Path(args.baseline_pestrun).glob(
-                    f"pest_archive/batch_*/{bcfg.project_name}.{args.baseline_iteration}.par.csv"
+        base_it3 = {}
+        if not args.skip_baseline_forward:
+            bcfg = ev._load_config(Path(args.baseline_config))
+            bcontainer = SwimContainer.open(bcfg.container_path, mode="r")
+            try:
+                paths = sorted(
+                    Path(args.baseline_pestrun).glob(
+                        f"pest_archive/batch_*/{bcfg.project_name}.{args.baseline_iteration}.par.csv"
+                    )
                 )
-            )
-            # the baseline problem covers its 75-site container; decode against every uid
-            bmed = posterior_medians(merge_par_csvs(paths), list(bcontainer.field_uids))
-            bfids = [f for f in fids if f in bmed.index]
-            bparams = {f: {k: float(v) for k, v in bmed.loc[f].items()} for f in bfids}
-            uncovered = sorted(set(fids) - set(bfids))
-            if uncovered:
-                problems.append(f"baseline posterior does not cover GrassBasis sites {uncovered}")
-            print(
-                f"Baseline iteration-{args.baseline_iteration} forward run ({len(bparams)} sites)…"
-            )
-            base_it3 = ev.run_calibrated_model(bcfg, bcontainer, bfids, bparams)
-        finally:
-            bcontainer.close()
+                # the baseline problem covers its 75-site container; decode against every uid
+                bmed = posterior_medians(merge_par_csvs(paths), list(bcontainer.field_uids))
+                bfids = [f for f in fids if f in bmed.index]
+                bparams = {f: {k: float(v) for k, v in bmed.loc[f].items()} for f in bfids}
+                uncovered = sorted(set(fids) - set(bfids))
+                if uncovered:
+                    problems.append(
+                        f"baseline posterior does not cover GrassBasis sites {uncovered}"
+                    )
+                print(
+                    f"Baseline iteration-{args.baseline_iteration} forward run ({len(bparams)} sites)…"
+                )
+                base_it3 = ev.run_calibrated_model(bcfg, bcontainer, bfids, bparams)
+            finally:
+                bcontainer.close()
 
-    comp_rows = []
-    for fid in daily.index:
-        flux = flux_by_fid[fid]
-        gb = site_series[fid]
-        b = base_series.get(fid)
-        if b is None or "et_rs" not in b:
-            continue
-        common = gb.index.intersection(b.index).intersection(flux.index)
-        obs = flux.loc[common].to_numpy(float)
-        cols = {
-            "grassbasis_swim": gb["et_act"].reindex(common).to_numpy(float),
-            "grassbasis_rs": gb["et_rs"].reindex(common).to_numpy(float),
-            "baseline_it4_swim": b["et_act"].reindex(common).to_numpy(float),
-            "baseline_rs": b["et_rs"].reindex(common).to_numpy(float),
-        }
-        if fid in base_it3:
-            cols["baseline_it3_swim"] = base_it3[fid]["et_act"].reindex(common).to_numpy(float)
-        mask = np.isfinite(obs)
-        for v in cols.values():
-            mask &= np.isfinite(v)
-        if int(mask.sum()) < MIN_DAILY:
-            continue
-        row = {
-            "fid": fid,
-            "n_common": int(mask.sum()),
-            "n_grassbasis_mask": int(daily.loc[fid, "n"]),
-        }
-        for name, v in cols.items():
-            m = full_metrics(obs[mask], v[mask])
-            for k in METRICS:
-                row[f"{k}_{name}"] = m[k]
-        # monthly on the intersection: same rule as monthly_pairing but with every series
-        f_d = flux.loc[common[mask]]
-        mon_ok = True
-        mon = {}
-        from swimrs.calibrate.flux_utils import paired_monthly_sums
-
-        for name, v in cols.items():
-            s = pd.Series(v[mask], index=common[mask])
-            s_m, f_m, _ = paired_monthly_sums(s, f_d, None, month_min_days=MIN_DAYS_PER_MONTH)
-            mon[name] = s_m
-            mon["_flux"] = f_m
-        idx = mon["_flux"].index
-        mmask = mon["_flux"].notna()
-        for name in cols:
-            mmask &= mon[name].reindex(idx).notna()
-        if int(mmask.sum()) < MIN_MONTHS:
-            mon_ok = False
-        row["n_common_months"] = int(mmask.sum())
-        if mon_ok:
-            o_m = mon["_flux"].loc[mmask].to_numpy(float)
-            for name in cols:
-                m = full_metrics(o_m, mon[name].reindex(idx).loc[mmask].to_numpy(float), MIN_MONTHS)
-                for k in METRICS:
-                    row[f"{k}_{name}_monthly"] = m[k]
-        comp_rows.append(row)
-    comp = pd.DataFrame(comp_rows).set_index("fid")
-    comp.to_csv(cat6 / "internal_baseline_comparison.csv")
-    comp_summary = []
-    for basis, suffix in (("daily", ""), ("monthly", "_monthly")):
-        for name in [
-            "grassbasis_swim",
-            "baseline_it3_swim",
-            "baseline_it4_swim",
-            "grassbasis_rs",
-            "baseline_rs",
-        ]:
-            col = f"kge_{name}{suffix}"
-            if col not in comp:
+        comp_rows = []
+        for fid in daily.index:
+            flux = flux_by_fid[fid]
+            gb = site_series[fid]
+            b = base_series.get(fid)
+            if b is None or "et_rs" not in b:
                 continue
-            row = {"basis": basis, "series": name, "n_sites": int(comp[col].notna().sum())}
-            for k in METRICS:
-                row[f"{k}_median"] = float(comp[f"{k}_{name}{suffix}"].median())
-            comp_summary.append(row)
-        for a, bname in (
-            ("grassbasis_swim", "baseline_it3_swim"),
-            ("grassbasis_swim", "baseline_it4_swim"),
-            ("grassbasis_rs", "baseline_rs"),
-        ):
-            if f"kge_{bname}{suffix}" not in comp:
+            common = gb.index.intersection(b.index).intersection(flux.index)
+            obs = flux.loc[common].to_numpy(float)
+            cols = {
+                "grassbasis_swim": gb["et_act"].reindex(common).to_numpy(float),
+                "grassbasis_rs": gb["et_rs"].reindex(common).to_numpy(float),
+                "baseline_it4_swim": b["et_act"].reindex(common).to_numpy(float),
+                "baseline_rs": b["et_rs"].reindex(common).to_numpy(float),
+            }
+            if fid in base_it3:
+                cols["baseline_it3_swim"] = base_it3[fid]["et_act"].reindex(common).to_numpy(float)
+            mask = np.isfinite(obs)
+            for v in cols.values():
+                mask &= np.isfinite(v)
+            if int(mask.sum()) < MIN_DAILY:
                 continue
             row = {
-                "basis": basis,
-                "series": f"{a}_minus_{bname}_paired",
-                "n_sites": int(comp[f"kge_{bname}{suffix}"].notna().sum()),
+                "fid": fid,
+                "n_common": int(mask.sum()),
+                "n_grassbasis_mask": int(daily.loc[fid, "n"]),
             }
-            for k in METRICS:
-                d = comp[f"{k}_{a}{suffix}"] - comp[f"{k}_{bname}{suffix}"]
-                row[f"{k}_median"] = float(d.median())
-            comp_summary.append(row)
-    pd.DataFrame(comp_summary).to_csv(
-        cat6 / "internal_baseline_comparison_summary.csv", index=False
-    )
+            for name, v in cols.items():
+                m = full_metrics(obs[mask], v[mask])
+                for k in METRICS:
+                    row[f"{k}_{name}"] = m[k]
+            # monthly on the intersection: same rule as monthly_pairing but with every series
+            f_d = flux.loc[common[mask]]
+            mon_ok = True
+            mon = {}
+            from swimrs.calibrate.flux_utils import paired_monthly_sums
+
+            for name, v in cols.items():
+                s = pd.Series(v[mask], index=common[mask])
+                s_m, f_m, _ = paired_monthly_sums(s, f_d, None, month_min_days=MIN_DAYS_PER_MONTH)
+                mon[name] = s_m
+                mon["_flux"] = f_m
+            idx = mon["_flux"].index
+            mmask = mon["_flux"].notna()
+            for name in cols:
+                mmask &= mon[name].reindex(idx).notna()
+            if int(mmask.sum()) < MIN_MONTHS:
+                mon_ok = False
+            row["n_common_months"] = int(mmask.sum())
+            if mon_ok:
+                o_m = mon["_flux"].loc[mmask].to_numpy(float)
+                for name in cols:
+                    m = full_metrics(
+                        o_m, mon[name].reindex(idx).loc[mmask].to_numpy(float), MIN_MONTHS
+                    )
+                    for k in METRICS:
+                        row[f"{k}_{name}_monthly"] = m[k]
+            comp_rows.append(row)
+        comp = pd.DataFrame(comp_rows).set_index("fid")
+        comp.to_csv(cat6 / "internal_baseline_comparison.csv")
+        comp_summary = []
+        for basis, suffix in (("daily", ""), ("monthly", "_monthly")):
+            for name in [
+                "grassbasis_swim",
+                "baseline_it3_swim",
+                "baseline_it4_swim",
+                "grassbasis_rs",
+                "baseline_rs",
+            ]:
+                col = f"kge_{name}{suffix}"
+                if col not in comp:
+                    continue
+                row = {"basis": basis, "series": name, "n_sites": int(comp[col].notna().sum())}
+                for k in METRICS:
+                    row[f"{k}_median"] = float(comp[f"{k}_{name}{suffix}"].median())
+                comp_summary.append(row)
+            for a, bname in (
+                ("grassbasis_swim", "baseline_it3_swim"),
+                ("grassbasis_swim", "baseline_it4_swim"),
+                ("grassbasis_rs", "baseline_rs"),
+            ):
+                if f"kge_{bname}{suffix}" not in comp:
+                    continue
+                row = {
+                    "basis": basis,
+                    "series": f"{a}_minus_{bname}_paired",
+                    "n_sites": int(comp[f"kge_{bname}{suffix}"].notna().sum()),
+                }
+                for k in METRICS:
+                    d = comp[f"{k}_{a}{suffix}"] - comp[f"{k}_{bname}{suffix}"]
+                    row[f"{k}_median"] = float(d.median())
+                comp_summary.append(row)
+        pd.DataFrame(comp_summary).to_csv(
+            cat6 / "internal_baseline_comparison_summary.csv", index=False
+        )
 
     # ---- classifier transitions vs metric change ----
     tr = pd.read_csv(args.transition_csv)
@@ -889,8 +903,9 @@ def main():
         },
         "baseline_reference": {
             "frozen_evaluation": str(frozen),
+            "present": bool(have_baseline),
             "posterior_iteration_as_evaluated": 4,
-            "iteration3_forward_run": not args.skip_baseline_forward,
+            "iteration3_forward_run": bool(have_baseline and not args.skip_baseline_forward),
             "note": "internal comparison only (plan §17); not a manuscript experiment",
         },
         "transfer_refresh": {
@@ -922,14 +937,15 @@ def main():
         .round(3)
         .to_string(index=False)
     )
-    print("\nINTERNAL BASELINE COMPARISON (intersection masks)")
-    print(
-        pd.DataFrame(comp_summary)[
-            ["basis", "series", "n_sites", "r2_median", "kge_median", "bias_median"]
-        ]
-        .round(3)
-        .to_string(index=False)
-    )
+    if comp_summary:
+        print("\nINTERNAL BASELINE COMPARISON (intersection masks)")
+        print(
+            pd.DataFrame(comp_summary)[
+                ["basis", "series", "n_sites", "r2_median", "kge_median", "bias_median"]
+            ]
+            .round(3)
+            .to_string(index=False)
+        )
     if len(split):
         print("\nRETRIEVAL vs BETWEEN (site medians)")
         print(pd.read_csv(cat6 / "overpass_split_summary.csv").round(3).to_string(index=False))

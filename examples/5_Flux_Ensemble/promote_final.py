@@ -44,6 +44,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from swimrs.swim import reproduce
+
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
@@ -162,15 +164,22 @@ def build_products(run_dir):
     return products
 
 
+def _status(frozen, rebuilt, name):
+    if frozen == rebuilt:
+        return "match"
+    return "match~" if reproduce.equivalent(frozen, rebuilt, name) else "differs"
+
+
 def compare(products, final_dir):
-    """Return [(name, status, sha256)] where status is 'match', 'differs', or 'missing'."""
+    """Return [(name, status, sha256)] where status is 'match' (byte-equal), 'match~'
+    (equal within floating-point round-off), 'differs', or 'missing'."""
     rows = []
     for name, data in products.items():
         target = Path(final_dir) / name
         if not target.exists():
             status = "missing"
         else:
-            status = "match" if target.read_bytes() == data else "differs"
+            status = _status(target.read_bytes(), data, name)
         rows.append((name, status, sha256_bytes(data)))
     return rows
 
@@ -199,7 +208,7 @@ def main():
         for name, data in products.items():
             (Path(args.final_dir) / name).write_bytes(data)
         print(f"wrote {len(products)} files to {args.final_dir}")
-    elif any(status != "match" for _, status, _ in rows):
+    elif any(not status.startswith("match") for _, status, _ in rows):
         print("promoted files differ from the rebuilt products (run with --write to replace)")
         return 1
     return 0

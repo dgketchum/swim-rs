@@ -39,6 +39,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from swimrs.swim import reproduce
+
 SCRIPT_VERSION = "1.0.0"
 
 # Figure 1 display package only.  Kept separate from SCRIPT_VERSION so that
@@ -61,6 +63,7 @@ import ex7_paths  # noqa: E402
 
 _CFG5 = ex5_paths.load_config()
 _CFG6 = ex6_paths.load_config()
+_CFG6_ROOT = ex6_paths.swim_root()  # the data root; recorded paths re-root below it
 
 E1_RUN = Path(ex5_paths.run_dir(cfg=_CFG5))
 E1_ARCHIVE = E1_RUN / "archive"
@@ -431,6 +434,7 @@ def container_coord_crs(container: Path) -> str:
         return _CONTAINER_CRS_CACHE[key]
     z = zarr.open(key, mode="r")
     shp = z.attrs.get("source_shapefile")
+    shp = str(reproduce.rebase(shp, root=_CFG6_ROOT, repo=REPO)) if shp else shp
     if not shp or not Path(shp).exists():
         raise BuildError(
             f"container coordinate CRS: {container} records source_shapefile={shp!r}, "
@@ -938,11 +942,12 @@ def build_fig02() -> None:
             }
             if g[f"{side}_physics"] != want_phys:
                 raise BuildError(f"fig02 gate {key}: {side}_physics != stated formulation")
-            if Path(g[f"{side}_params"]) != arm["par_csv"]:
+            # recorded on the authoring machine; compare below the data root / clone
+            if not reproduce.same_path(g[f"{side}_params"], arm["par_csv"]):
                 raise BuildError(f"fig02 gate {key}: {side}_params != panel-(a) parameter source")
-            if Path(g[f"{side}_config"]) != REPO / arm["config"]:
+            if not reproduce.same_path(g[f"{side}_config"], REPO / arm["config"]):
                 raise BuildError(f"fig02 gate {key}: {side}_config != stated arm config")
-            if Path(g[f"{side}_container"]) != arm["container"]:
+            if not reproduce.same_path(g[f"{side}_container"], arm["container"]):
                 raise BuildError(f"fig02 gate {key}: {side}_container != stated arm container")
         if list(g["sites_requested"]) != sites:
             raise BuildError(f"fig02 gate {key}: sites_requested != the E0 site list")

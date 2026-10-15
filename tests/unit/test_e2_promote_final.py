@@ -172,6 +172,18 @@ def test_compare_and_manifest_round_trip(mod, tmp_path):
     (final / "closure_pool" / "headline_aggregates.csv").write_text("changed\n")
     statuses = {n: s for n, s, _ in mod.compare(sources, final)}
     assert statuses["closure_pool/headline_aggregates.csv"] == "differs"
+
+    # a rebuild on other hardware moves a pooled statistic by one unit in the last place
+    target = final / "closure_pool" / "headline_aggregates.csv"
+    target.write_text(HEADLINE.replace("0.73", "0.7300000000000001", 1))
+    assert target.read_bytes() != sources["closure_pool/headline_aggregates.csv"].read_bytes()
+    statuses = {n: s for n, s, _ in mod.compare(sources, final)}
+    assert statuses["closure_pool/headline_aggregates.csv"] == "match~"
+    # build stamps and machine paths in a sidecar are not differences either
+    meta = final / "closure_pool" / "closure_pool_metadata.json"
+    meta.write_text(json.dumps({**POOL_META, "created_utc": "later", "git_sha": "ffffff"}))
+    statuses = {n: s for n, s, _ in mod.compare(sources, final)}
+    assert statuses["closure_pool/closure_pool_metadata.json"] == "match~"
     other = dict(manifest, promoted_at="later", pool={**manifest["pool"], "n_daily_sites_pool": 1})
     assert mod.manifest_diff(other, manifest) == ["pool"]
 
@@ -195,3 +207,8 @@ def test_manifest_diff_ignores_machine_paths_and_carries_addenda(mod, tmp_path):
 
     elsewhere["files"]["transfer/run_metadata.json"]["sha256"] = "0" * 64
     assert mod.manifest_diff(elsewhere, manifest) == ["files"]
+    # ...unless the file itself compared equal within round-off
+    assert mod.manifest_diff(elsewhere, manifest, {"transfer/run_metadata.json"}) == []
+    elsewhere["files"]["transfer/run_metadata.json"]["bytes"] += 1
+    assert mod.manifest_diff(elsewhere, manifest, {"transfer/run_metadata.json"}) == []
+    assert mod.manifest_diff(elsewhere, manifest, {"other"}) == ["files"]

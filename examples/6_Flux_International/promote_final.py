@@ -43,6 +43,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from swimrs.swim import reproduce
+
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
@@ -138,8 +140,15 @@ def collect_sources(run_dir, transfer_dir, e0_dir):
     return sources
 
 
+def _status(frozen, rebuilt, name):
+    if frozen == rebuilt:
+        return "match"
+    return "match~" if reproduce.equivalent(frozen, rebuilt, name) else "differs"
+
+
 def compare(sources, final_dir):
-    """Return [(name, status, sha256)] where status is 'match', 'differs', or 'missing'."""
+    """Return [(name, status, sha256)] where status is 'match' (byte-equal), 'match~'
+    (equal within floating-point round-off), 'differs', or 'missing'."""
     rows = []
     for name, src in sources.items():
         data = src.read_bytes()
@@ -147,7 +156,7 @@ def compare(sources, final_dir):
         if not target.exists():
             status = "missing"
         else:
-            status = "match" if target.read_bytes() == data else "differs"
+            status = _status(target.read_bytes(), data, name)
         rows.append((name, status, sha256_bytes(data)))
     return rows
 
@@ -270,15 +279,32 @@ def _portable(key, value):
     return value
 
 
-def manifest_diff(new, prior):
+def manifest_diff(new, prior, round_off=()):
     """Top-level keys whose regenerated value differs from the frozen manifest
-    (ignoring the volatile stamps and the machine-specific paths)."""
+    (ignoring the volatile stamps and the machine-specific paths).
+
+    ``round_off`` names files whose content compared equal within round-off
+    (``compare`` status ``match~``); their hash and size are expected to differ
+    and are not a ``files`` difference.
+    """
     keys = [k for k in dict.fromkeys([*prior, *new]) if k not in VOLATILE_KEYS]
-    return [
-        k
-        for k in keys
-        if _portable(k, json.loads(_json_bytes(new.get(k)))) != _portable(k, prior.get(k))
-    ]
+    out = []
+    for k in keys:
+        a = _portable(k, json.loads(_json_bytes(new.get(k))))
+        b = _portable(k, prior.get(k))
+        if k == "files" and isinstance(a, dict) and isinstance(b, dict):
+            drop = {"sha256", "bytes"}
+            a = {
+                n: ({kk: vv for kk, vv in v.items() if kk not in drop} if n in round_off else v)
+                for n, v in a.items()
+            }
+            b = {
+                n: ({kk: vv for kk, vv in v.items() if kk not in drop} if n in round_off else v)
+                for n, v in b.items()
+            }
+        if a != b:
+            out.append(k)
+    return out
 
 
 def main():
@@ -311,7 +337,8 @@ def main():
     manifest = build_manifest(
         sources, prior, results_root, run_dir, transfer_dir, e0_dir, final_dir
     )
-    changed = manifest_diff(manifest, prior)
+    round_off = {name for name, status, _ in rows if status == "match~"}
+    changed = manifest_diff(manifest, prior, round_off)
     print(f"MANIFEST.json: {'unchanged' if not changed else 'differs in ' + ', '.join(changed)}")
 
     if args.write:
@@ -321,7 +348,7 @@ def main():
             target.write_bytes(src.read_bytes())
         manifest_path.write_bytes(_json_bytes(manifest))
         print(f"wrote {len(sources)} files + MANIFEST.json to {final_dir}")
-    elif changed or any(status != "match" for _, status, _ in rows):
+    elif changed or any(not status.startswith("match") for _, status, _ in rows):
         print("promoted package differs from the results root (run with --write to replace)")
         return 1
     return 0

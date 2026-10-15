@@ -8,11 +8,11 @@
 # PEST++ master to port 5005, so two batch runners cannot coexist on this host.
 # ~55 min calibration per arm (canonical: 40.5 min batch 000 + 13 min batch 001).
 set -euo pipefail
-REPO=/home/dgketchum/code/swim-rs
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)  # this clone
 EX6=$REPO/examples/6_Flux_International
 BASE=6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr
-# workspace root from the TOML (one line to relocate everything on disk)
-SWIM_ROOT=$(uv --directory $REPO run python -c "import sys,tomllib;print(tomllib.load(open(sys.argv[1],'rb'))['root'])" "$EX6/$BASE.toml")
+# data root: SWIM_ROOT when exported (as the paths modules honour it), else the TOML root
+SWIM_ROOT=${SWIM_ROOT:-$(uv --directory $REPO run python -c "import sys,tomllib;print(tomllib.load(open(sys.argv[1],'rb'))['root'])" "$EX6/$BASE.toml")}
 E2=$SWIM_ROOT/6_Flux_International
 RESULTS=$E2/results
 QA_CANON=$E2/data/e2_etf_refooting

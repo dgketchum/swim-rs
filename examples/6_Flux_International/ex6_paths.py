@@ -63,6 +63,16 @@ def swim_root(config_path=None):
         return Path(os.environ.get("SWIM_ROOT") or tomllib.load(fh)["root"])
 
 
+def rebase(path, config_path=None):
+    """A path recorded in a frozen sidecar or archive on another machine, resolved
+    on this one (``Path``; unchanged when it already exists)."""
+    from swimrs.swim import reproduce
+
+    if Path(path).exists():
+        return Path(path)
+    return reproduce.rebase(path, root=swim_root(config_path), repo=REPO)
+
+
 def _interpolated(config_path=None):
     """``root``, ``project``, ``[paths]`` and ``[validation]`` strings with their
     ``{key}`` templates resolved, read with ``tomllib`` (no side effects)."""
