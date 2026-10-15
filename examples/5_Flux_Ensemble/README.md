@@ -18,6 +18,7 @@ This directory produces:
 | Fig. 4a–c (member spread vs error; conditioned-ensemble spread) | `spread_error.py`, `conditioned_ensemble_uncertainty.py` | `paper/data/final/e2_spread_error_*.csv`; `results/run23/conditioned_ensemble_uncertainty/` |
 | Table S7, Fig. 5a (within-E1 parameter transfer) | `within_e1_transfer.py`, promoted by `promote_final.py` | `paper/data/final/e2_irrigation_stratified_*.csv`, `e2_within_transfer_*.csv` |
 | Fig. 5b, Table S2 (E1 vectors transferred into E2) | Example 6 `transfer/` reads the Run 23 posterior | `paper/data/final/e2_run23_transfer_vector*.json` |
+| Fig. 1b, §2 revisit sentence (Landsat-only vs merged NDVI gap) | `scripts/analysis/ndvi_revisit_sentinel.py` on the three experiment containers | `paper/data/derived/ndvi_revisit/` (not frozen) |
 
 **Status (2026-10-14).** The published calibration is Run 23 (2026-09-26):
 the Run 22 settings recalibrated on the container rebuilt after the ETf
@@ -118,9 +119,12 @@ steps 1 and 2 and the two calibrations in step 6. Run step 3 into scratch
 output directories, then 3a, 3b, and 3c in their default check modes (no
 `--write`), step 4 on the step 3 daily directory, step 5, step 6 with
 `--summary-only`, step 7, and step 8. Steps 5 and 7 rewrite their output
-directories under `$RUN23/` and `results/`; step 8 then checks everything
-against the frozen `paper/data/final/` and must report `match` for every file
-and `G-VALUES: PASS`.
+directories under `$RUN23/`; step 8 then checks everything against the
+frozen `paper/data/final/` and must report `match` (byte-equal) or `match~`
+(equal within floating-point round-off) for every file and `G-VALUES: PASS`.
+Off the promotion commit, 3a needs `--allow-dirty` (its G-GIT gate pins the
+analysis files to the commit that promoted the package; the other gates still
+run).
 
 **1. Build the run container** (only if you do not have
 `5_Flux_Ensemble_run23.swim`; see Rebuilding the container below)
@@ -157,7 +161,7 @@ the exclusion ledger.
 **3a. Promote the daily and temporal packages** (re-freeze under RUN_POLICY)
 
 ```bash
-uv run python $EX5/promote_e1_run.py --run run23            # gates + report
+uv run python $EX5/promote_e1_run.py --run run23            # gates + report (--allow-dirty off the promotion commit)
 uv run python $EX5/promote_e1_run.py --run run23 --write    # promote
 ```
 
@@ -233,7 +237,7 @@ uv run python $EX5/within_e1_transfer.py
 ```
 
 The posterior and container default to Run 23 and the output to
-`results/within_e2_transfer_irrigation_stratified/`, which holds both the
+`$RUN23/within_e2_transfer_irrigation_stratified/`, which holds both the
 pooled (`loro`, `loso`) and the irrigation-stratified (`loro_strat`,
 `loso_strat`) arms beside the local and default references. The stratified
 arms carry two class vectors so a rainfed site never receives an irrigated
@@ -245,7 +249,7 @@ the frozen `e2_within_transfer_*` files from it.
 **8. Promote and freeze the paper evidence**
 
 ```bash
-uv run python $EX5/promote_final.py            # byte-for-byte check of the promoted files; --write replaces them
+uv run python $EX5/promote_final.py            # check of the promoted files (match / match~ / differs); --write replaces them
 uv run python $EX5/rebuild_e1_benchmark_evidence.py --output-dir paper/data/final --verify   # read-only: recomputes and compares against the frozen e2_evidence_metadata.json
 ```
 
@@ -255,7 +259,10 @@ uv run python $EX5/rebuild_e1_benchmark_evidence.py --output-dir paper/data/fina
 `rebuild_e1_benchmark_evidence.py` rebuilds the `e2_primary_*`,
 `e2_benchmark_*`, `e2_temporal_*` files, rescores the ablation onto the frozen
 benchmark record, and writes `e2_evidence_metadata.json`; `--verify` compares
-against the frozen hashes. The headline `e1_openet_benchmark/` package is
+against the frozen hashes. The monthly headline it prints (30 sites) is the
+28-day month rule of the `e2_*` evidence, not the Volk-protocol Table 4 row
+(step 3b); `e1_openet_benchmark/reconstruction_fidelity/table_s10_summary.csv`
+is Table S8 under its pre-renumbering name. The headline `e1_openet_benchmark/` package is
 promoted from the step 3 and 4 output directories and described by its
 `MANIFEST.json`, which names the similarly named legacy products that must not
 be substituted for it.

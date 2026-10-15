@@ -34,7 +34,7 @@ are not re-run, and PEST++ binaries are not needed.
 | Package | Unpack into | Content |
 |---|---|---|
 | `swim_data_e1.tar.gz` | data root | Example 5 containers, flux and OpenET deliveries, Run 23 archive and analysis outputs |
-| `swim_data_e2.tar.gz` | data root | Example 6 containers (three formulation arms), flux QAQC files, run archives, transfer and E0 outputs |
+| `swim_data_e2.tar.gz` | data root | Example 6 containers (three formulation arms), flux QAQC files, run archives, transfer and E0 outputs, the superseded baseline's evaluator outputs |
 | `swim_data_e3.tar.gz` | data root | Example 7 containers, inputs, calibration archive, scored outputs |
 | `swim_repo_local.tar.gz` | clone root | untracked repo-local inputs: `examples/5_Flux_Ensemble/data`, `examples/7_Applied_Water/data`, `data/cartographic` |
 | `swim_reference_final.tar.gz` | clone root | the frozen `paper/data/final/` (untracked in git) |
@@ -46,6 +46,7 @@ are not re-run, and PEST++ binaries are not needed.
 2. Pick a data root and unpack the packages:
 
    ```bash
+   gcloud auth login                                       # the bucket is private; application-default credentials alone give 401
    gsutil -m cp "gs://wudr/swim/reprod/*" /path/to/packages/
    mkdir -p /path/to/swim && for p in e1 e2 e3; do tar -xzf /path/to/packages/swim_data_$p.tar.gz -C /path/to/swim; done
    tar -xzf /path/to/packages/swim_repo_local.tar.gz -C /path/to/swim-rs      # the clone root
@@ -72,12 +73,17 @@ are not re-run, and PEST++ binaries are not needed.
    scripts' default check modes report any file that differs from what is on
    disk.
 5. The check modes are the comparison: every `promote_*.py` default run must
-   report `match` for every file and an unchanged manifest, and
+   report `match` (byte-equal) or `match~` (equal within floating-point
+   round-off, which a rebuild on other hardware produces in the last digit of
+   a few statistics) for every file and an unchanged manifest, and
    `rebuild_e1_benchmark_evidence.py --verify` must print `G-VALUES: PASS`.
    Scripts that write fresh outputs (for example the Example 7 evaluation)
-   are compared against the shipped `results/` copies: records byte-equal,
-   metrics equal to 1e-6. When everything has run, confirm that nothing under
-   `paper/data/final/` was rewritten:
+   are compared against the shipped `results/` copies: the same records and
+   columns, values equal within round-off. The sidecars and manifests the
+   packages ship record the authoring machine's paths; the check modes
+   compare them below the data root and the clone, so no editing is needed.
+   When everything has run, confirm that nothing under `paper/data/final/`
+   was rewritten:
 
    ```bash
    tar -dzf /path/to/packages/swim_reference_final.tar.gz -C /path/to/swim-rs   # silent when identical
@@ -108,7 +114,9 @@ Reproduction runs through three layers.
    compares by default and writes on request (`e1_openet_benchmark/`,
    `e2_closure_pool/` with a hashed `MANIFEST.json`, and the loose `e2_*` E1
    files). `scripts/figures/build_figure_data.py` reads the archives and frozen
-   files and writes `figures/` with `fig_manifest.json`.
+   files and writes `figures/` with `fig_manifest.json`. A `--only` run merges
+   into the manifest already in its output directory, so to rebuild into
+   scratch copy the frozen `figures/` there first and pass it as `--out`.
 3. **Typeset tables and figures.** The manuscript's tables and figure
    proofs are typeset from layer 2 outside this repository; no experiment
    script writes them, and they are not part of the reproduction.

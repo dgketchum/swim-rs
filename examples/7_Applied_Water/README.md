@@ -167,6 +167,10 @@ evaluator's input.
 uv run python $EX7/evaluate_applied_water.py --container $E7/data/7_Applied_Water_e7cal.swim --params-json $E7/results/e7cal/archive/4_pest_outputs/merged/merged_posterior.json --label calibrated
 ```
 
+The evaluator scores every metered field it finds (100 fields, 730
+field-years) and prints those pooled numbers; they are not Table 6, which
+step 8 computes after restricting to the 50 SLV fields and 404 field-years.
+
 **7. Score the transferred irrigated set**
 
 ```bash

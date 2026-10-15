@@ -92,7 +92,10 @@ ARCHIVE=$RESULTS/$RUN/archive
 steps 1 and 2 and the calibrations inside step 6. Run step 3, step 4 into a
 scratch `<transfer-out>`, step 5, the three `pooled_arm_compare.py` pairs of
 step 6 on the shipped arm posteriors, step 7, and step 8, whose default check
-mode must report `match` for every file and an unchanged `MANIFEST.json`.
+mode must report `match` or `match~` for every file and an unchanged
+`MANIFEST.json`. Steps 3 and 5 write into the shipped run directory under
+`$RESULTS/$RUN/`; keep a copy of the package if you want the shipped files
+back.
 
 **1. Validate the container** (mandatory before any calibration)
 
@@ -126,9 +129,14 @@ uv run python $EX6/derived_metrics.py --config $CFG --uncalibrated --out $RESULT
 **4. Transfer the E1 parameter sets** (no recalibration; vectors frozen upstream)
 
 ```bash
-uv run python $EX6/transfer/build_e2_irrigation_mapping.py --container <container> --out-dir <results>/transfer_refresh
-uv run python $EX6/transfer_ex5_params.py --config $CFG --params paper/data/final/e2_run23_transfer_vector.json --params-by-site <results>/transfer_refresh/e3_irrigation_stratified_param_mapping.json --container <container> --e2-results-dir <results> --out <transfer-out>
+CONTAINER=$SWIM_ROOT/6_Flux_International/data/6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim
+uv run python $EX6/transfer/build_e2_irrigation_mapping.py --container $CONTAINER --out-dir $RESULTS/$RUN/transfer_refresh --allow-unexpected
+uv run python $EX6/transfer_ex5_params.py --config $CFG --params paper/data/final/e2_run23_transfer_vector.json --params-by-site $RESULTS/$RUN/transfer_refresh/e3_irrigation_stratified_param_mapping.json --container $CONTAINER --e2-results-dir $RESULTS/$RUN --out <transfer-out>
 ```
+
+`--allow-unexpected` reproduces the shipped mapping (its metadata records the
+flag); `--e2-results-dir` is the run directory that step 3 filled, not the
+results root.
 
 **5. Summaries** (Table 5, S8, Fig. 5b; read-only on the archive)
 
@@ -137,6 +145,13 @@ uv run python $EX6/evaluation_summary.py --config $CFG --run-name $RUN
 uv run python $EX6/closure_pool_summary.py --config $CFG --run-name $RUN
 uv run python $EX6/awc_recal/monthly_28day_sensitivity.py --run-name $RUN
 ```
+
+`evaluation_summary.py` also compares the run against the superseded
+classifier-recal baseline (its evaluator outputs ship in the e2 package;
+`--skip-baseline-forward` skips the baseline's own forward run, which needs
+its container and PEST++ archive and is not part of the frozen outputs). When
+the baseline is absent the comparison is skipped and its two summary files are
+not written.
 
 **6. E0 formulation arms** (Table 3, Fig. 2)
 
@@ -166,8 +181,12 @@ uv run python $EX6/product_parity/e1_e2_product_parity.py --out-dir <out>
 **8. Promote and freeze the paper evidence**
 
 ```bash
-uv run python $EX6/promote_final.py --config $CFG            # byte-for-byte check; --write replaces the package
+uv run python $EX6/promote_final.py --config $CFG            # check; --write replaces the package
 ```
+
+The check reports `match` (byte-equal) or `match~` (equal within
+floating-point round-off; a rebuild on other hardware differs in the last
+digit of a few pooled statistics) for every file, `differs` otherwise.
 
 Copies the step 4–6 outputs (`closure_pool/`, `transfer/`, `e0_disjoint/`) into
 `paper/data/final/e2_closure_pool/` and regenerates its `MANIFEST.json`. The
