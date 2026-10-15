@@ -1,4 +1,4 @@
-"""Unit tests for the E2 closure-pool gates in scripts/figures/build_figure_data.py.
+"""Unit tests for the E2 closure-pool gates in scripts/figures/figdata/sources.py.
 
 The builder restricts Fig. 1 and Fig. 5 to the paper's 47 closure-corrected
 E2 towers (frozen 2026-09-21). These tests exercise the gate helpers on
@@ -6,27 +6,35 @@ synthetic frames so a regression in the pool logic fails here rather than in
 a full figure build.
 """
 
-import importlib.util
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-BUILDER = REPO / "scripts" / "figures" / "build_figure_data.py"
+SCRIPTS = REPO / "scripts" / "figures"
 
 
 @pytest.fixture(scope="module")
 def bfd():
-    spec = importlib.util.spec_from_file_location("build_figure_data", BUILDER)
-    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(SCRIPTS))
     try:
-        spec.loader.exec_module(module)
+        from figdata import cohorts, manifest, sources
     except (PermissionError, FileNotFoundError) as exc:
         # the builder resolves the data root at import; a machine without it skips
         pytest.skip(f"figure builder needs the data root: {exc}")
-    return module
+    return SimpleNamespace(
+        BuildError=manifest.BuildError,
+        EXPECTED=cohorts.EXPECTED,
+        check_pool_medians=sources.check_pool_medians,
+        flag_evaluation_pool=sources.flag_evaluation_pool,
+        gate_closure_pool=sources.gate_closure_pool,
+        gate_pool_summary=sources.gate_pool_summary,
+        restrict_to_pool=sources.restrict_to_pool,
+    )
 
 
 N_POOL = 47
