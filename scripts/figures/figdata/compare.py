@@ -1,11 +1,14 @@
 """Compare a rebuilt figure-data package with the frozen one.
 
-The builder is deterministic: every table it emits must be byte-identical between
-two builds of the same sources.  Only three things legitimately differ, and they are
-the only things this comparison ignores:
+The builder is deterministic: every table it emits is byte-identical between two
+builds of the same sources on the same machine.  On other hardware the last digit
+of a float can differ, so a table that is not byte-identical is accepted when it is
+equal within floating-point round-off (``swimrs.swim.reproduce.equivalent``).  Beyond
+that, only three things legitimately differ, and they are the only things this
+comparison ignores:
 
-* ``frozen_utc`` build stamps (in ``fig_manifest.json`` and the ``fig0*_metadata.json``
-  sidecars);
+* build stamps: ``frozen_utc`` (in ``fig_manifest.json`` and the ``fig0*_metadata.json``
+  sidecars) and the manifest's ``repo_git_sha`` / ``repo_worktree_dirty``;
 * absolute paths below the output directory (the sidecars record where superseded
   packages were moved); they are compared relative to each package's directory;
 * the GeoPackage's internal write metadata; ``fig01_scope.gpkg`` is compared layer by
@@ -22,9 +25,11 @@ import json
 import math
 from pathlib import Path
 
+from swimrs.swim import reproduce
+
 OUTPUT_GLOBS = ("fig*.csv", "fig*.json", "fig*.gpkg")
 MANIFEST_NAME = "fig_manifest.json"
-VOLATILE_KEYS = frozenset({"frozen_utc"})
+VOLATILE_KEYS = frozenset({"frozen_utc", "repo_git_sha", "repo_worktree_dirty"})
 DIGEST_KEYS = ("output_sha256", "output_bytes", "sha256", "bytes")
 
 
@@ -51,7 +56,11 @@ def _json_equal(a: Path, b: Path, drop_digests: set[str]) -> bool:
                 if isinstance(rec, dict):
                     for key in DIGEST_KEYS:
                         rec.pop(key, None)
-    return da == db
+    if da == db:
+        return True
+    return reproduce.equivalent(
+        json.dumps(da, sort_keys=True), json.dumps(db, sort_keys=True), a.name
+    )
 
 
 def _gpkg_equal(a: Path, b: Path) -> bool:
@@ -100,6 +109,8 @@ def package_differences(built: Path, frozen: Path) -> list[str]:
         if name.endswith(".json") and _json_equal(a, b, set()):
             stamped_equal.add(name)
         elif name.endswith(".gpkg") and _gpkg_equal(a, b):
+            stamped_equal.add(name)
+        elif name.endswith(".csv") and reproduce.equivalent(a.read_bytes(), b.read_bytes(), name):
             stamped_equal.add(name)
         else:
             diffs.append(f"{name}: content differs")

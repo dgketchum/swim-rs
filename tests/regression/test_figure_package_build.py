@@ -2,8 +2,8 @@
 
 ``scripts/figures/build_figure_data.py --all`` is rerun over a copy of
 ``paper/data/final/figures/`` and every emitted table is compared with the frozen
-one.  Only build stamps, output-directory paths, and GeoPackage write metadata may
-differ (see ``figdata.compare``).  The copy is needed because two builders read the
+one.  Only build stamps, output-directory paths, GeoPackage write metadata, and
+floating-point round-off may differ (see ``figdata.compare``).  The copy is needed because two builders read the
 previous package: ``fig03`` re-registers the Figure 1 provenance records from the
 prior ``fig_manifest.json`` and ``fig01`` reads the prior example selection.
 
