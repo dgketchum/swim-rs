@@ -15,7 +15,8 @@ strings fail although the data is present. Two helpers fix that:
 
 ``equivalent(a, b, name)`` compares two serialized files (CSV or JSON) allowing
 floating-point round-off, for check modes that would otherwise fail on 1-ULP
-differences between platforms.
+differences between platforms. Build stamps (``volatile_key``) and the machine
+part of recorded paths are ignored.
 """
 
 import io
@@ -39,11 +40,20 @@ PROJECTS = (
     "9_Bushland",
     "10_Oregon",
 )
-REPO_MARKERS = ("examples", "paper", "scripts")
+# clone-relative markers; ``data`` covers the repo-local inputs (``data/cartographic``)
+REPO_MARKERS = ("examples", "paper", "scripts", "data")
 RTOL = 1e-9
-# sidecar stamps that a rebuild always changes (compared nowhere; the content is)
-VOLATILE_KEYS = frozenset({"created_utc", "created", "generated_utc", "git_sha", "hostname"})
 ATOL = 1e-12
+# sidecar stamps that a rebuild always changes (compared nowhere; the content is):
+# these keys, and any key ending in one of the suffixes (``date_generated_utc``,
+# ``promoted_at``, ``promoted_at_git_sha``, ``build_timestamp``)
+VOLATILE_KEYS = frozenset({"created_utc", "created", "generated_utc", "git_sha", "hostname"})
+VOLATILE_SUFFIXES = ("_utc", "_at", "git_sha", "timestamp")
+
+
+def volatile_key(key):
+    """True for a JSON key that holds a build stamp rather than content."""
+    return isinstance(key, str) and (key in VOLATILE_KEYS or key.endswith(VOLATILE_SUFFIXES))
 
 
 def split(path):
@@ -56,7 +66,8 @@ def split(path):
                 return "repo", Path(*parts[i - 1 :])
             return "root", Path(*parts[i:])
     for i, part in enumerate(parts):
-        if part in REPO_MARKERS:
+        # a clone root is never the filesystem root, so skip "/data/..." itself
+        if part in REPO_MARKERS and not (i == 1 and parts[0] == "/"):
             return "repo", Path(*parts[i:])
     return None, Path(path)
 
@@ -89,8 +100,8 @@ def _json_key(k):
 
 def _json_equivalent(a, b):
     if isinstance(a, dict) and isinstance(b, dict):
-        da = {_json_key(k): v for k, v in a.items() if k not in VOLATILE_KEYS}
-        db = {_json_key(k): v for k, v in b.items() if k not in VOLATILE_KEYS}
+        da = {_json_key(k): v for k, v in a.items() if not volatile_key(k)}
+        db = {_json_key(k): v for k, v in b.items() if not volatile_key(k)}
         return da.keys() == db.keys() and all(_json_equivalent(da[k], db[k]) for k in da)
     if isinstance(a, list) and isinstance(b, list):
         return len(a) == len(b) and all(_json_equivalent(x, y) for x, y in zip(a, b))
@@ -100,8 +111,9 @@ def _json_equivalent(a, b):
         if isinstance(a, float) and isinstance(b, float) and math.isnan(a) and math.isnan(b):
             return True
         return math.isclose(a, b, rel_tol=RTOL, abs_tol=ATOL)
-    if isinstance(a, str) and isinstance(b, str) and a.startswith("/") and b.startswith("/"):
-        return a == b or same_path(a, b)
+    if isinstance(a, str) and isinstance(b, str):
+        # recorded paths: absolute on one machine, relative or re-rooted on another
+        return a == b or (split(a)[0] is not None and split(b)[0] is not None and same_path(a, b))
     return a == b
 
 
@@ -119,7 +131,13 @@ def _csv_equivalent(a, b):
             if not np.allclose(x.to_numpy(float), y.to_numpy(float), RTOL, ATOL, equal_nan=True):
                 return False
         elif not x.astype(str).equals(y.astype(str)):
-            return False
+            # a mixed column (key,value files): numbers within round-off, text equal
+            nx, ny = pd.to_numeric(x, errors="coerce"), pd.to_numeric(y, errors="coerce")
+            num = nx.notna() & ny.notna()
+            if not np.allclose(nx[num], ny[num], RTOL, ATOL):
+                return False
+            if not x[~num].astype(str).equals(y[~num].astype(str)):
+                return False
     return True
 
 

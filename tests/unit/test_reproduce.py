@@ -103,3 +103,54 @@ def test_equivalent_json_ignores_build_stamps_and_path_keys():
     enc = lambda o: json.dumps(o).encode()  # noqa: E731
     assert rp.equivalent(enc(a), enc(b), "meta.json")
     assert not rp.equivalent(enc(a), enc(c), "meta.json")
+
+
+def test_split_treats_clone_data_dir_as_repo_but_not_the_filesystem_data_root():
+    assert rp.split(f"{AUTHOR_REPO}/data/cartographic/ne_110m_admin_0_countries.shp") == (
+        "repo",
+        rp.Path("data/cartographic/ne_110m_admin_0_countries.shp"),
+    )
+    assert rp.split("/data/ssd1/elsewhere/file.txt") == (
+        None,
+        rp.Path("/data/ssd1/elsewhere/file.txt"),
+    )
+    assert rp.same_path(
+        f"{AUTHOR_REPO}/data/cartographic/x.fgb", "/tmp/clone/data/cartographic/x.fgb"
+    )
+
+
+def test_volatile_key_matches_stamp_suffixes():
+    for key in ("created_utc", "date_generated_utc", "promoted_at", "promoted_at_git_sha", "ts"):
+        assert rp.volatile_key(key) == (key != "ts")
+    assert not rp.volatile_key("kge")
+    assert not rp.volatile_key(3)
+
+
+def test_equivalent_json_path_strings_relative_or_absolute():
+    a = {"a_config": f"{AUTHOR_REPO}/examples/6_Flux_International/arm.toml", "n": 1}
+    b = {"a_config": "examples/6_Flux_International/arm.toml", "n": 1}
+    c = {"a_config": "examples/6_Flux_International/other.toml", "n": 1}
+    enc = lambda o: json.dumps(o).encode()  # noqa: E731
+    assert rp.equivalent(enc(a), enc(b), "g.json")
+    assert not rp.equivalent(enc(a), enc(c), "g.json")
+    assert not rp.equivalent(
+        enc({"label": "E3 calibrated"}), enc({"label": "E3 default"}), "g.json"
+    )
+
+
+def test_equivalent_json_ignores_suffix_stamps():
+    a = {"date_generated_utc": "2026-09-26T16:01:15Z", "promoted_at": "x", "v": 0.5}
+    b = {"date_generated_utc": "2026-10-15T20:31:54Z", "promoted_at": "y", "v": 0.5}
+    enc = lambda o: json.dumps(o).encode()  # noqa: E731
+    assert rp.equivalent(enc(a), enc(b), "m.json")
+    assert not rp.equivalent(enc(a), enc(dict(b, v=0.6)), "m.json")
+
+
+def test_equivalent_csv_key_value_file_mixed_column():
+    a = b"n_observations,2131\nn_sites,33\nreference_eto_path,meteorology/gridmet/eto_corr\nslope,0.29994004755583226\n"
+    b = b"n_observations,2131\nn_sites,33\nreference_eto_path,meteorology/gridmet/eto_corr\nslope,0.29994004755583220\n"
+    c = b"n_observations,2131\nn_sites,33\nreference_eto_path,meteorology/gridmet/eto_raw\nslope,0.29994004755583226\n"
+    d = b"n_observations,2131\nn_sites,34\nreference_eto_path,meteorology/gridmet/eto_corr\nslope,0.29994004755583226\n"
+    assert rp.equivalent(a, b, "summary.csv")
+    assert not rp.equivalent(a, c, "summary.csv")
+    assert not rp.equivalent(a, d, "summary.csv")
