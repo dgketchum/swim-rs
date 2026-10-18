@@ -60,6 +60,7 @@ from swimrs.calibrate.benchmark import (
     reconstruct_daily_benchmark,
 )
 from swimrs.calibrate.flux_utils import full_month_paired_sums, passes_site_minimum
+from swimrs.swim import reproduce
 
 # Mirrors evaluate.py (kept local so this script never imports the model stack)
 OPEN_SOURCE_MODELS = ["geesebal", "ptjpl", "ssebop", "sims", "eemetric", "disalexi"]
@@ -1273,9 +1274,10 @@ def compare_to_pinned(pinned, metadata, out_dir):
     # pinned temporal artifact hashes vs the canonical temporal directory
     temporal = pinned.get("temporal_artifacts")
     if temporal:
-        tdir = Path(temporal["canonical_dir"])
-        if not tdir.exists():  # pinned on another machine: this run's temporal dir
-            tdir = Path(metadata.get("temporal_artifacts", {}).get("canonical_dir", tdir))
+        # pinned on another machine: the same directory below this data root
+        tdir = reproduce.rebase(temporal["canonical_dir"], repo=REPO_ROOT)
+        if not tdir.exists():  # else this run's temporal dir (--gboot-dirs)
+            tdir = Path((metadata.get("temporal_artifacts") or {}).get("canonical_dir", tdir))
         for name, sha in temporal.get("files_sha256", {}).items():
             p = tdir / name
             if not p.exists():
