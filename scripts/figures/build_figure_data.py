@@ -23,23 +23,31 @@ This file is the command line only.  The builders live in ``figdata/``: one
 module per figure (``fig01_scope`` + ``fig01_architecture``, ``fig02_formulation``,
 ``fig03_agreement``, ``fig04_reliability``, ``fig05_transfer``,
 ``fig06_applied_water``) over the shared ``paths``, ``cohorts``, ``manifest`` and
-``sources`` modules.  ``--check`` re-hashes the sources the manifest records;
-``figdata.compare`` and ``tests/regression/test_figure_package_build.py`` hold a
-rebuild to the frozen package byte for byte.
+``sources`` modules.  ``--check`` re-hashes the sources the manifest records (run it
+before any experiment step rewrites them).  Two builders read the previous package
+(``fig03`` re-registers the Figure 1 provenance from the prior manifest, ``fig01``
+the prior example selection), so an ``--out`` directory with no ``fig_manifest.json``
+is first seeded with a copy of the frozen package.  ``--compare`` then reports every
+table the rebuild does not reproduce (``figdata.compare``: build stamps, machine
+paths, digests and round-off ignored); ``tests/regression/test_figure_package_build.py``
+holds the same gate.
 
 Usage::
 
     uv run python scripts/figures/build_figure_data.py --all
+    uv run python scripts/figures/build_figure_data.py --all --out /scratch/figures --compare
     uv run python scripts/figures/build_figure_data.py --only fig06_bootstrap
     uv run python scripts/figures/build_figure_data.py --check
 """
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
 from figdata import paths
 from figdata.check import check_sources
+from figdata.compare import package_differences
 from figdata.fig01_scope import build_fig01
 from figdata.fig02_formulation import build_fig02, build_fig02_bootstrap
 from figdata.fig03_agreement import build_fig03
@@ -81,6 +89,26 @@ BUILD_ORDER = [
 if set(BUILD_ORDER) != set(BUILDERS):
     raise RuntimeError("BUILD_ORDER and BUILDERS disagree")
 
+FROZEN = paths.FINAL / "figures"
+SEED_IGNORE = ("superseded_*", "BUILD_STATUS.md", "__pycache__")
+
+
+def seed_output(out: Path, frozen: Path = FROZEN) -> bool:
+    """Copy the frozen package into an ``--out`` directory that holds no manifest yet.
+
+    Returns True when a copy was made.  The frozen directory itself and any directory
+    that already holds ``fig_manifest.json`` are left alone.
+    """
+    if out.resolve() == frozen.resolve() or (out / "fig_manifest.json").exists():
+        return False
+    if not (frozen / "fig_manifest.json").exists():
+        raise SystemExit(
+            f"{out} holds no fig_manifest.json and the frozen package {frozen} is not "
+            "on this machine to seed it from (unpack swim_reference_final.tar.gz)"
+        )
+    shutil.copytree(frozen, out, ignore=shutil.ignore_patterns(*SEED_IGNORE), dirs_exist_ok=True)
+    return True
+
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
@@ -92,6 +120,11 @@ def main(argv=None) -> int:
         action="store_true",
         help="re-hash the sources fig_manifest.json records instead of building",
     )
+    ap.add_argument(
+        "--compare",
+        action="store_true",
+        help=f"after building, report every table that differs from {FROZEN}",
+    )
     args = ap.parse_args(argv)
 
     paths.OUT = Path(args.out)
@@ -102,6 +135,8 @@ def main(argv=None) -> int:
         print(f"checked {n} recorded sources; {len(problems)} changed or missing")
         return 1 if problems else 0
     paths.OUT.mkdir(parents=True, exist_ok=True)
+    if seed_output(paths.OUT):
+        print(f"seeded {paths.OUT} from the frozen package {FROZEN}")
 
     if args.only:
         targets = sorted(set(args.only), key=BUILD_ORDER.index)
@@ -128,6 +163,12 @@ def main(argv=None) -> int:
     if failures:
         print(f"{len(failures)} builder(s) failed; see BUILD_STATUS.md", file=sys.stderr)
         return 1
+    if args.compare:
+        diffs = package_differences(paths.OUT, FROZEN)
+        for line in diffs:
+            print(f"  {line}", file=sys.stderr)
+        print(f"compared with {FROZEN}: {len(diffs)} table(s) differ")
+        return 1 if diffs else 0
     return 0
 
 
