@@ -205,7 +205,9 @@ def assign_classes(fields, irrmapper_csv):
     if not irrmapper_csv.exists():
         raise SystemExit(
             f"IrrMapper rainfed cache not found: {irrmapper_csv}\n"
-            "Rebuild it with examples/7_Applied_Water/espa_control_irrmapper.py."
+            "It ships in swim_repo_local.tar.gz (unpack at the clone root); on the "
+            "authoring machine, examples/7_Applied_Water/espa_control_irrmapper.py "
+            "rebuilds it from Earth Engine."
         )
     irr = pd.read_csv(irrmapper_csv, usecols=["fid2015", "mean_irr", "max_irr"])
     if irr.fid2015.duplicated().any():

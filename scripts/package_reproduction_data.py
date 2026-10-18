@@ -140,6 +140,9 @@ REPO_PACKAGES = {
             "examples/5_Flux_Ensemble/data",
             "examples/7_Applied_Water/data",
             "data/cartographic",
+            # the IrrMapper gate for the ESPA rainfed controls, read by the Example 7
+            # transfer mapping (step 7); the rest of data/idwr_wmis is truth-build input
+            "data/idwr_wmis/espa_control_irrmapper.csv",
         ],
         "exclude_dirs": ["_deprecated_january_delivery"],
     },
