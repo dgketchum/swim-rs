@@ -41,7 +41,6 @@ Usage::
 """
 
 import argparse
-import shutil
 import sys
 from pathlib import Path
 
@@ -55,6 +54,7 @@ from figdata.fig04_reliability import build_fig04
 from figdata.fig05_transfer import build_fig05_e1, build_fig05_e2
 from figdata.fig06_applied_water import build_fig06, build_fig06_bootstrap
 from figdata.manifest import MANIFEST
+from figdata.seed import seed_output
 
 # --------------------------------------------------------------------------
 # driver
@@ -90,24 +90,6 @@ if set(BUILD_ORDER) != set(BUILDERS):
     raise RuntimeError("BUILD_ORDER and BUILDERS disagree")
 
 FROZEN = paths.FINAL / "figures"
-SEED_IGNORE = ("superseded_*", "BUILD_STATUS.md", "__pycache__")
-
-
-def seed_output(out: Path, frozen: Path = FROZEN) -> bool:
-    """Copy the frozen package into an ``--out`` directory that holds no manifest yet.
-
-    Returns True when a copy was made.  The frozen directory itself and any directory
-    that already holds ``fig_manifest.json`` are left alone.
-    """
-    if out.resolve() == frozen.resolve() or (out / "fig_manifest.json").exists():
-        return False
-    if not (frozen / "fig_manifest.json").exists():
-        raise SystemExit(
-            f"{out} holds no fig_manifest.json and the frozen package {frozen} is not "
-            "on this machine to seed it from (unpack swim_reference_final.tar.gz)"
-        )
-    shutil.copytree(frozen, out, ignore=shutil.ignore_patterns(*SEED_IGNORE), dirs_exist_ok=True)
-    return True
 
 
 def main(argv=None) -> int:
@@ -135,7 +117,7 @@ def main(argv=None) -> int:
         print(f"checked {n} recorded sources; {len(problems)} changed or missing")
         return 1 if problems else 0
     paths.OUT.mkdir(parents=True, exist_ok=True)
-    if seed_output(paths.OUT):
+    if seed_output(paths.OUT, FROZEN):
         print(f"seeded {paths.OUT} from the frozen package {FROZEN}")
 
     if args.only:

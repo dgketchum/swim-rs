@@ -9,14 +9,15 @@ comparison ignores:
 
 * build stamps: ``frozen_utc`` (in ``fig_manifest.json`` and the ``fig0*_metadata.json``
   sidecars) and the manifest's ``repo_git_sha`` / ``repo_worktree_dirty``;
-* recorded absolute paths: below the output directory they are compared relative to
-  each package's directory, elsewhere from the data-root or repository marker on
-  (``swimrs.swim.reproduce.portable_key``), so another machine's clone and data
-  root compare equal;
-* digests and sizes (``*sha256``, ``*bytes`` keys and 64-hex values) of the inputs
-  the sidecars hash and of the outputs the manifest hashes: this comparison judges
-  the table content itself, and ``build_figure_data.py --check`` re-hashes the
-  recorded inputs;
+* recorded absolute paths: below the output directory they are compared as if
+  written at the frozen location (``paper/data/final/figures/...``, which is what
+  the frozen package records on the authoring machine), elsewhere from the
+  data-root or repository marker on (``swimrs.swim.reproduce.portable_key``), so a
+  scratch ``--out`` on another machine's clone and data root compares equal;
+* digests and sizes (``*sha256``, ``*bytes`` keys and columns, 64-hex values;
+  ``swimrs.swim.reproduce.digest``) of the inputs the sidecars hash and of the
+  outputs the manifest hashes: this comparison judges the table content itself,
+  and ``build_figure_data.py --check`` re-hashes the recorded inputs;
 * the GeoPackage's internal write metadata; ``fig01_scope.gpkg`` is compared layer by
   layer (attributes and geometry) instead of by bytes.
 """
@@ -25,22 +26,14 @@ from __future__ import annotations
 
 import json
 import math
-import re
 from pathlib import Path
 
 from swimrs.swim import reproduce
 
 OUTPUT_GLOBS = ("fig*.csv", "fig*.json", "fig*.gpkg")
 MANIFEST_NAME = "fig_manifest.json"
+FROZEN_KEY = "paper/data/final/figures"
 VOLATILE_KEYS = frozenset({"frozen_utc", "repo_git_sha", "repo_worktree_dirty"})
-DIGEST_SUFFIXES = ("sha256", "bytes")
-_HEX64 = re.compile(r"[0-9a-f]{64}")
-
-
-def _is_digest(key, value) -> bool:
-    return (isinstance(key, str) and key.endswith(DIGEST_SUFFIXES)) or (
-        isinstance(value, str) and _HEX64.fullmatch(value) is not None
-    )
 
 
 def _normalize(obj, out_dir: str):
@@ -50,12 +43,12 @@ def _normalize(obj, out_dir: str):
         return {
             _normalize(k, out_dir): _normalize(v, out_dir)
             for k, v in obj.items()
-            if k not in VOLATILE_KEYS and not _is_digest(k, v)
+            if k not in VOLATILE_KEYS and not reproduce.digest(k, v)
         }
     if isinstance(obj, list):
         return [_normalize(v, out_dir) for v in obj]
     if isinstance(obj, str) and obj.startswith(out_dir):
-        return "<OUT>" + obj[len(out_dir) :]
+        return FROZEN_KEY + obj[len(out_dir) :]
     if isinstance(obj, str) and obj.startswith("/"):
         return reproduce.portable_key(obj)
     if isinstance(obj, float) and math.isnan(obj):
