@@ -205,10 +205,10 @@ def test_manifest_diff_ignores_machine_paths_and_carries_addenda(mod, tmp_path):
         entry["source"] = "/other/machine" + entry["source"]
     assert mod.manifest_diff(elsewhere, manifest) == []
 
+    # a file's hash and size are not a manifest difference (compare() judges the
+    # file's content); the file set is
     elsewhere["files"]["transfer/run_metadata.json"]["sha256"] = "0" * 64
-    assert mod.manifest_diff(elsewhere, manifest) == ["files"]
-    # ...unless the file itself compared equal within round-off
-    assert mod.manifest_diff(elsewhere, manifest, {"transfer/run_metadata.json"}) == []
     elsewhere["files"]["transfer/run_metadata.json"]["bytes"] += 1
-    assert mod.manifest_diff(elsewhere, manifest, {"transfer/run_metadata.json"}) == []
-    assert mod.manifest_diff(elsewhere, manifest, {"other"}) == ["files"]
+    assert mod.manifest_diff(elsewhere, manifest) == []
+    del elsewhere["files"]["transfer/run_metadata.json"]
+    assert mod.manifest_diff(elsewhere, manifest) == ["files"]

@@ -279,30 +279,18 @@ def _portable(key, value):
     return value
 
 
-def manifest_diff(new, prior, round_off=()):
+def manifest_diff(new, prior):
     """Top-level keys whose regenerated value differs from the frozen manifest
-    (ignoring the volatile stamps and the machine-specific paths).
-
-    ``round_off`` names files whose content compared equal within round-off
-    (``compare`` status ``match~``); their hash and size are expected to differ
-    and are not a ``files`` difference.
+    (ignoring the volatile stamps, the machine-specific paths, floating-point
+    round-off in the recorded statistics, and the hashes and sizes of files,
+    whose content ``compare`` judges directly).
     """
     keys = [k for k in dict.fromkeys([*prior, *new]) if k not in VOLATILE_KEYS]
     out = []
     for k in keys:
         a = _portable(k, json.loads(_json_bytes(new.get(k))))
         b = _portable(k, prior.get(k))
-        if k == "files" and isinstance(a, dict) and isinstance(b, dict):
-            drop = {"sha256", "bytes"}
-            a = {
-                n: ({kk: vv for kk, vv in v.items() if kk not in drop} if n in round_off else v)
-                for n, v in a.items()
-            }
-            b = {
-                n: ({kk: vv for kk, vv in v.items() if kk not in drop} if n in round_off else v)
-                for n, v in b.items()
-            }
-        if a != b:
+        if not reproduce.json_equivalent(a, b):
             out.append(k)
     return out
 
@@ -337,8 +325,7 @@ def main():
     manifest = build_manifest(
         sources, prior, results_root, run_dir, transfer_dir, e0_dir, final_dir
     )
-    round_off = {name for name, status, _ in rows if status == "match~"}
-    changed = manifest_diff(manifest, prior, round_off)
+    changed = manifest_diff(manifest, prior)
     print(f"MANIFEST.json: {'unchanged' if not changed else 'differs in ' + ', '.join(changed)}")
 
     if args.write:
