@@ -174,23 +174,30 @@ step 8 computes after restricting to the 50 SLV fields and 404 field-years.
 **7. Score the transferred irrigated set**
 
 ```bash
-uv run python $EX7/build_applied_irrigation_mapping.py --verify-keys $E7/results/applied_calibrated/per_field_year.csv
+uv run python $EX7/build_applied_irrigation_mapping.py --verify-keys $E7/results/applied_calibrated/per_field_year.csv --out-dir <mapping-dir>
+cmp <mapping-dir>/e4_irrigation_stratified_param_mapping.json paper/data/final/e4_irrigation_stratified_param_mapping.json   # silent when identical
 uv run python $EX7/evaluate_applied_water.py --container $E7/data/7_Applied_Water_e7cal.swim --params-json paper/data/final/e4_irrigation_stratified_param_mapping.json --label transfer_run23_by_irrigation
 ```
 
 The mapping builder assigns the irrigated vector to every metered field and the
 rainfed vector to the ten controls, from the site-id prefix and the IrrMapper
-gate only; it writes the two `e4_*` JSONs into `paper/data/final/` by default
-(`--out-dir` elsewhere). The evaluator writes `per_field_year.csv`,
-`summary_metrics.csv`, `negative_controls.json`, and a scatter under
-`results/applied_<label>/`.
+gate only; it writes the two `e4_*` JSONs. Without `--out-dir` it writes into
+`paper/data/final/`, which is how the frozen pair was made; with the data
+packages write elsewhere and `cmp` the mapping JSON against the frozen one (the
+metadata sidecar differs in its paths, git sha, and timestamp only). The
+evaluator writes `per_field_year.csv`, `summary_metrics.csv`,
+`negative_controls.json`, and a scatter under `results/applied_<label>/`.
 
 **8. Paper statistics and figure data**
 
 ```bash
-uv run python scripts/figures/build_figure_data.py --only fig06 --only fig06_bootstrap --only fig01
+uv run python scripts/figures/build_figure_data.py --only fig06 --only fig06_bootstrap --only fig01 --out <figures-dir> --compare
 ```
 
+Without `--out` the builder rewrites the frozen `paper/data/final/figures/`
+in place; with the packages build into a scratch directory, which the builder
+seeds from the frozen package, and `--compare` reports any table the rebuild
+does not reproduce (`0 table(s) differ`).
 The builder hardcodes the two `results/applied_*` directories and the e7cal
 container, restricts to `SLV_`, asserts 50 fields and 404 field-years under both
 paths with identical metered depths, and writes the `fig06_*` tables from which

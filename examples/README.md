@@ -54,7 +54,16 @@ are not re-run, and PEST++ binaries are not needed.
    ```
 
    The reference package has to be in place before step 4: the check modes
-   compare what they recompute against it.
+   compare what they recompute against it. Before step 4 also confirm that
+   the shipped inputs are the ones the frozen figure tables were built from:
+
+   ```bash
+   uv run python scripts/figures/build_figure_data.py --check    # "checked N recorded sources; 0 changed or missing"
+   ```
+
+   Run it first: the experiment steps rewrite some of those inputs under the
+   shipped run directories (equal within round-off, but no longer the same
+   bytes), after which `--check` reports them as changed.
 3. Point the configuration at the data root without editing any TOML:
 
    ```bash
@@ -79,11 +88,13 @@ are not re-run, and PEST++ binaries are not needed.
    `rebuild_e1_benchmark_evidence.py --verify` must print `G-VALUES: PASS`.
    Scripts that write fresh outputs (for example the Example 7 evaluation)
    are compared against the shipped `results/` copies: the same records and
-   columns, values equal within round-off. The sidecars and manifests the
-   packages ship record the authoring machine's paths; the check modes
-   compare them below the data root and the clone, so no editing is needed.
-   When everything has run, confirm that nothing under `paper/data/final/`
-   was rewritten:
+   columns, values equal within round-off. The figure builder runs into a
+   scratch `--out` directory (seeded from the frozen package) with
+   `--compare`, which must report `0 table(s) differ`. The sidecars and
+   manifests the packages ship record the authoring machine's paths; the
+   check modes compare them below the data root and the clone, so no editing
+   is needed. When everything has run, confirm that nothing under
+   `paper/data/final/` was rewritten:
 
    ```bash
    tar -dzf /path/to/packages/swim_reference_final.tar.gz -C /path/to/swim-rs   # silent when identical
@@ -114,9 +125,10 @@ Reproduction runs through three layers.
    compares by default and writes on request (`e1_openet_benchmark/`,
    `e2_closure_pool/` with a hashed `MANIFEST.json`, and the loose `e2_*` E1
    files). `scripts/figures/build_figure_data.py` reads the archives and frozen
-   files and writes `figures/` with `fig_manifest.json`. A `--only` run merges
-   into the manifest already in its output directory, so to rebuild into
-   scratch copy the frozen `figures/` there first and pass it as `--out`.
+   files and writes `figures/` with `fig_manifest.json`. Two builders read
+   the previous package, so a scratch `--out` directory is seeded with a copy
+   of the frozen `figures/` before the build; `--compare` then reports every
+   table the rebuild does not reproduce.
 3. **Typeset tables and figures.** The manuscript's tables and figure
    proofs are typeset from layer 2 outside this repository; no experiment
    script writes them, and they are not part of the reproduction.

@@ -141,7 +141,7 @@ results root.
 **5. Summaries** (Table 5, S8, Fig. 5b; read-only on the archive)
 
 ```bash
-uv run python $EX6/evaluation_summary.py --config $CFG --run-name $RUN
+uv run python $EX6/evaluation_summary.py --config $CFG --run-name $RUN --skip-baseline-forward
 uv run python $EX6/closure_pool_summary.py --config $CFG --run-name $RUN
 uv run python $EX6/awc_recal/monthly_28day_sensitivity.py --run-name $RUN
 ```
@@ -149,7 +149,8 @@ uv run python $EX6/awc_recal/monthly_28day_sensitivity.py --run-name $RUN
 `evaluation_summary.py` also compares the run against the superseded
 classifier-recal baseline (its evaluator outputs ship in the e2 package;
 `--skip-baseline-forward` skips the baseline's own forward run, which needs
-its container and PEST++ archive and is not part of the frozen outputs). When
+its container and PEST++ archive, neither of which ships, and is not part of
+the frozen outputs). When
 the baseline is absent the comparison is skipped and its two summary files are
 not written.
 
@@ -163,14 +164,20 @@ Calibrates the two unscaled arms (`${RUN}_fao56`, `${RUN}_fao56_sig`) with
 the same method as step 2, evaluates them, and runs `pooled_arm_compare.py`
 for each pair of arms on the 37-site disjoint set and the 47-site pool. The
 comparison alone, on the shipped arm posteriors, is the last block of the
-script, for example:
+script: the six invocations below, which are what the data packages need.
 
 ```bash
-uv run python $EX6/pooled_arm_compare.py --a-name grassbasis --a-config $CFG --a-par $ARCHIVE/4_pest_outputs/merged/merged_posterior.csv --b-name fao56 --b-config $EX6/${RUN}_fao56.toml --b-par $RESULTS/${RUN}_fao56/archive/4_pest_outputs/merged/merged_posterior.csv --sites-file $EX6/e0_disjoint/disjoint_sites.txt --out-dir $RESULTS/e0_disjoint/grassbasis_vs_fao56/disjoint37
+A=$ARCHIVE/4_pest_outputs/merged/merged_posterior.csv; SIG=$RESULTS/${RUN}_fao56_sig/archive/4_pest_outputs/merged/merged_posterior.csv; LIN=$RESULTS/${RUN}_fao56/archive/4_pest_outputs/merged/merged_posterior.csv
+for SET in disjoint37:disjoint_sites.txt pool47:closure_pool_sites.txt; do TAG=${SET%%:*}; SITES=$EX6/e0_disjoint/${SET##*:}; uv run python $EX6/pooled_arm_compare.py --a-name grassbasis --a-config $CFG --a-par $A --b-name fao56_sig --b-config $EX6/${RUN}_fao56_sig.toml --b-par $SIG --sites-file $SITES --out-dir $RESULTS/e0_disjoint/grassbasis_vs_fao56_sig/$TAG; uv run python $EX6/pooled_arm_compare.py --a-name grassbasis --a-config $CFG --a-par $A --b-name fao56 --b-config $EX6/${RUN}_fao56.toml --b-par $LIN --sites-file $SITES --out-dir $RESULTS/e0_disjoint/grassbasis_vs_fao56/$TAG; uv run python $EX6/pooled_arm_compare.py --a-name fao56_sig --a-config $EX6/${RUN}_fao56_sig.toml --a-par $SIG --b-name fao56 --b-config $EX6/${RUN}_fao56.toml --b-par $LIN --sites-file $SITES --out-dir $RESULTS/e0_disjoint/fao56_sig_vs_fao56/$TAG; done
 ```
 
 The six outputs (three pairs × `disjoint37`, `pool47`) land under
-`$RESULTS/e0_disjoint/` and are checked by step 8.
+`$RESULTS/e0_disjoint/` and are checked by step 8. Each invocation prints
+`GATE PASS` when arm A wins the pooled metrics and `GATE FAIL`, with exit
+status 1, when it does not: the two `grassbasis` pairs pass and the
+`fao56_sig` vs `fao56` pair fails, because the sigmoid arm scores below the
+linear one (Table 3). The exit status is the comparison's verdict, not an
+error.
 
 **7. Product parity** (Table S9)
 

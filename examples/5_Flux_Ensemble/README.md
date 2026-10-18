@@ -161,13 +161,19 @@ the exclusion ledger.
 **3a. Promote the daily and temporal packages** (re-freeze under RUN_POLICY)
 
 ```bash
-uv run python $EX5/promote_e1_run.py --run run23            # gates + report (--allow-dirty off the promotion commit)
-uv run python $EX5/promote_e1_run.py --run run23 --write    # promote
+uv run python $EX5/promote_e1_run.py --run run23 --allow-dirty    # gates + report; no --write
+uv run python $EX5/promote_e1_run.py --run run23 --write           # promote (on the promotion commit, without --allow-dirty)
 ```
 
 Re-promotes the whole run-dependent E1 package (`daily/`, `temporal/`,
 `MANIFEST.json`) from the run's evaluator and decomposition outputs after a
 recalibration; the prior package moves to `paper/data/final/superseded_e1_*/`.
+The gates read the run's archived evaluator outputs under `$RUN23/`, not the
+step 3 scratch directories; compare those with the archive directly (`cmp` on
+`evaluation_grouped_*_metrics.csv` and `evaluation_paired_daily_records.csv`).
+`--allow-dirty` is required on any commit after the one that promoted the
+package: the G-GIT gate pins the analysis files to that commit and reports what
+changed since, and every other gate still runs.
 
 **3b. Promote the monthly bundle** (re-freeze under RUN_POLICY)
 
