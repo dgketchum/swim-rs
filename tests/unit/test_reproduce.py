@@ -154,3 +154,36 @@ def test_equivalent_csv_key_value_file_mixed_column():
     assert rp.equivalent(a, b, "summary.csv")
     assert not rp.equivalent(a, c, "summary.csv")
     assert not rp.equivalent(a, d, "summary.csv")
+
+
+def test_portable_text_reroots_paths_inside_sentences():
+    s = "posterior median of /data/ssd1/swim/6_Flux_International/results/r/merged_posterior.csv."
+    t = "posterior median of /mnt/other/swim/6_Flux_International/results/r/merged_posterior.csv."
+    assert rp.portable_text(s) == rp.portable_text(t)
+    assert rp.portable_text(s).endswith("results/r/merged_posterior.csv.")
+    assert rp.portable_text("ratio 1/2 of /usr/lib/x") == "ratio 1/2 of /usr/lib/x"
+    assert rp.portable_text(f"{AUTHOR_REPO}/paper/data/final/x.csv") == "paper/data/final/x.csv"
+
+
+def test_equivalent_ignores_digests_of_rebuilt_inputs():
+    """A rebuild within round-off changes every recorded hash: sha256 keys, 64-hex
+    values under other keys (``inputs_sha256.<path>``), and sha256 CSV columns."""
+    enc = lambda o: json.dumps(o).encode()  # noqa: E731
+    a = {
+        "closure_pool_sites_sha256": "a" * 64,
+        "inputs_sha256": {"/data/ssd1/swim/5_Flux_Ensemble/x.csv": "b" * 64},
+        "n": 47,
+    }
+    b = {
+        "closure_pool_sites_sha256": "c" * 64,
+        "inputs_sha256": {"/mnt/other/swim/5_Flux_Ensemble/x.csv": "d" * 64},
+        "n": 47,
+    }
+    assert rp.equivalent(enc(a), enc(b), "m.json")
+    assert rp.json_equivalent(a, b)
+    assert not rp.json_equivalent(a, dict(b, n=46))
+    csv_a = b"site,kge,source_sha256\nA,0.5," + b"a" * 64 + b"\n"
+    csv_b = b"site,kge,source_sha256\nA,0.5," + b"b" * 64 + b"\n"
+    csv_c = b"site,kge,source_sha256\nA,0.6," + b"a" * 64 + b"\n"
+    assert rp.equivalent(csv_a, csv_b, "t.csv")
+    assert not rp.equivalent(csv_a, csv_c, "t.csv")
