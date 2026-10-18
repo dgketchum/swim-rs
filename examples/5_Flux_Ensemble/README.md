@@ -66,7 +66,7 @@ experiment label; the mapping lives in
 ├── run_weighting_ablation.py               spread vs fixed-SD weighting (two recalibrations)
 ├── within_e1_transfer.py                   leave-region-out / leave-one-site-out transfer, pooled and irrigation-stratified
 ├── e1_class_split.py                       irrigation-class split of the frozen benchmark records
-├── e1_period_split.py                      pre-/post-2016 split of the frozen daily record (not in the paper)
+├── e1_period_split.py                      pre-/post-2016 split of the frozen daily record (§3.2, Table 4 caption)
 ├── promote_e1_run.py                       gated promotion of a run's E1 benchmark package (daily, temporal, manifest)
 ├── promote_e1_monthly.py                   gated promotion of the Volk-protocol monthly bundle
 ├── promote_final.py                        tracked producer for the hand-promoted e2_* supporting files
@@ -116,15 +116,18 @@ calibrated container and posterior.
 
 **With the data packages** (`../README.md`, "Reproducing the paper"): skip
 steps 1 and 2 and the two calibrations in step 6. Run step 3 into scratch
-output directories, then 3a, 3b, and 3c in their default check modes (no
-`--write`), step 4 on the step 3 daily directory, step 5, step 6 with
-`--summary-only`, step 7, and step 8. Steps 5 and 7 rewrite their output
-directories under `$RUN23/`; step 8 then checks everything against the
-frozen `paper/data/final/` and must report `match` (byte-equal) or `match~`
-(equal within floating-point round-off) for every file and `G-VALUES: PASS`.
-Off the promotion commit, 3a needs `--allow-dirty` (its G-GIT gate pins the
-analysis files to the commit that promoted the package; the other gates still
-run).
+output directories and `cmp` its five CSVs against the archived copies under
+`$RUN23/archive/6_evaluation/`, then step 4 on the step 3 daily directory,
+step 5, step 6 with `--summary-only`, step 7, step 8 (`--verify` must print
+`G-VALUES: PASS`), and `e1_period_split.py` without `--write` (its gate
+replicates the frozen daily estimates and prints the §3.2 pre-/post-2016
+values). Steps 5 and 7 rewrite their output directories under `$RUN23/`. The
+promotion check modes 3a, 3b, and 3c are the authoring workflow and are not
+the pass criterion: off the promotion commit, 3a prints `PROMOTION_STATE:
+DIFFERS` on its G-GIT gate alone (`--allow-dirty` turns that into `MATCH`
+when every file row matches), and 3b on a scratch `--source-dir` reports the
+monthly sidecar as differing in its `paths`, `git`, and `cli_args` only. Never
+pass `--write`: it replaces the frozen package with the scratch bundle.
 
 **1. Build the run container** (only if you do not have
 `5_Flux_Ensemble_run23.swim`; see Rebuilding the container below)

@@ -11,12 +11,12 @@ This directory produces:
 | Paper artifact | Analysis | Output |
 |---|---|---|
 | Table 3, Fig. 2 (E0 vegetation formulation) | `pooled_arm_compare.py` on the 37 sites outside the E1 cohort | `results/e0_disjoint/*/disjoint37/` |
-| Table 5, Table S8, §3.3 (E2 performance, transfer) | `closure_pool_summary.py` | `results/<run>/archive/6_evaluation/closure_pool/` |
+| Table 5, Table S9, §3.3 (E2 performance, transfer) | `closure_pool_summary.py` | `results/<run>/archive/6_evaluation/closure_pool/` |
 | Fig. 5b (parameter transfer into E2) | `transfer_ex5_params.py` re-cut in the closure-pool summary | `closure_pool/transfer_refresh_summary.csv` |
 | Table S2 transferred parameter sets | `transfer/build_ex5_irrigation_stratified_params.py` | `paper/data/final/e2_run23_transfer_vectors_by_irrigation.json` |
-| Table S9 (E1 vs E2 product parity) | `product_parity/e1_e2_product_parity.py` | `--out-dir` |
+| Table S10 (E1 vs E2 product parity) | `product_parity/e1_e2_product_parity.py` | `--out-dir` |
 | Supplement S9.1 (28-day month rule) | `awc_recal/monthly_28day_sensitivity.py` | `closure_pool/monthly_28day_sensitivity_*` |
-| Frozen source of record for all of the above except S2/S9 | `promote_final.py` | `paper/data/final/e2_closure_pool/` + `MANIFEST.json` |
+| Frozen source of record for all of the above except S2/S10 | `promote_final.py` | `paper/data/final/e2_closure_pool/` + `MANIFEST.json` |
 
 The paper's tables and figures read `paper/data/final/e2_closure_pool/`, not
 the results root. `promote_final.py` copies the results-root outputs into that
@@ -46,7 +46,7 @@ package is frozen from it; the superseded runs are under
 ├── archive_prelaunch.py        RUN_POLICY Cats 1-3 capture and launch-time hash verify
 ├── archive_postcalibration.py  RUN_POLICY Cats 4-5: merged posterior, bounds, phi history
 ├── evaluation_summary.py       RUN_POLICY Cat 6: paired metrics, groups, reproduction checks
-├── closure_pool_summary.py     47-site closure-corrected pool re-cut (Table 5, S8, §3.3)
+├── closure_pool_summary.py     47-site closure-corrected pool re-cut (Table 5, S9, §3.3)
 ├── promote_final.py            results root → paper/data/final/e2_closure_pool/ (check by default, --write)
 ├── evaluate.py                 daily, monthly, and ETf evaluation against flux ET
 ├── derived_metrics.py          shared: per-member benchmarks, uncalibrated baseline, decompositions
@@ -55,7 +55,7 @@ package is frozen from it; the superseded runs are under
 ├── transfer_ex5_params.py      score the E1 vectors on the E2 cohort without recalibration
 ├── pooled_arm_compare.py       E0 two-arm pooled comparison
 ├── e0_disjoint/                E0 site lists and the arms runner
-├── product_parity/             Table S9
+├── product_parity/             Table S10
 ├── awc_recal/                  the current recalibration chain and its gates
 └── legacy/                     untracked; retired scripts
 ```
@@ -92,10 +92,11 @@ ARCHIVE=$RESULTS/$RUN/archive
 steps 1 and 2 and the calibrations inside step 6. Run step 3, step 4 into a
 scratch `<transfer-out>`, step 5, the three `pooled_arm_compare.py` pairs of
 step 6 on the shipped arm posteriors, step 7, and step 8, whose default check
-mode must report `match` or `match~` for every file and an unchanged
-`MANIFEST.json`. Steps 3 and 5 write into the shipped run directory under
-`$RESULTS/$RUN/`; keep a copy of the package if you want the shipped files
-back.
+mode reports `match` or `match~` for every file and an unchanged
+`MANIFEST.json` (build stamps, machine paths, and the hashes of the inputs
+that steps 3 and 5 rewrote are not compared). Steps 3 and 5 write into the
+shipped run directory under `$RESULTS/$RUN/`; keep a copy of the package if
+you want the shipped files back.
 
 **1. Validate the container** (mandatory before any calibration)
 
@@ -126,6 +127,14 @@ uv run python $EX6/pooled_metrics.py --results-dir $RESULTS/$RUN
 uv run python $EX6/derived_metrics.py --config $CFG --uncalibrated --out $RESULTS/$RUN/derived
 ```
 
+Two uncalibrated-baseline files exist. Table 5 and Table S9 quote
+`closure_pool/uncalibrated_baseline_summary.csv`, scored by
+`transfer_ex5_params.py` on the retrieval-gated paired days
+(`rs_gated_paired_days`, the same mask as the calibrated rows); the
+`derived_metrics.py --uncalibrated` output
+(`uncalibrated_baseline_summary_flux_swim_mask.csv`, every day with finite
+flux and SWIM ET) is a diagnostic and is not quoted.
+
 **4. Transfer the E1 parameter sets** (no recalibration; vectors frozen upstream)
 
 ```bash
@@ -138,7 +147,7 @@ uv run python $EX6/transfer_ex5_params.py --config $CFG --params paper/data/fina
 flag); `--e2-results-dir` is the run directory that step 3 filled, not the
 results root.
 
-**5. Summaries** (Table 5, S8, Fig. 5b; read-only on the archive)
+**5. Summaries** (Table 5, S9, Fig. 5b; read-only on the archive)
 
 ```bash
 uv run python $EX6/evaluation_summary.py --config $CFG --run-name $RUN --skip-baseline-forward
@@ -179,7 +188,7 @@ status 1, when it does not: the two `grassbasis` pairs pass and the
 linear one (Table 3). The exit status is the comparison's verdict, not an
 error.
 
-**7. Product parity** (Table S9)
+**7. Product parity** (Table S10)
 
 ```bash
 uv run python $EX6/product_parity/e1_e2_product_parity.py --out-dir <out>

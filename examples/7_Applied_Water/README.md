@@ -33,6 +33,7 @@ This directory produces:
 | Fig. 1 SLV panel | `build_figure_data.py --only fig01` reads the e7cal container geometry and the HUC8 context layer | `paper/data/final/figures/fig01_*` |
 | Supplement S5.2 (field selection rules) | `select_fields.py` constants and `select_slv()` | `metered_truth.csv` |
 | Transfer-arm per-field parameters | `build_applied_irrigation_mapping.py` | `paper/data/final/e4_irrigation_stratified_param_mapping{,_metadata}.json` |
+| §3.4 pre-/post-2016 split | `e3_period_split.py` on the frozen `fig06_field_years.csv` | `paper/data/final/e3_applied_water_period_split/` |
 | Tables 1 and 2 E3 rows | hand-authored from the TOML and this README | — |
 
 Table 6 is typed from `fig06_bootstrap_effects.csv` (`value_local_calibration`,
@@ -58,6 +59,7 @@ frozen mapping JSON.
 ├── archive_postcalibration.py           RUN_POLICY Cats 4–5: merged posterior, bounds, phi history
 ├── build_applied_irrigation_mapping.py  irrigated/rainfed class → per-field parameter mapping for the transfer arm
 ├── evaluate_applied_water.py            annual simulated irrigation vs metered depth, per parameter path
+├── e3_period_split.py                   pre-/post-2016 split of the frozen Fig. 6 record (§3.4)
 ├── transfer_applied_water.py            supporting: the pooled cropland-median vector, not in the paper
 ├── field_accuracy.py                    supporting: 110-field between/within-field decomposition
 ├── paired_field_bootstrap.py            supporting: 110-field basin-stratified paired bootstrap
@@ -102,13 +104,17 @@ E7=$SWIM_ROOT/7_Applied_Water                  # the TOML `root` + project
 
 **With the data packages** (`../README.md`, "Reproducing the paper"): skip
 steps 1–5; the truth table, containers, and calibration archive ship in
-`swim_data_e3.tar.gz` and `swim_repo_local.tar.gz`. Run steps 6 and 7 with
-`--out <scratch-dir>` so the shipped `results/applied_*` directories stay
-intact, and compare `summary_metrics.csv`, `negative_controls.json`, and
-`per_field_year.csv` against `results/applied_calibrated/` and
+`swim_data_e3.tar.gz` and `swim_repo_local.tar.gz` (the step 7 IrrMapper gate
+`data/idwr_wmis/espa_control_irrmapper.csv` is in the latter). Run steps 6 and
+7 with `--out <scratch-dir>`, as written below, so the shipped
+`results/applied_*` directories stay intact, and compare
+`summary_metrics.csv`, `negative_controls.json`, and `per_field_year.csv`
+against `results/applied_calibrated/` and
 `results/applied_transfer_run23_by_irrigation/` (byte-equal apart from
 floating-point round-off in the simulated columns). Step 8 then rebuilds the
-`fig06_*` and `fig01_*` tables from the shipped directories.
+`fig06_*` and `fig01_*` tables from the shipped directories, and
+`e3_period_split.py` (no `--write`) replicates the frozen Table 6 values and
+prints the §3.4 pre-/post-2016 split.
 
 **1. Ground truth** (once; open state APIs, no credentials)
 
@@ -164,7 +170,7 @@ evaluator's input.
 **6. Score the calibrated path**
 
 ```bash
-uv run python $EX7/evaluate_applied_water.py --container $E7/data/7_Applied_Water_e7cal.swim --params-json $E7/results/e7cal/archive/4_pest_outputs/merged/merged_posterior.json --label calibrated
+uv run python $EX7/evaluate_applied_water.py --container $E7/data/7_Applied_Water_e7cal.swim --params-json $E7/results/e7cal/archive/4_pest_outputs/merged/merged_posterior.json --label calibrated --out <calibrated-dir>
 ```
 
 The evaluator scores every metered field it finds (100 fields, 730
@@ -176,7 +182,7 @@ step 8 computes after restricting to the 50 SLV fields and 404 field-years.
 ```bash
 uv run python $EX7/build_applied_irrigation_mapping.py --verify-keys $E7/results/applied_calibrated/per_field_year.csv --out-dir <mapping-dir>
 cmp <mapping-dir>/e4_irrigation_stratified_param_mapping.json paper/data/final/e4_irrigation_stratified_param_mapping.json   # silent when identical
-uv run python $EX7/evaluate_applied_water.py --container $E7/data/7_Applied_Water_e7cal.swim --params-json paper/data/final/e4_irrigation_stratified_param_mapping.json --label transfer_run23_by_irrigation
+uv run python $EX7/evaluate_applied_water.py --container $E7/data/7_Applied_Water_e7cal.swim --params-json paper/data/final/e4_irrigation_stratified_param_mapping.json --label transfer_run23_by_irrigation --out <transfer-dir>
 ```
 
 The mapping builder assigns the irrigated vector to every metered field and the
@@ -186,7 +192,8 @@ gate only; it writes the two `e4_*` JSONs. Without `--out-dir` it writes into
 packages write elsewhere and `cmp` the mapping JSON against the frozen one (the
 metadata sidecar differs in its paths, git sha, and timestamp only). The
 evaluator writes `per_field_year.csv`, `summary_metrics.csv`,
-`negative_controls.json`, and a scatter under `results/applied_<label>/`.
+`negative_controls.json`, and a scatter under `--out` (without it,
+`results/applied_<label>/`, which is how the shipped directories were made).
 
 **8. Paper statistics and figure data**
 
@@ -198,6 +205,10 @@ Without `--out` the builder rewrites the frozen `paper/data/final/figures/`
 in place; with the packages build into a scratch directory, which the builder
 seeds from the frozen package, and `--compare` reports any table the rebuild
 does not reproduce (`0 table(s) differ`).
+
+```bash
+uv run python $EX7/e3_period_split.py            # gate + report; --write freezes under paper/data/final/e3_applied_water_period_split/
+```
 The builder hardcodes the two `results/applied_*` directories and the e7cal
 container, restricts to `SLV_`, asserts 50 fields and 404 field-years under both
 paths with identical metered depths, and writes the `fig06_*` tables from which

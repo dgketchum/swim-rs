@@ -36,72 +36,91 @@ are not re-run, and PEST++ binaries are not needed.
 | `swim_data_e1.tar.gz` | data root | Example 5 containers, flux and OpenET deliveries, Run 23 archive and analysis outputs |
 | `swim_data_e2.tar.gz` | data root | Example 6 containers (three formulation arms), flux QAQC files, run archives, transfer and E0 outputs, the superseded baseline's evaluator outputs |
 | `swim_data_e3.tar.gz` | data root | Example 7 containers, inputs, calibration archive, scored outputs |
-| `swim_repo_local.tar.gz` | clone root | untracked repo-local inputs: `examples/5_Flux_Ensemble/data`, `examples/7_Applied_Water/data`, `data/cartographic` |
+| `swim_repo_local.tar.gz` | clone root | untracked repo-local inputs: `examples/5_Flux_Ensemble/data`, `examples/7_Applied_Water/data`, `data/cartographic`, the ESPA control gate `data/idwr_wmis/espa_control_irrmapper.csv` |
 | `swim_reference_final.tar.gz` | clone root | the frozen `paper/data/final/` (untracked in git) |
 | `swim_e3_truth_sources.tar.gz` | clone root, optional | the raw E3 metered-truth pulls, for re-running the Example 7 truth build offline |
 
 1. Clone the repository at the commit named in `MANIFEST.json` (branch `dev`
-   until submission), then `uv sync --all-extras` and `uv run pytest tests/ -v`
-   (Python 3.13; `uv.lock` is authoritative).
-2. Pick a data root and unpack the packages:
+   until submission) and install it (Python 3.13; `uv.lock` is authoritative).
+   Pick the data root now and point the configuration at it; the test suite
+   and every script below read `SWIM_ROOT`, and the variable has to be
+   re-exported in every new shell (a bare `PermissionError: /data/ssd1/swim`
+   means it is not set):
 
    ```bash
-   gcloud auth login                                       # the bucket is private; application-default credentials alone give 401
-   gsutil -m cp "gs://wudr/swim/reprod/*" /path/to/packages/
-   mkdir -p /path/to/swim && for p in e1 e2 e3; do tar -xzf /path/to/packages/swim_data_$p.tar.gz -C /path/to/swim; done
-   tar -xzf /path/to/packages/swim_repo_local.tar.gz -C /path/to/swim-rs      # the clone root
-   tar -xzf /path/to/packages/swim_reference_final.tar.gz -C /path/to/swim-rs
-   ```
-
-   The reference package has to be in place before step 4: the check modes
-   compare what they recompute against it. Before step 4 also confirm that
-   the shipped inputs are the ones the frozen figure tables were built from:
-
-   ```bash
-   uv run python scripts/figures/build_figure_data.py --check    # "checked N recorded sources; 0 changed or missing"
-   ```
-
-   Run it first: the experiment steps rewrite some of those inputs under the
-   shipped run directories (equal within round-off, but no longer the same
-   bytes), after which `--check` reports them as changed.
-3. Point the configuration at the data root without editing any TOML:
-
-   ```bash
+   uv sync --all-extras
    export SWIM_ROOT=/path/to/swim
    ```
 
    Every `{root}`-derived path in the project TOMLs, the `ex*_paths.py`
    helpers, and the figure builder follows it (`project_root_override` on
    `ProjectConfig.read_config` still wins when a script passes one).
-4. Run the three experiment READMEs. Each Workflow section opens with a
+2. Download and unpack the packages. The bucket is private: ask for access
+   for your Google account. `gsutil` needs an interactive `gcloud auth login`;
+   with application-default credentials alone it returns 401, but the JSON API
+   accepts the same credentials:
+
+   ```bash
+   gsutil -m cp "gs://wudr/swim/reprod/*" /path/to/packages/                   # after gcloud auth login
+   # or, with application-default credentials only:
+   TOKEN=$(gcloud auth application-default print-access-token); for f in MANIFEST.json $(for p in swim_data_e1 swim_data_e2 swim_data_e3 swim_repo_local swim_reference_final swim_e3_truth_sources; do echo $p.tar.gz $p.sha256 $p.files.txt; done); do curl -sfL -H "Authorization: Bearer $TOKEN" -o /path/to/packages/$f "https://storage.googleapis.com/storage/v1/b/wudr/o/swim%2Freprod%2F$f?alt=media"; done
+   (cd /path/to/packages && sha256sum -c *.sha256)
+   mkdir -p $SWIM_ROOT && for p in e1 e2 e3; do tar -xzf /path/to/packages/swim_data_$p.tar.gz -C $SWIM_ROOT; done
+   tar -xzf /path/to/packages/swim_repo_local.tar.gz -C /path/to/swim-rs      # the clone root
+   tar -xzf /path/to/packages/swim_reference_final.tar.gz -C /path/to/swim-rs
+   tar -xzf /path/to/packages/swim_e3_truth_sources.tar.gz -C /path/to/swim-rs  # optional: only to re-run the Example 7 truth build
+   ```
+
+   Then run the test suite, which rebuilds the figure package from the shipped
+   data and compares it with the frozen one, and confirm that the shipped
+   inputs are the ones the frozen figure tables were built from:
+
+   ```bash
+   uv run pytest tests/ -v
+   uv run python scripts/figures/build_figure_data.py --check    # "checked N recorded sources; 0 changed or missing"
+   ```
+
+   Run `--check` before step 3: the experiment steps rewrite some of those
+   inputs under the shipped run directories (equal within round-off, but no
+   longer the same bytes), after which `--check` reports them as changed.
+3. Run the three experiment READMEs. Each Workflow section opens with a
    "With the data packages" paragraph that names the steps to run and the
    steps to skip (container builds, extraction, calibration):
    `5_Flux_Ensemble/README.md`, `6_Flux_International/README.md`,
-   `7_Applied_Water/README.md`. The scripts recompute the `paper/data/final/`
-   evidence from the shipped containers and run archives; the promotion
-   scripts' default check modes report any file that differs from what is on
-   disk.
-5. The check modes are the comparison: every `promote_*.py` default run must
-   report `match` (byte-equal) or `match~` (equal within floating-point
-   round-off, which a rebuild on other hardware produces in the last digit of
-   a few statistics) for every file and an unchanged manifest, and
-   `rebuild_e1_benchmark_evidence.py --verify` must print `G-VALUES: PASS`.
-   Scripts that write fresh outputs (for example the Example 7 evaluation)
-   are compared against the shipped `results/` copies: the same records and
-   columns, values equal within round-off. The figure builder runs into a
-   scratch `--out` directory (seeded from the frozen package) with
-   `--compare`, which must report `0 table(s) differ`. The sidecars and
-   manifests the packages ship record the authoring machine's paths; the
-   check modes compare them below the data root and the clone, so no editing
-   is needed. When everything has run, confirm that nothing under
-   `paper/data/final/` was rewritten:
+   `7_Applied_Water/README.md`. The scripts recompute the paper's evidence
+   from the shipped containers and run archives into scratch directories,
+   which are compared with the shipped `results/` copies and the frozen
+   `paper/data/final/`.
+4. The comparison, in full:
 
    ```bash
-   tar -dzf /path/to/packages/swim_reference_final.tar.gz -C /path/to/swim-rs   # silent when identical
+   uv run python examples/5_Flux_Ensemble/rebuild_e1_benchmark_evidence.py --output-dir paper/data/final --verify   # G-VALUES: PASS
+   uv run python scripts/figures/build_figure_data.py --all --out /path/to/scratch/figures --compare  # 0 table(s) differ
+   tar -dzf /path/to/packages/swim_reference_final.tar.gz -C /path/to/swim-rs                         # silent when identical
    ```
 
-   A cohort, sign, or file-set difference is a failure. Record every deviation
-   and guess in a findings log alongside the comparison.
+   `--verify` re-derives the E1 benchmark statistics from the frozen record;
+   `--compare` rebuilds every figure table into a scratch directory (seeded
+   from the frozen package) and reports any table whose content the rebuild
+   does not reproduce; the `tar` check confirms that nothing under
+   `paper/data/final/` was rewritten. Content means the records and values:
+   the comparison allows floating-point round-off (a rebuild on other
+   hardware differs in the last digit of a few statistics), ignores build
+   stamps and the hashes of inputs that the experiment steps rewrote, and
+   compares recorded paths below the data root and the clone. Scripts that
+   write fresh outputs (the Example 5 and 7 evaluators) are compared against
+   the shipped copies the same way. A cohort, sign, or file-set difference is
+   a failure. Record every deviation and guess in a findings log alongside
+   the comparison.
+
+   The `promote_*.py` scripts in the experiment directories are the authoring
+   workflow that froze `paper/data/final/`. Their default (no `--write`) check
+   modes can be run for information: on another machine they report `match~`
+   for the data files, and the Example 5 ones also report provenance-only
+   differences (sidecar paths, git stamps, a commit gate pinned to the
+   promoting commit). They are not the pass criterion, and `--write` is never
+   part of a reproduction: it replaces the frozen package with the scratch
+   bundle.
 
 The packages drop the PEST++ ensemble files (`*.obs.csv`, `loc.mat`, `*.rei`,
 `*.jcb`, worker directories) that no evaluation or figure script reads; the
@@ -125,10 +144,11 @@ Reproduction runs through three layers.
    compares by default and writes on request (`e1_openet_benchmark/`,
    `e2_closure_pool/` with a hashed `MANIFEST.json`, and the loose `e2_*` E1
    files). `scripts/figures/build_figure_data.py` reads the archives and frozen
-   files and writes `figures/` with `fig_manifest.json`. Two builders read
-   the previous package, so a scratch `--out` directory is seeded with a copy
-   of the frozen `figures/` before the build; `--compare` then reports every
-   table the rebuild does not reproduce.
+   files and writes `figures/` with `fig_manifest.json` (`--all`, or
+   `--only <name>` per table). Two builders read the previous package, so a
+   scratch `--out` directory is seeded with a copy of the frozen `figures/`
+   before the build; `--compare` then reports every table the rebuild does
+   not reproduce.
 3. **Typeset tables and figures.** The manuscript's tables and figure
    proofs are typeset from layer 2 outside this repository; no experiment
    script writes them, and they are not part of the reproduction.
@@ -137,10 +157,13 @@ Tables with no producer script are hand-authored and are checked against the
 configuration, not regenerated: **Table 1** and **Table 2** (domains, inputs, and
 calibration constraints, from the project TOMLs and the experiment READMEs) and
 **Table S1** (fixed and derived field properties, from the forward-model code and
-data sources). **Table S2** is mixed: its bounds columns come from the calibration
-TOML and its transferred-value columns from
-`paper/data/final/e2_run23_transfer_vectors_by_irrigation.json`, which Example 6
-`transfer/` produces.
+data sources). **Table S2** is mixed: its bounds columns come from the prior
+bounds in `src/swimrs/calibrate/pest_builder.py` (the class-specific `mad`
+bounds, 0.10–0.30 irrigated and 0.30–0.80 rainfed, are set per site by the
+calibration's irrigation status and restated in Example 6
+`transfer/build_ex5_irrigation_stratified_params.py`) and its transferred-value
+columns from `paper/data/final/e2_run23_transfer_vectors_by_irrigation.json`,
+which Example 6 `transfer/` produces.
 
 ## Policies
 
