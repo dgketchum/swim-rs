@@ -102,18 +102,15 @@ def test_collect_glob_takes_matching_files_without_descending(pkg, fake_root):
         pkg.collect(fake_root, ["6_Flux_International/results/baseline/*.parquet"])
 
 
-def test_write_tar_keeps_relative_members_and_sidecars(pkg, fake_root, tmp_path):
+def test_write_tar_keeps_relative_members_and_leaves_no_sidecars(pkg, fake_root, tmp_path):
     files = pkg.collect(fake_root, ["5_Flux_Ensemble/results/run23"])
     out = tmp_path / "stage" / "swim_data_test.tar.gz"
     out.parent.mkdir()
-    digest = pkg.write_tar(fake_root, files, out)
+    pkg.write_tar(fake_root, files, out)
     with tarfile.open(out) as tf:
         names = sorted(m.name for m in tf.getmembers() if m.isfile())
     assert names == sorted(rel for rel, _ in files)
-    assert (tmp_path / "stage" / "swim_data_test.sha256").read_text().split()[0] == digest
-    listing = (tmp_path / "stage" / "swim_data_test.files.txt").read_text().splitlines()
-    assert len(listing) == len(files) and listing[0].split("\t")[1] in names
-    assert not list((tmp_path / "stage").glob("*.list"))
+    assert sorted(p.name for p in (tmp_path / "stage").iterdir()) == ["swim_data_test.tar.gz"]
 
 
 def test_every_package_item_exists_on_this_machine_or_is_skipped(pkg):

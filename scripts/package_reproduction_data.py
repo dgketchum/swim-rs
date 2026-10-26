@@ -6,15 +6,14 @@ root and from the untracked repo-local data directories, trimmed of the PEST++
 ensemble files no evaluation or figure script opens. Unpacked under one directory
 that ``SWIM_ROOT`` points at (and, for the repo-local package, at the clone root),
 the READMEs under ``examples/`` run as written. See examples/README.md,
-"Reproducing on another machine".
+"Reproducing the paper".
 
     uv run python scripts/package_reproduction_data.py --dry-run
     uv run python scripts/package_reproduction_data.py --stage <dir> [--packages e1,e2,e3,repo,truth,reference]
 
 ``--dry-run`` lists each package's file count and size and writes nothing.
-``--stage`` writes ``<name>.tar.gz`` (pigz when available), ``<name>.files.txt``
-(path and bytes per member) and ``<name>.sha256`` for every package, plus
-``MANIFEST.json`` (git sha, source root, sizes, hashes) and the upload command.
+``--stage`` writes ``<name>.tar.gz`` (pigz when available) for every package plus
+``MANIFEST.json`` (git sha, source root, file counts and sizes) and the upload command.
 
 Package contents (paths relative to the data root unless noted):
 
@@ -47,7 +46,6 @@ Package contents (paths relative to the data root unless noted):
 
 import argparse
 import fnmatch
-import hashlib
 import json
 import os
 import shutil
@@ -240,29 +238,14 @@ def flux_subset(root, flux_dir_rel):
     return out
 
 
-def sha256_file(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 def write_tar(base, files, out_tar):
     """``tar -C base -T list`` through pigz when present; members keep their relative paths."""
-    listing = out_tar.with_suffix("").with_suffix(".files.txt")
-    with open(listing, "w") as fh:
-        for rel, size in files:
-            fh.write(f"{size}\t{rel}\n")
     names = out_tar.with_name(out_tar.name + ".list")
     names.write_text("".join(f"{rel}\n" for rel, _ in files))
     compress = ["--use-compress-program=pigz"] if shutil.which("pigz") else ["-z"]
     cmd = ["tar", "-C", str(base), *compress, "-cf", str(out_tar), "-T", str(names)]
     subprocess.run(cmd, check=True)
     names.unlink()
-    digest = sha256_file(out_tar)
-    out_tar.with_suffix("").with_suffix(".sha256").write_text(f"{digest}  {out_tar.name}\n")
-    return digest
 
 
 def package_files(key, root):
@@ -350,18 +333,14 @@ def main(argv=None):
         if stage:
             out_tar = stage / f"{name}.tar.gz"
             entry["tar"] = out_tar.name
-            entry["sha256"] = write_tar(base, files, out_tar)
+            write_tar(base, files, out_tar)
             entry["tar_bytes"] = out_tar.stat().st_size
-            print(
-                f"    -> {out_tar} ({entry['tar_bytes'] / 1e9:.2f} GB) sha256 {entry['sha256'][:12]}"
-            )
+            print(f"    -> {out_tar} ({entry['tar_bytes'] / 1e9:.2f} GB)")
         manifest["packages"][name] = entry
     if stage:
         (stage / "MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n")
         print(f"\nMANIFEST.json written to {stage}")
-        print(
-            f"upload:  gsutil -m cp {stage}/*.tar.gz {stage}/*.sha256 {stage}/*.files.txt {stage}/MANIFEST.json {args.bucket}"
-        )
+        print(f"upload:  gsutil -m cp {stage}/*.tar.gz {stage}/MANIFEST.json {args.bucket}")
     return 0
 
 

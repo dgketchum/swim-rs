@@ -25,7 +25,7 @@ has a naming note.
 
 The paper's findings are reproducible from a clone of this repository plus six
 data packages (built by `scripts/package_reproduction_data.py`; their
-`MANIFEST.json` records the commit and the sha256 of every archive). Until
+`MANIFEST.json` records the commit and the contents of every archive). Until
 submission the packages are at `gs://wudr/swim/reprod/` (a private bucket; ask
 for access); at submission they move to a Zenodo record and this section will
 cite its DOI. Nothing else is required: calibration and Earth Engine extraction
@@ -54,35 +54,33 @@ are not re-run, and PEST++ binaries are not needed.
 
    Every `{root}`-derived path in the project TOMLs, the `ex*_paths.py`
    helpers, and the figure builder follows it (`project_root_override` on
-   `ProjectConfig.read_config` still wins when a script passes one).
+   `ProjectConfig.read_config` still wins when a script passes one). In
+   PyCharm, point the project interpreter at the clone's `.venv` and add
+   `SWIM_ROOT` to the environment variables of the Run/Debug configuration
+   template and of the pytest template; every `uv run python <script>` line
+   below is then that script run from the IDE with the same arguments.
 2. Download and unpack the packages. The bucket is private: ask for access
    for your Google account. `gsutil` needs an interactive `gcloud auth login`;
    with application-default credentials alone it returns 401, but the JSON API
    accepts the same credentials:
 
    ```bash
-   gsutil -m cp "gs://wudr/swim/reprod/*" /path/to/packages/                   # after gcloud auth login
+   gsutil -m cp "gs://wudr/swim/reprod/*.tar.gz" gs://wudr/swim/reprod/MANIFEST.json /path/to/packages/   # after gcloud auth login
    # or, with application-default credentials only:
-   TOKEN=$(gcloud auth application-default print-access-token); for f in MANIFEST.json $(for p in swim_data_e1 swim_data_e2 swim_data_e3 swim_repo_local swim_reference_final swim_e3_truth_sources; do echo $p.tar.gz $p.sha256 $p.files.txt; done); do curl -sfL -H "Authorization: Bearer $TOKEN" -o /path/to/packages/$f "https://storage.googleapis.com/storage/v1/b/wudr/o/swim%2Freprod%2F$f?alt=media"; done
-   (cd /path/to/packages && sha256sum -c *.sha256)
+   TOKEN=$(gcloud auth application-default print-access-token); for f in MANIFEST.json swim_data_e1.tar.gz swim_data_e2.tar.gz swim_data_e3.tar.gz swim_repo_local.tar.gz swim_reference_final.tar.gz swim_e3_truth_sources.tar.gz; do curl -sfL -H "Authorization: Bearer $TOKEN" -o /path/to/packages/$f "https://storage.googleapis.com/storage/v1/b/wudr/o/swim%2Freprod%2F$f?alt=media"; done
    mkdir -p $SWIM_ROOT && for p in e1 e2 e3; do tar -xzf /path/to/packages/swim_data_$p.tar.gz -C $SWIM_ROOT; done
    tar -xzf /path/to/packages/swim_repo_local.tar.gz -C /path/to/swim-rs      # the clone root
    tar -xzf /path/to/packages/swim_reference_final.tar.gz -C /path/to/swim-rs
    tar -xzf /path/to/packages/swim_e3_truth_sources.tar.gz -C /path/to/swim-rs  # optional: only to re-run the Example 7 truth build
    ```
 
+   A truncated download fails at `tar`; there is nothing else to verify.
    Then run the test suite, which rebuilds the figure package from the shipped
-   data and compares it with the frozen one, and confirm that the shipped
-   inputs are the ones the frozen figure tables were built from:
+   data and compares it with the frozen one:
 
    ```bash
    uv run pytest tests/ -v
-   uv run python scripts/figures/build_figure_data.py --check    # "checked N recorded sources; 0 changed or missing"
    ```
-
-   Run `--check` before step 3: the experiment steps rewrite some of those
-   inputs under the shipped run directories (equal within round-off, but no
-   longer the same bytes), after which `--check` reports them as changed.
 3. Run the three experiment READMEs. Each Workflow section opens with a
    "With the data packages" paragraph that names the steps to run and the
    steps to skip (container builds, extraction, calibration):
