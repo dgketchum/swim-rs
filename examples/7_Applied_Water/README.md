@@ -95,7 +95,7 @@ only, by the mapping builder.
 Commands run from the repository root with
 
 ```bash
-export SWIM_ROOT=/path/to/swim                 # the data root (the TOML root, /data/ssd1/swim, on the authoring machine)
+export SWIM_ROOT=/path/to/swim                 # the data root (the TOML root); set once per shell, see ../README.md
 EX7=examples/7_Applied_Water
 CFG=$EX7/7_Applied_Water.toml
 E7=$SWIM_ROOT/7_Applied_Water                  # the TOML `root` + project

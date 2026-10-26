@@ -73,7 +73,7 @@ set `SWIM_ROOT` to relocate every derived path without editing the TOML.
 Commands run from the repository root with
 
 ```bash
-export SWIM_ROOT=/path/to/swim                 # the data root (the TOML root, /data/ssd1/swim, on the authoring machine)
+export SWIM_ROOT=/path/to/swim                 # the data root (the TOML root); set once per shell, see ../README.md
 EX6=examples/6_Flux_International
 CFG=$EX6/6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml
 RUN=6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr

@@ -42,31 +42,40 @@ are not re-run, and PEST++ binaries are not needed.
 | `swim_e3_truth_sources.tar.gz` | clone root, optional | the raw E3 metered-truth pulls, for re-running the Example 7 truth build offline |
 
 The reproduction has four steps: install, unpack, recompute the evidence of
-each experiment into scratch directories, and compare. Every command runs from
-the clone root. `<scratch>` is any empty directory outside the clone and the
-data root.
+each experiment into scratch directories, and compare. Set these four
+variables once per shell; every command below uses them and nothing else needs
+editing:
+
+```bash
+export SWIM_REPO=/path/to/swim-rs          # the clone; every command runs from here
+export SWIM_ROOT=/path/to/swim             # the data root: the three swim_data_* packages unpack into it
+export SWIM_PACKAGES=/path/to/packages     # where the downloaded tarballs sit
+export SWIM_SCRATCH=/path/to/scratch       # an empty directory, outside the clone and the data root, for rebuilt evidence
+```
+
+`SWIM_ROOT` is the one the code reads: the test suite, every script, and the
+figure builder relocate the TOML `root` to it, and a bare
+`PermissionError: /data/ssd1/swim` means it is not set in the current shell.
+The other three are shell conveniences for the commands in this section. Put
+the four lines in a file you can `source`, and in PyCharm add `SWIM_ROOT` to
+the environment variables of the Run/Debug configuration template and of the
+pytest template; every `uv run python <script>` line below is then that script
+run from the IDE with the same arguments.
 
 ### 1. Install
 
 Clone the repository at the commit named in `MANIFEST.json` (branch `dev`
-until submission) and install it (Python 3.13; `uv.lock` is authoritative).
-Pick the data root now and point the configuration at it; the test suite and
-every script below read `SWIM_ROOT`, and the variable has to be re-exported in
-every new shell (a bare `PermissionError: /data/ssd1/swim` means it is not
-set):
+until submission) into `$SWIM_REPO` and install it (Python 3.13; `uv.lock` is
+authoritative):
 
 ```bash
-uv sync --all-extras
-export SWIM_ROOT=/path/to/swim
+git clone git@github.com:dgketchum/swim-rs.git $SWIM_REPO
+uv sync --all-extras                        # from $SWIM_REPO
 ```
 
 Every `{root}`-derived path in the project TOMLs, the `ex*_paths.py` helpers,
-and the figure builder follows it (`project_root_override` on
-`ProjectConfig.read_config` wins when a script passes one). In PyCharm, point
-the project interpreter at the clone's `.venv` and add `SWIM_ROOT` to the
-environment variables of the Run/Debug configuration template and of the
-pytest template; every `uv run python <script>` line below is then that script
-run from the IDE with the same arguments.
+and the figure builder follows `SWIM_ROOT` (`project_root_override` on
+`ProjectConfig.read_config` wins when a script passes one).
 
 ### 2. Unpack
 
@@ -75,13 +84,14 @@ an interactive `gcloud auth login`; with application-default credentials alone
 it returns 401, but the JSON API accepts the same credentials:
 
 ```bash
-gsutil -m cp "gs://wudr/swim/reprod/*.tar.gz" gs://wudr/swim/reprod/MANIFEST.json /path/to/packages/   # after gcloud auth login
+mkdir -p $SWIM_PACKAGES $SWIM_ROOT $SWIM_SCRATCH
+gsutil -m cp "gs://wudr/swim/reprod/*.tar.gz" gs://wudr/swim/reprod/MANIFEST.json $SWIM_PACKAGES/   # after gcloud auth login
 # or, with application-default credentials only:
-TOKEN=$(gcloud auth application-default print-access-token); for f in MANIFEST.json swim_data_e1.tar.gz swim_data_e2.tar.gz swim_data_e3.tar.gz swim_repo_local.tar.gz swim_reference_final.tar.gz swim_e3_truth_sources.tar.gz; do curl -sfL -H "Authorization: Bearer $TOKEN" -o /path/to/packages/$f "https://storage.googleapis.com/storage/v1/b/wudr/o/swim%2Freprod%2F$f?alt=media"; done
-mkdir -p $SWIM_ROOT && for p in e1 e2 e3; do tar -xzf /path/to/packages/swim_data_$p.tar.gz -C $SWIM_ROOT; done
-tar -xzf /path/to/packages/swim_repo_local.tar.gz -C /path/to/swim-rs      # the clone root
-tar -xzf /path/to/packages/swim_reference_final.tar.gz -C /path/to/swim-rs
-tar -xzf /path/to/packages/swim_e3_truth_sources.tar.gz -C /path/to/swim-rs  # optional: only to re-run the Example 7 truth build
+TOKEN=$(gcloud auth application-default print-access-token); for f in MANIFEST.json swim_data_e1.tar.gz swim_data_e2.tar.gz swim_data_e3.tar.gz swim_repo_local.tar.gz swim_reference_final.tar.gz swim_e3_truth_sources.tar.gz; do curl -sfL -H "Authorization: Bearer $TOKEN" -o $SWIM_PACKAGES/$f "https://storage.googleapis.com/storage/v1/b/wudr/o/swim%2Freprod%2F$f?alt=media"; done
+for p in e1 e2 e3; do tar -xzf $SWIM_PACKAGES/swim_data_$p.tar.gz -C $SWIM_ROOT; done
+tar -xzf $SWIM_PACKAGES/swim_repo_local.tar.gz -C $SWIM_REPO
+tar -xzf $SWIM_PACKAGES/swim_reference_final.tar.gz -C $SWIM_REPO
+tar -xzf $SWIM_PACKAGES/swim_e3_truth_sources.tar.gz -C $SWIM_REPO   # optional: only to re-run the Example 7 truth build
 ```
 
 A truncated download fails at `tar`; there is nothing else to verify. Then run
@@ -99,7 +109,7 @@ The commands below are the evaluation steps of the three experiment READMEs
 `7_Applied_Water/README.md`), which describe what each one computes and the
 files it writes. The READMEs also hold the container-build and calibration
 steps, which the packages make unnecessary. Where a script takes an output
-option, write into `<scratch>` and compare with the shipped copy; a few
+option, write under `$SWIM_SCRATCH` and compare with the shipped copy; a few
 scripts write only into the shipped run directory, and the comparison for
 those is the frozen-package check in step 4. For the CSV comparisons, `cmp`
 is silent when the files are identical; a rebuild on other hardware may
@@ -111,7 +121,7 @@ decomposition, spread–error, conditioned-ensemble spread, weighting-ablation
 summary, within-E1 transfer.
 
 ```bash
-EX5=examples/5_Flux_Ensemble; CFG=$EX5/5_Flux_Ensemble.toml; DATA=$SWIM_ROOT/5_Flux_Ensemble/data; RUN23=$SWIM_ROOT/5_Flux_Ensemble/results/run23; S=<scratch>/e1
+EX5=examples/5_Flux_Ensemble; CFG=$EX5/5_Flux_Ensemble.toml; DATA=$SWIM_ROOT/5_Flux_Ensemble/data; RUN23=$SWIM_ROOT/5_Flux_Ensemble/results/run23; S=$SWIM_SCRATCH/e1
 uv run python $EX5/evaluate.py --config $CFG --par-csv $RUN23/5_Flux_Ensemble.3.par.csv --container $DATA/5_Flux_Ensemble_run23.swim --openet-source volk --output-dir $S/daily --bootstrap-reps 10000 --bootstrap-seed 42 --quiet-sites
 uv run python $EX5/evaluate.py --config $CFG --par-csv $RUN23/5_Flux_Ensemble.3.par.csv --container $DATA/5_Flux_Ensemble_run23.swim --monthly --output-dir $S/monthly --bootstrap-reps 10000 --bootstrap-seed 42 --quiet-sites
 for f in evaluation_grouped_daily_metrics.csv evaluation_grouped_daily_contrasts.csv evaluation_paired_daily_records.csv; do cmp $S/daily/$f $RUN23/archive/6_evaluation/$f; done
@@ -132,7 +142,7 @@ published calibration, the E1 parameter transfer, the closure-pool summaries,
 the E0 formulation comparison, and product parity.
 
 ```bash
-EX6=examples/6_Flux_International; CFG=$EX6/6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml; RUN=6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr; RESULTS=$SWIM_ROOT/6_Flux_International/results; ARCHIVE=$RESULTS/$RUN/archive; S=<scratch>/e2
+EX6=examples/6_Flux_International; CFG=$EX6/6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml; RUN=6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr; RESULTS=$SWIM_ROOT/6_Flux_International/results; ARCHIVE=$RESULTS/$RUN/archive; S=$SWIM_SCRATCH/e2
 POST=$ARCHIVE/4_pest_outputs/merged/merged_posterior.csv; CONTAINER=$SWIM_ROOT/6_Flux_International/data/6_Flux_International_ls_ensemble_grassbasis_por_annual2yr.swim
 uv run python $EX6/evaluate.py --config $CFG --par-csv $POST                            # these five write into $RESULTS/$RUN/
 uv run python $EX6/evaluate.py --config $CFG --par-csv $POST --monthly
@@ -164,7 +174,7 @@ inputs the steps rewrote are not compared.
 the Table 6 statistics.
 
 ```bash
-EX7=examples/7_Applied_Water; E7=$SWIM_ROOT/7_Applied_Water; S=<scratch>/e3
+EX7=examples/7_Applied_Water; E7=$SWIM_ROOT/7_Applied_Water; S=$SWIM_SCRATCH/e3
 uv run python $EX7/evaluate_applied_water.py --container $E7/data/7_Applied_Water_e7cal.swim --params-json $E7/results/e7cal/archive/4_pest_outputs/merged/merged_posterior.json --label calibrated --out $S/calibrated
 uv run python $EX7/build_applied_irrigation_mapping.py --verify-keys $E7/results/applied_calibrated/per_field_year.csv --out-dir $S/mapping
 cmp $S/mapping/e4_irrigation_stratified_param_mapping.json paper/data/final/e4_irrigation_stratified_param_mapping.json
@@ -182,8 +192,8 @@ fields and 404 field-years.
 ```bash
 uv run python examples/5_Flux_Ensemble/rebuild_e1_benchmark_evidence.py --output-dir paper/data/final --verify   # G-VALUES: PASS
 uv run python examples/5_Flux_Ensemble/promote_final.py                                                           # match / match~ for every file
-uv run python scripts/figures/build_figure_data.py --all --out <scratch>/figures --compare                        # 0 table(s) differ
-tar -dzf /path/to/packages/swim_reference_final.tar.gz -C /path/to/swim-rs                                        # silent when identical
+uv run python scripts/figures/build_figure_data.py --all --out $SWIM_SCRATCH/figures --compare                   # 0 table(s) differ
+tar -dzf $SWIM_PACKAGES/swim_reference_final.tar.gz -C $SWIM_REPO                                                 # silent when identical
 ```
 
 `--verify` re-derives the E1 benchmark statistics from the frozen record; the

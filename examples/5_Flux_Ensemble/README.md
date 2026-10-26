@@ -86,7 +86,7 @@ presence is not a completeness test.
 Commands run from the repository root with
 
 ```bash
-export SWIM_ROOT=/path/to/swim                 # the data root (the TOML root, /data/ssd1/swim, on the authoring machine)
+export SWIM_ROOT=/path/to/swim                 # the data root (the TOML root); set once per shell, see ../README.md
 EX5=examples/5_Flux_Ensemble
 CFG=$EX5/5_Flux_Ensemble.toml
 DATA=$SWIM_ROOT/5_Flux_Ensemble/data
