@@ -1,8 +1,5 @@
 """Within-E1 held-out spatial transfer (leave-region-out + leave-one-site-out).
 
-Output directories keep the ``within_e2_transfer*`` names the frozen evidence and
-the figure builder key on (``e2`` there is the legacy label for paper E1).
-
 Supports the manuscript claim (``paper/text/main.md`` Table 1 and the Parameter
 Transfer methods paragraph) that within Experiment 1 a fixed parameter vector
 formed from the across-site median of *training-site* posterior medians, applied
@@ -11,8 +8,7 @@ site-calibrated skill. This is the within-domain spatial cross-validation that
 removes the E1->E2 domain-shift confound (single forcing GridMET, single soils
 SSURGO, single OpenET target; only the site set changes between train and test).
 
-Design (see ``paper/final_implementations.md`` WP6.2 and
-``paper/POINTS_TO_MAKE.md`` section 7):
+Design:
 
   1. Folds are defined by geography ONLY (fixed agroclimatic regions from the
      cohort shapefile ``state`` field). Flux-tower ET never enters fold
@@ -34,15 +30,14 @@ Two pooled held-out schemes are produced:
 
 Irrigation-stratified arms
 --------------------------
-The pooled cropland vector is dominated by irrigated sites (39 of the 60 container
-fields satisfy ``properties/irrigation/irr > 0.5``), and its ``mad = 0.136917`` is
-plausible for the irrigated prior (0.10-0.30) but sits *outside* the configured
-rainfed prior (0.30-0.80). A single pooled vector therefore hands every rainfed
-held-out site a management-allowable-depletion value its own prior forbids. Two
-extra arms test whether conditioning the transfer on an independently inferred
-irrigation class preserves or improves held-out skill while keeping rainfed ``mad``
-inside the rainfed domain (see ``paper/notes/irrigation_stratified_transfer_handoff.md``,
-"Target-class policy > Within E1"):
+The pooled cropland vector is dominated by irrigated sites (most cohort sites
+satisfy ``properties/irrigation/irr > 0.5``), and its ``mad`` falls inside the
+irrigated prior (0.10-0.30) but *outside* the configured rainfed prior (0.30-0.80).
+A single pooled vector therefore hands every rainfed held-out site a
+management-allowable-depletion value its own prior forbids. Two extra arms test
+whether conditioning the transfer on an independently inferred irrigation class
+preserves or improves held-out skill while keeping rainfed ``mad`` inside the
+rainfed domain:
 
     loro_strat - stratified leave-region-out (PRIMARY stratified comparison): the
                  vector is the median over training sites in the SAME irrigation
@@ -72,7 +67,7 @@ already on disk and opens the container read-only.
 Usage:
     uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/within_e1_transfer.py
     uv run python /home/dgketchum/code/swim-rs/examples/5_Flux_Ensemble/within_e1_transfer.py \
-        --run run23 --out /data/ssd1/swim/5_Flux_Ensemble/results/run23/within_e2_transfer_irrigation_stratified \
+        --run run23 --out /data/ssd1/swim/5_Flux_Ensemble/results/run23/within_e1_transfer \
         --n-boot 2000 --seed 1234 --irr-threshold 0.5 --min-class-train 5
 """
 
@@ -109,7 +104,7 @@ from swimrs.process.loop_fast import run_daily_loop_fast  # noqa: E402
 
 # Canonical publication basis: par.csv + the run container it was calibrated and
 # evaluated against. Both default to the ``ex5_paths.CANONICAL_RUN`` locations
-# derived from the TOML root (Run 22 was the basis before the run23 recal).
+# derived from the TOML root.
 
 PARAM_FAMILIES = [
     "aw",
@@ -164,8 +159,8 @@ CONFIG_LABELS = {
 # Paired-bootstrap deltas, (a, b) meaning "a minus b". The PRIMARY comparison for
 # the stratified experiment is loro_strat - loro (same fold geometry, same scoring
 # support; the only thing that changes is whether the training pool is restricted
-# to the held-out site's irrigation class). The *_minus_local pairs are retained
-# unchanged from the pooled-only version of this script.
+# to the held-out site's irrigation class). The *_minus_local pairs compare each
+# transfer scheme with the site-calibrated upper bound.
 DELTA_PAIRS = [
     ("loro_strat", "loro"),
     ("loso_strat", "loso"),
@@ -188,9 +183,9 @@ WIN_PAIRS = [
     ("loso_strat", "loso"),
 ]
 
-# `r2` in this codebase IS Nash-Sutcliffe efficiency (verified pure relabel); the
-# key name is kept for continuity with the legacy ``e2_*`` artifacts. `abs_bias` is the
-# absolute mean bias error, lower-is-better, added for the stratified comparison.
+# `r2` in this codebase IS Nash-Sutcliffe efficiency; the key name matches the
+# ``e2_*`` artifacts that consume these tables. `abs_bias` is the absolute mean bias
+# error, lower-is-better, used in the stratified comparison.
 METRIC_KEYS = ["r2", "kge", "rmse", "bias", "r", "mae", "alpha", "beta", "abs_bias"]
 SUMMARY_METRICS = ["r2", "kge", "rmse", "bias", "abs_bias"]
 
@@ -301,7 +296,7 @@ def read_irrigation_class(container_path, threshold):
 def check_class_support(support_rows, min_class_train, out_of=None):
     """Raise if any stratified fold has fewer same-class training sites than allowed.
 
-    The handoff forbids a silent fallback to the pooled vector, so an under-supported
+    The design forbids a silent fallback to the pooled vector, so an under-supported
     fold is a hard stop naming the fold, its class, the scheme, and the count.
     """
     for row in support_rows:
@@ -443,7 +438,7 @@ def monthly_paired(flux, series_by_config):
 def stratum_frames(persite_df, regions):
     """(stratum, sub-frame) pairs for the reporting strata.
 
-    ``all`` reproduces the pooled-only version of this script; the irrigation
+    ``all`` is the full cohort; the irrigation
     classes and the LORO regions are the stratified experiment's reporting axes.
     Each stratum is bootstrapped over its OWN common-support sites, so a stratum's
     n_common is not a subset count of the all-site n_common.
@@ -546,9 +541,7 @@ def main():
     parser.add_argument(
         "--out",
         default=None,
-        help="Output dir (default: {project_ws}/results/<run>/"
-        "within_e2_transfer_irrigation_stratified; the pooled-only within_e2_transfer "
-        "dir is never written by this script)",
+        help="Output dir (default: {project_ws}/results/<run>/within_e1_transfer)",
     )
     parser.add_argument("--n-boot", type=int, default=2000)
     parser.add_argument("--seed", type=int, default=1234)
@@ -572,11 +565,11 @@ def main():
     args.container = args.container or ex5_paths.run_container(args.run, cfg=cfg)
     flux_dir = ev.resolve_flux_dir(cfg)
     shp = args.shapefile or cfg.fields_shapefile
-    # Per-run default so a recal never overwrites the previous run's evidence.
+    # Per-run default so each run's results dir carries its own transfer evidence.
     out_dir = (
         Path(args.out)
         if args.out
-        else Path(ex5_paths.run_dir(args.run, cfg=cfg)) / "within_e2_transfer_irrigation_stratified"
+        else Path(ex5_paths.run_dir(args.run, cfg=cfg)) / "within_e1_transfer"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -938,9 +931,8 @@ def main():
             json.dump(metadata, f, indent=2)
 
         # --- Console summary ---------------------------------------------------
-        # The all-site block reproduces the pooled-only console output (widened to
-        # fit the stratified labels); the class blocks below carry the stratified
-        # experiment's headline numbers.
+        # The all-site block reports the pooled and stratified arms together; the
+        # class blocks below carry the stratified experiment's headline numbers.
         def cell(frame, config, metric):
             row = frame[(frame["config"] == config) & (frame["metric"] == metric)]
             if row.empty:

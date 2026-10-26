@@ -25,10 +25,9 @@ Package contents (paths relative to the data root unless noted):
 ``e2``   Ex6 canonical GrassBasis container plus the two E0 arm containers,
          gis/properties/awc_recal/e0_disjoint/e2_etf_refooting, the three run
          result directories, the run23 irrigation-stratified transfer, the frozen
-         E0 disjoint comparison, the evaluator outputs of the superseded
-         classifier-recal baseline and the Run 22 transfer summary that
-         ``evaluation_summary.py`` compares against, and the 66-site subset of the
-         flux-data-qaqc archive at
+         E0 disjoint comparison, the E3 transfer summary that
+         ``evaluation_summary.py`` concatenates into the closure-pool transfer
+         summary, and the 66-site subset of the flux-data-qaqc archive at
          ``6_Flux_International/data/flux_qaqc/<network>/<sid>_daily_data.csv``.
 ``e3``   Ex7 ``data/`` (both containers, gis, properties, metered_truth.csv) and the
          ``e7cal``, ``applied_calibrated``, ``applied_transfer_run23_by_irrigation``
@@ -62,8 +61,10 @@ EX6_COHORT_SHP = "flux_crop_pub_66_150m.shp"
 
 # Never packaged, anywhere.
 ALWAYS_EXCLUDE_DIRS = {"__pycache__", ".git"}
-ALWAYS_EXCLUDE_DIR_GLOBS = ("pestrun*",)
-ALWAYS_EXCLUDE_FILE_GLOBS = ("*.lock", ".DS_Store")
+# ``superseded_*`` and ``archive_superseded_*`` hold the outputs a re-freeze moved aside;
+# SUPERSEDES.md and COMPARISON.md are the authoring notes beside them.
+ALWAYS_EXCLUDE_DIR_GLOBS = ("pestrun*", "superseded_*", "archive_superseded_*")
+ALWAYS_EXCLUDE_FILE_GLOBS = ("*.lock", ".DS_Store", "SUPERSEDES.md", "COMPARISON.md")
 # PEST++ ensemble files under any archive that no evaluation or figure script reads.
 ARCHIVE_EXCLUDE_FILE_GLOBS = ("*.obs.csv", "loc.mat", "*.obs+noise.csv", "*.rei", "*.jcb")
 # ...except these (relative to the data root).
@@ -72,9 +73,6 @@ ARCHIVE_KEEP = {
 }
 
 GRASSBASIS = "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
-# the superseded classifier-recal baseline that evaluation_summary.py compares against
-# (its per-site series and evaluator outputs only; no archives, no PEST++ files)
-E2_BASELINE = "6_Flux_International_LSEnsemble_POR_annual2yr"
 
 ROOT_PACKAGES = {
     "e1": {
@@ -95,6 +93,15 @@ ROOT_PACKAGES = {
             "5_Flux_Ensemble/results/ablation_run23_e2_fixed_sd",
             "5_Flux_Ensemble/results/ablation_run23_summary",
         ],
+        # gate outputs against the preceding run and a rebuild scratch pair; nothing reads them
+        "exclude_dirs": [
+            "problem_definition_diff_vs_run22",
+            "container_diff",
+            "temporal_decomposition_legacy",
+            "e1_rebuild_frozen",
+            "e1_rebuild_scratch",
+        ],
+        "exclude_files": ["temporal_decomposition_legacy.log", "e1_rebuild_*.log"],
     },
     "e2": {
         "name": "swim_data_e2",
@@ -112,11 +119,12 @@ ROOT_PACKAGES = {
             f"6_Flux_International/results/{GRASSBASIS}_fao56_sig",
             "6_Flux_International/results/e2_run23_transfer_by_irrigation_to_grassbasis",
             "6_Flux_International/results/e0_disjoint",
-            f"6_Flux_International/results/{E2_BASELINE}/*.csv",
-            f"6_Flux_International/results/{E2_BASELINE}/archive_recal20260702_classifier/6_evaluation",
+            # concatenated into the frozen closure_pool/transfer_refresh_summary.csv
             "6_Flux_International/results/e2_run22_transfer_by_irrigation_to_e3/transfer_comparison_summary.csv",
         ],
         "flux_subset": "6_Flux_International/data/flux_qaqc",
+        # evaluator captures and a QA order tree from before the published calibration
+        "exclude_dirs": ["6_evaluation_pre_*", "transfer_refresh_run22_*", "g2_legacy_only_*"],
     },
     "e3": {
         "name": "swim_data_e3",
@@ -127,7 +135,6 @@ ROOT_PACKAGES = {
             "7_Applied_Water/results/applied_transfer_run23_by_irrigation",
             "7_Applied_Water/results/rescore_404fy_20260926",
         ],
-        "exclude_dirs": ["archive_superseded_*"],
     },
 }
 
@@ -142,7 +149,9 @@ REPO_PACKAGES = {
             # transfer mapping (step 7); the rest of data/idwr_wmis is truth-build input
             "data/idwr_wmis/espa_control_irrmapper.csv",
         ],
-        "exclude_dirs": ["_deprecated_january_delivery"],
+        # the ETf member tables as extracted against the following day's reference ET; the
+        # shipped ``etf_v21_openet_eto`` holds the same tables on the scene-day basis
+        "exclude_dirs": ["_deprecated_january_delivery", "etf_v21_openet_eto_nextday"],
     },
     "truth": {
         "name": "swim_e3_truth_sources",
@@ -152,7 +161,7 @@ REPO_PACKAGES = {
     "reference": {
         "name": "swim_reference_final",
         "items": ["paper/data/final"],
-        # the obs_support diagnostics were dropped from the figure package (2026-10-15)
+        # obs_support diagnostics that the figure package does not carry
         "exclude_files": ["figs02_*"],
     },
 }

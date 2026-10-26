@@ -42,6 +42,10 @@ def fake_root(tmp_path):
     _touch(e7 / "archive" / "4_pest_outputs" / "batch_000" / "7_Applied_Water.base.rei", 30)
     _touch(e7 / "archive" / "4_pest_outputs" / "merged" / "merged_posterior.json", 7)
     _touch(e7 / "archive_superseded_singlerun" / "old.json", 8)
+    scored = root / "7_Applied_Water" / "results" / "applied_calibrated"
+    _touch(scored / "per_field_year.csv", 9)
+    _touch(scored / "SUPERSEDES.md", 9)
+    _touch(scored / "superseded_408fy" / "per_field_year.csv", 9)
     return root
 
 
@@ -79,6 +83,14 @@ def test_collect_excludes_batch_ensembles_and_superseded_dirs(pkg, fake_root):
     )
     assert set(files) == {
         "7_Applied_Water/results/e7cal/archive/4_pest_outputs/merged/merged_posterior.json"
+    }
+
+
+def test_collect_never_packages_quarantine_dirs_or_their_notes(pkg, fake_root):
+    files = dict(pkg.collect(fake_root, ["7_Applied_Water/results"]))
+    assert set(files) == {
+        "7_Applied_Water/results/applied_calibrated/per_field_year.csv",
+        "7_Applied_Water/results/e7cal/archive/4_pest_outputs/merged/merged_posterior.json",
     }
 
 
