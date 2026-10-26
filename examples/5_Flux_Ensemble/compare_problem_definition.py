@@ -1,18 +1,19 @@
 """Diff two PEST++ problem definitions (.pst) observation by observation.
 
-Two uses in the Run 23 workflow:
+The script serves as a gate comparing a reference problem definition with a
+candidate:
 
-* replay gate: a problem definition rebuilt at HEAD against the Run 22
-  container must equal the archived Run 22 definition (builder drift);
-* weight audit: the Run 23 definition against Run 22 shows how the target
-  values and weights moved under the corrected ETf members.
+* replay gate: a problem definition rebuilt at HEAD against a run's container
+  must equal that run's archived definition (builder drift check);
+* weight audit: a candidate definition built on a different container shows how
+  the target values and weights differ between the two ETf target sets.
 
 Observations are aligned by name; observations present on one side only are
 counted. Parameter data and ``pestpp_options`` are compared as well.
 
 Usage:
-    uv run python compare_problem_definition.py --reference <run22.pst> \\
-        --candidate <run23.pst> --out-dir <dir>
+    uv run python compare_problem_definition.py --reference <reference.pst> \\
+        --candidate <candidate.pst> --out-dir <dir>
 """
 
 import argparse

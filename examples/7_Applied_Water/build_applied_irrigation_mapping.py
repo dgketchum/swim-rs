@@ -1,7 +1,7 @@
 """Build the Example 7 per-field parameter mapping for the irrigation-stratified transfer.
 
 Expands the frozen two-vector Example 2 artifact of the Ex5 run E3 transfers
-(``ex7_paths.EX5_TRANSFER_RUN``; run23 since 2026-09-26)
+(``ex7_paths.EX5_TRANSFER_RUN``),
 ``paper/data/final/e2_<run>_transfer_vectors_by_irrigation.json`` -- shape
 ``{"irrigated": {8 params}, "rainfed": {8 params}}`` -- into the nested
 ``{site_id: {8 params}}`` mapping that ``evaluate_applied_water.py --params-json``
@@ -13,7 +13,7 @@ Class rule (remote sensing only; **no metered value is ever read**):
     IrrMapper 2000-2024 cache ``data/idwr_wmis/espa_control_irrmapper.csv``, joined on
     the shapefile ``src_id`` (= ``fid2015``); every control must carry
     ``max_irr == 0.0`` (strictly never classified irrigated), which is exactly the
-    gate ``select_fields.py::select_espa_controls`` used to pick them.
+    gate ``select_fields.py::select_espa_controls`` applies when it selects them.
   * all other cohort fields (``SLV_*``, ``ESPA_*`` metered) -> **irrigated** vector.
 
 The metered truth table is opened for a *provenance cross-check only*, reading just
@@ -65,7 +65,7 @@ if str(E6_TRANSFER) not in sys.path:
     sys.path.insert(0, str(E6_TRANSFER))
 
 # Reuse the validated provenance helpers and the canonical eight-parameter family list
-# from the historical pooled-vector builder (import only; that module has no import-time
+# from the pooled-vector builder (import only; that module has no import-time
 # side effects).
 from build_ex5_cropland_params import (  # noqa: E402
     PARAM_FAMILIES,
@@ -361,7 +361,7 @@ def check_container_coverage(container_path, truth_csv, assignments):
 
 
 def verify_keys(per_field_year_csv, assignments):
-    """Pre-flight the handoff's identical-``(site_id, year)``-key requirement."""
+    """Pre-flight check that a per-field-year table's ``(site_id, year)`` sites are mapped."""
     path = Path(per_field_year_csv)
     if not path.exists():
         raise SystemExit(f"--verify-keys file not found: {path}")

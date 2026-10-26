@@ -19,10 +19,9 @@ reports SLV only; ESPA records are upstream diversions that include conveyance
 losses outside the field, so they are kept as supporting output and never
 quoted. Every consumer filters on the `SLV_` site-id prefix.
 
-**Naming.** Paper E3 is this directory. It was planned as "E4" before the paper
-dropped an experiment, and the frozen files, the transfer-mapping metadata, and
-one test still carry the `e4_` prefix. Those names are kept; the numbering in
-the paper is E3.
+**Naming.** Paper E3 is this directory. The frozen files, the transfer-mapping
+metadata, and one test carry an `e4_` prefix; the names are kept because the
+frozen hashes key on them.
 
 This directory produces:
 
@@ -102,19 +101,12 @@ CFG=$EX7/7_Applied_Water.toml
 E7=$SWIM_ROOT/7_Applied_Water                  # the TOML `root` + project
 ```
 
-**With the data packages** (`../README.md`, "Reproducing the paper"): skip
-steps 1–5; the truth table, containers, and calibration archive ship in
-`swim_data_e3.tar.gz` and `swim_repo_local.tar.gz` (the step 7 IrrMapper gate
-`data/idwr_wmis/espa_control_irrmapper.csv` is in the latter). Run steps 6 and
-7 with `--out <scratch-dir>`, as written below, so the shipped
-`results/applied_*` directories stay intact, and compare
-`summary_metrics.csv`, `negative_controls.json`, and `per_field_year.csv`
-against `results/applied_calibrated/` and
-`results/applied_transfer_run23_by_irrigation/` (byte-equal apart from
-floating-point round-off in the simulated columns). Step 8 then rebuilds the
-`fig06_*` and `fig01_*` tables from the shipped directories, and
-`e3_period_split.py` (no `--write`) replicates the frozen Table 6 values and
-prints the §3.4 pre-/post-2016 split.
+Reproduction from the data packages runs steps 6, 7, and 8 of this workflow
+and `e3_period_split.py` without `--write`; the truth table, containers, and
+calibration archive ship in `swim_data_e3.tar.gz` and `swim_repo_local.tar.gz`
+(the step 7 IrrMapper gate `data/idwr_wmis/espa_control_irrmapper.csv` is in
+the latter). The exact commands and comparisons are in `../README.md`,
+"Reproducing the paper", step 3.
 
 **1. Ground truth** (once; open state APIs, no credentials)
 
@@ -188,12 +180,12 @@ uv run python $EX7/evaluate_applied_water.py --container $E7/data/7_Applied_Wate
 The mapping builder assigns the irrigated vector to every metered field and the
 rainfed vector to the ten controls, from the site-id prefix and the IrrMapper
 gate only; it writes the two `e4_*` JSONs. Without `--out-dir` it writes into
-`paper/data/final/`, which is how the frozen pair was made; with the data
-packages write elsewhere and `cmp` the mapping JSON against the frozen one (the
-metadata sidecar differs in its paths, git sha, and timestamp only). The
-evaluator writes `per_field_year.csv`, `summary_metrics.csv`,
-`negative_controls.json`, and a scatter under `--out` (without it,
-`results/applied_<label>/`, which is how the shipped directories were made).
+`paper/data/final/`, the frozen location; with the data packages write
+elsewhere and `cmp` the mapping JSON against the frozen one (the metadata
+sidecar differs in its paths, git sha, and timestamp only). The evaluator
+writes `per_field_year.csv`, `summary_metrics.csv`, `negative_controls.json`,
+and a scatter under `--out` (without it, `results/applied_<label>/`, the
+shipped location).
 
 **8. Paper statistics and figure data**
 
@@ -222,21 +214,19 @@ uv run python $EX7/field_accuracy.py --label calibrated                       # 
 uv run python $EX7/paired_field_bootstrap.py                                  # basin-stratified paired bootstrap → results/applied_local_vs_transfer_run22
 ```
 
-`results/applied_transfer_run22/` (pooled Run 22 vector) and
 `paper/data/final/e4_irrigation_stratified_transfer_summary.csv` (pooled vs
-stratified on all 110 fields) are earlier supporting outputs with no tracked
-producer; neither is cited.
+stratified on all 110 fields) is a supporting output with no tracked producer
+and is not cited.
 
 ## Results on disk
 
-| Directory | Content | Status |
+| Directory | Content | Role |
 |---|---|---|
 | `results/e7cal/archive/` | RUN_POLICY Cats 1–2, 4–6 for the batch calibration | canonical |
 | `results/applied_calibrated/` | step 6 | canonical; Table 6 / Fig. 6 local arm |
-| `results/applied_transfer_run23_by_irrigation/` | step 7 (driver `transfer_rebuild_run23.sh`, copy in its `provenance/`) | canonical; Table 6 / Fig. 6 transfer arm |
-| `results/applied_transfer_run22_by_irrigation/` | step 7 on the Run 22 vector | superseded 2026-09-26 (`SUPERSEDES.md`) |
-| `results/applied_transfer/`, `applied_transfer_run22/`, `applied_local_vs_transfer_run22/`, `COMPARISON.md` | step 9 and earlier 110-field cuts | supporting |
-| `results/e7cal/archive_superseded_singlerun_20260706/` | pre-launch capture of the abandoned single-run attempt | superseded |
+| `results/applied_transfer_run23_by_irrigation/` | step 7 | canonical; Table 6 / Fig. 6 transfer arm |
+| `results/rescore_404fy_20260926/` | provenance of the four withheld 2019 rows (hashes, log, script) | record |
+| `results/applied_transfer/`, `applied_local_vs_transfer_run22/` | step 9 | supporting; not shipped |
 
 ## Tests
 

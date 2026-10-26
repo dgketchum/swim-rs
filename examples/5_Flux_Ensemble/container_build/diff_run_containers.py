@@ -1,20 +1,22 @@
 """Read-only array-by-array diff of two Example 5 containers.
 
-Used as the two Run 23 gates:
+The script serves as two gates comparing a reference run container with a
+candidate:
 
-* null rebuild: a container rebuilt from base with the *original* extract
+* null rebuild: a container rebuilt from base with the reference run's extract
   tables must equal the reference run's container on every array (builder
   and calculator drift check);
-* corrected rebuild: only the ET-denominated members, the ensemble and the
-  ETf-dependent dynamics may differ, and no site may change irrigation class
-  or groundwater-subsidy status.
+* member rebuild: when the candidate is built from re-divided extract tables,
+  only the ET-denominated members, the ensemble and the ETf-dependent dynamics
+  may differ, and no site may change irrigation class or groundwater-subsidy
+  status.
 
 Numeric arrays are compared with NaN-equal semantics. The dynamics JSON
 arrays (``irr_data``, ``gwsub_data``) are compared per site and per year.
 
 Usage:
-    uv run python diff_run_containers.py --reference <run22.swim> \\
-        --candidate <run23.swim> --out-dir <results/run23/container_diff>
+    uv run python diff_run_containers.py --reference <reference.swim> \\
+        --candidate <candidate.swim> --out-dir <results/<run>/container_diff>
 """
 
 import argparse

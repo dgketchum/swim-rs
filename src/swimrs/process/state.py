@@ -529,8 +529,7 @@ class CalibrationParameters:
             self.ndvi_k = np.full(n, 7.0, dtype=np.float64)
         if self.ndvi_0 is None:
             self.ndvi_0 = np.full(n, 0.4, dtype=np.float64)
-        # Legacy linear NDVI-Kcb priors (build_pp_files.initial_parameter_dict,
-        # pre-3ef4757): intercept 0.2, slope 1.25.
+        # Linear NDVI-Kcb priors: intercept 0.2, slope 1.25.
         if self.ndvi_alpha is None:
             self.ndvi_alpha = np.full(n, 0.2, dtype=np.float64)
         if self.ndvi_beta is None:

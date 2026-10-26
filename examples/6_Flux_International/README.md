@@ -24,12 +24,6 @@ package and writes its `MANIFEST.json` (sha256 and source of every file, run
 SHAs, headline values); with no flags it checks the package against the
 results root byte for byte.
 
-**Status (2026-09-22).** The HWSD available-water-capacity units defect
-(mm/m stored as m/m) invalidated every earlier E2 run.
-The recalibration via `awc_recal/run_awc_recal_chain.sh` is complete and the
-package is frozen from it; the superseded runs are under
-`results/superseded_awc320_20260921/`.
-
 ## Layout
 
 ```
@@ -56,8 +50,7 @@ package is frozen from it; the superseded runs are under
 ├── pooled_arm_compare.py       E0 two-arm pooled comparison
 ├── e0_disjoint/                E0 site lists and the arms runner
 ├── product_parity/             Table S10
-├── awc_recal/                  the current recalibration chain and its gates
-└── legacy/                     untracked; retired scripts
+└── awc_recal/                  the calibration chain driver and its gates
 ```
 
 `derived_metrics.py` and `pooled_metrics.py` are imported by the scripts
@@ -88,15 +81,12 @@ RESULTS=$SWIM_ROOT/6_Flux_International/results
 ARCHIVE=$RESULTS/$RUN/archive
 ```
 
-**With the data packages** (`../README.md`, "Reproducing the paper"): skip
-steps 1 and 2 and the calibrations inside step 6. Run step 3, step 4 into a
-scratch `<transfer-out>`, step 5, the three `pooled_arm_compare.py` pairs of
-step 6 on the shipped arm posteriors, step 7, and step 8, whose default check
-mode reports `match` or `match~` for every file and an unchanged
-`MANIFEST.json` (build stamps, machine paths, and the hashes of the inputs
-that steps 3 and 5 rewrote are not compared). Steps 3 and 5 write into the
-shipped run directory under `$RESULTS/$RUN/`; keep a copy of the package if
-you want the shipped files back.
+Reproduction from the data packages runs steps 3, 4, 5, 7, and 8 of this
+workflow and the comparison block of step 6 on the shipped arm posteriors; the
+exact commands and the pass criteria are in `../README.md`, "Reproducing the
+paper", step 3. Steps 3 and 5 write into the shipped run directory under
+`$RESULTS/$RUN/`; keep a copy of the package if you want the shipped files
+back.
 
 **1. Validate the container** (mandatory before any calibration)
 
@@ -150,18 +140,16 @@ results root.
 **5. Summaries** (Table 5, S9, Fig. 5b; read-only on the archive)
 
 ```bash
-uv run python $EX6/evaluation_summary.py --config $CFG --run-name $RUN --skip-baseline-forward
+uv run python $EX6/evaluation_summary.py --config $CFG --run-name $RUN
 uv run python $EX6/closure_pool_summary.py --config $CFG --run-name $RUN
 uv run python $EX6/awc_recal/monthly_28day_sensitivity.py --run-name $RUN
 ```
 
-`evaluation_summary.py` also compares the run against the superseded
-classifier-recal baseline (its evaluator outputs ship in the e2 package;
-`--skip-baseline-forward` skips the baseline's own forward run, which needs
-its container and PEST++ archive, neither of which ships, and is not part of
-the frozen outputs). When
-the baseline is absent the comparison is skipped and its two summary files are
-not written.
+`evaluation_summary.py` writes the run-policy category 6 evaluation under
+`$ARCHIVE/6_evaluation/`. Its comparison against a second run
+(`ex6_paths.BASELINE_RUN`) is optional: it runs only when that run's evaluator
+outputs are present, and its two summary files are not part of the frozen
+outputs.
 
 **6. E0 formulation arms** (Table 3, Fig. 2)
 
@@ -206,9 +194,9 @@ digit of a few pooled statistics) for every file, `differs` otherwise.
 
 Copies the step 4–6 outputs (`closure_pool/`, `transfer/`, `e0_disjoint/`) into
 `paper/data/final/e2_closure_pool/` and regenerates its `MANIFEST.json`. The
-manifest's prose fields (reason for the freeze, gate note, retired files) are
+manifest's prose fields (reason for the freeze, gate note, file notes) are
 carried over from the existing manifest; edit them there when the reason for a
-re-freeze changes.
+freeze changes.
 
 ## Rebuilding the container
 

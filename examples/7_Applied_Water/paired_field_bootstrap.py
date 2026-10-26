@@ -30,8 +30,8 @@ import ex7_paths  # noqa: E402
 
 MM_PER_FT = 304.8
 # The pooled Ex5 vector (all 110 fields), not the paper's irrigated-class arm. This
-# supporting cut exists only on Run 22 (results/applied_transfer_run22); it was not
-# rebuilt when the paper's E3 transfer moved to run23, so it stays pinned here.
+# supporting cut exists only for the run22 posterior (results/applied_transfer_run22),
+# so it is pinned here and does not follow ex7_paths.EX5_TRANSFER_RUN.
 SUPPORTING_POOLED_RUN = "run22"
 TRANSFER_LABEL = f"transfer_{SUPPORTING_POOLED_RUN}"
 OUT_LABEL = f"local_vs_transfer_{SUPPORTING_POOLED_RUN}"

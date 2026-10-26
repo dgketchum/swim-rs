@@ -353,10 +353,10 @@ def load_volk_openet_et(fid, openet_daily_dir):
 
 
 def calc_metrics(obs, mod, min_n=MIN_OBS_FOR_METRICS):
-    """Legacy per-site metric row: R2/r/RMSE/bias/KGE via the shared helper.
+    """Per-site metric row: R2/r/RMSE/bias/KGE via the shared helper.
 
     Delegates to ``swimrs.evaluation.benchmark.site_secondary_metrics`` and
-    maps its unambiguous keys onto the legacy per-site column labels:
+    maps its unambiguous keys onto the per-site column labels of the frozen tables:
     ``r2`` <- ``nse`` (1 - SSE/SST) and ``bias`` <- signed ``mbe``.
     """
     m = site_secondary_metrics(obs, mod, min_n=min_n)

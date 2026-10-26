@@ -1,4 +1,4 @@
-"""Phase 6, step 1 (approval A2 granted 2026-09-04): snapshot, verify and submit the repair orders.
+"""Phase 6, step 1 (requires approval A2): snapshot, verify and submit the repair orders.
 
 Operates only on the missing-only repair tree written by ``phase5_build_missing_only_manifest.py``
 (``remote_sensing/espa_le07_repair/``). Plan §12 rules applied here:

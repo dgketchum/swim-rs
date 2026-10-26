@@ -317,8 +317,8 @@ def _run_loop_jit(
         raw = mad * taw
         # WP-C7: the FAO-56 stress-onset threshold p is a distinct (physiological)
         # quantity. When stress_depl_frac >= 0 it is fixed independently of the
-        # calibrated management mad; the < 0 sentinel reuses raw so the legacy
-        # single-mad behavior is reproduced bit-for-bit.
+        # calibrated management mad; the < 0 sentinel reuses raw, so a single
+        # mad sets both thresholds.
         if stress_depl_frac < 0.0:
             raw_stress = raw
         else:
@@ -751,7 +751,7 @@ def run_daily_loop_fast(
 
     # WP-C7 mad split: the FAO-56 stress depletion fraction p. None (the default
     # for every existing project) -> -1.0 sentinel -> the loop reuses mad*taw for
-    # the Ks stress onset, reproducing the legacy single-mad behavior bit-for-bit.
+    # the Ks stress onset, so a single mad sets both thresholds.
     sdf = getattr(swim_input, "stress_depletion_fraction", None)
     stress_depl_frac = -1.0 if sdf is None else float(sdf)
 

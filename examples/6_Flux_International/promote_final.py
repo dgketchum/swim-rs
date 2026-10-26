@@ -1,8 +1,8 @@
 """Promote the Example 6 results into ``paper/data/final/e2_closure_pool/`` (paper E2 + E0).
 
 The package is the paper's source of record for Tables 3, 5 and S8, Figs 2 and 5b,
-and §3.3/S9.1. It was first frozen by hand on 2026-09-22 (HWSD AWC recal); this
-script is its tracked producer. Every file is a byte copy of a results-root output:
+and §3.3/S9.1, and this script is its producer. Every file is a byte copy of a
+results-root output:
 
     <canonical>/archive/6_evaluation/closure_pool/*      -> closure_pool/*
         closure_pool_summary.py + monthly_28day_sensitivity.py outputs (Table 5, S8, §3.3, S9.1)
@@ -22,8 +22,8 @@ headline values re-read from the promoted CSV/JSON. Its prose fields (``reason``
 ``e0_gate_note``, ``irrigation_mapping_change``, ``retired``, ...) were written at
 freeze time and are carried over from the existing manifest; edit them there.
 
-The ``e3_*`` filenames are the legacy namespace the figure builder keys on and are
-kept. The default mode compares every source against the promoted copy byte-for-byte
+The ``e3_*`` filenames are the internal Example 6 namespace the figure builder keys on.
+The default mode compares every source against the promoted copy byte-for-byte
 and the regenerated manifest against the frozen one field by field; ``--write``
 replaces the files and rewrites the manifest.
 
@@ -99,7 +99,7 @@ HEADLINE_COLS = (
 GATE_KEYS = ("arm_a", "arm_b", "n_sites", "n_daily", "n_monthly", "wins_a", "gate_rule", "passed")
 # Prose written at freeze time; carried over from the existing manifest verbatim.
 CARRIED_NOTES = ("e0_gate_note", "irrigation_mapping_change", "closure_pool_problems")
-# ``addenda`` is written by later freeze scripts (e2_transfer_paired_effects.py) and
+# ``addenda`` is written by downstream freeze scripts (e2_transfer_paired_effects.py) and
 # points at sub-packages derived from frozen files; carried, never regenerated here.
 CARRIED_TAIL = ("retired", "pending_downstream_consumers", "addenda")
 # Sibling frozen files whose sha256 the manifest records for the audit.

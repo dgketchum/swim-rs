@@ -1,4 +1,4 @@
-"""Cohort counts, the legacy-to-current experiment map, and metric definitions."""
+"""Cohort counts, the artifact-prefix-to-paper experiment map, and metric definitions."""
 
 from __future__ import annotations
 
@@ -41,8 +41,8 @@ EXPECTED = {
     "E0_whole_daily_wins": 32,
     "E0_whole_monthly_wins": 28,
     "E1_configured": 60,
-    # Evaluation-derived E1 counts, confirmed identical for Run 22 and Run 23
-    # (same benchmark record and cohorts; spread-error counts are read per run).
+    # Evaluation-derived E1 counts, fixed by the benchmark record and cohorts
+    # (spread-error counts are read per run).
     "E1_daily": 45,
     "E1_monthly_finite": 29,
     "E1_transfer_daily": 45,
@@ -55,8 +55,8 @@ EXPECTED = {
     "E2_daily": 63,
     "E2_monthly_support": 56,
     "E2_monthly_finite": 50,
-    # Closure-corrected (EBR) evaluation pool: the paper's E2 numbers (decision
-    # 2026-09-08); the 16 raw-ET towers are scored but do not appear in the paper.
+    # Closure-corrected (EBR) evaluation pool: the paper's E2 numbers; the 16 raw-ET
+    # towers are scored but do not appear in the paper.
     "E2_pool_daily": 47,
     "E2_pool_monthly_support": 43,
     "E2_pool_monthly_finite": 39,
@@ -66,7 +66,7 @@ EXPECTED = {
     "E2_pool_continents": 3,
     "E3_fields": 50,
     # 408 metered SLV field-years minus the four mislinked 2019 rows in
-    # ex7_paths.EXCLUDED_FIELD_YEARS (dropped 2026-09-26).
+    # ex7_paths.EXCLUDED_FIELD_YEARS.
     "E3_field_years": 404,
     "E1_E2_overlap": 13,
     "E1_E2_overlap_pool": 10,
@@ -118,14 +118,12 @@ METRIC_DEFS = {
 }
 
 
-# Frozen E1/E2 source-class split used to construct the transfer parameter sets
-# (handoff section 6.3).  These are the assignment used to build the vectors,
-# not annual irrigation activation.
+# Frozen E1/E2 source-class split used to construct the transfer parameter sets.
+# These are the assignment used to build the vectors, not annual irrigation activation.
 FIG01_CLASS_COUNTS = {
     "e1_irrigated": 39,
     "e1_rainfed": 21,
-    # US-RC3 joined the irrigated class when the mapping was regenerated on the
-    # recalibrated container (2026-09-21); the August mapping had 13 / 53.
+    # E2 classes come from the mapping built on the E2 calibration container.
     "e2_irrigated": 14,
     "e2_rainfed": 52,
 }

@@ -8,10 +8,10 @@
 
 Reads the per-site-year ETF JSON files and writes annual CSVs matching the
 format expected by the container ingestor. Output goes into the Landsat
-extracts tree so the legacy SSEBop container builder finds it when
+extracts tree so the SSEBop container builder finds it when
 ``etf_target_model = "ssebop"``.
 
-Output format (scene-keyed JSON, written by ``espa_extract_etf.py`` since 2026-09-04): one
+Output format (scene-keyed JSON, as written by ``espa_extract_etf.py``): one
 column per delivered scene, named by the Landsat scene key exactly as the PT-JPL Earth Engine
 exports name theirs, so scene identity survives into the ingest CSV::
 
@@ -21,10 +21,10 @@ exports name theirs, so scene identity survives into the ingest CSV::
 Two columns on one date (adjacent rows of the same overpass) are collapsed **by the ingestor**,
 which parses the date from the last underscore token and takes the per-date ``max`` of
 same-date Landsat columns (``swimrs.container.components.ingestor._parse_single_csv``) — the
-same deterministic rule the PT-JPL member already receives. Nothing is overwritten here; a
+same deterministic rule the PT-JPL member receives. Nothing is overwritten here; a
 duplicate scene key (two product generations of one scene) is a hard error.
 
-Legacy date-keyed JSON (``{site: {YYYY-MM-DD: stats}}``) still writes ``ETF_YYYYMMDD`` columns.
+Date-keyed JSON (``{site: {YYYY-MM-DD: stats}}``) writes ``ETF_YYYYMMDD`` columns.
 
 Filename convention:
     ssebop_etf_{site}_no_mask_{year}.csv
@@ -131,7 +131,7 @@ def write_csvs(manifest_path: Path, output_dir: Path | None = None) -> None:
         if not site_data:
             continue
 
-        # Build row: sid + one column per date (legacy) or per scene (scene-keyed)
+        # Build row: sid + one column per date (date-keyed) or per scene (scene-keyed)
         row = site_row(site, site_data)
         etf_cols = [k for k in row if k != "sid"]
         if not etf_cols:

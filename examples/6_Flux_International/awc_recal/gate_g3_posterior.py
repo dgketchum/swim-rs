@@ -1,13 +1,13 @@
-"""Gate G3 (HWSD AWC units recal): posterior ``aw`` vs the HWSD prior, vs the superseded run.
+"""Gate G3: posterior ``aw`` against the HWSD AWC, for the run and a reference run.
 
-Reports, for the new run and (when present) the superseded run:
+Reports, for the run and (when present) the reference run under ``<results-root>/SUPERSEDED``
+(``--old-run-dir``):
 
-* the ``aw`` upper-bound hit rate from ``archive/5_posterior_summaries/boundary_hit_rates.csv``
-  (superseded: 0.3939);
+* the ``aw`` upper-bound hit rate from ``archive/5_posterior_summaries/boundary_hit_rates.csv``;
 * the median posterior ``aw`` from ``posterior_site_summary.csv``;
-* Spearman rank correlation of posterior site-median ``aw`` with the HWSD AWC (superseded ~ -0.05).
+* Spearman rank correlation of posterior site-median ``aw`` with the HWSD AWC.
 
-Informational unless the files are missing (exit 1). Writes ``awc_recal_g3.json`` into the new
+Informational unless the files are missing (exit 1). Writes ``awc_recal_g3.json`` into the
 run's ``5_posterior_summaries``.
 """
 
@@ -29,7 +29,7 @@ if str(HERE.parent) not in sys.path:
 import ex6_paths  # noqa: E402
 
 DEFAULT_RUN = ex6_paths.CANONICAL_RUN
-SUPERSEDED = "superseded_awc320_20260921"  # under {project_ws}/results
+SUPERSEDED = "superseded_awc320_20260921"  # reference run, under {project_ws}/results
 
 
 def summarize(run_dir: str, hwsd: pd.Series) -> dict:

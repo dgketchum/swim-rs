@@ -88,7 +88,7 @@ def _gpkg_equal(a: Path, b: Path) -> bool:
 def package_differences(built: Path, frozen: Path) -> list[str]:
     """Every builder output in ``frozen`` that ``built`` does not reproduce (empty = match).
 
-    Files the builder does not emit (``BUILD_STATUS.md``, superseded subdirectories,
+    Files the builder does not emit (``BUILD_STATUS.md``, ``superseded_*`` subdirectories,
     renderer-side tables) are not compared.
     """
     built, frozen = Path(built), Path(frozen)

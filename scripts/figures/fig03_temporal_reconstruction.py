@@ -97,7 +97,7 @@ def _ex5_canonical_run() -> str:
     return module.CANONICAL_RUN
 
 
-# Internal archive tags (the canonical Ex5 run and its predecessor) never reach a figure.
+# Internal archive tags (Ex5 run names) never reach a figure.
 FORBIDDEN_STRINGS = [
     "run22",
     _ex5_canonical_run(),

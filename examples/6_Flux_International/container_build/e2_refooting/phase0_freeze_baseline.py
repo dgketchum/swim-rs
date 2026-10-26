@@ -1,4 +1,4 @@
-"""Phase 0 of the E2 ETf re-footing: freeze and verify the baseline.
+"""Phase 0 of the E2 ETf container build: freeze and verify the baseline.
 
 Read-only against every baseline artifact. Writes only into the working QA root:
 

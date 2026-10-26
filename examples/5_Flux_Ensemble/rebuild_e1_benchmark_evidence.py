@@ -1,10 +1,12 @@
 """Rebuild the E1 OpenET benchmark evidence from May v2.1, ETf-first.
 
-Repairs two compounding defects in the frozen E1 evidence: (1) the daily
-OpenET benchmark was built by directly interpolating sparse capture-date ET
-in time (invalid — interp(ETf·ETo) != interp(ETf)·ETo under varying ETo);
-(2) the evaluators read the January capture set (``openet_flux/``) instead
-of May v2.1 (``openet_flux_2pt1/`` + masters in ``flux_2pt1/``).
+The daily OpenET benchmark is reconstructed ETf-first, never by interpolating
+sparse capture-date ET in time (interp(ETf·ETo) != interp(ETf)·ETo under varying
+ETo), and the OpenET source is the May v2.1 capture set (``openet_flux_2pt1/`` +
+masters in ``flux_2pt1/``); reads from the ``openet_flux/`` capture set are
+rejected. The metadata records the sha256 of the frozen ``e2_*`` files the
+rebuild replaces and the ``paper/data/final/`` subdirectory they are moved to
+(``--superseded-subdir``).
 
 Evaluation-only. Reads ONLY: the archived canonical-run (``ex5_paths.CANONICAL_RUN``)
 ``site_daily_timeseries/{fid}.csv`` (``date, swim_ET, flux_ET`` — the
@@ -95,15 +97,13 @@ SUPERSEDED_FILES = [
     "e2_temporal_paired_deltas.csv",
     "e2_evidence_metadata.json",
 ]
-# The model-side spread-error and within-E1-transfer artifacts were carried
-# here as "unaffected" hash pins while Run 22 was canonical. They are now
-# regenerated per run (spread_error.py, within_e1_transfer.py), so this
-# rebuild no longer pins them; verify() still honours an
-# ``unaffected_artifacts`` block in older pinned metadata.
+# The model-side spread-error and within-E1-transfer artifacts are regenerated
+# per run (spread_error.py, within_e1_transfer.py), so this rebuild does not pin
+# them; verify() honours an ``unaffected_artifacts`` block when pinned metadata
+# carries one.
 # Observation-weighting ablation (Table S6 / Fig. 4d). SWIM-only metrics, but
 # evaluate.py scores on the flux ∧ SWIM ∧ benchmark-finite mask, so the
-# benchmark's temporal support sets the scored days. These were wrongly
-# carried as "unaffected" until 2026-09-21; both arms are now rescored on
+# benchmark's temporal support sets the scored days. Both arms are rescored on
 # the frozen record and gated below (G-ABLATION): the spread arm is the
 # canonical run, so its per-site metrics and paired-day counts must equal the primary
 # daily/monthly site metrics exactly.
@@ -114,9 +114,8 @@ RESCORED_ABLATION_FILES = [
     "e2_weighting_ablation_summary.csv",
 ]
 ABLATION_GATE_METRICS = ("r2", "rmse", "bias", "kge")
-# Corrected temporal products frozen alongside the primary evidence, copied
-# from the canonical overpass_decomposition output dir under the established
-# e2_temporal_* names (plan §freeze; manuscript claims ledger)
+# Temporal products frozen alongside the primary evidence, copied from the
+# canonical overpass_decomposition output dir under the e2_temporal_* names
 TEMPORAL_FREEZE_FILES = {
     "overpass_split_summary.csv": "e2_temporal_summary.csv",
     "overpass_split_paired_deltas.csv": "e2_temporal_paired_deltas.csv",
@@ -127,7 +126,7 @@ SUPERSEDED_SUBDIR = "superseded_e2_direct_interpolation"
 # The E1 monthly primary the ablation's monthly arm is scored against: the
 # promoted Volk (2024) month-protocol package (promote_e1_run.py), not this
 # script's own full-month product comparison (``e2_primary_monthly_*``), which
-# keeps the older 28-day rule and a smaller cohort.
+# applies the 28-day rule and has a smaller cohort.
 PROMOTED_MONTHLY_PRIMARY = (
     Path("e1_openet_benchmark") / "monthly" / "evaluation_monthly_metrics.csv"
 )
@@ -263,8 +262,8 @@ def git_state(repo_dir):
 class SourceLedger:
     """G-SOURCE: May-source allowlist by resolved path, with per-file sha256.
 
-    Any read outside the allowlist is a hard failure — the January
-    ``openet_flux/`` directories are excluded by construction, and are
+    Any read outside the allowlist is a hard failure — the ``openet_flux/``
+    capture-set directories are excluded by construction, and are
     additionally rejected explicitly by path component.
     """
 
@@ -1156,8 +1155,8 @@ def write_outputs(out_dir, outputs, metadata):
         frozen[name] = sha256_file(path)
     temporal = metadata.get("temporal_artifacts")
     if temporal is not None:
-        # freeze the corrected temporal products under the established
-        # e2_temporal_* names alongside the primary evidence
+        # freeze the temporal products under the e2_temporal_* names
+        # alongside the primary evidence
         tdir = Path(temporal["canonical_dir"])
         for src_name, frozen_name in TEMPORAL_FREEZE_FILES.items():
             src = tdir / src_name
@@ -1413,8 +1412,7 @@ def main():
         "--status",
         choices=["rebuilt_awaiting_review", "frozen"],
         default="rebuilt_awaiting_review",
-        help="Package status recorded in metadata; use 'frozen' only for the "
-        "final user-approved freeze build",
+        help="Package status recorded in metadata; use 'frozen' only for the final freeze build",
     )
     args = parser.parse_args()
     if None in (args.run_dir, args.data_dir, args.container):

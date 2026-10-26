@@ -268,7 +268,7 @@ def build_fig04() -> None:
     # aggregation: it does not rerun evaluation, calibration, or the model.
     # Every site in the frozen ablation cohort (gated against the promoted E1
     # daily/monthly primaries by promote_e1_run.py) must carry a finite delta:
-    # 45 daily / 30 monthly on Run 22, 45 / 42 on Run 23 (Volk month protocol).
+    # 45 daily / 42 monthly sites (monthly scored on the Volk 2024 month protocol).
     signed_mbe_rows = []
     for scale, expected_n in (("daily", len(wdd)), ("monthly", len(wdm))):
         values = site_rows.loc[site_rows["scale"] == scale, "d_mbe"].to_numpy(dtype=float)
@@ -306,7 +306,7 @@ def build_fig04() -> None:
     weighting = pd.concat([eff_rows, site_rows], ignore_index=True)
     n_w = write_table(weighting, "fig04_weighting_effects.csv")
     # archived cohort effects + the two signed-MBE effects + one row per site and
-    # scale (85 on Run 22: 8 + 2 + 45 + 30; 97 on Run 23: 8 + 2 + 45 + 42)
+    # scale (97 rows: 8 + 2 + 45 + 42)
     expected_w = len(wd) + 2 + len(wdd) + len(wdm)
     if n_w != expected_w:
         raise BuildError(f"fig04 weighting: expected {expected_w} display rows, got {n_w}")
@@ -400,8 +400,8 @@ def build_fig04() -> None:
             "captures": exp["captures"],
             "capture_sites": exp["capture_sites"],
             "association_sites": exp["association_sites"],
-            # Derived from the frozen site-delta files (45 / 30 Run 22; 45 / 42 Run 23
-            # once the monthly ablation scored on the Volk 2024 month protocol).
+            # Derived from the frozen site-delta files (45 daily / 42 monthly sites; the
+            # monthly ablation is scored on the Volk 2024 month protocol).
             "weighting_daily_sites": int(len(wdd)),
             "weighting_monthly_sites": int(len(wdm)),
             "weighting_monthly_finite_sites": int(

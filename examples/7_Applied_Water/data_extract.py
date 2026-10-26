@@ -45,9 +45,8 @@ e2._load_config = _load_config
 # points here, so this only affects the two __file__-relative outputs.
 e2.__file__ = str(HERE / "data_extract.py")
 
-# The current swimrs download_gridmet() signature dropped the `use_nldas` kwarg
-# (NLDAS hourly-precip support was removed), but E5's extract_gridmet still passes
-# it. E7 uses runoff_process="cn" (NLDAS not needed), so strip the stale kwarg.
+# swimrs download_gridmet() takes no `use_nldas` kwarg, but E5's extract_gridmet
+# passes one. E7 uses runoff_process="cn" (NLDAS not needed), so the kwarg is stripped.
 # extract_gridmet does a function-local `from ...gridmet import download_gridmet`,
 # which resolves the patched module attribute at call time.
 import swimrs.data_extraction.gridmet.gridmet as _gm  # noqa: E402

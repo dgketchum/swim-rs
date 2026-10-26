@@ -9,10 +9,9 @@ the full configuration).
 
     RUN_NAME        the published batch IES calibration (e7cal)
     LOCAL_LABEL     evaluator label of the locally calibrated arm
-    EX5_CANONICAL_RUN  the current Example 5 canonical run (``ex5_paths.CANONICAL_RUN``)
-    EX5_TRANSFER_RUN   the Example 5 run whose posterior the published E3 transfer
-                       uses (the canonical run; run23 since 2026-09-26, Run 22
-                       outputs kept as superseded)
+    EX5_CANONICAL_RUN  the Example 5 canonical run (``ex5_paths.CANONICAL_RUN``)
+    EX5_TRANSFER_RUN   the Example 5 run whose posterior the E3 transfer uses (the
+                       canonical run)
     TRANSFER_LABEL  evaluator label of the irrigated-class Ex5 transfer arm
     EXCLUDED_FIELD_YEARS  metered (site_id, year) rows withheld from every scorer
 """
@@ -40,13 +39,12 @@ def _ex5_canonical_run():
 
 
 EX5_CANONICAL_RUN = _ex5_canonical_run()
-# E3 transfers the canonical Ex5 posterior. Re-footed on run23 2026-09-26 (mapping
-# and forward run redone on the run23 irrigated vector); the Run 22 arm stays on disk
-# at results/applied_transfer_run22_by_irrigation (see its SUPERSEDES.md).
+# E3 transfers the canonical Ex5 posterior: the mapping and the forward run both use
+# that run's irrigated-class vector.
 EX5_TRANSFER_RUN = EX5_CANONICAL_RUN
 TRANSFER_LABEL = f"transfer_{EX5_TRANSFER_RUN}_by_irrigation"
 
-# Metered field-years withheld from scoring (decided 2026-09-26). The RGDSS
+# Metered field-years withheld from scoring. The RGDSS
 # parcel-to-well link (MASTER_ID) is unstable in 2019: each of these four rows
 # resolves to the well and parcel that belong to a different cohort field in every
 # other year, so the "truth" is another field's pumping and the one-well-to-one-parcel

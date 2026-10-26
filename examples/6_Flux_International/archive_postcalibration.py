@@ -1,4 +1,4 @@
-"""Post-calibration RUN_POLICY capture for the E2 GrassBasis (re-footed) run: Categories 4 and 5
+"""Post-calibration RUN_POLICY capture for the E2 GrassBasis run: Categories 4 and 5
 plus the plan §16 completion checks.
 
 Category 4 copies every ``pest_archive/batch_NNN`` produced by ``batch_runner`` into
@@ -26,7 +26,7 @@ printed; any failure exits non-zero:
 * phi is finite and strictly decreasing from iteration 0 to the final iteration
 * the declared posterior (iteration ``noptmax``) is what the batch runner ingested: container
   ``calibration/parameters`` equal the merged-posterior medians
-* the ingestion touched only the new container (baseline container ``calibration/`` files
+* the ingestion touched only the GrassBasis container (baseline container ``calibration/`` files
   predate the launch)
 * dropped realizations / dropped fids are listed (from ``batch_log.json`` and ensemble sizes)
 
@@ -314,7 +314,7 @@ def main():
     p.add_argument(
         "--baseline-config",
         default=str(ex6_paths.BASELINE_CONFIG),
-        help="TOML of the superseded run the posterior is compared against",
+        help="TOML of the baseline run the posterior is compared against",
     )
     p.add_argument("--baseline-pestrun", default=None, help="default the baseline pest_run_dir")
     p.add_argument("--baseline-container", default=None, help="default the baseline container")

@@ -124,11 +124,10 @@ def compute_dynamics(container: SwimContainer, cfg: ProjectConfig):
 def recompute_dynamics(config_path: str | None = None):
     """Re-ingest properties + recompute dynamics on the existing container.
 
-    Used to apply a LULC / cropland-gate fix without re-ingesting the
-    (unchanged) meteorology, NDVI, and ETf layers. Opens the container in r+,
-    overwrites the property arrays from the (possibly corrected) lulc/hwsd
-    CSVs, and recomputes derived/dynamics/irr_data with the same classifier
-    settings as a full build.
+    Applies changed LULC / cropland-gate inputs without re-ingesting the
+    meteorology, NDVI, and ETf layers. Opens the container in r+,
+    overwrites the property arrays from the lulc/hwsd CSVs, and recomputes
+    derived/dynamics/irr_data with the same classifier settings as a full build.
     """
     cfg = _load_config(config_path)
     container = build_container(cfg, overwrite=False)
@@ -176,8 +175,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--recompute-dynamics",
         action="store_true",
-        help="Re-ingest properties + recompute dynamics only (LULC/gate fix; "
-        "skips met/NDVI/ETf re-ingest)",
+        help="Re-ingest properties + recompute dynamics only (applies changed LULC/gate "
+        "inputs; skips met/NDVI/ETf re-ingest)",
     )
     args = parser.parse_args()
     if args.recompute_dynamics:

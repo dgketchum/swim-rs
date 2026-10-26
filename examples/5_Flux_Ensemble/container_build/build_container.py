@@ -49,7 +49,7 @@ def _load_config() -> ProjectConfig:
 
 
 def _read_etf_csv_max(csv_path):
-    """Read ETf CSV, resolve duplicate dates with MAX (old ingestor behavior)."""
+    """Read ETf CSV, resolve duplicate dates with MAX."""
     raw = pd.read_csv(csv_path, index_col=0)
     date_cols = pd.to_datetime(raw.columns, format="%Y%m%d")
     raw.columns = date_cols

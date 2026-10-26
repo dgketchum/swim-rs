@@ -9,7 +9,7 @@ synchronous .getInfo() approach (no bucket export / gsutil sync):
   etf_v21    - ETf from OpenET v2.1 collections via .getInfo() (local CSVs)
   refet      - OpenET bias-corrected ETo/ETr via .getInfo() (local CSVs)
 
-Legacy bucket-export steps (kept for speed/value comparison; never in "all"):
+Bucket-export steps (alternative path for speed/value comparison; never in "all"):
   snodas_bucket, properties_bucket, ndvi_bucket
 
 ETf extraction uses the per-site stack+reduceRegion approach (~0.7s per
@@ -18,7 +18,7 @@ ET-denominated models (ptjpl, geesebal, disalexi) are divided by the
 OpenET corrected ETo (not raw GridMET), matching what OpenET uses
 internally. Extraction starts from each model's earliest available date.
 
-getInfo outputs (never written to the legacy extracts/ trees):
+getInfo outputs (never written to the bucket-export extracts/ trees):
   ETf:        data/etf_v21_openet_eto/{model}_etf_no_mask.csv
   RefET:      data/openet_refet/openet_{eto,etr}.csv
   NDVI:       data/remote_sensing/{instrument}/getinfo/ndvi/{mask}/ndvi_{site}_{mask}.csv
@@ -95,7 +95,7 @@ def _sentinel_dir(cfg: ProjectConfig) -> str:
 
 
 def extract_snodas_bucket(cfg: ProjectConfig) -> None:
-    """Legacy SNODAS SWE export to bucket (ee.batch tasks + gsutil sync)."""
+    """SNODAS SWE export to bucket (ee.batch tasks + gsutil sync)."""
     is_authorized()
     from swimrs.data_extraction.ee.snodas_export import sample_snodas_swe
 
@@ -111,7 +111,7 @@ def extract_snodas_bucket(cfg: ProjectConfig) -> None:
 
 
 def extract_properties_bucket(cfg: ProjectConfig) -> None:
-    """Legacy properties export to bucket (ee.batch tasks + gsutil sync)."""
+    """Properties export to bucket (ee.batch tasks + gsutil sync)."""
     is_authorized()
     from swimrs.data_extraction.ee.ee_props import (
         get_cdl,
@@ -161,7 +161,7 @@ def extract_properties_bucket(cfg: ProjectConfig) -> None:
 
 
 def extract_ndvi_bucket(cfg: ProjectConfig, sites=None, get_sentinel: bool = True) -> None:
-    """Legacy NDVI export to bucket (ee.batch tasks + gsutil sync)."""
+    """NDVI export to bucket (ee.batch tasks + gsutil sync)."""
     is_authorized()
     from swimrs.data_extraction.ee.ndvi_export import sparse_sample_ndvi
 

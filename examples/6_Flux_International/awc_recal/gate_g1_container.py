@@ -1,17 +1,18 @@
-"""Gate G1 (HWSD AWC units recal): the refreshed GrassBasis container vs its superseded copy.
+"""Gate G1: the GrassBasis container against a reference copy that stores AWC in mm/m.
 
-Asserts, on the refreshed container:
+The reference copy (``<results>/SUPERSEDED/containers/<container name>``, ``--old``) is built
+from the same inputs with ``properties/soils/awc`` in mm/m. Asserts, on the container:
 
 * ``properties/soils/awc`` is stored in m/m: every value finite, in (0, 1], 66/66 non-null,
-  and equal to the superseded container's mm/m value / 1000 (same HWSD CSV, declared units);
+  and equal to the reference copy's mm/m value / 1000 (same HWSD CSV, declared units);
 * the ``properties/soils`` attrs record ``awc_units_source = "mm/m"`` and
   ``awc_units_stored = "m/m"``;
 * no calibration state (``calibration/`` group, calibration simulation runs, simulate events);
-* every array outside ``properties/soils`` is content-identical to the superseded copy —
+* every array outside ``properties/soils`` is content-identical to the reference copy —
   in particular ``derived/dynamics/irr_data`` (soils do not feed the classifier; assert, do not
   assume), ``derived/dynamics/{gwsub_data,ke_max,kc_max}``, the merged NDVI, ETf, meteorology
   and snow arrays;
-* the phase8 classifier-transition CSV written for the refreshed container is identical to the
+* the phase8 classifier-transition CSV written for the container is identical to the
   canonical copy (``--transition-new`` vs ``--transition-canon``).
 
 Exit 1 on any failure; the report is written as JSON to ``--out``.
@@ -36,7 +37,7 @@ for _p in (HERE.parent, HERE.parent / "container_build" / "e2_refooting"):
 import ex6_paths  # noqa: E402
 from phase8_container_health import check_no_calibration_state  # noqa: E402
 
-SUPERSEDED = "superseded_awc320_20260921"  # under {project_ws}/results
+SUPERSEDED = "superseded_awc320_20260921"  # reference copy, under {project_ws}/results
 TRANSITION_NAME = "irrigation_classifier_transition.csv"
 
 

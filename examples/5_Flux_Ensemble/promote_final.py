@@ -2,8 +2,8 @@
 
 The headline E1 benchmark package (``paper/data/final/e1_openet_benchmark/``) is
 written by ``evaluate.py`` and ``overpass_decomposition.py`` and frozen by
-``rebuild_e1_benchmark_evidence.py``. The supporting products below used to be
-copied into ``paper/data/final`` by hand; this script is their tracked producer.
+``rebuild_e1_benchmark_evidence.py``. This script is the tracked producer of the
+supporting products below.
 
 <run> is the canonical run results dir (``ex5_paths.CANONICAL_RUN``); every
 source lives under it so each run carries its own supporting products.
@@ -20,14 +20,13 @@ source lives under it so each run carries its own supporting products.
         -> e2_irrigation_stratified_fold_mad_domain.csv              (derived; Fig. 5a mad legality)
 
 ``within_e1_transfer.py`` writes all six arms into one directory. The pooled
-site-metric products keep the four-arm schema the Run 22 files were frozen
-with (a column subset of the six-arm table; on Run 22 the subset reproduced
-the separately run pooled tables exactly).
+site-metric products carry the four-arm schema (fid, region, loro/loso/local/default),
+a column subset of the six-arm table.
 
-The ``e2_*`` names are the legacy namespace paper E1 evidence is frozen under;
-the figure builder and the frozen hashes in ``e2_evidence_metadata.json`` key on
-them, so they are kept. The default mode rebuilds every product in memory and
-compares it byte-for-byte with the promoted file; ``--write`` replaces them.
+Paper E1 evidence is frozen under the ``e2_*`` file namespace; the figure builder
+and the frozen hashes in ``e2_evidence_metadata.json`` key on those names. The
+default mode rebuilds every product in memory and compares it byte-for-byte with
+the promoted file; ``--write`` replaces the promoted files.
 
 Usage:
     uv run python examples/5_Flux_Ensemble/promote_final.py            # check
@@ -51,7 +50,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 import ex5_paths  # noqa: E402
 
-# Legacy experiment label carried by the frozen summary (paper E1).
+# Experiment label carried by the frozen summary (paper E1, ``E2`` file namespace).
 EXPERIMENT_LABEL = "E2_within_held_out"
 # Relative to the run results dir (``ex5_paths.run_dir(CANONICAL_RUN)``); the
 # within_e1_transfer.py output directory (six arms, one directory).
@@ -89,7 +88,7 @@ def fold_mad_domain(vectors, support, bounds):
 
     ``vectors``: ``transfer_vectors.json`` ({arm: {fid: {param: value}}}).
     ``support``: ``class_fold_support.csv`` (fid, region, irr_class, ...).
-    ``bounds``: the Run 22 ``parameter_bounds.csv`` (param, site, lower_bound, upper_bound);
+    ``bounds``: the run's ``parameter_bounds.csv`` (param, site, lower_bound, upper_bound);
     the ``mad`` bounds are set per site by the calibration's irrigation status, so they are
     the class prior the transferred value is judged against.
     """

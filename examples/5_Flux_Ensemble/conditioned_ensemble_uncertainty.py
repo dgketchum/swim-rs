@@ -1,10 +1,10 @@
 """Conditioned-ensemble uncertainty diagnostic for Example 5 / paper Experiment E1.
 
-On the run's frozen spread-error cohort (Run 22: 2,131 captures / 33 sites),
-compares multi-algorithm retrieval spread (sample std among available OpenET ETf members at a
-capture) with conditioned simulation spread (dispersion among ETf
-simulations from the surviving non-base final PEST++ IES realizations; 199 for Run 22,
-198 for Run 23 after one forward-run failure) as
+On the run's frozen spread-error cohort (captures and sites from the run's
+``spread_error`` outputs), compares multi-algorithm retrieval spread (sample std
+among available OpenET ETf members at a capture) with conditioned simulation
+spread (dispersion among ETf simulations from the surviving non-base final
+PEST++ IES realizations; a realization whose forward run fails is dropped) as
 indicators of external SWIM-RS ETf error (effective-parameter prediction
 minus flux-derived ETf), and scores the central 90% parameter-conditional
 envelope as an empirical coverage diagnostic.
@@ -13,8 +13,8 @@ Read-only with respect to the run's calibration artifacts: the only writes
 are to the dedicated output directory (default
 ``<results_root>/<run>/conditioned_ensemble_uncertainty/``, results note
 included). Cohort size, site count and realization count are read from the
-run's own archive and ``spread_error`` outputs; the Run 22 plan values are kept
-only as printed expectations. The forward model
+run's own archive and ``spread_error`` outputs; the reference plan values
+(``RUN22_PLAN_EXPECTATIONS``) are printed and recorded, never gated. The forward model
 runs once with effective (componentwise median) parameters through the
 canonical evaluator; no calibration, no Earth Engine.
 
@@ -104,9 +104,9 @@ SEED = 42
 N_BOOT = 10_000
 PERSITE_MIN_OBS = 20
 
-# Run 22 values after manuscript rounding (plan section 6.1). Historical
-# expectations only: printed and recorded in metadata for comparison, never a
-# gate. The gated targets come from the run's own outputs (run_targets()).
+# Reference values from the analysis plan, after manuscript rounding, for the
+# run named in the constant. Printed and recorded in metadata for comparison,
+# never a gate. The gated targets come from the run's own outputs (run_targets()).
 RUN22_PLAN_EXPECTATIONS = {
     "pooled_spearman_3dp": 0.238,
     "n_obs": 2131,
@@ -257,7 +257,7 @@ def map_cohort_to_obsnme(cohort, etf_meta):
 
     Raises GateError on duplicated keys, unmapped captures, or archived
     target/spread disagreement (any of which would mean the frozen cohort and
-    the calibration problem no longer describe the same observations).
+    the calibration problem do not describe the same observations).
     """
     if cohort.duplicated(["site", "date"]).any():
         raise GateError("Gate B failed: duplicated site-date keys in frozen cohort")
@@ -422,7 +422,7 @@ def retrieval_quintiles(cohort, spread_col="spread", err_col="err_etf", n_bins=5
 def gate_d_reproduction(cohort, container, targets):
     """Reproduce the run's spread_error values and the archived 20-row spot check.
 
-    Counts are gated against ``targets`` (the run's own outputs); the Run 22
+    Counts are gated against ``targets`` (the run's own outputs); the reference
     plan values are compared and recorded as expectations only.
     """
     rho, _ = stats.spearmanr(cohort["spread"].values, cohort["abs_err_etf"].values)
@@ -500,7 +500,7 @@ def gate_d_reproduction(cohort, container, targets):
 
 
 def run22_expectation_comparison(checks):
-    """Compare the reproduced values with the Run 22 plan values (recorded, not gated)."""
+    """Compare the reproduced values with the reference plan values (recorded, not gated)."""
     exp = RUN22_PLAN_EXPECTATIONS
     observed = {
         "pooled_spearman_3dp": checks["pooled_rho_3dp"],

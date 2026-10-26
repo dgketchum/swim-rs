@@ -17,11 +17,12 @@ QAQC flux archive, and writes ``results/<run>/archive/6_evaluation/``:
   the gate that removed it; counts reconcile to 66
 * ``classifier_transition_vs_metrics.csv`` — the five classifier-transition sites with their
   irrigated-year counts and metric changes
-* ``internal_baseline_comparison.csv`` — GrassBasis vs the frozen baseline (iteration-4
-  posterior, as evaluated) and vs a read-only iteration-3 forward run of the baseline, scored on
-  the intersection mask so the comparison is like-for-like (internal only, plan §17)
-* ``transfer_refresh_summary.csv`` — the refreshed class-vector transfer next to the frozen
-  2026-08 transfer
+* ``internal_baseline_comparison.csv`` (+ ``_summary.csv``) — optional: GrassBasis vs the
+  baseline (iteration-4 posterior, as evaluated) and vs a read-only iteration-3 forward run of
+  the baseline, scored on the intersection mask so the comparison is like-for-like; written only
+  when the baseline evaluator outputs are present, and not part of the frozen outputs
+* ``transfer_refresh_summary.csv`` — the class-vector transfer next to the frozen comparison
+  transfer
 * ``site_daily_timeseries/{fid}.csv`` — RUN_POLICY columns from one forward run with the merged
   posterior (asserted identical to the evaluator's ``et_act``)
 * ``evaluation_metadata.json`` and ``g11_gate_checks.json``
@@ -54,10 +55,10 @@ DEFAULT_CONFIG = ex6_paths.CANONICAL_CONFIG
 DEFAULT_BASELINE_CONFIG = ex6_paths.BASELINE_CONFIG
 DEFAULT_RUN_NAME = ex6_paths.CANONICAL_RUN
 BASELINE_RUN_NAME = ex6_paths.BASELINE_RUN
-# under the baseline run dir: the frozen classifier-recal evaluation the summary compares against
+# under the baseline run dir: the baseline evaluation read by the optional baseline comparison
 BASELINE_FROZEN_SUBDIR = Path("archive_recal20260702_classifier") / "6_evaluation"
 TRANSFER_NEW_NAME = ex6_paths.TRANSFER_RUN  # under {project_ws}/results
-# Historical: the Run 22 transfer scored on the superseded ETr-basis (baseline) footing.
+# The comparison transfer reported next to TRANSFER_NEW_NAME in transfer_refresh_summary.csv.
 TRANSFER_OLD_NAME = "e2_run22_transfer_by_irrigation_to_e3"
 TRANSITION_NAME = "irrigation_classifier_transition.csv"  # under the QA root
 
@@ -587,8 +588,8 @@ def main():
         pd.DataFrame(srows).to_csv(cat6 / "overpass_split_summary.csv", index=False)
 
     # ---- internal baseline comparison (iteration-4 as evaluated; iteration-3 forward run) ----
-    # The superseded classifier-recal baseline is an authoring-machine artifact (not in the
-    # data packages); without it the comparison is skipped and its outputs are not written.
+    # Optional: runs only when the baseline evaluator outputs are present. Its two summary files
+    # (internal_baseline_comparison*.csv) are not part of the frozen outputs.
     base_res = Path(args.baseline_results)
     frozen = Path(args.baseline_frozen_eval)
     have_baseline = (frozen / "evaluation_metrics.csv").is_file() and (

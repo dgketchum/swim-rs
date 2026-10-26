@@ -1,4 +1,4 @@
-"""Pre-launch RUN_POLICY capture for the E2 GrassBasis (re-footed) calibration, plus launch-time
+"""Pre-launch RUN_POLICY capture for the E2 GrassBasis calibration, plus launch-time
 hash verification.
 
 ``capture`` writes Categories 1 (provenance), 2 (input audit) and 3 (problem definition) into
@@ -53,7 +53,8 @@ MANDATORY_HASH_PREFIXES = (
     "snow/",
     "geometry/",
 )
-# QA evidence produced by the re-footing phases, copied verbatim into 2_input_audit/e2_refooting_qa
+# QA evidence from the container_build/e2_refooting phases, copied verbatim into
+# 2_input_audit/e2_refooting_qa
 QA_EVIDENCE = (
     "container_health.json",
     "etf_capture_counts.csv",

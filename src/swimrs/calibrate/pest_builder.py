@@ -1348,9 +1348,8 @@ if __name__ == "__main__":
         # linear relation calibrates (ndvi_alpha, ndvi_beta) instead. Both are
         # two-parameter, so the swap does not change the number of free
         # parameters -- required for a fair Kcb-form comparison. Bounds and
-        # initial values are the historical ones from build_pp_files
-        # (pre-3ef4757), i.e. the priors in force when SWIM last ran the linear
-        # relation. std is ~1/4 of the range, mirroring aw.
+        # initial values are the standard linear NDVI-Kcb priors (intercept 0.2,
+        # slope 1.25). std is ~1/4 of the range, mirroring aw.
         if self._kcb_mode_name() == "linear":
             del p["ndvi_k"]
             del p["ndvi_0"]
@@ -1381,7 +1380,7 @@ if __name__ == "__main__":
         # Only active for irrigated fields; per-field bounds are collapsed to the
         # legacy inert values for rainfed fields in build_pest_args (mirrors the
         # irrigation-dependent handling of mad). Default-empty config leaves the
-        # parameter set identical to Ex5/6/7.
+        # parameter set unchanged.
         sched = list(getattr(self.config, "scheduler_calibration_params", []) or [])
         sched_specs = {
             # Refill target as a fraction of depletion. 1.1 = legacy refill-past-FC;
@@ -1414,13 +1413,12 @@ if __name__ == "__main__":
             if name in sched_specs:
                 p[name] = sched_specs[name]
 
-        # WP-C5 surface evaporation-layer capacities. REW/TEW were calibratable
-        # historically but removed (5f79a8c) because ETf alone cannot identify them.
-        # They are re-enabled ONLY when the SMAP surface-moisture objective is active
-        # (ssm_surface_capacity=True): that satellite surface observation is the
-        # identifying constraint, and the localizer restricts them to the SSM group
-        # so ETf residuals never drive them. Bounds/init reproduce the historical
-        # values (rew 2-6 mm, tew 6-29 mm); std is ~1/4 of range, mirroring aw.
+        # WP-C5 surface evaporation-layer capacities. ETf alone cannot identify
+        # REW/TEW, so they are calibratable ONLY when the SMAP surface-moisture
+        # objective is active (ssm_surface_capacity=True): that satellite surface
+        # observation is the identifying constraint, and the localizer restricts
+        # them to the SSM group so ETf residuals never drive them. Bounds are
+        # rew 2-6 mm, tew 6-29 mm; std is ~1/4 of range, mirroring aw.
         if self._ssm_surface_capacity_enabled():
             p["rew"] = {
                 "file": self.params_file,
@@ -2064,7 +2062,7 @@ if __name__ == "__main__":
         # SWE noise is a physical error model for gridded SWE products
         # (fractional error with a floor), and the weight is derived from the
         # same sd so phi weighting and the IES noise/update covariance agree.
-        # A tighter sd here (e.g. the old fixed 5.0 mm) makes SWE near-exact
+        # A tighter sd here (e.g. a fixed 5.0 mm) makes SWE near-exact
         # data in the update and triggers mass prior-data-conflict culling.
         sd_frac = getattr(self.config, "swe_weighting_sd_frac", 0.3)
         sd_floor = getattr(self.config, "swe_weighting_sd_floor", 10.0)

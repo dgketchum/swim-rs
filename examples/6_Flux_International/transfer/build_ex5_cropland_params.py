@@ -56,8 +56,9 @@ PARAM_FAMILIES = [
     "swe_beta",
 ]
 
-# Legacy hard-coded vector from the old 9-site Ex5 cropland median used by
-# legacy/forward_ex5_cropland.py. Recorded for provenance / comparison only.
+# Reference vector: the 9-site Ex5 cropland median hard-coded in
+# legacy/forward_ex5_cropland.py. The metadata records a per-parameter comparison against
+# it; it does not enter the transfer.
 LEGACY_VECTOR = {
     "aw": 202,
     "ndvi_k": 8.88,
@@ -192,7 +193,7 @@ def main():
         json.dump(vector, f, indent=2)
         f.write("\n")
 
-    # Per-parameter comparison with the legacy hard-coded vector.
+    # Per-parameter comparison with the reference vector (LEGACY_VECTOR).
     comparison = {}
     matches_legacy = True
     for fam in PARAM_FAMILIES:

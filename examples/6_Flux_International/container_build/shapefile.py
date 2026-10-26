@@ -2,8 +2,8 @@
 
 Provenance chain:
     flux_crop_ag_96_150m.shp  (96 cropland flux sites, enriched with flux/LULC metadata)
-    ├── flux_crop_pub_71_150m.shp  (legacy 71-site POR cohort)
-    └── flux_crop_pub_66_150m.shp  (66-site POR publication cohort, current)
+    ├── flux_crop_pub_71_150m.shp  (71-site POR cohort, non-publication configurations)
+    └── flux_crop_pub_66_150m.shp  (66-site POR publication cohort)
 
 The 66-site cohort is the 96-site cropland pool minus three documented,
 criterion-based exclusions:
@@ -29,9 +29,9 @@ curated `glc10_lulc=10` flag carried by every retained site is a cropland
 include/exclude determination, not an irrigation flag.
 
 TOML references:
-    - 6_Flux_International_LSEnsemble_POR_annual2yr.toml -> 66-site (current)
-    - 6_Flux_International_LSEnsemble_POR.toml           -> 71-site (legacy)
-    - 6_Flux_International_TripleETf_POR.toml            -> 71-site (legacy)
+    - 6_Flux_International_LSEnsemble_POR_annual2yr.toml -> 66-site (publication)
+    - 6_Flux_International_LSEnsemble_POR.toml           -> 71-site
+    - 6_Flux_International_TripleETf_POR.toml            -> 71-site
 
 Usage:
     python shapefile.py [--gis-dir PATH]
@@ -97,7 +97,7 @@ EXCLUDED_NONCROP_LANDCOVER = {
 
 
 def build_pub71(gis_dir: Path) -> Path:
-    """Filter crop96 to the 71-site POR publication cohort."""
+    """Filter crop96 to the 71-site POR cohort."""
     crop96_path = gis_dir / "flux_crop_ag_96_150m.shp"
     out_path = gis_dir / "flux_crop_pub_71_150m.shp"
 
@@ -119,7 +119,7 @@ def build_pub71(gis_dir: Path) -> Path:
 
 
 def build_pub66(gis_dir: Path) -> Path:
-    """Filter crop96 to the current 66-site POR publication cohort.
+    """Filter crop96 to the 66-site POR publication cohort.
 
     The 71-site cohort minus the 5 EXCLUDED_NONCROP_LANDCOVER sites.
     """
@@ -153,5 +153,5 @@ if __name__ == "__main__":
         help="GIS directory containing flux_crop_ag_96_150m.shp (default: in-repo data/gis/)",
     )
     args = parser.parse_args()
-    build_pub71(Path(args.gis_dir))  # legacy experiments
-    build_pub66(Path(args.gis_dir))  # current POR cohort
+    build_pub71(Path(args.gis_dir))  # 71-site configurations
+    build_pub66(Path(args.gis_dir))  # publication POR cohort

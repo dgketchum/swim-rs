@@ -7,9 +7,7 @@ SWIM derives the basal crop coefficient from NDVI. Two forms are supported:
     a two-parameter logistic with a calibrated steepness and midpoint.
 ``linear`` (1)
     ``Kcb = ndvi_beta*NDVI + ndvi_alpha`` -- the linear NDVI-Kcb relation used
-    throughout the remote-sensing crop-coefficient literature and by SWIM's own
-    predecessor (``model/obs_kcb_daily.py``, removed in ``d77bc84``), where it
-    was the commented-out alternative sitting directly above the sigmoid.
+    throughout the remote-sensing crop-coefficient literature.
 
 The two forms carry *different* free parameters: ``(ndvi_k, ndvi_0)`` for the
 logistic, ``(ndvi_alpha, ndvi_beta)`` for the linear relation. Both are
@@ -38,12 +36,10 @@ sigmoid              ``kcb``                SWIM default (Kcb-quadratic)
 
 Clipping
 --------
-The linear form is clipped to ``[0, Kc_max]``. The historical implementation
-applied no clip, so an unbounded ramp could drive Kcb negative at low NDVI or
-past Kc_max at high NDVI; both are unphysical and the second would silently
-break the ``fc`` and root-depth ratios, which assume ``Kcb <= Kc_max``. This is
-a deliberate deviation from the legacy code, recorded here because it changes
-what "the legacy linear model" means at the tails.
+The linear form is clipped to ``[0, Kc_max]``. An unbounded ramp can drive Kcb
+negative at low NDVI or past Kc_max at high NDVI; both are unphysical and the
+second would silently break the ``fc`` and root-depth ratios, which assume
+``Kcb <= Kc_max``. The clip therefore defines the linear model at the tails.
 """
 
 from __future__ import annotations

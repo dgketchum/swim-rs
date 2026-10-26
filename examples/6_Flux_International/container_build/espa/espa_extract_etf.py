@@ -19,11 +19,10 @@ values under their own scene identity:
 
     {site: {product_id: {date, sensor, pathrow, count, mean, std, min, max, tif}}}
 
-The date-keyed schema written before 2026-09-04 (``{site: {YYYY-MM-DD: stats}}``)
-kept only the last-scanned scene of a same-date pair. When an existing JSON in
-that legacy schema is re-extracted it is replaced wholesale by the scene-keyed
-result (the whole extract directory is rescanned every run), and the
-replacement is reported.
+The date-keyed schema (``{site: {YYYY-MM-DD: stats}}``) holds one scene per
+date. An existing JSON in that schema is replaced wholesale by the scene-keyed
+result when it is re-extracted (the whole extract directory is rescanned every
+run), and the replacement is reported.
 
 Example:
     uv run examples/6_Flux_International/espa/espa_extract_etf.py \
@@ -155,8 +154,7 @@ def extract_all(manifest_path: Path, shapefile: Path = DEFAULT_SHP) -> None:
     missing = sorted(set(downloadable["site"]) - set(site_gdf.index))
     if missing:
         # A downloaded site with no geometry means the wrong shapefile was passed. Refuse
-        # to run rather than silently leaving those site-years unextracted (the pre-2026-09-07
-        # behaviour, which left 240 legacy site-years with no ETF record).
+        # to run rather than silently leaving those site-years unextracted.
         raise ValueError(
             f"{len(missing)} downloaded site(s) absent from {shapefile}: {', '.join(missing)}"
         )
@@ -181,8 +179,8 @@ def extract_all(manifest_path: Path, shapefile: Path = DEFAULT_SHP) -> None:
         values = extract_site_year(site, extract_dir, site_geom)
 
         if is_legacy_date_keyed(existing):
-            # Pre-2026-09-04 schema kept one value per date; the rescan above holds every
-            # scene, so the legacy dict is superseded rather than merged.
+            # The date-keyed schema holds one value per date; the rescan above holds every
+            # scene, so the date-keyed dict is replaced rather than merged.
             print(f"  {site}/{year}: legacy date-keyed json ({len(existing)} dates) superseded")
             existing = {}
 

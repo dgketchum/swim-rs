@@ -1,13 +1,13 @@
 """Promote a Volk-protocol E1 monthly bundle into ``paper/data/final/e1_openet_benchmark/``.
 
-The monthly half of the frozen E1 benchmark package was first promoted on
-2026-09-01 under the repo's own monthly rule (28 valid flux days, at least ten
-paired months per site; 30 sites, 1,301 months). The evaluator now follows the
-Volk et al. (2024) monthly protocol (flux-data-qaqc gap fill against raw gridMET
-ETo, a month total when more than 80% of its days carry ET, admission with at
-most five filled days, no site minimum; pooled rows on every paired site and
-station-weighted rows on sites with at least three paired months). This script
-is the tracked producer of the re-frozen monthly package:
+The monthly half of the frozen E1 benchmark package follows the Volk et al.
+(2024) monthly protocol (flux-data-qaqc gap fill against raw gridMET ETo, a month
+total when more than 80% of its days carry ET, admission with at most five filled
+days, no site minimum; pooled rows on every paired site and station-weighted rows
+on sites with at least three paired months). This script is the tracked producer
+of that monthly package. The package it replaces was built under the repo's
+28-valid-day rule (28 valid flux days, at least ten paired months per site); its
+files are moved to ``paper/data/final/superseded_e1_monthly_28day/``:
 
     <source-dir>/evaluation_grouped_monthly_{metrics,contrasts}.csv
     <source-dir>/evaluation_grouped_monthly_metadata.json
@@ -217,8 +217,8 @@ def read_archive_series(path):
     The Volk et al. (2024) flux gap fill scales the tower's fraction of raw
     gridMET ETo, so the replication must use the raw series. archive_run.py
     writes the reference ET the model consumed under ``eto``; when that is the
-    bias-corrected series it also exports the raw one as ``eto_raw``. Older
-    archives (Run 22) wrote only the raw series, as ``eto``.
+    bias-corrected series it also exports the raw one as ``eto_raw``. An archive
+    without ``eto_raw`` carries the raw series as ``eto``.
     """
     ts = pd.read_csv(path, index_col="date", parse_dates=True)
     if "eto_raw" not in ts.columns:

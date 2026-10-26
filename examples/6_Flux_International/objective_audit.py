@@ -5,7 +5,7 @@ corrected container and the resolved config (no PestBuilder code path), then com
 reconstruction with the ``.pst`` control files and ``weight_audit.csv`` written by
 ``batch_runner --action build-all``. It also re-derives the SWE weight scaling, checks the
 manifest partition against the baseline run, reconciles weighted counts by site / year / member
-count / batch, and classifies every baseline weighted date that is no longer weighted.
+count / batch, and classifies every baseline weighted date that this run leaves unweighted.
 
 Gate G9 passes when the number of *unexplained* discrepancies is zero: every weight reproduces,
 every lost baseline date is explained by the documented ETo floor or by the ingest bounds acting
@@ -144,9 +144,9 @@ def swe_expected_weights(
 
 
 def classify_loss(row: pd.Series, min_etf: float, max_etf: float) -> str:
-    """Categorize a baseline weighted (site, date) that carries zero weight in the new problem.
+    """Categorize a baseline weighted (site, date) that carries zero weight in the built problem.
 
-    ``row`` carries the new-problem reconstruction for that date (``member_count``, ``eto``,
+    ``row`` carries the built-problem reconstruction for that date (``member_count``, ``eto``,
     ``eto_floor_excluded``, ``ssebop`` may be NaN) plus the conversion ledger's ``corrected``
     value and ``status`` for the site-date (NaN / '' when absent).
     """

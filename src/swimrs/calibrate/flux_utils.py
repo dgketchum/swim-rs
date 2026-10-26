@@ -1,6 +1,6 @@
 """Utilities for flux tower site selection and ensemble parameter generation.
 
-Relocated from swimrs.prep (deprecated) for use by examples 5/6 and viz modules.
+Used by examples 5/6 and the viz modules.
 Also hosts the shared flux-evaluation gates and monthly aggregation helpers
 required by examples/VALIDATION_POLICY.md.
 """

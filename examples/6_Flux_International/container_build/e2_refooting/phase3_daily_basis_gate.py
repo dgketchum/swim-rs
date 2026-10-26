@@ -1,9 +1,9 @@
-"""Phase 3 / Gate G3 (redefined 2026-09-04): daily ET consistency and low-ETo stability.
+"""Phase 3 / Gate G3: daily ET consistency and low-ETo stability.
 
-The daily ERA5-Land ``ETr/ETo`` conversion is retained (user decision). This gate no longer asks
-whether the corrected ETf matches the USGS NHM product's overpass-instantaneous grass basis
-(``phase3_nhm_basis_gate.py`` reports that as a diagnostic). It asks two things that matter for
-SWIM, which applies ETf to a daily ETo:
+The SSEBop ETf is converted to the grass basis with the daily ERA5-Land ``ETr/ETo`` ratio. This
+gate does not ask whether the corrected ETf matches the USGS NHM product's
+overpass-instantaneous grass basis (``phase3_nhm_basis_gate.py`` reports that as a diagnostic).
+It asks two things that matter for SWIM, which applies ETf to a daily ETo:
 
 1. **Daily ET consistency.** Every written grass-basis value, read back from the CSVs the
    container will ingest (not from the ledger), satisfies ``corrected * ETo == native * ETr`` on
@@ -14,16 +14,16 @@ SWIM, which applies ETf to a daily ETo:
    ``swimrs.calibrate.pest_builder.PestBuilder._write_etf_obs`` computes them for the E2
    configuration (target = member mean, SD = two-member sample SD, weight = target / (SD + 0.05),
    zero weight below two members, zero weight on dates with daily ETo below the declared
-   ``etf_weighting_eto_floor`` of 1.0 mm — adopted 2026-09-07 after the complete-record run
-   without the floor failed the increase threshold) after the ingest rules (0.05 <= ETf <= 2.0),
+   ``etf_weighting_eto_floor`` of 1.0 mm, without which the complete record fails the increase
+   threshold) after the ingest rules (0.05 <= ETf <= 2.0),
    for the native and the corrected SSEBop member against the unchanged PT-JPL member, on the
    66-site cohort. The objective contribution of an observation scales with weight**2, so shares
    of the pooled sum(weight**2) are reported by daily-ETo bin, month, ratio-screen flag and site.
    The weights the floor removes are kept in ``*_nofloor`` columns and summarised under
    ``eto_floor`` / ``low_eto_without_floor`` so the rule's effect is visible, not hidden.
 
-Thresholds are the §3 rows predeclared on 2026-09-04 before this script was first run. No flux
-data is read; the primary container is opened read-only.
+Thresholds are the predeclared §3 rows of the gate plan. No flux data is read; the primary
+container is opened read-only.
 
 Outputs (QA root):
     daily_basis_gate_weights.csv    one row per 66-cohort site-date with any member: members,
@@ -275,7 +275,7 @@ def eto_floor_effect(table: pd.DataFrame) -> dict:
 
 
 def low_eto_without_floor(table: pd.DataFrame, low: pd.Series, sites: pd.Series) -> dict:
-    """The low-ETo shares the gate would see without the floor (the pre-rule diagnostic)."""
+    """The low-ETo shares the gate would see without the floor (the no-floor diagnostic)."""
     if "w2_native_nofloor" not in table.columns:
         return {}
     tot_nat = float(table["w2_native_nofloor"].sum())

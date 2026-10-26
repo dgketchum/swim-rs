@@ -9,8 +9,8 @@ Why this exists
 SWIM-RS pulls meteorology/snow/remote-sensing data from multiple sources
 (GridMET, ERA5-Land via Earth Engine, SNODAS, etc.). Source datasets often use
 different units (e.g., Kelvin vs Celsius; meters vs millimeters; energy vs
-power), and conversions were historically scattered across extraction/ingest
-code. This file is the place to document:
+power), and conversions happen across extraction/ingest code. This file is
+the place to document:
 
 - Canonical/internal units the *process model* expects
 - Source dataset/band native units and the conversion performed

@@ -88,8 +88,8 @@ OUT_INTERACTIONS = "evaluation_temporal_interactions.csv"
 OUT_ELIGIBILITY = "evaluation_temporal_site_eligibility.csv"
 OUT_METADATA = "evaluation_temporal_metadata.json"
 
-# Legacy compatibility products (transition-only, from the record, never
-# from raw-source reconstruction). Subset names keep the historical labels:
+# Secondary site-level products (from the record, never from raw-source
+# reconstruction), emitted only with --legacy-site-products. Subset labels:
 # overpass == retrieval, non_overpass == between_retrieval.
 LEGACY_SUBSETS = ["all_days", "overpass", "non_overpass"]
 LEGACY_SUBSET_CLASS = {
@@ -141,7 +141,7 @@ def validate_parent_bundle(evaluator_output_dir):
     """Parent-artifact identity gate (never a reconstruction gate).
 
     Returns ``(record_frame, evaluator_metadata, gate_report)``. Any failure
-    is a hard error naming the defect; there is no fallback input path.
+    is a hard error naming the failed check; there is no fallback input path.
     """
     parent = Path(evaluator_output_dir)
     paths = {
@@ -302,7 +302,7 @@ def validate_parent_bundle(evaluator_output_dir):
 
 
 # ---------------------------------------------------------------------------
-# Legacy compatibility products (transition-only; record-derived, secondary)
+# Secondary site-level products (record-derived; --legacy-site-products)
 # ---------------------------------------------------------------------------
 
 
@@ -350,7 +350,7 @@ def build_summary_row(subset, cohort, rows):
 
 
 def legacy_site_metrics(frame):
-    """Per-site per-subset legacy metric rows from the paired record only."""
+    """Per-site per-subset secondary metric rows from the paired record only."""
     rows = []
     for fid, grp in frame.groupby("fid", sort=True):
         for subset in LEGACY_SUBSETS:
@@ -378,9 +378,9 @@ def legacy_site_metrics(frame):
 def legacy_date_audit(frame):
     """Record-derivable audit counts per site.
 
-    Calibration-capture auditing and raw support spans are deliberately gone:
-    they need raw sources, and calibration flags never participate in the
-    temporal classification (see the paired-record contract).
+    Calibration-capture auditing and raw support spans are deliberately not
+    computed: they need raw sources, and calibration flags never participate in
+    the temporal classification (see the paired-record contract).
     """
     rows = []
     for fid, grp in frame.groupby("fid", sort=True):
@@ -404,11 +404,10 @@ def legacy_date_audit(frame):
 
 
 def write_legacy_products(frame, out_dir, reps, seed):
-    """Emit the former secondary site-level products from the record.
+    """Emit the secondary site-level products from the record.
 
-    Historical subset labels are kept (overpass == retrieval, non_overpass ==
-    between_retrieval). Metric definitions are preserved exactly: per-site
-    metrics carry signed MBE; only the paired-delta product uses |MBE|
+    Subset labels: overpass == retrieval, non_overpass == between_retrieval.
+    Per-site metrics carry signed MBE; only the paired-delta product uses |MBE|
     (labeled abs_mbe). Everything derives from the paired record — no
     reconstruction code exists in this script.
     """
@@ -601,9 +600,8 @@ def main():
     parser.add_argument(
         "--legacy-site-products",
         action="store_true",
-        help="Also emit the former secondary site-level products "
-        "(overpass_split_*, e2_temporal_support_contrast*) from the record — "
-        "transition/compatibility only",
+        help="Also emit the secondary site-level products "
+        "(overpass_split_*, e2_temporal_support_contrast*) from the record",
     )
     args = parser.parse_args()
     if args.bootstrap_reps < 0:

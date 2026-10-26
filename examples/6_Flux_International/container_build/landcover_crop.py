@@ -4,14 +4,14 @@ The irrigation classifier's cropland gate reads `properties/land_cover/glc10`,
 ingested from this CSV's `glc10_lc` column (container_prep uses
 `lulc_column="modis_lc"`, `extra_lulc_column="glc10_lc"`).
 
-Provenance fix: the original CSV carried the *raw* GLC10 code per site (e.g.
-US-Tw2=20 Forest, AU-Rgf=30 Grassland), so genuine cropland that GLC10
-mislabels was gated out of the irrigation water balance. The cohort shapefile
-already carries the curated cropland determination in `glc10_lulc` (=10 for
-every retained site). This script writes that curated value into `glc10_lc`
-for every cohort site, so the gate honors the cropland include/exclude decision.
+The *raw* GLC10 code per site (e.g. US-Tw2=20 Forest, AU-Rgf=30 Grassland)
+would gate genuine cropland that GLC10 mislabels out of the irrigation water
+balance. The cohort shapefile carries the curated cropland determination in
+`glc10_lulc` (=10 for every retained site). This script writes that curated
+value into `glc10_lc` for every cohort site, so the gate honors the cropland
+include/exclude decision.
 
-This corrects the *cropland gate* only (a cropland include/exclude override,
+This sets the *cropland gate* only (a cropland include/exclude override,
 which is permitted for Example 6). Irrigation status remains decided solely by
 the internal water-balance classifier — `modis_lc` is preserved verbatim and no
 irrigation override is written. Non-cohort rows keep their raw `glc10_lc` so

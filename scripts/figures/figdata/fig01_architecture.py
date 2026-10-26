@@ -17,10 +17,10 @@ from .manifest import BuildError
 from .paths import _CFG5
 
 # Strings that belong to the caption or Methods and must never reach a string
-# classified title / direct_label / annotation.  Derived by hand from
-# fig01_production_handoff.md section 5 ("Caption- or manuscript-owned") so the
-# audit is explicit rather than an accidental substring match: the configured
-# counts 60 / 66 / 50 ARE allowed in the artwork and are deliberately absent.
+# classified title / direct_label / annotation.  The list is written out by hand
+# from the caption- and manuscript-owned content so the audit is explicit
+# rather than an accidental substring match: the configured counts 60 / 66 / 50
+# ARE allowed in the artwork and are deliberately absent.
 CAPTION_ONLY_VISIBLE_PATTERNS = [
     r"Φ",  # objective symbol
     r"σ",  # sigma
@@ -50,40 +50,29 @@ CAPTION_ONLY_VISIBLE_PATTERNS = [
     r"\bweight",
 ]
 
-# Exactly the strings a *current* handoff section authorizes as visible copy even
+# Exactly the strings the figure specification authorizes as visible copy even
 # though a caption-owned pattern matches them.  Matching is by whole-string
 # equality, never substring, so an exemption cannot widen to a longer phrase.
 CAPTION_PATTERN_EXEMPTIONS: dict[str, str] = {}
-# Architecture 3.1.1 (user review, 2026-08-25) retired the 'Σ year' operation in
-# favour of the spelled-out 'Annual Total', so the sigma exemption that 3.1.0
-# needed is gone and the r'σ' objective-notation pattern is back at full
-# strength: every sigma-bearing string, upper or lower case, now fails the
-# caption guard.
-#
-# Architecture 3.2.0 (handoff section 5.3, revised 2026-08-25) then removed
-# 'spread-weighted' from the artwork -- "Put `PEST++ IES` and spread-dependent
-# weighting in the caption by default. Do not retain `spread-weighted` in the
-# artwork merely to fill the inverse region." -- so the last exemption is gone
-# and r'\bweight' is at full strength too.  The exemption table is now empty and
-# must stay empty: do not add an entry without a handoff section that authorizes
-# the exact string.  Section 5.3 does allow 'spread-weighted' to RETURN on the
-# incoming target route if a final-size proof shows it materially clarifies the
-# member-spread encoding; that return would need this exemption restored and is
-# recorded as a conditional in the architecture, not as a visible string.
+# The table is empty.  The annual operation is spelled out as 'Annual Total', so
+# the r'σ' objective-notation pattern applies at full strength: every
+# sigma-bearing string, upper or lower case, fails the caption guard.  `PEST++
+# IES` and spread-dependent weighting belong in the caption, so r'\bweight' also
+# applies at full strength.  Add an entry only for an exact string the figure
+# specification authorizes.  'spread-weighted' may appear on the incoming target
+# route only if a final-size proof shows it materially clarifies the
+# member-spread encoding; that would need an exemption here and is recorded as a
+# conditional in the architecture, not as a visible string.
 
 VISIBLE_STRING_CLASSES = {"title", "direct_label", "annotation", "proof_only"}
 
 # Nodes on the held-out side of the firewall, and nodes that participate in
 # parameter fitting or transfer-vector construction.  No edge may run from the
-# first set into the second.  Revised for architecture 3.0.0 (handoff sections
-# 5.4 and 6.3): the daily balance and both class-specific parameter tokens are
-# now protected alongside inverse estimation and the transfer destinations.
-#
-# Architecture 3.2.0 (handoff sections 5.3, 10.3 and 11) replaces the single
-# 'inverse_estimation' node with the three-stage closed cycle, so every stage of
-# that cycle joins the protected set: "Held-out flux and meter observations
-# remain forbidden as cycle inputs" (section 10.3).  The retired node id is kept
-# in the set so an accidental revival is still caught.
+# first set into the second.  The protected set holds every stage of the
+# three-stage inverse cycle, the daily balance, both class-specific parameter
+# tokens and the transfer destinations: held-out flux and meter observations
+# are forbidden as cycle inputs.  'inverse_estimation' is also listed so a
+# single-node inverse stage is caught if it appears.
 EVALUATION_NODES = {"flux_et", "meters"}
 FITTING_NODES = {
     "inverse_estimation",
@@ -99,9 +88,8 @@ FITTING_NODES = {
     "e0_tag",
 }
 
-# Architecture 3.2.0: the literal directed cycle required by handoff sections
-# 4, 5.3, 10.3, 11 and 13.  Arrowheads must close it in this order -- the
-# balance produces simulated calibration quantities, comparison with targets
+# The literal directed inverse cycle.  Arrowheads must close it in this order --
+# the balance produces simulated calibration quantities, comparison with targets
 # produces mismatches, and the parameter update feeds the next balance run.
 FIG01_CYCLE_STAGES = ("run_balance", "compare", "update_parameters")
 FIG01_CYCLE_EDGES = (
@@ -110,7 +98,7 @@ FIG01_CYCLE_EDGES = (
     ("update_parameters", "run_balance"),
 )
 # The exit that leaves the update stage after convergence and feeds the
-# displayed daily state and ET (handoff section 5.3).
+# displayed daily state and ET.
 FIG01_CYCLE_EXIT_EDGE = ("update_parameters", "daily_balance")
 FIG01_CYCLE_EXIT_LABEL = "Conditioned Parameters"
 # The acquisition-date targets enter the comparison stage, never the balance.
@@ -126,52 +114,47 @@ FIG01_TRANSFER_DESTINATIONS = {
     "e3_map": ("irrigated_params",),
 }
 # The E3 transfer path must visibly branch here, before the E2 frame, so it can
-# never be read as E2 -> E3 (handoff sections 6.1, 6.3 and 11).
+# never be read as E2 -> E3.
 FIG01_TRANSFER_BRANCH_AT = "irrigated_params"
 
-# Architecture 3.1.0 (handoff sections 5.2, 5.4, 10.3 and 11).  The E1 example's
-# simulated irrigation series is display evidence for the example record ONLY.  E3
-# evaluates applied water simulated for E3 fields, so no drawn relationship --
-# directed edge or neutral comparison tie -- may connect the E1 nodes below to
-# the E3 meter key, directly or through any intermediate node.
+# The E1 example's simulated irrigation series is display evidence for the
+# example record ONLY.  E3 evaluates applied water simulated for E3 fields, so
+# no drawn relationship -- directed edge or neutral comparison tie -- may
+# connect the E1 nodes below to the E3 meter key, directly or through any
+# intermediate node.
 FIG01_E1_APPLIED_WATER_NODES = {"applied_water"}
 FIG01_E3_METER_NODE = "meters"
 
 # The two ET traces the reader is invited to compare must be drawn against one
-# date mapping at comparable horizontal extent (handoff sections 5.2, 5.4, 10.3
-# and 11).  Neither may be squeezed into a side strip.
+# date mapping at comparable horizontal extent.  Neither may be squeezed into a
+# side strip.
 FIG01_COMMON_DATE_MAPPING_COLUMNS = ("swim_ET", "flux_ET")
 
-# Required visible record identification (handoff sections 5.1, 11 and 13): the
-# reader must not have to infer the site and year from the caption.  Architecture
-# 3.2.0 set the parenthesized form and near-black colour required by handoff
-# section 5.1 (then "US-Bi1 (2017)"); the 2026-08-27 directed-site override
-# (see the example-source generator below) moves the record to S2 while keeping
-# the treatment rules -- parenthesized form, never muted gray, no middle dot.
+# Required visible record identification: the reader must not have to infer the
+# site and year from the caption.  The record is identified in parenthesized
+# form, never in muted gray, and without a middle dot.
 FIG01_RECORD_ID = "S2 (2018)"
 
-# Handoff section 9: near-black for every reader-facing identification, title,
-# row name, unit, map count line and inverse-stage label.  Muted gray is reserved
-# for axes, reference rules and quiet geographic context.  Section 11 stops the
-# build if the record identification is rendered as muted gray secondary text.
-# 2026-08-27: the figure style guide moved all reader-facing text to full black,
-# which strictly satisfies the never-muted-gray intent; the contract colour
-# follows (was #202124 near-black under the r4 architecture).
+# Every reader-facing identification, title, row name, unit, map count line and
+# inverse-stage label is drawn in full black, as the figure style guide sets for
+# all reader-facing text.  Muted gray is reserved for axes, reference rules and
+# quiet geographic context.  The build stops if the record identification is
+# rendered as muted gray secondary text.
 FIG01_IDENTIFICATION_COLOR = "#000000"
 
-# Handoff sections 4, 5.2 and 11: panel (a) carries FIVE quantitative plotting
-# regions, not seven independent sparklines.  Root-zone depletion and irrigation
+# Panel (a) carries FIVE quantitative plotting regions rather than one
+# independent sparkline per series.  Root-zone depletion and irrigation
 # share one coordinated region; daily SWIM-RS ET and held-out flux ET share
 # another.
 FIG01_MAX_PLOTTING_REGIONS = 5
 
-# Recorded display limits for the five regions (handoff section 5.2: "The proof
-# script must record the final limits and assert that no plotted value is
-# clipped").  These are the CONTRACT domains the section 11 clipping check runs
-# against; the proof may refine ticks and padding as a Level 1 render change so
-# long as no plotted value falls outside what is recorded here.
+# Recorded display limits for the five regions.  The proof script records the
+# final limits and asserts that no plotted value is clipped; these are the
+# CONTRACT domains that clipping check runs against.  The proof may refine ticks
+# and padding as a Level 1 render change so long as no plotted value falls
+# outside what is recorded here.
 #
-# Section 5.2's candidate ranges are ETf 0.8-1.6, NDVI 0.2-1.0, forcing 0 to a
+# The candidate ranges are ETf 0.8-1.6, NDVI 0.2-1.0, forcing 0 to a
 # rounded maximum, depletion and irrigation 0 to their respective rounded
 # maxima, and ET 0-10 mm d-1.  The frozen S2 (2018) record is adopted for every
 # one of them EXCEPT the ETf bounds: retrieval members span 0.318-1.665 at this
@@ -179,7 +162,7 @@ FIG01_MAX_PLOTTING_REGIONS = 5
 # ceiling would clip the highest -- and both would hide exactly the
 # disagreement the region exists to show.  The floor is therefore 0.0 and the
 # ceiling 1.8.  The forcing maximum rounds S2's window maximum (ETo 8.1,
-# precipitation 7.6 mm d-1) to 10 (was 16 under the US-Bi1 record).
+# precipitation 7.6 mm d-1) to 10.
 FIG01_DISPLAY_DOMAINS = {
     "etf_ensemble": (0.0, 1.8),
     "ndvi_captures": (0.2, 1.0),
@@ -189,14 +172,14 @@ FIG01_DISPLAY_DOMAINS = {
     "et_comparison": (0.0, 10.0),
 }
 
-# ---- Figure 1 example record (handoff sections 5.1, 10.2, 11) --------------
+# ---- Figure 1 example record ---------------------------------------------
 # The frozen selection.  The build compares the reconstructed record against
-# these values and stops if the audited site or window has moved.  Site S2 is
-# the 2026-08-27 user-directed override of the original median-rank choice
-# (US-Bi1); the window is S2's earliest qualifying window under the unchanged
-# step-2 rule and step-5 tiebreak.
+# these values and stops if the audited site or window has moved.  Site S2 is a
+# directed choice that overrides the median-rank step of the selection rule;
+# the window is S2's earliest qualifying window under the step-2 rule and
+# step-5 tiebreak.
 FIG01_EXAMPLE_SITE = "S2"
-# This relocated January delivery is used only to reproduce the already-frozen
+# The January OpenET delivery is used only to reproduce the frozen
 # Figure 1 example-window selection. Its benchmark columns are prohibited from
 # the Figure 1 display table and from every Figure 3 evaluation artifact.
 FIG01_LEGACY_OPENET_DAILY = (
@@ -208,10 +191,10 @@ FIG01_EXAMPLE_DAYS = 120
 FIG01_EXAMPLE_CAPTURES = 8
 
 
-# Column-name patterns that may never reach the Figure 1 example display table
-# (handoff sections 8, 10.2 and 11).  Figure 3 owns the benchmark comparison,
-# Figures 2-6 own every performance metric, and the daily filled NDVI trajectory
-# is not a Figure 1 display quantity.
+# Column-name patterns that may never reach the Figure 1 example display table.
+# Figure 3 owns the benchmark comparison, Figures 2-6 own every performance
+# metric, and the daily filled NDVI trajectory is not a Figure 1 display
+# quantity.
 FIG01_FORBIDDEN_EXAMPLE_COLUMNS = [
     (r"benchmark", "OpenET benchmark series and flags are owned by Figure 3"),
     (r"interpolat", "benchmark-interpolation classification is owned by Figure 3"),

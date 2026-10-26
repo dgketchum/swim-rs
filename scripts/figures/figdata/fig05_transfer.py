@@ -179,7 +179,7 @@ def build_fig05_e1() -> None:
         experiment_mapping={"E1": "legacy e2_*; legacy experiment label E2_within_held_out"},
         cohort_key="site_id",
         inclusion_rule=(
-            # Cohort counts confirmed on the Run 23 within_e1_transfer output (unchanged from Run 22).
+            # Cohort counts match the canonical run's within_e1_transfer output.
             f"Common paired cohort of the {ex5_paths.CANONICAL_RUN} 45-site daily and "
             "31-site monthly "
             "evaluations, evaluated identically under all six arms. 29 irrigated / 16 "
@@ -213,7 +213,7 @@ def build_fig05_e2() -> None:
 
     Per-site metrics come from the by-irrigation transfer run (all 63 daily
     common-cohort sites, then restricted to the frozen closure pool); cohort
-    summaries are the frozen 47-pool medians from the phase-11 closure-pool
+    summaries are the frozen 47-pool medians from the closure-pool
     summary.  The two must agree: the median of each restricted per-site
     column is asserted against the frozen summary row.
     """

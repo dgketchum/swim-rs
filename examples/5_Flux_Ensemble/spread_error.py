@@ -2,9 +2,8 @@
 
 Tests whether the OpenET six-member inter-model ensemble spread at each
 calibration observation predicts the error of the ensemble-mean ETf target
-against flux-tower truth. This backs the manuscript's spread-based observation
-weighting ``weight = ETf_obs / (sigma_ensemble + 0.1)`` against reviewer
-pushback.
+against flux-tower truth. This tests the premise of the manuscript's spread-based
+observation weighting ``weight = ETf_obs / (sigma_ensemble + 0.1)``.
 
 Per observation i (site x Landsat overpass date with valid flux):
     spread_i = std across available members' ETf   (= archived ensemble_std)

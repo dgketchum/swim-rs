@@ -7,9 +7,9 @@ OpenET v2.1 counterparts, scored on exactly identical site-Landsat acquisition d
 
 Cohort
 ------
-* E1: the paper's Experiment 1 daily validation cohort (Ex5 Run 22; the frozen
+* E1: the paper's Experiment 1 daily validation cohort (the frozen
   ``paper/data/final/e2_primary_daily_site_metrics.csv`` -- the ``e2_`` file namespace is the
-  legacy label for the paper's E1, see ``e2_evidence_metadata.json``), 45 sites.
+  internal label for the paper's E1, see ``e2_evidence_metadata.json``), 45 sites.
 * E2: the 47-site closure-corrected pool (``archive/6_evaluation/closure_pool/
   closure_pool_sites.csv``), restricted to ``region == CONUS`` (29 sites).
 * Intersection by exact site id.

@@ -99,7 +99,7 @@ def sha256_file(path: str) -> str:
 
 
 def native_column_date(col: str) -> str:
-    """Date of a native column: legacy ``ETF_YYYYMMDD`` or scene ``{sensor}_{pathrow}_{YYYYMMDD}``."""
+    """Date of a native column: date-keyed ``ETF_YYYYMMDD`` or ``{sensor}_{pathrow}_{YYYYMMDD}``."""
     if LEGACY_COL_RE.match(col) or SCENE_COL_RE.match(col):
         return col.rsplit("_", 1)[1]
     raise ValueError(f"unexpected native column {col!r}")

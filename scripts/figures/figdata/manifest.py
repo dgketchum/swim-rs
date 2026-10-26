@@ -106,7 +106,7 @@ class Manifest:
 
         The manifest cannot hash itself, so ``fig_manifest.json`` is excluded;
         every other emitted artifact -- including ``fig01_scope.gpkg`` -- gets an
-        independently verifiable digest (bug D4).
+        independently verifiable digest.
         """
         found: dict[str, Path] = {}
         for pattern in self.OUTPUT_GLOBS:

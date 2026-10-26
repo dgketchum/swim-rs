@@ -20,29 +20,13 @@ This directory produces:
 | Fig. 5b, Table S2 (E1 vectors transferred into E2) | Example 6 `transfer/` reads the Run 23 posterior | `paper/data/final/e2_run23_transfer_vector*.json` |
 | Fig. 1b, §2 revisit sentence (Landsat-only vs merged NDVI gap) | `scripts/analysis/ndvi_revisit_sentinel.py` on the three experiment containers | `paper/data/derived/ndvi_revisit/` (not frozen) |
 
-**Status (2026-10-14).** The published calibration is Run 23 (2026-09-26):
-the Run 22 settings recalibrated on the container rebuilt after the ETf
-extraction's reference-ET join was moved to the calendar day of the scene
-(`container_build/correct_eto_offset.py` corrects the existing extract tables;
-`container_build/diff_run_containers.py` and `compare_problem_definition.py`
-are the two gates that the rebuilt container and problem differ only there).
-`promote_e1_run.py` re-promoted the benchmark package from Run 23 on
-2026-09-26; its `MANIFEST.json` pins the sha256 of every input and of the
-analysis code, and `rebuild_e1_benchmark_evidence.py --verify` checks the
-rest of the `e2_*` files against `e2_evidence_metadata.json`. Run 22 stays on
-disk under `results/run22/` and its frozen products under
-`paper/data/final/superseded_e1_run22_nextday_eto*/`; nothing in the paper
-reads them. The E0 vegetation-formulation
-experiment (Table 3, Fig. 2) is run in Example 6 on the 37 sites outside this
-cohort; the earlier 60-site arms are retired to the untracked `legacy/`.
-
-Two identifiers predate the paper numbering and are kept because frozen
-hashes and the figure builder key on them: `run23` is the archive tag of the
-E1 calibration (`ex5_paths.CANONICAL_RUN`; `run22` is its superseded
-predecessor), and `e2_*` filenames and `results/within_e2_transfer*` output
-directories are the legacy namespace for E1 evidence. Neither is a paper
-experiment label; the mapping lives in
-[`../VALIDATION_POLICY.md`](../VALIDATION_POLICY.md).
+Two identifiers in this directory are archive names, not paper labels:
+`run23` is the archive tag of the E1 calibration (`ex5_paths.CANONICAL_RUN`),
+and the `e2_*` file names under `paper/data/final/` hold E1 evidence. Both are
+kept because the frozen hashes and the figure builder key on them; the mapping
+between repo examples and paper labels is in [`../README.md`](../README.md).
+The E0 vegetation-formulation experiment (Table 3, Fig. 2) runs in Example 6
+on the 37 sites outside this cohort.
 
 ## Layout
 
@@ -54,11 +38,11 @@ experiment label; the mapping lives in
 │   ├── data_extract.py                     Earth Engine, GridMET, OpenET member and reference-ET extraction
 │   ├── container_prep.py                   base container (meteorology, NDVI, properties, flux fields)
 │   ├── build_container.py                  run container: six-member target, corrected ETo/ETr, dynamics
-│   ├── correct_eto_offset.py               Run 23: re-divide the extract tables by the scene-day ETo
-│   └── diff_run_containers.py              Run 23 gate: array-by-array diff of two run containers
+│   ├── correct_eto_offset.py               re-divide ETf tables formed against the following day's reference ET by the scene-day ETo
+│   └── diff_run_containers.py              array-by-array diff of two run containers
 ├── calibrate.py                            PEST++ IES wrapper; archives the trajectory
 ├── archive_run.py                          run-policy archive for a finished calibration
-├── compare_problem_definition.py           Run 23 gate: observation-by-observation diff of two .pst files
+├── compare_problem_definition.py           observation-by-observation diff of two .pst files
 ├── evaluate.py                             daily and monthly benchmark vs flux ET and OpenET
 ├── overpass_decomposition.py               strict consumer of the daily evaluator bundle
 ├── spread_error.py                         member spread vs acquisition-date ETf error
@@ -71,9 +55,7 @@ experiment label; the mapping lives in
 ├── promote_e1_monthly.py                   gated promotion of the Volk-protocol monthly bundle
 ├── promote_final.py                        tracked producer for the hand-promoted e2_* supporting files
 ├── rebuild_e1_benchmark_evidence.py        rebuild or --verify the frozen e2_* evidence
-├── data/                                   extracted inputs (gitignored except gis/, see Inputs)
-├── legacy/                                 untracked; retired E0 arms and scripts
-└── notes/                                  untracked; working notes
+└── data/                                   extracted inputs (gitignored except gis/, see Inputs)
 ```
 
 ## Inputs
@@ -114,20 +96,12 @@ RUN23=$SWIM_ROOT/5_Flux_Ensemble/results/run23
 Steps 1 and 2 are expensive; steps 3 onward reproduce the paper from the
 calibrated container and posterior.
 
-**With the data packages** (`../README.md`, "Reproducing the paper"): skip
-steps 1 and 2 and the two calibrations in step 6. Run step 3 into scratch
-output directories and `cmp` its five CSVs against the archived copies under
-`$RUN23/archive/6_evaluation/`, then step 4 on the step 3 daily directory,
-step 5, step 6 with `--summary-only`, step 7, step 8 (`--verify` must print
-`G-VALUES: PASS`), and `e1_period_split.py` without `--write` (its gate
-replicates the frozen daily estimates and prints the §3.2 pre-/post-2016
-values). Steps 5 and 7 rewrite their output directories under `$RUN23/`. The
-promotion check modes 3a, 3b, and 3c are the authoring workflow and are not
-the pass criterion: off the promotion commit, 3a prints `PROMOTION_STATE:
-DIFFERS` on its G-GIT gate alone (`--allow-dirty` turns that into `MATCH`
-when every file row matches), and 3b on a scratch `--source-dir` reports the
-monthly sidecar as differing in its `paths`, `git`, and `cli_args` only. Never
-pass `--write`: it replaces the frozen package with the scratch bundle.
+Reproduction from the data packages runs steps 3, 4, 5, 7, and 8 of this
+workflow, step 6 with `--summary-only`, and `e1_period_split.py` without
+`--write`; the exact commands, scratch directories, and comparisons are in
+`../README.md`, "Reproducing the paper", step 3. Steps 3a, 3b, and 3c are the
+authoring workflow that freezes the package and are not a pass criterion;
+never pass `--write` in a reproduction.
 
 **1. Build the run container** (only if you do not have
 `5_Flux_Ensemble_run23.swim`; see Rebuilding the container below)
@@ -168,15 +142,15 @@ uv run python $EX5/promote_e1_run.py --run run23 --allow-dirty    # gates + repo
 uv run python $EX5/promote_e1_run.py --run run23 --write           # promote (on the promotion commit, without --allow-dirty)
 ```
 
-Re-promotes the whole run-dependent E1 package (`daily/`, `temporal/`,
-`MANIFEST.json`) from the run's evaluator and decomposition outputs after a
-recalibration; the prior package moves to `paper/data/final/superseded_e1_*/`.
+Promotes the run-dependent E1 package (`daily/`, `temporal/`,
+`MANIFEST.json`) from the run's evaluator and decomposition outputs; the
+previously frozen package moves to `paper/data/final/superseded_e1_*/`.
 The gates read the run's archived evaluator outputs under `$RUN23/`, not the
 step 3 scratch directories; compare those with the archive directly (`cmp` on
 `evaluation_grouped_*_metrics.csv` and `evaluation_paired_daily_records.csv`).
-`--allow-dirty` is required on any commit after the one that promoted the
-package: the G-GIT gate pins the analysis files to that commit and reports what
-changed since, and every other gate still runs.
+`--allow-dirty` is required on any commit other than the one that promoted
+the package: the G-GIT gate pins the analysis files to that commit and reports
+what differs, and every other gate runs as usual.
 
 **3b. Promote the monthly bundle** (re-freeze under RUN_POLICY)
 
@@ -189,8 +163,8 @@ The gate refuses a bundle whose sidecar git sha is not HEAD or whose analysis
 files (`evaluate.py`, `benchmark.py`, `flux_utils.py`) have uncommitted changes,
 whose sidecar hashes do not match, or whose 18 grouped estimates are not
 replicated (tolerance 1e-6) from `archive/6_evaluation/site_daily_timeseries`
-plus the Volk flux and OpenET monthly files. On `--write` it moves the prior
-monthly package to `paper/data/final/superseded_e1_monthly_*/`, copies the new
+plus the Volk flux and OpenET monthly files. On `--write` it moves the
+previously frozen monthly package to `paper/data/final/superseded_e1_monthly_*/`, copies the new
 bundle to `paper/data/final/e1_openet_benchmark/monthly/`, rewrites
 `MANIFEST.json`, and refreshes `archive/6_evaluation/`.
 
@@ -246,14 +220,13 @@ uv run python $EX5/within_e1_transfer.py
 ```
 
 The posterior and container default to Run 23 and the output to
-`$RUN23/within_e2_transfer_irrigation_stratified/`, which holds both the
-pooled (`loro`, `loso`) and the irrigation-stratified (`loro_strat`,
-`loso_strat`) arms beside the local and default references. The stratified
-arms carry two class vectors so a rainfed site never receives an irrigated
-`mad`. The sibling `results/within_e2_transfer/` is an earlier run of the same
-script before the stratified arms existed; its pooled columns equal the
-stratified run's to floating-point round-off, and `promote_final.py` copies
-the frozen `e2_within_transfer_*` files from it.
+`$RUN23/within_e1_transfer/` (`--out` redirects it), which holds the pooled
+(`loro`, `loso`) and the irrigation-stratified (`loro_strat`, `loso_strat`)
+arms beside the local and default references. The stratified arms carry two
+class vectors so a rainfed site never receives an irrigated `mad`.
+`promote_final.py` reads this directory and `$RUN23/spread_error/` for the
+frozen `e2_within_transfer_*`, `e2_irrigation_stratified_*`, and
+`e2_spread_error_*` files.
 
 **8. Promote and freeze the paper evidence**
 
@@ -268,13 +241,14 @@ uv run python $EX5/rebuild_e1_benchmark_evidence.py --output-dir paper/data/fina
 `rebuild_e1_benchmark_evidence.py` rebuilds the `e2_primary_*`,
 `e2_benchmark_*`, `e2_temporal_*` files, rescores the ablation onto the frozen
 benchmark record, and writes `e2_evidence_metadata.json`; `--verify` compares
-against the frozen hashes. The monthly headline it prints (30 sites) is the
-28-day month rule of the `e2_*` evidence, not the Volk-protocol Table 4 row
-(step 3b); `e1_openet_benchmark/reconstruction_fidelity/table_s10_summary.csv`
-is Table S8 under its pre-renumbering name. The headline `e1_openet_benchmark/` package is
-promoted from the step 3 and 4 output directories and described by its
-`MANIFEST.json`, which names the similarly named legacy products that must not
-be substituted for it.
+against the frozen hashes. The monthly headline it prints (30 sites) uses the
+28-valid-day month rule of the `e2_*` evidence, not the Volk-protocol rule of
+the Table 4 row (step 3b);
+`e1_openet_benchmark/reconstruction_fidelity/table_s10_summary.csv` holds
+Table S8, under a file name the manifest hashes key on. The headline
+`e1_openet_benchmark/` package is promoted from the step 3 and 4 output
+directories and described by its `MANIFEST.json`, which names the similarly
+named files that must not be substituted for it.
 
 ## Rebuilding the container
 
@@ -300,5 +274,5 @@ do not drop or fill it.
 uv run pytest tests/unit -v -k "e1_paired_record_temporal or e2_grouped_benchmark_metrics or overpass_decomposition or benchmark_regression or rebuild_verify or conditioned_ensemble or weighting_ablation or archive_eto_export or promote_final"
 ```
 
-`test_e2_grouped_benchmark_metrics.py` keeps a legacy filename; it exercises
-the current E1 evaluator.
+`test_e2_grouped_benchmark_metrics.py` exercises the E1 evaluator; its `e2_`
+prefix follows the frozen file names.

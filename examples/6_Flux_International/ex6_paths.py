@@ -4,8 +4,9 @@ Every on-disk location is built from ``root`` in the configuration TOML; change
 that one line to relocate the workspace. ``load_config`` is not called at import
 time because ``ProjectConfig.read_config`` creates the project workspace directory.
 
-    CANONICAL_RUN      the published E2 calibration (GrassBasis, HWSD AWC recal)
-    BASELINE_RUN       the superseded ETr-basis run some audits compare against
+    CANONICAL_RUN      the published E2 calibration (GrassBasis)
+    BASELINE_RUN       an optional comparison run some audits read when its outputs
+                       are present
     EX5_CANONICAL_RUN  the Example 5 (E1) run whose posterior E2 transfers
                        (``ex5_paths.CANONICAL_RUN``); names every transfer
                        artifact below (``e2_<run>_transfer_*``)
@@ -122,7 +123,7 @@ def archive_dir(name=CANONICAL_RUN, cfg=None):
 
 
 def qa_root(cfg=None):
-    """Container-build QA evidence (Cat 2 sidecars) for the E2 re-footing."""
+    """Container-build QA evidence (Cat 2 sidecars) for the E2 container."""
     cfg = cfg or load_config()
     return Path(cfg.data_dir) / "e2_etf_refooting"
 

@@ -66,7 +66,7 @@ def load_arm_config(config_path):
 
 
 def effective_physics(cfg):
-    """Physics actually used (absent keys resolve to the historical defaults)."""
+    """Physics actually used (absent keys resolve to the default modes)."""
     kcb = KCB_MODE_NAMES[resolve_kcb_mode(getattr(cfg, "kcb_ndvi_mode", None))]
     cover = COVER_MODE_NAMES[
         resolve_cover_mode(

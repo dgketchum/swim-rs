@@ -1,4 +1,4 @@
-"""Gate G2 (HWSD AWC units recal): the archived PEST ``aw_*`` priors carry the HWSD values.
+"""Gate G2: the archived PEST ``aw_*`` priors carry the HWSD values.
 
 Reads every ``archive/3_problem_definition/batch_*/params.csv`` of a run, joins the ``aw_{sid}``
 rows to the HWSD CSV (mm/m), and asserts each prior equals the builder rule
@@ -7,7 +7,7 @@ rows to the HWSD CSV (mm/m), and asserts each prior equals the builder rule
           = 150.0              if hwsd is NaN or below the lower bound (100)
           = 0.8 * upper        if above the upper bound (400; never reached, HWSD max 214)
 
-and that the priors are NOT a constant (the superseded runs had 320.0 at all 66 sites). Writes
+and that the priors are not one constant across all sites. Writes
 ``aw_prior_table.csv`` next to the batch dirs. Exit 1 on failure.
 """
 

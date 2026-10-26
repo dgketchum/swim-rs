@@ -52,8 +52,8 @@ def _load_e3_paths() -> dict[str, pd.DataFrame]:
             f"E3 {name}",
         )
         df = df[df["site_id"].astype(str).str.startswith("SLV_")].copy()
-        # Explicit exclusion (not a silent filter): the evaluator already drops these
-        # keys at scoring; an input still carrying them is on the superseded 408 footing.
+        # Explicit exclusion (not a silent filter): the evaluator drops these keys at
+        # scoring, so an input that carries them was scored on all 408 field-years.
         stale = len(df) - len(ex7_paths.drop_excluded_field_years(df))
         if stale:
             raise BuildError(
@@ -199,7 +199,7 @@ def build_fig06() -> pd.DataFrame:
     return fy
 
 
-# ---- panel (d): new prespecified whole-field bootstrap ---------------------
+# ---- panel (d): prespecified whole-field bootstrap -------------------------
 
 BOOTSTRAP_STATS = {
     "between_field_mean_depth_r": {

@@ -1,24 +1,23 @@
 """Phase 7, step 2: consolidate every extracted ESPA SSEBop value into one complete native record.
 
-Why this exists (2026-09-07): the three legacy order trees (``espa``, ``espa_crop99``,
-``espa_ext_2008_2017``) all wrote their ingest CSVs to the same directory with the same file
-names, so the last writer (``espa``, 2026-05-08) silently replaced the ``espa_crop99`` /
-``espa_ext_2008_2017`` CSVs for the same site-years. 1,522 cohort site-dates (2013-2025) that
-were delivered, extracted, and sitting in JSON never reached the baseline container. The new
-Landsat 7 repair tree adds 5,989 scene-keyed values on top.
+The three date-keyed order trees (``espa``, ``espa_crop99``, ``espa_ext_2008_2017``) share one
+ingest CSV directory and file names, so the ingest CSVs hold one tree's values per site-year and
+site-dates present only in another tree's JSON are absent from the baseline container. The
+Landsat 7 repair tree holds scene-keyed values.
 
-This script reads every ``extracts/etf_json`` tree (read-only), preserves the currently ingested
+This script reads every ``extracts/etf_json`` tree (read-only), preserves the ingested
 value for every existing site-date byte-for-byte, adds the JSON-only dates, appends the repair
 scenes as scene-keyed columns (``{sensor}_{pathrow}_{YYYYMMDD}``, the PT-JPL export convention
 the ingestor collapses by ``max``), and writes a fresh native tree:
 
     {landsat}/extracts/ssebop_etf_complete/no_mask/ssebop_etf_{site}_no_mask_{year}.csv
 
-Rules: a legacy date present in several trees with identical means is one column; a conflicting
-legacy date keeps the value the baseline container ingested (identity), or the ``max`` when it
-was never ingested (the ingestor's own same-date rule), and is flagged; a repair scene never
-replaces a legacy value (same-date alternates coexist as two columns); two product generations of
-one scene key are a hard error; a native CSV value that cannot be reproduced is a hard error.
+Rules: a date-keyed date present in several trees with identical means is one column; a
+conflicting date-keyed date keeps the value the baseline container ingested (identity), or the
+``max`` when it is not ingested (the ingestor's own same-date rule), and is flagged; a repair
+scene never replaces a date-keyed value (same-date alternates coexist as two columns); two
+product generations of one scene key are a hard error; a native CSV value that cannot be
+reproduced is a hard error.
 Nothing under the source trees or the existing ``ssebop_etf`` directory is modified.
 
 Outputs: the CSV tree, ``{qa}/ssebop_native_consolidation_ledger.csv`` (one row per column),
@@ -89,7 +88,7 @@ def cohort_sites(path: str) -> set[str]:
 
 
 def load_native(native_dir: str, sites: set[str], years: tuple[int, int]) -> pd.DataFrame:
-    """(site, date, native_value) for the currently ingested legacy CSVs (date-keyed only)."""
+    """(site, date, native_value) for the ingested date-keyed CSVs."""
     rows = []
     for path in sorted(glob.glob(os.path.join(native_dir, "ssebop_etf_*_no_mask_*.csv"))):
         m = NATIVE_RE.match(os.path.basename(path))
@@ -133,9 +132,10 @@ def consolidate(
         distinct = sorted(set(per_tree))
         in_native = (site, date) in nat.index
         native_value = float(nat.loc[(site, date)]) if in_native else None
-        # Values within one unit of the 6th decimal are the same observation (the legacy writer
-        # and this script may round a half-way mean in opposite directions); larger gaps are
-        # different scenes (path/row alternates) or product generations.
+        # Values within one unit of the 6th decimal are the same observation
+        # (espa_write_etf_csvs.py and this script may round a half-way mean in opposite
+        # directions); larger gaps are different scenes (path/row alternates) or product
+        # generations.
         conflict = (distinct[-1] - distinct[0]) > ROUND_TOL
         if in_native:
             if not any(abs(x - native_value) <= ROUND_TOL for x in distinct):

@@ -1,7 +1,7 @@
 """Run the paper E1 weighting ablation: spread vs fixed-denominator weighting.
 
-The legacy internal arm identifiers ``e1_spread`` and ``e2_fixed_sd`` are
-retained in archived outputs.
+The internal arm identifiers ``e1_spread`` (spread weighting) and ``e2_fixed_sd``
+(fixed-SD weighting) name the arms in the archived outputs.
 
 Launches both calibration runs sequentially, then evaluates each against
 flux tower ET using the canonical Ex5 evaluation, and produces paired
@@ -114,12 +114,12 @@ def _find_par_csv(results_dir, project):
 def run_evaluation(
     cfg, experiment_id, results_dir, container_path, mode="daily", debug_fields=None
 ):
-    """Run canonical evaluation for one experiment on the tagged run's footing.
+    """Run canonical evaluation for one experiment of the tagged run.
 
     mode: 'daily' (volk source), 'monthly', or 'etf'.
-    The container is the same run-footed container used for calibration, and
-    the flux reference is resolved from the TOML (Volk v2.1 daily_flux_files_2pt1)
-    via resolve_flux_dir — NOT the legacy daily_flux_files directory.
+    The container is the same container used for calibration, and the flux
+    reference is resolved from the TOML (Volk v2.1 daily_flux_files_2pt1) via
+    resolve_flux_dir — never the daily_flux_files directory.
     When debug_fields is set, limits evaluation to that subset only.
     """
     from evaluate import evaluate, evaluate_etf, evaluate_monthly, resolve_flux_dir
@@ -556,9 +556,9 @@ def main():
         "--tag",
         default=DEFAULT_TAG,
         help="Results-dir tag: outputs land in ablation_{tag}_{exp}/ and "
-        f"ablation_{{tag}}_summary/ (default '{DEFAULT_TAG}', ex5_paths.CANONICAL_RUN; "
-        "the Run 22 ablation lives under the 'run22' tag). The untagged April dirs "
-        "(ablation_e1_spread etc.) are the stale reference and must not be touched.",
+        f"ablation_{{tag}}_summary/ (default '{DEFAULT_TAG}', ex5_paths.CANONICAL_RUN). "
+        "The untagged dirs (ablation_e1_spread etc.) are outside the tagged layout "
+        "and must not be written.",
     )
     parser.add_argument(
         "--summary-only",
@@ -574,11 +574,10 @@ def main():
         help="Container path for BOTH calibration and evaluation. REQUIRED for "
         "calibration/evaluation runs (not for --summary-only). Pass the "
         "<tag>-seeded ablation container (calibration group already absent), "
-        "e.g. {data}/5_Flux_Ensemble_<tag>ablation.swim (Run 22 used "
-        "5_Flux_Ensemble_run22ablation.swim). There is deliberately no default: "
-        f"the tag defaults to '{DEFAULT_TAG}', and silently falling back to the "
-        "stale base {data}/{project}.swim would overwrite tag-labeled results on "
-        "the wrong footing.",
+        "e.g. {data}/5_Flux_Ensemble_<tag>ablation.swim. There is deliberately no "
+        f"default: the tag defaults to '{DEFAULT_TAG}', and silently falling back to "
+        "the base {data}/{project}.swim would overwrite tag-labeled results with "
+        "results from a different container.",
     )
     args = parser.parse_args()
 

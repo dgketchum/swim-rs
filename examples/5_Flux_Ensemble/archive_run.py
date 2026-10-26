@@ -21,15 +21,15 @@ This script fills in everything else and rounds out Category 1:
                    (e1_openet_paired_daily/v1 parent record — absence is a gap),
                    site_daily_timeseries/, evaluation_metadata.json
 
-Category 7 (figure audit) is deferred until manuscript figures are defined; the
-gap is recorded in archive/GAPS.md.
+Category 7 (figure audit) is not produced by this script; the gap is recorded in
+archive/GAPS.md.
 
 Each category runs under its own try/except so one failure does not lose the
 rest; failures and known gaps are written to archive/GAPS.md.
 
 Usage:
-    uv run python examples/5_Flux_Ensemble/archive_run.py --results-tag run21 \
-        --container /data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run20.swim
+    uv run python examples/5_Flux_Ensemble/archive_run.py --results-tag run23 \
+        --container /data/ssd1/swim/5_Flux_Ensemble/data/5_Flux_Ensemble_run23.swim
 """
 
 import argparse
@@ -853,7 +853,7 @@ def cat6_evaluation(cfg, container, cat6_dir, par_csv, cat3_dir, gaps):
 # --------------------------------------------------------------------------- #
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--results-tag", required=True, help="e.g. run21")
+    ap.add_argument("--results-tag", required=True, help="e.g. run23")
     ap.add_argument("--container", default=None, help="Override container path")
     ap.add_argument("--par-csv", default=None, help="Override posterior par.csv")
     ap.add_argument("--log", default=None, help="calibration stdout log to archive")

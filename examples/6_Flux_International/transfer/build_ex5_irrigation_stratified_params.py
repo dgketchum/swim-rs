@@ -3,9 +3,9 @@
 The pooled E1 transfer vector has ``mad = 0.136917``, which is inside the
 irrigated prior (0.10-0.30) but outside the configured rainfed prior
 (0.30-0.80). Applying it to rainfed targets therefore transfers a scheduler
-trigger from outside the rainfed parameter domain. This builder replaces the
-single pooled vector with two independently frozen vectors, selected downstream
-by an independently inferred irrigation class.
+trigger from outside the rainfed parameter domain. This builder freezes two
+class vectors in place of the single pooled vector, selected downstream by an
+independently inferred irrigation class.
 
 Aggregation is identical to the pooled builder (median-of-site-medians: per-site
 posterior median with the ``base`` realization excluded, then the median across
@@ -14,12 +14,12 @@ an irrigation class rather than over the whole cohort.
 
 Source classification uses ``properties/irrigation/irr > 0.5`` from the source
 run container (``ex5_paths.CANONICAL_RUN`` unless ``--source-run``) -- the same
-rule ``examples/5_Flux_Ensemble/archive_run.py`` already uses to summarize the
+rule ``examples/5_Flux_Ensemble/archive_run.py`` uses to summarize the
 run posterior by irrigation class. It is derived from
 remote sensing (IrrMapper/LANID) only. No flux ET and no meter record enters
 classification or vector construction.
 
-This is the canonical single-``mad`` physics (as in Run 22). It is NOT the later
+The vectors use the canonical single-``mad`` physics, not the
 ``mad``/stress-threshold split held under the Example 5 ``e5split`` materials,
 and ``stress_depletion_fraction`` stays unset.
 
@@ -85,8 +85,8 @@ CLASSES = ("irrigated", "rainfed")
 IRR_THRESHOLD = 0.5
 CLASS_RULE = "properties/irrigation/irr > 0.5 (source run container)"
 
-# Frozen audit values from the Run 22 posterior summary. A Run 22 rebuild must
-# reproduce these before any downstream flux or meter truth is opened.
+# Audit values for source run ``run22``, from its posterior summary. A build from that run
+# must reproduce these before any downstream flux or meter truth is opened.
 EXPECTED_VECTORS = {
     "irrigated": {
         "aw": 316.705,
@@ -110,9 +110,9 @@ EXPECTED_VECTORS = {
     },
 }
 EXPECTED_COUNTS = {"irrigated": 39, "rainfed": 21}
-# Run 23 (2026-09-26): Run 22's problem definition on the same-day-ETo container; the
-# posterior holds 198 numbered realizations + base after pestpp-ies dropped #114.
-# Frozen from the reviewed first build (paper/data/final/e2_run23_transfer_vectors_by_irrigation.json).
+# Audit values for source run ``run23``: the ``run22`` problem definition on the same-day-ETo
+# container; its posterior holds 198 numbered realizations + base (pestpp-ies drops
+# realization 114). Values match paper/data/final/e2_run23_transfer_vectors_by_irrigation.json.
 EXPECTED_VECTORS_RUN23 = {
     "irrigated": {
         "aw": 320.6115,
@@ -143,8 +143,8 @@ AUDIT_BY_RUN = {
 }
 
 # Configured parameter priors, used only to report whether each frozen class
-# vector sits inside its own class domain. This is the scientific defect the
-# stratification exists to fix; it is a reported diagnostic, not a filter.
+# vector sits inside its own class domain. A rainfed target outside the rainfed domain is
+# what the stratification addresses; this is a reported diagnostic, not a filter.
 CLASS_PRIORS = {
     "irrigated": {"mad": (0.10, 0.30)},
     "rainfed": {"mad": (0.30, 0.80)},

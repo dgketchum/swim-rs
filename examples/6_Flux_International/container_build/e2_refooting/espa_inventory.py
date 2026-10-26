@@ -1,4 +1,4 @@
-"""Read-only inventory of the three ESPA order trees used by Example 6.
+"""Read-only inventory of the ESPA order trees used by Example 6.
 
 Every tree has the same layout (``espa_manifest.csv``, ``payloads/``, ``orders/{site}/{year}/
 extract/*_ETF.tif``, ``extracts/etf_json/{site}_{year}_etf.json``). This module turns them
@@ -23,7 +23,7 @@ TREES = {
     "espa": os.path.join(RS_ROOT, "espa"),
     "espa_crop99": os.path.join(RS_ROOT, "espa_crop99"),
     "espa_ext_2008_2017": os.path.join(RS_ROOT, "espa_ext_2008_2017"),
-    # Landsat 7 missing-only repair order (G6 pass 2026-09-07); scene-keyed JSON, frozen rasters
+    # Landsat 7 missing-only repair order (passes gate G6); scene-keyed JSON, frozen rasters
     "espa_le07_repair": os.path.join(RS_ROOT, "espa_le07_repair"),
 }
 
@@ -176,8 +176,8 @@ def manifest_rows(trees: dict[str, str] = TREES) -> pd.DataFrame:
 def json_values(trees: dict[str, str] = TREES) -> pd.DataFrame:
     """Every extracted statistic across all trees (``extracts/etf_json``).
 
-    Handles both the legacy date-keyed schema (one value per site-date, ``product_id`` None)
-    and the scene-keyed schema written since 2026-09-04 (one value per product ID).
+    Handles both the date-keyed schema (one value per site-date, ``product_id`` None) and the
+    scene-keyed schema (one value per product ID).
     """
     rows = []
     for tree, root in trees.items():

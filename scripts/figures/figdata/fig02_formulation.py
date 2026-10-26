@@ -148,15 +148,15 @@ E0_SUPPORT_RULE = (
     "each of the 37 E0 sites contributes equal total weight; density integrates to 1 over NDVI"
 )
 
-# The previous Figure 2 data package, kept as history outside the active
-# manifest (copied there on 2026-09-20 before this build replaced it).
+# Directory holding tables from a previous build of this figure, outside the
+# active manifest.
 E0_PRIOR_PACKAGE_DIR = "superseded_fig02_2026-09-01"
 
 # Table 3 (paper/text/main.md) at manuscript precision: daily values and KGE
 # to three decimals, monthly RMSE/MBE to one.  Signs are plain ASCII here;
 # main.md prints a typographic minus and an explicit plus.  The build fails
 # when a frozen pooled value does not reproduce its manuscript string exactly.
-# Values are the 2026-09-21 HWSD-AWC-units recalibration (frozen copies in
+# Values come from the E0 calibration on HWSD AWC priors (frozen copies in
 # paper/data/final/e2_closure_pool/e0_disjoint/); the cover-scaled arm wins
 # 6/6 pooled metrics against the unscaled sigmoid and 5/6 against the unscaled
 # linear arm, losing pooled monthly KGE 0.734 vs 0.737.
@@ -564,7 +564,7 @@ def build_fig02() -> None:
         for comp_key in ("isolated_cover", "whole_formulation")
     }
 
-    # ---- quarantine the superseded External-ET-agreement package ----
+    # ---- tables from a previous build of this figure move to superseded_fig02_et_agreement/ ----
     quarantined = []
     qdir = paths.OUT / "superseded_fig02_et_agreement"
     for name in (

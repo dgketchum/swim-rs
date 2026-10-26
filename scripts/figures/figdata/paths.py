@@ -34,9 +34,8 @@ E1_ARCHIVE = E1_RUN / "archive"
 E1_CONTAINER = Path(ex5_paths.run_container(cfg=_CFG5))
 E1_WITHIN_STRAT = E1_RUN / "within_e1_transfer"  # six-arm within_e1_transfer.py output
 
-# E2 sources repointed 2026-09-21 to the HWSD-AWC-units recalibration (GrassBasis
-# footing, HWSD per-site aw priors).  The frozen copies under
-# paper/data/final/e2_closure_pool/ are the paper's source of record; the results
+# E2 sources are the GrassBasis calibration on HWSD per-site aw priors.  The frozen
+# copies under paper/data/final/e2_closure_pool/ are the paper's source of record; the results
 # root is read only where a per-site table was not frozen, and its per-site
 # transfer table must hash-match the frozen copy.
 E2_RESULTS = ex6_paths.run_dir(cfg=_CFG6)
@@ -54,8 +53,8 @@ E3_TRANSFER = ex7_paths.eval_dir(ex7_paths.TRANSFER_LABEL)
 E3_CONTAINER = ex7_paths.run_container()
 
 NE_COUNTRIES = REPO / "data" / "cartographic" / "ne_110m_admin_0_countries.shp"
-# Archived 2026-08-24 for the section 6.4 / 6.7 CONUS state-boundary context test.
+# Faint CONUS state boundaries for the Figure 1 map context.
 NE_STATES = REPO / "data" / "cartographic" / "ne_50m_admin_1_states_provinces_lakes.shp"
-# Archived 2026-08-24 for the section 6.6 / 6.7 privacy-safe E3 basin context test.
+# Privacy-safe E3 basin context for the Figure 1 map.
 SLV_BASIN = REPO / "data" / "cartographic" / "wbd_huc8_rio_grande_headwaters.fgb"
 SLV_BASIN_SOURCE = REPO / "data" / "cartographic" / "wbd_huc8_rio_grande_headwaters.SOURCE.json"

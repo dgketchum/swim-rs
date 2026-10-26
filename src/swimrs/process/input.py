@@ -253,7 +253,7 @@ class SwimInput:
             irr_frac_root=spinup["irr_frac_root"][:] if "irr_frac_root" in spinup else None,
             irr_frac_l3=spinup["irr_frac_l3"][:] if "irr_frac_l3" in spinup else None,
             # Retained for WaterBalanceState.from_spinup call compatibility;
-            # missing source fractions now initialize explicitly to zero.
+            # missing source fractions initialize explicitly to zero.
             irr_status=self.properties.irr_status,
         )
 
@@ -561,8 +561,8 @@ def build_swim_input(
         Maximum daily irrigation application rate (mm/day). Defaults to 100.0
         for backward compatibility when not specified in project config.
     transpiration_cover_scaling : bool
-        Legacy toggle for the cover-scaled transpiration term. Superseded by
-        *transpiration_cover_mode*; kept so existing callers keep working.
+        Boolean toggle for the cover-scaled transpiration term.
+        *transpiration_cover_mode* takes precedence when given.
     transpiration_cover_mode : str, optional
         Transpiration cover formulation — ``none`` (FAO-56 ``Ks*Kcb + Ke``),
         ``kcb`` (default; FAO-56 Eq. 76 cover from Kcb), ``sigmoid``, or
@@ -1215,9 +1215,9 @@ def _write_parameters_from_container(
     #   - Irrigated crops: 0.55 (moderate NDVI onset with fc scaling)
     #   - Non-irrigated/grassland: 0.15 (transpiration begins at low NDVI)
     ndvi_0 = np.where(irr_status, 0.55, 0.15)
-    # Linear NDVI-Kcb curve (kcb_ndvi_mode="linear"). Legacy priors from
-    # build_pp_files.initial_parameter_dict (pre-3ef4757). Inert under the
-    # default sigmoid, but always written so the h5 schema is mode-independent.
+    # Linear NDVI-Kcb curve (kcb_ndvi_mode="linear"), priors intercept 0.2 and
+    # slope 1.25. Inert under the default sigmoid, but always written so the
+    # h5 schema is mode-independent.
     ndvi_alpha = np.full(n_fields, 0.2)
     ndvi_beta = np.full(n_fields, 1.25)
     swe_alpha = np.full(n_fields, 0.5)

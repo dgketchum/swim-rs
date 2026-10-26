@@ -1,12 +1,12 @@
 """Phase 5 / Gate G5: build the missing-only ESPA repair manifest for the 66-site cohort.
 
-Selection (plan §11, scope decision 2026-09-04): every canonical site-date, 2013–2025, with a
+Selection (plan §11): every canonical site-date, 2013–2025, with a
 valid PT-JPL Landsat observation in the baseline container and no valid native ESPA SSEBop
-value on disk. Each such date is traced through the three historical ESPA trees and classified:
+value on disk. Each such date is traced through the three date-keyed ESPA trees and classified:
 
     never_ordered            no delivered tif and no submitted order lists the scene  -> request
     ordered_cancelled        the only orders listing the scene were cancelled          -> request (status label kept)
-    ordered_not_delivered    a submitted, non-cancelled order listed it; no ETF tif    -> request (LE07 and OLI; user decision 2026-09-04)
+    ordered_not_delivered    a submitted, non-cancelled order listed it; no ETF tif    -> request (LE07 and OLI)
     delivered_nodata         an ETF tif exists but the extractor produced no valid value -> residual
     delivered_not_ingested   a valid extracted value exists in some tree but not in the ingest CSV -> residual (repair locally)
     no_product_id            the scene key has no Collection 2 Level-2 product ID     -> residual
@@ -16,11 +16,11 @@ Landsat metadata parquet (L2SP before L2SR, T1 < T2 < RT, newest generation firs
 the canonical 4 km UTM chips from ``espa/extents`` and are checked against the 66-site polygons.
 
 Same-date alternates (a site imaged by two adjacent rows of one overpass) are separate units with
-their own product IDs; they are kept because the extractor now preserves scene identity and the
+their own product IDs; they are kept because the extractor preserves scene identity and the
 CSV writer emits one scene-key column per product ID, which the ingestor collapses by per-date
 ``max`` exactly as it does for PT-JPL (``espa/espa_extract_etf.py``, ``espa/espa_write_etf_csvs.py``).
 
-Nothing under the historical trees is modified. Outputs go to the QA root and to a new tree,
+Nothing under the date-keyed trees is modified. Outputs go to the QA root and to the repair tree,
 ``remote_sensing/espa_le07_repair/`` (manifest + payloads; submission is Phase 6 and needs A2,
 recorded here through ``--a2-granted``).
 
@@ -326,8 +326,8 @@ def classify(
         default="never_ordered",
     )
     c["status"] = status
-    # 2026-09-04: ordered-not-delivered OLI scenes are re-requested like LE07 (user decision);
-    # the status label distinguishes them from never-ordered scenes in the ledger.
+    # Ordered-not-delivered OLI scenes are requested like LE07; the status label
+    # distinguishes them from never-ordered scenes in the ledger.
     c["request"] = c["status"].isin(REQUEST_STATUSES)
     c["selection_reason"] = np.where(
         c["request"],
@@ -542,7 +542,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
 
-    # payloads (dry run) into the new repair tree
+    # payloads (dry run) into the repair tree
     payload_dir = os.path.join(args.repair_tree, "payloads")
     os.makedirs(payload_dir, exist_ok=True)
     payload_rows = []

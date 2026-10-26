@@ -2,7 +2,7 @@
 
 Frozen sidecars, run metadata, pooled-gate JSONs, and container attributes record
 absolute paths from the authoring machine. On a clone with a relocated data root
-(``SWIM_ROOT``) those strings no longer resolve, and gates that compare them as
+(``SWIM_ROOT``) those strings do not resolve, and gates that compare them as
 strings fail although the data is present. Two helpers fix that:
 
 ``rebase(path, root, repo)``

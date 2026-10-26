@@ -4,7 +4,7 @@ Reads every ``refet_ratio_{year}_{suffix}.csv`` downloaded from the bucket, melt
 one row per (site, date), and compares the sidecar ``eto`` to the container's forcing
 ``meteorology/era5/eto`` on the same site-date. Also screens ``etr/eto``.
 
-Predeclared thresholds (plan §3, accepted 2026-09-04):
+Predeclared thresholds (plan §3):
 
     median |rel diff| <= 0.5 %, 95th percentile <= 2 %, no site median > 2 %
     ratios finite and positive; values outside 0.9–1.7 are listed, never clipped
@@ -112,7 +112,7 @@ def validate(
     ]
     # ERA5-Land hourly Penman-Monteith integrates to a slightly negative daily ETo (or ETr) on a
     # few mid-winter days with negative net radiation; the container's stored ETo carries the
-    # same values, so a non-positive ratio is only a sidecar defect when the sign disagrees with
+    # same values, so a non-positive ratio is only a sidecar error when the sign disagrees with
     # the stored ETo. The converter gives those dates a nonpositive_eto / nonpositive_etr status.
     eto_nonpos = merged["eto"].notna() & (merged["eto"] <= 0)
     sign_mismatch = eto_nonpos & merged["stored_eto"].notna() & (merged["stored_eto"] > 0)

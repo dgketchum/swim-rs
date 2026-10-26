@@ -81,7 +81,7 @@ def require_layer_crs_consistent(gdf, label: str) -> None:
     """Fail if a layer's stored coordinates cannot live in its declared CRS.
 
     A geographic CRS bounds coordinates to +/-180 / +/-90; anything larger means
-    the tag and the numbers disagree (bug D3).
+    the tag and the numbers disagree.
     """
     if gdf.crs is None:
         raise BuildError(f"{label}: layer has no CRS tag")

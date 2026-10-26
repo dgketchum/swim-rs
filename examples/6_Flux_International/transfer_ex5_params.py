@@ -2,7 +2,7 @@
 
 Applies the fixed Example 5 (paper E1) cropland median parameter vector to
 every site in the canonical Example 6 (paper E2) 66-site international
-cropland cohort, runs a forward simulation (no local recalibration), and scores
+cropland cohort, runs a forward simulation (no local calibration), and scores
 the transferred ET against flux-tower ET using the same validation rules as the
 published E2 analysis (``evaluate.py``).
 
@@ -18,10 +18,10 @@ with the published numbers:
 (the pooled transfer). ``--params-by-site`` additionally takes a nested
 ``{site_id: {param: value}}`` mapping and scores it as the
 ``ex5_transfer_strat`` configuration -- the irrigation-stratified Ex5
-canonical-run transfer (``ex5_paths.CANONICAL_RUN``; Run 22 before the run23
-recal), in which each site receives the irrigated or the rainfed class vector
+canonical-run transfer (``ex5_paths.CANONICAL_RUN``), in which each site
+receives the irrigated or the rainfed class vector
 according to the canonical two-stage satellite irrigation classifier. Supplying
-both yields all five handoff comparators from one invocation on identical common
+both yields all five comparators from one invocation on identical common
 support: E2 defaults, pooled Ex5 transfer, irrigation-stratified Ex5
 transfer, local E2 satellite calibration, and the interpolated Landsat ensemble
 context. Unlike the optional LULC comparator, the stratified mapping must cover
@@ -53,10 +53,10 @@ the two runs are never confused on disk: per-site series under
 ``evaluation_monthly_metrics_strat.csv``, ``pooled_metrics_daily_strat.csv`` and
 ``pooled_metrics_monthly_strat.csv``.
 
-``--require-empty-out`` (off by default, for backward compatibility) refuses to
-run if the output directory already holds any ``*.csv``. Use it for any archived
-run: ``_write_pooled_metrics`` re-reads ``{site}.csv`` off the output directory,
-so a stale per-site CSV left by an earlier run would otherwise be pooled in
+``--require-empty-out`` (off by default) refuses to run if the output directory
+already holds any ``*.csv``. Use it for any archived run:
+``_write_pooled_metrics`` re-reads ``{site}.csv`` off the output directory, so a
+per-site CSV left there by another invocation would otherwise be pooled in
 silently.
 
 Usage:
@@ -111,8 +111,8 @@ MIN_MONTHLY_OBS = 6  # paired months for a monthly site metric
 # is core -- when supplied it joins the common-site index and the paired
 # win-rate/summary machinery -- but it is only instantiated when
 # ``--params-by-site`` is given, so downstream code keys off frame presence.
-# The ``e3_*`` keys and "E2" labels are legacy names for Example 6 (paper E2): the frozen
-# transfer CSVs under paper/data/final and the figure builder key on them, so they stay.
+# The ``e3_*`` keys and their labels are the internal names for Example 6 (paper E2); the
+# frozen transfer CSVs under paper/data/final and the figure builder key on them.
 STRAT_CONFIG = "ex5_transfer_strat"
 CORE_CONFIGS = ["e3_uncal", "ex5_transfer", STRAT_CONFIG, "e3_cal", "ls_ensemble"]
 CONFIG_LABELS = {
@@ -405,14 +405,14 @@ def main():
         "--lulc-params",
         default=None,
         help="Optional LULC-default params JSON to add as a second no-calibration comparator. "
-        "Off by default; the legacy lulc_global_params.json predates the 66-site cohort and "
+        "Off by default; lulc_global_params.json is not built for the 66-site cohort and "
         "should be regenerated before formal manuscript use.",
     )
     parser.add_argument(
         "--require-empty-out",
         action="store_true",
-        help="Refuse to run if --out already contains any *.csv. Off by default for "
-        "backward compatibility; recommended for archived runs, because pooled metrics "
+        help="Refuse to run if --out already contains any *.csv. Off by default; "
+        "recommended for archived runs, because pooled metrics "
         "are re-read from the per-site CSVs in that directory.",
     )
     args = parser.parse_args()

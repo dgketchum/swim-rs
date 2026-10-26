@@ -26,15 +26,14 @@ from .paths import FINAL, SCRIPT_VERSION
 # Figure 3 -- pooled daily ET agreement and temporal-support effects
 # --------------------------------------------------------------------------
 #
-# Contract: paper/notes/fig03_production_handoff.md (2026-09-01).
 # Figure 3 is a display-only transformation of the promoted E1 benchmark
 # package. It never reconstructs OpenET independently and never reads a model
-# archive, container, or legacy e2_* metric table. The promoted evaluator-owned
+# archive, container, or e2_* metric table. The promoted evaluator-owned
 # paired record supplies every plotted daily value and temporal class; grouped
 # contrasts and interactions are copied only after exact recomputation checks.
 #
-# The fig03_example_* files remain Figure 1 example-source artifacts only
-# (historical filenames retained). This builder re-registers their manifest
+# The fig03_example_* files are Figure 1 example-source artifacts only (the
+# fig03_* filenames are fixed). This builder re-registers their manifest
 # records but never touches their content.
 
 FIG03_SOURCE = FINAL / "e1_openet_benchmark"
@@ -150,7 +149,11 @@ def _fig03_grouped_estimate(
 
 
 def _fig03_quarantine_legacy_package() -> list[str]:
-    """Move the pre-openet-core display package aside once, before replacement."""
+    """Move tables from a previous build of this figure to ``superseded_fig03_pre_openet_core``.
+
+    Runs only when the existing ``fig03_metadata.json`` names a source package other
+    than ``paper/data/final/e1_openet_benchmark``.
+    """
     meta_path = paths.OUT / "fig03_metadata.json"
     if not meta_path.exists():
         return []
@@ -660,7 +663,7 @@ def build_fig03() -> None:
         **common_meta,
     )
 
-    # Preserve historical fig03_* names that are owned by Figure 1.
+    # Keep the fig03_* names that are owned by Figure 1.
     prior_manifest_path = paths.OUT / "fig_manifest.json"
     if not prior_manifest_path.exists():
         raise BuildError("fig03: fig_manifest.json missing; cannot re-register Figure 1 provenance")

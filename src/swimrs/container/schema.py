@@ -248,9 +248,9 @@ ACCEPT_NAN_PARAMS: list[str] = REQUIRED_MET_IRR + REQUIRED_MET_UNIRR + ["swe"]
 
 # Canonical container paths where SWE may be stored, in priority order.
 # Single source of truth for the obs exporter, PestBuilder, and model input
-# builder — these three previously kept divergent lists, which silently
-# zero-weighted all SWE observations when a container stored SWE at a path
-# one of them didn't check (e.g. meteorology/era5/swe in Example 6).
+# builder. All three must check the same paths: a SWE path one of them misses
+# silently zero-weights every SWE observation for a container that stores SWE
+# there (e.g. meteorology/era5/swe in Example 6).
 SWE_PATHS: list[str] = ["snow/snodas/swe", "snow/era5/swe", "meteorology/era5/swe"]
 
 

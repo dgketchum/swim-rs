@@ -1,12 +1,11 @@
 """Build the Example 6 (paper E2) per-site irrigation-stratified param mapping.
 
-Expands the two frozen Ex5 canonical-run class vectors (``ex5_paths.CANONICAL_RUN``;
-Run 22 before the run23 recal) into a per-site
-``{sid: {param: value}}`` mapping covering the full 66-site E2 publication
+Expands the two frozen Ex5 canonical-run class vectors (``ex5_paths.CANONICAL_RUN``)
+into a per-site ``{sid: {param: value}}`` mapping covering the full 66-site E2 publication
 cohort, so ``../transfer_ex5_params.py --params-by-site`` can score the
 irrigation-stratified transfer against the pooled transfer on identical support.
 
-Target-class policy (handoff, "Target-class policy > E2"): the first-stage
+Target-class policy: the first-stage
 site-level "equipped for irrigation" result of the canonical two-stage local
 satellite ET/precipitation classifier selects the vector -- equipped site gets
 the irrigated vector, not equipped gets the rainfed vector. The second-stage
@@ -20,8 +19,8 @@ annual test (~L1268-1316) and then discarded: it is written to neither the
 container nor any CSV/JSON. The only persisted record is
 ``derived/dynamics/irr_data``, whose per-year dicts carry
 ``('f_irr', 'irr_doys', 'irrigated')``. Stage 1 is therefore recovered here as
-"the site has at least one irrigated year in ``irr_data``". That recovery has been
-independently verified to reproduce the stage-1 rule exactly on this container:
+"the site has at least one irrigated year in ``irr_data``". That recovery reproduces
+the stage-1 rule exactly on this container:
 equipped is True for exactly 14 sites, with zero equipped-but-never-activated
 sites and zero activated-but-not-equipped sites. Note ``properties/irrigation/irr``
 does not exist in any E2 container -- that is the CONUS ``use_mask`` path.
@@ -29,8 +28,8 @@ does not exist in any E2 container -- that is the CONUS ``use_mask`` path.
 No flux ET and no meter record enters classification: irrigation status comes from
 remote-sensing ET, precipitation, and land cover only.
 
-Reconciliation, asserted here (handoff stop condition: "the final E2 cohort does
-not reconcile independently of the 75-site container"):
+Reconciliation, asserted here (the final E2 cohort must reconcile independently of
+the 75-site container):
 
     container scope (75 sites)  : 14 ever-irrigated sites / 175 irrigated site-years
     cohort scope    (66 sites)  : 13 ever-irrigated sites / 163 irrigated site-years
@@ -47,9 +46,8 @@ Usage:
         --vectors paper/data/final/e2_<run>_transfer_vectors_by_irrigation.json \\
         --config examples/6_Flux_International/<run>.toml   # container + cohort shapefile
 
-Output file names keep the legacy ``e3_`` prefix (Example 6 was "Experiment 3" before the
-paper renumbering); the frozen artifacts under ``paper/data/final`` and the figure builder
-key on those names.
+Output file names carry the internal ``e3_`` prefix for Example 6; the frozen artifacts
+under ``paper/data/final`` and the figure builder key on those names.
 
 This script only reads existing artifacts. It does NOT run the model, rebuild a
 container, calibrate, or call Earth Engine.
@@ -86,7 +84,7 @@ DEFAULT_VECTORS = ex6_paths.FINAL_DIR / ex6_paths.TRANSFER_VECTORS_BY_IRRIGATION
 DEFAULT_OUT_DIR = REPO_ROOT / "paper" / "data" / "final"
 UID_COL = "sid"
 
-# Frozen expectations. These are the handoff's cohort-reconciliation numbers; a
+# Frozen expectations: the cohort-reconciliation numbers above; a
 # mismatch is a stop condition, not something to work around.
 EXPECTED_CONTAINER_SITES = 75
 EXPECTED_COHORT_SITES = 66

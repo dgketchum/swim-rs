@@ -133,13 +133,13 @@ class ProjectConfig:
             "kr_alpha",
         ]
         # WP-C1 scheduler-realism knobs to activate as calibratable parameters.
-        # Empty by default so existing projects (Ex5/6/7) are unchanged; set e.g.
+        # Empty by default, which leaves the PEST parameter set unchanged; set e.g.
         # ["refill_frac", "min_irr_days"] in the TOML [calibration] section to add
         # them to the PEST parameter set.
         self.scheduler_calibration_params = []
         # WP-C4 SMAP surface-soil-moisture (SSM) anomaly objective term. OFF by
-        # default so every existing calibration (Ex5/6/7, e8cal, e8c1) is byte-for-
-        # byte unchanged. When ssm_calibration=True, PestBuilder adds a third
+        # default, which leaves the control file byte-for-byte unchanged. When
+        # ssm_calibration=True, PestBuilder adds a third
         # observation group (deseasonalized SMAP L3 surface anomaly vs the modeled
         # FAO-56 surface-layer anomaly). The SSM target is the SMAP *satellite*
         # product only (ssm_data_path); in-situ SCAN theta is never a calibration input.
@@ -153,9 +153,9 @@ class ProjectConfig:
         self.ssm_gated_sites = []  # footprint-compromised SMAP pixels to exclude
         # WP-C5: free the surface evap-layer capacities (REW/TEW) as calibratable
         # parameters. Only meaningful with ssm_calibration=True — the SMAP surface
-        # observation is what identifies them (ET alone cannot; they were dropped in
-        # 5f79a8c for exactly that reason). OFF by default so e8c4 and every prior
-        # run stay byte-for-byte reproducible; a new config opts in for the e8c5 A/B.
+        # observation is what identifies them (ET alone cannot, so they stay fixed
+        # at their FAO-56 values otherwise). OFF by default, which leaves the
+        # control file byte-for-byte unchanged; a config opts in explicitly.
         self.ssm_surface_capacity = False
         self.workers = None
         self.realizations = None
@@ -442,7 +442,7 @@ class ProjectConfig:
                     f"misc.stress_depletion_fraction={sdf!r} must be a fraction in (0, 1)."
                 )
             self.stress_depletion_fraction = sdf
-        # IER has been retired; only Curve Number runoff is supported.
+        # Only Curve Number runoff is supported.
         runoff_process = (misc_conf.get("runoff_process", "cn") or "cn").strip().lower()
         if runoff_process != "cn":
             raise ValueError(

@@ -1,8 +1,8 @@
 """
 Container-based data preparation workflow for 5_Flux_Ensemble.
 
-This module replicates the functionality of data_prep.py but uses the
-SwimContainer approach instead of the multi-file Parquet/JSON approach.
+This module assembles the project's inputs into a single SwimContainer
+(Zarr store) from the project shapefile and the data extracts.
 
 The container workflow:
     1. Create container from shapefile

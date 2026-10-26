@@ -15,9 +15,9 @@ disk and what was approved:
   uses, so every unit gets a terminal category: ``delivered-valid-file``, ``delivered-nodata``,
   ``delivered-implausible``, ``checksum-fail``, ``missing-file`` or ``manifest-error`` (a product on
   disk that was never requested);
-* **coverage projection** (user question 2026-09-07) — the container's PT-JPL capture dates for
-  the 66-site cohort are compared with the SSEBop dates it holds now and with the dates the
-  delivery adds, by year and by site;
+* **coverage projection** — the container's PT-JPL capture dates for the 66-site cohort are
+  compared with the SSEBop dates it holds and with the dates the delivery adds, by year and
+  by site;
 * ``--freeze`` — after a passing gate, hashes every raw and extracted file into
   ``le07_repair_frozen_hashes.sha256`` and removes write permission from them.
 

@@ -151,10 +151,8 @@ def kcb_affine(
 
     Kcb = ndvi_beta * NDVI + ndvi_alpha
 
-    This is the standard remote-sensing crop-coefficient form and the relation
-    SWIM's predecessor used before the sigmoid (``model/obs_kcb_daily.py``,
-    removed in ``d77bc84``). Slope and intercept are both free, so the curve is
-    two-parameter like the sigmoid.
+    This is the standard remote-sensing crop-coefficient form. Slope and
+    intercept are both free, so the curve is two-parameter like the sigmoid.
 
     Parameters
     ----------
@@ -163,9 +161,9 @@ def kcb_affine(
     kc_max : (n_fields,)
         Maximum crop coefficient per field, used only as the upper clip
     ndvi_alpha : (n_fields,)
-        Intercept, historically ~0.2 with bounds [-0.7, 1.5]
+        Intercept, typically ~0.2 with bounds [-0.7, 1.5]
     ndvi_beta : (n_fields,)
-        Slope, historically ~1.25 with bounds [0.5, 1.7]
+        Slope, typically ~1.25 with bounds [0.5, 1.7]
 
     Returns
     -------
@@ -178,9 +176,8 @@ def kcb_affine(
     parameterized directly by slope and intercept, which is what makes it a
     drop-in two-parameter replacement for the logistic.
 
-    The clip to ``[0, Kc_max]`` is a deliberate departure from the legacy
-    implementation, which had none. Downstream ``fc`` and root-depth ratios
-    assume ``Kcb <= Kc_max``; an unclipped ramp violates that at high NDVI.
+    The ramp is clipped to ``[0, Kc_max]``. Downstream ``fc`` and root-depth
+    ratios assume ``Kcb <= Kc_max``; an unclipped ramp violates that at high NDVI.
     """
     n = ndvi.shape[0]
     kcb = np.empty(n, dtype=np.float64)

@@ -1,9 +1,10 @@
 """Promote a whole Example 5 run's E1 benchmark record into ``paper/data/final/``.
 
-Tracked producer for the run-dependent E1 packages. When a recalibration
-replaces the canonical run (``ex5_paths.CANONICAL_RUN``), the frozen packages
-below are moved, never deleted, to ``paper/data/final/<superseded-name>/`` with
-a README, and the new run's products are byte-copied in:
+Tracked producer for the run-dependent E1 packages. When the promoted run
+(``ex5_paths.CANONICAL_RUN`` unless ``--run``) differs from the run the frozen
+packages were built on, the previously frozen packages below are moved, never
+deleted, to ``paper/data/final/<superseded-name>/`` with a README, and the
+promoted run's products are byte-copied in:
 
     <run>/evaluation_daily_volk/{evaluation_grouped_daily_{metrics,contrasts}.csv,
         evaluation_grouped_daily_metadata.json, evaluation_metrics.csv,
@@ -30,7 +31,7 @@ daily source (gate). ``e1_openet_benchmark/reconstruction_fidelity/`` is
 run-independent (OpenET native monthly vs the ETf-first reconstruction; no SWIM
 input) and is never touched.
 
-Promotion order for a new canonical run:
+Promotion order for a canonical run:
 
   (a) ``promote_e1_run.py --write`` (this script): benchmark record + ablation;
   (b) ``rebuild_e1_benchmark_evidence.py --run-dir <run> --output-dir <scratch>``
@@ -71,7 +72,7 @@ or ``PROMOTION_STATE: DIFFERS``.
 Usage:
     uv run python examples/5_Flux_Ensemble/promote_e1_run.py                  # check
     uv run python examples/5_Flux_Ensemble/promote_e1_run.py --write
-    uv run python examples/5_Flux_Ensemble/promote_e1_run.py --run run22 --allow-dirty
+    uv run python examples/5_Flux_Ensemble/promote_e1_run.py --run <tag> --allow-dirty
 """
 
 import argparse
@@ -858,8 +859,8 @@ def main(argv=None):
         "--ablation-monthly-primary",
         default=None,
         help="per-site monthly table the spread arm must equal (default: the monthly source's "
-        "evaluation_monthly_metrics.csv; Run 22's ablation is on the 28-day rule, so pass "
-        "superseded_e1_monthly_28day/evaluation_monthly_metrics.csv for it)",
+        "evaluation_monthly_metrics.csv; for an ablation scored on the 28-day monthly rule "
+        "pass superseded_e1_monthly_28day/evaluation_monthly_metrics.csv)",
     )
     ap.add_argument("--archive-dir", default=None, help="default: <run>/archive/6_evaluation")
     ap.add_argument(

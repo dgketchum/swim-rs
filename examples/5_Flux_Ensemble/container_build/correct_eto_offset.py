@@ -1,29 +1,25 @@
-"""Correct the next-day reference-ET divisor in the Example 5 ETf extract tables.
+"""Re-divide ET-denominated Example 5 ETf extract tables by calendar-day ETo.
 
-``data_extract.py`` (before the calendar-day join fix) divided PT-JPL, geeSEBAL
-and DisALEXI scene ET by the OpenET reference ETo image of the *following*
-calendar day: the scene ``system:time_start`` carries the UTC acquisition hour,
-and a one-day window opened there returns the next 00:00 image. The stored
-fraction is therefore ET(d) / ETo(d+1). The three EToF-native members
-(SSEBop, SIMS, eeMETRIC) are unaffected.
+The six member tables are ET-fraction. Three members (SSEBop, SIMS, eeMETRIC)
+are delivered as EToF; the other three (PT-JPL, geeSEBAL, DisALEXI) are
+delivered as ET and divided by OpenET reference ETo on extraction. Tables whose
+fraction was formed against the ETo of the following calendar day, ET(d) /
+ETo(d+1), are re-divided here as
 
-This script rewrites the affected wide tables as
-
-    etf_fixed(d) = etf_stored(d) * ETo(d+1) / ETo(d)
+    etf(d) = etf_stored(d) * ETo(d+1) / ETo(d)
 
 using the calendar-stamped OpenET ETo table (``openet_refet/openet_eto.csv``),
-which is the same collection the extractor divided by. Nothing is filtered
-here: the builder (``build_container.ingest_new_etf``) applies the
-[0.05, 2.0] validity window at ingest, so correcting before the filter lets
-values that were wrongly dropped come back and drops values that were wrongly
-kept. The output directory mirrors the input directory (unchanged members and
-summaries are copied), so it can be passed straight to
+the same collection the extractor divides by. Nothing is filtered here: the
+builder (``build_container.ingest_new_etf``) applies the [0.05, 2.0] validity
+window at ingest, so the window acts on the re-divided values. The output
+directory mirrors the input directory (members and summaries outside
+``--models`` are copied as they are), so it can be passed straight to
 ``build_container.py --etf-dir``.
 
 Usage:
-    uv run python correct_eto_offset.py --etf-dir data/etf_v21_openet_eto \\
+    uv run python correct_eto_offset.py --etf-dir data/etf_v21_openet_eto_nextday \\
         --eto-csv data/openet_refet/openet_eto.csv \\
-        --out-dir data/etf_v21_openet_eto_fixed
+        --out-dir data/etf_v21_openet_eto
 """
 
 import argparse
@@ -86,7 +82,7 @@ def next_day_factor(eto):
 
 
 def correct_frame(df, eto):
-    """Undo the next-day divisor on a dates x sites ETf frame.
+    """Re-divide a dates x sites ETf frame by calendar-day ETo.
 
     Returns ``(corrected, factor)`` with the NaN pattern of ``df`` preserved.
     Raises ``ValueError`` if any valid value lacks a positive ETo on d or d+1.
@@ -237,7 +233,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--etf-dir", required=True, help="Directory of {model}_etf_no_mask.csv")
     parser.add_argument("--eto-csv", required=True, help="Calendar-stamped OpenET ETo table")
-    parser.add_argument("--out-dir", required=True, help="New directory for corrected tables")
+    parser.add_argument(
+        "--out-dir", required=True, help="Directory for the re-divided tables (must not exist)"
+    )
     parser.add_argument(
         "--models",
         nargs="+",

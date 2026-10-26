@@ -328,9 +328,9 @@ def check_regression(root: zarr.Group, base: zarr.Group) -> dict:
         same, diff = nan_equal(a, b)
         out["arrays"][path] = {"present_in_both": True, "identical": same, "max_abs_diff": diff}
         if path == "properties/soils/awc" and not same:
-            # The baseline container stored HWSD AWC as delivered (mm/m); the container
-            # convention is m/m (HANDOFF_HWSD_AWC_UNITS_RECAL 2026-09-21). The refreshed
-            # container must reproduce the baseline exactly after the x1000 conversion.
+            # The baseline container stores HWSD AWC as delivered (mm/m); the container
+            # convention is m/m. The container must reproduce the baseline exactly after the
+            # x1000 conversion.
             same_units, diff_units = nan_equal(a.astype(float) * 1000.0, b.astype(float), atol=1e-3)
             out["arrays"][path].update(
                 {
@@ -383,7 +383,7 @@ REGRESSION_EXPLAINED = {
 
 
 def _parse_sentinel_csv_max(csv_file, known: set[str]) -> list[pd.Series]:
-    """The pre-c16263c parse of one Sentinel CSV: same-date tiles collapsed by ``max``."""
+    """The baseline-build parse of one Sentinel CSV: same-date tiles collapsed by ``max``."""
     df = pd.read_csv(csv_file)
     if "sid" not in df.columns:
         first = df.columns[0]
@@ -413,9 +413,10 @@ def replay_sentinel_ndvi(
 ) -> np.ndarray:
     """Re-run the Sentinel NDVI ingest from the CSV directory in the ingestor's own file order.
 
-    ``rule="mean"`` uses the live ``_parse_single_csv``; ``rule="max"`` uses the pre-c16263c
-    collapse. Multiple CSVs per field merge by ``combine_first`` in glob order, then the
-    ingestor's ``min_ndvi`` and consecutive-day filters apply, as in ``Ingestor.ndvi``.
+    ``rule="mean"`` uses the ingestor's ``_parse_single_csv``; ``rule="max"`` uses the
+    ``max`` collapse the baseline container was built with. Multiple CSVs per field merge by
+    ``combine_first`` in glob order, then the ingestor's ``min_ndvi`` and consecutive-day
+    filters apply, as in ``Ingestor.ndvi``.
     """
     from collections import defaultdict
     from pathlib import Path

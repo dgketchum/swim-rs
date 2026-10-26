@@ -1,6 +1,6 @@
 """E2 closure-corrected pool: re-cut of the Cat 6 evaluation archive on the 47 EBR sites.
 
-Decision 2026-09-08: the paper's E2 evaluation pool is the closure-corrected towers only
+The paper's E2 evaluation pool is the closure-corrected towers only
 (``flux_et_col == "ET_corr"``: energy-balance-ratio corrected LE, flux-data-qaqc strict branch).
 The 16 raw-ET towers (no Rn and/or G, so no closure correction was possible) do not appear in
 the paper. Calibration ran on the full 66-site cohort and is not redone here.
@@ -15,8 +15,8 @@ member on the pool via ``derived_metrics.collect``; skip it with ``--skip-member
 
 Outputs (``<archive>/6_evaluation/closure_pool/`` by default):
 
-* ``closure_pool_sites.csv``        — the pool with country/continent (from the site-id prefix,
-                                       which also fixes the ``US``/``USA`` label defect),
+* ``closure_pool_sites.csv``        — the pool with country/continent (from the ISO site-id
+                                       prefix, so each country carries one label),
                                        region, irrigation class, paired days/months
 * ``headline_aggregates.csv``       — medians/means for SWIM, benchmark and the paired
                                        difference; ``tier`` in {closure_corrected, raw, all}
@@ -647,8 +647,8 @@ def main():
     # row of the closure pool: flux, SWIM and the Landsat-ensemble benchmark all finite) and
     # derived_metrics.py (``derived_uncal_baseline_persite.csv``, flux + SWIM finite only). The
     # CANONICAL row is the rs-gated one, so the uncalibrated model is scored on exactly the days
-    # as the calibrated model, the benchmark and the transfers it is compared with (HANDOFF
-    # HWSD_AWC_UNITS_RECAL section 6.5). The flux+SWIM-mask summary is kept as a secondary file.
+    # as the calibrated model, the benchmark and the transfers it is compared with. The
+    # flux+SWIM-mask summary is kept as a secondary file.
     unc_rows = []
     for state, key in (("cal", "e3_cal"), ("uncal", "e3_uncal")):
         cols = {k: f"{key}_{k}" for k in ("r2", "rmse", "bias", "kge")}

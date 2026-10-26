@@ -4,8 +4,7 @@ Every on-disk location is built from ``root`` in ``5_Flux_Ensemble.toml``; chang
 that one line to relocate the workspace. Nothing here is read at import time
 because ``ProjectConfig.read_config`` creates the project workspace directory.
 
-    CANONICAL_RUN  internal archive tag of the canonical E1 calibration (run23; it
-                   replaced the published Run 22 after the next-day ETo ETf-target fix)
+    CANONICAL_RUN  archive tag of the E1 calibration (run23)
 """
 
 import os
