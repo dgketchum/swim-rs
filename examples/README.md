@@ -116,9 +116,18 @@ is silent when the files are identical; a rebuild on other hardware may
 differ in the last digit of a few statistics, which `diff` shows. A cohort,
 sign, or file-set difference is a failure.
 
+Each block below is also a Python script under `scripts/reproduction/`
+(`run_e1_reproduction.py`, `run_e2_reproduction.py`, `run_e0_reproduction.py`,
+`run_e3_reproduction.py`) that makes the same calls as the commands, in
+order, as functions of the example modules, so the forward runs and the
+scoring can be stepped through in a debugger. Each script sets the data root
+and scratch directory in two constants at its top (`ROOT`, `SCRATCH`), runs
+every step or the ones named on its command line, and reports which compared
+files differ from the shipped copies.
+
 **E1 (Example 5).** Daily and monthly benchmark, retrieval-support
 decomposition, spread–error, conditioned-ensemble spread, weighting-ablation
-summary, within-E1 transfer.
+summary, within-E1 transfer. Script: `scripts/reproduction/run_e1_reproduction.py`.
 
 ```bash
 EX5=examples/5_Flux_Ensemble; CFG=$EX5/5_Flux_Ensemble.toml; DATA=$SWIM_ROOT/5_Flux_Ensemble/data; RUN23=$SWIM_ROOT/5_Flux_Ensemble/results/run23; S=$SWIM_SCRATCH/e1
@@ -139,7 +148,10 @@ uv run python $EX5/e1_period_split.py                                           
 
 **E0 and E2 (Example 6).** Daily, monthly, and ETf evaluation of the
 published calibration, the E1 parameter transfer, the closure-pool summaries,
-the E0 formulation comparison, and product parity.
+the E0 formulation comparison, and product parity. Script:
+`scripts/reproduction/run_e2_reproduction.py`; the six E0 arm comparisons
+alone, with the comparison body re-stated for stepping, are
+`scripts/reproduction/run_e0_reproduction.py`.
 
 ```bash
 EX6=examples/6_Flux_International; CFG=$EX6/6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr.toml; RUN=6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr; RESULTS=$SWIM_ROOT/6_Flux_International/results; ARCHIVE=$RESULTS/$RUN/archive; S=$SWIM_SCRATCH/e2
@@ -171,7 +183,7 @@ the commands above refilled; build stamps, machine paths, and the hashes of
 inputs the steps rewrote are not compared.
 
 **E3 (Example 7).** The two parameter paths scored on the metered fields, and
-the Table 6 statistics.
+the Table 6 statistics. Script: `scripts/reproduction/run_e3_reproduction.py`.
 
 ```bash
 EX7=examples/7_Applied_Water; E7=$SWIM_ROOT/7_Applied_Water; S=$SWIM_SCRATCH/e3
