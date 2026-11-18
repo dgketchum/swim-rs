@@ -80,14 +80,12 @@ and the figure builder follows `SWIM_ROOT` (`project_root_override` on
 ### 2. Unpack
 
 The bucket is private: ask for access for your Google account. `gsutil` needs
-an interactive `gcloud auth login`; with application-default credentials alone
-it returns 401, but the JSON API accepts the same credentials:
+an interactive `gcloud auth login` first; application-default credentials
+alone return 401:
 
 ```bash
 mkdir -p $SWIM_PACKAGES $SWIM_ROOT $SWIM_SCRATCH
 gsutil -m cp "gs://wudr/swim/reprod/*.tar.gz" gs://wudr/swim/reprod/MANIFEST.json $SWIM_PACKAGES/   # after gcloud auth login
-# or, with application-default credentials only:
-TOKEN=$(gcloud auth application-default print-access-token); for f in MANIFEST.json swim_data_e1.tar.gz swim_data_e2.tar.gz swim_data_e3.tar.gz swim_repo_local.tar.gz swim_reference_final.tar.gz swim_e3_truth_sources.tar.gz; do curl -sfL -H "Authorization: Bearer $TOKEN" -o $SWIM_PACKAGES/$f "https://storage.googleapis.com/storage/v1/b/wudr/o/swim%2Freprod%2F$f?alt=media"; done
 for p in e1 e2 e3; do tar -xzf $SWIM_PACKAGES/swim_data_$p.tar.gz -C $SWIM_ROOT; done
 tar -xzf $SWIM_PACKAGES/swim_repo_local.tar.gz -C $SWIM_REPO
 tar -xzf $SWIM_PACKAGES/swim_reference_final.tar.gz -C $SWIM_REPO
@@ -172,11 +170,9 @@ uv run python $EX6/product_parity/e1_e2_product_parity.py --out-dir $S/product_p
 uv run python $EX6/promote_final.py --config $CFG                                        # check: match / match~ for every file
 ```
 
-The six `pooled_arm_compare.py` invocations print `GATE PASS` when arm A wins
-the pooled metrics and `GATE FAIL`, with exit status 1, when it does not: the
-two `grassbasis` pairs pass and the `fao56_sig` vs `fao56` pair fails, because
-the sigmoid arm scores below the linear one (Table 3). The exit status is the
-comparison's verdict, not an error. The `promote_final.py` check reports
+The six `pooled_arm_compare.py` invocations print the pooled daily and monthly
+metrics of both arms and the per-site paired differences (Table 3); they apply
+no pass/fail rule. The `promote_final.py` check reports
 `match` (byte-equal) or `match~` (equal within floating-point round-off) for
 every file of `paper/data/final/e2_closure_pool/` against the run directory
 the commands above refilled; build stamps, machine paths, and the hashes of
