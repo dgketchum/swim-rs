@@ -172,6 +172,7 @@ def run_uncalibrated_model(cfg, container, fids):
             fields=fids,
             empirical_kc_max=True,
             mask_mode=getattr(cfg, "mask_mode", "none"),
+            **ev.physics_kwargs(cfg),
         )
         output, _ = run_daily_loop_fast(swim_input)
         dates = pd.date_range(swim_input.start_date, periods=swim_input.n_days, freq="D")

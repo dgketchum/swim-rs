@@ -170,11 +170,8 @@ for SET in disjoint37:disjoint_sites.txt pool47:closure_pool_sites.txt; do TAG=$
 
 The six outputs (three pairs × `disjoint37`, `pool47`) land under
 `$RESULTS/e0_disjoint/` and are checked by step 8. Each invocation prints
-`GATE PASS` when arm A wins the pooled metrics and `GATE FAIL`, with exit
-status 1, when it does not: the two `grassbasis` pairs pass and the
-`fao56_sig` vs `fao56` pair fails, because the sigmoid arm scores below the
-linear one (Table 3). The exit status is the comparison's verdict, not an
-error.
+the pooled daily and monthly metrics of both arms and the per-site paired
+differences (Table 3); it applies no pass/fail rule.
 
 **7. Product parity** (Table S10)
 

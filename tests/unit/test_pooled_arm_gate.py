@@ -1,10 +1,9 @@
-"""Gate logic for the pooled two-arm transpiration-form comparison.
+"""Metric directions of the pooled two-arm vegetation-formulation comparison.
 
-``pooled_arm_compare.decide`` is what determines whether a multi-hour follow-up
-calibration gets launched, so its metric directions are worth pinning down:
+``pooled_arm_compare.pooled_table`` labels the better arm on each pooled metric:
 RMSE lower-is-better, KGE higher-is-better, and MBE compared on **absolute**
 value (a signed bias of -0.01 beats +0.30, and naive "lower wins" would get
-that backwards).
+that backwards). The table reports the metrics; it applies no pass/fail rule.
 """
 
 import importlib.util
@@ -49,27 +48,35 @@ def _pooled(obs, a, b):
     return {"obs": np.asarray(obs), "a": np.asarray(a), "b": np.asarray(b)}
 
 
+def test_table_has_six_rows_and_no_verdict(mod):
+    """Three metrics at two scales, returned as a table and nothing else."""
+    rng = np.random.default_rng(3)
+    obs = rng.normal(3.0, 1.0, 400)
+    p = _pooled(obs, obs + rng.normal(0.0, 0.2, 400), obs + rng.normal(0.5, 0.9, 400))
+    table = mod.pooled_table("A", "B", p, p)
+    assert list(table["scale"]) == ["daily"] * 3 + ["monthly"] * 3
+    assert list(table["metric"]) == ["RMSE", "MBE", "KGE"] * 2
+    assert not {"passed", "wins_a", "gate"} & set(table.columns)
+
+
 def test_identical_arms_give_no_wins(mod):
-    """Two identical arms must not hand arm A a win on any metric."""
+    """Two identical arms must not label arm A the better one on any metric."""
     rng = np.random.default_rng(0)
     obs = rng.normal(3.0, 1.0, 400)
     same = obs + rng.normal(0.0, 0.4, 400)
     p = _pooled(obs, same, same)
-    table, wins_a, passed = mod.decide("A", "B", p, p)
-    assert wins_a == 0
-    assert not passed
+    table = mod.pooled_table("A", "B", p, p)
     assert set(table["winner"]) == {"B"}
+    assert (table["delta_a_minus_b"] == 0).all()
 
 
-def test_clearly_better_arm_a_passes(mod):
-    """Arm A closer to obs on every count wins all six and passes the gate."""
+def test_clearly_better_arm_a_is_labelled_on_every_metric(mod):
+    """Arm A closer to obs on every count is the better arm in all six rows."""
     rng = np.random.default_rng(1)
     obs = rng.normal(3.0, 1.0, 400)
     good = obs + rng.normal(0.0, 0.2, 400)
     bad = obs + rng.normal(0.8, 1.2, 400)
-    table, wins_a, passed = mod.decide("A", "B", _pooled(obs, good, bad), _pooled(obs, good, bad))
-    assert wins_a == 6
-    assert passed
+    table = mod.pooled_table("A", "B", _pooled(obs, good, bad), _pooled(obs, good, bad))
     assert set(table["winner"]) == {"A"}
 
 
@@ -78,29 +85,23 @@ def test_mbe_compared_on_absolute_value(mod):
     obs = np.full(200, 4.0)
     a = obs - 0.05  # MBE -0.05
     b = obs + 0.90  # MBE +0.90
-    table, _, _ = mod.decide("A", "B", _pooled(obs, a, b), _pooled(obs, a, b))
+    table = mod.pooled_table("A", "B", _pooled(obs, a, b), _pooled(obs, a, b))
     mbe = table[table["metric"] == "MBE"]
     assert (mbe["winner"] == "A").all(), "abs(MBE) must decide, not the signed value"
 
 
-def test_gate_threshold_is_four_of_six(mod):
-    """Exactly 4 wins passes; 3 does not."""
+def test_scales_are_scored_independently(mod):
+    """Arm A better daily and arm B better monthly is reported as exactly that."""
     rng = np.random.default_rng(2)
     obs = rng.normal(3.0, 1.0, 400)
-    # Arm A better daily, arm B better monthly -> 3/6, must fail.
     a_good = obs + rng.normal(0.0, 0.2, 400)
     b_bad = obs + rng.normal(0.6, 1.1, 400)
-    _, wins_split, passed_split = mod.decide(
-        "A", "B", _pooled(obs, a_good, b_bad), _pooled(obs, b_bad, a_good)
-    )
-    assert wins_split == 3
-    assert not passed_split
-
-    # Sanity: the documented rule is >= 4.
-    assert mod.decide("A", "B", _pooled(obs, a_good, b_bad), _pooled(obs, a_good, b_bad))[2]
+    table = mod.pooled_table("A", "B", _pooled(obs, a_good, b_bad), _pooled(obs, b_bad, a_good))
+    assert set(table.loc[table["scale"] == "daily", "winner"]) == {"A"}
+    assert set(table.loc[table["scale"] == "monthly", "winner"]) == {"B"}
 
 
 def test_metric_directions_declared(mod):
-    """The direction table is the single source of truth for 'who won'."""
+    """The direction table is the single source of truth for the better arm."""
     directions = dict(mod.METRICS)
     assert directions == {"rmse": "lower", "bias": "abs_lower", "kge": "higher"}

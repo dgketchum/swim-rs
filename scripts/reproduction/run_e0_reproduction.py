@@ -6,8 +6,8 @@ This is the six ``pooled_arm_compare.py`` invocations of the "E0 and E2
 calls. ``compare_arms`` re-states the script's ``main`` body: the two arm
 configs, their effective physics, the forward run of each arm from its own
 posterior (``arm_series`` -> ``run_calibrated_model``), the pooled pairing
-(``collect``), the gate (``decide``), and the per-site deltas are locals you
-can inspect. The three pairs run on the 37 disjoint sites and on the 47-site
+(``collect``), the pooled metrics (``pooled_table``), and the per-site deltas
+are locals you can inspect. The three pairs run on the 37 disjoint sites and on the 47-site
 closure pool, in README order.
 
 Run or debug it as-is: the data root and scratch directory are set in
@@ -16,9 +16,7 @@ Run or debug it as-is: the data root and scratch directory are set in
 Outputs go under ``OUT_ROOT`` and are compared byte-for-byte with the shipped
 copies under ``results/e0_disjoint``. The README writes in place there
 instead, because ``promote_final.py`` reads that directory; set ``OUT_ROOT``
-to ``RESULTS / "e0_disjoint"`` to do the same. The gate verdicts are also
-checked: both grassbasis pairs pass, and fao56_sig vs fao56 fails, which is
-the Table 3 result and not an error.
+to ``RESULTS / "e0_disjoint"`` to do the same.
 """
 
 import filecmp
@@ -59,10 +57,10 @@ ARMS = {  # name -> (config, posterior)
     "fao56_sig": (CFG_SIG, _posterior(f"{RUN}_fao56_sig")),
     "fao56": (CFG_LIN, _posterior(f"{RUN}_fao56")),
 }
-PAIRS = {  # pair -> (arm A, arm B, expected gate)
-    "grassbasis_vs_fao56_sig": ("grassbasis", "fao56_sig", True),
-    "grassbasis_vs_fao56": ("grassbasis", "fao56", True),
-    "fao56_sig_vs_fao56": ("fao56_sig", "fao56", False),
+PAIRS = {  # pair -> (arm A, arm B)
+    "grassbasis_vs_fao56_sig": ("grassbasis", "fao56_sig"),
+    "grassbasis_vs_fao56": ("grassbasis", "fao56"),
+    "fao56_sig_vs_fao56": ("fao56_sig", "fao56"),
 }
 SETS = {  # tag -> site list under examples/6_Flux_International/e0_disjoint
     "disjoint37": "disjoint_sites.txt",  # closure-pool sites outside the E1 cohort
@@ -70,7 +68,7 @@ SETS = {  # tag -> site list under examples/6_Flux_International/e0_disjoint
 }
 FILES = ["pooled_gate.csv", "pooled_per_site.csv", "paired_site_deltas.csv", "sites_excluded.csv"]
 
-DIFFERED = []  # (scratch file, shipped file) pairs that are not byte-identical, or gate surprises
+DIFFERED = []  # (scratch file, shipped file) pairs that are not byte-identical
 
 
 def compare(scratch_dir, shipped_dir, files):
@@ -84,7 +82,7 @@ def compare(scratch_dir, shipped_dir, files):
 
 
 def compare_arms(name_a, name_b, sites_file, out_dir):
-    """pooled_arm_compare.main for one pair and one site list; returns the gate verdict."""
+    """pooled_arm_compare.main for one pair and one site list."""
     (config_a, par_a), (config_b, par_b) = ARMS[name_a], ARMS[name_b]
     cfg_a = pac.load_arm_config(str(config_a))
     cfg_b = pac.load_arm_config(str(config_b))
@@ -111,7 +109,7 @@ def compare_arms(name_a, name_b, sites_file, out_dir):
     pooled_daily, pooled_monthly, per_site, excluded = pac.collect(
         fids, flux_sources, series_a, series_b
     )
-    table, wins_a, passed = pac.decide(name_a, name_b, pooled_daily, pooled_monthly)
+    table = pac.pooled_table(name_a, name_b, pooled_daily, pooled_monthly)
     site_deltas = pac.paired_site_deltas(per_site, name_a, name_b)
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -123,7 +121,6 @@ def compare_arms(name_a, name_b, sites_file, out_dir):
     print(f"\nPOOLED TWO-ARM COMPARISON: {len(per_site)} sites ({len(excluded)} excluded)")
     print(table.to_string(index=False, float_format=lambda v: f"{v:9.4f}"))
     print(site_deltas.to_string(index=False, float_format=lambda v: f"{v:9.4f}"))
-    print(f"{name_a} wins {wins_a} of 6 pooled metrics  ->  GATE {'PASS' if passed else 'FAIL'}")
 
     with open(out_dir / "pooled_gate.json", "w") as fh:
         json.dump(
@@ -142,29 +139,20 @@ def compare_arms(name_a, name_b, sites_file, out_dir):
                 "n_sites": int(len(per_site)),
                 "n_daily": int(len(pooled_daily["obs"])),
                 "n_monthly": int(len(pooled_monthly["obs"])),
-                "wins_a": int(wins_a),
-                "gate_rule": "arm A wins >= 4 of 6 pooled metrics",
-                "passed": bool(passed),
                 "metrics": table.to_dict(orient="records"),
                 "paired_site_deltas": site_deltas.to_dict(orient="records"),
             },
             fh,
             indent=2,
         )
-    return passed
 
 
 def run_pair(pair):
-    name_a, name_b, expect_pass = PAIRS[pair]
+    name_a, name_b = PAIRS[pair]
     for tag, sites in SETS.items():
         print(f"\n-- {pair} on {tag}")
         out = OUT_ROOT / pair / tag
-        passed = compare_arms(name_a, name_b, EX6 / "e0_disjoint" / sites, out)
-        if passed != expect_pass:
-            print(f"  UNEXPECTED: gate {'passed' if passed else 'failed'}")
-            DIFFERED.append(
-                (out / "pooled_gate.json", f"expected GATE {'PASS' if expect_pass else 'FAIL'}")
-            )
+        compare_arms(name_a, name_b, EX6 / "e0_disjoint" / sites, out)
         if out != SHIPPED / pair / tag:
             compare(out, SHIPPED / pair / tag, FILES)
         else:
@@ -194,7 +182,7 @@ def main(steps):
         for a, b in DIFFERED:
             print(f"  {a}\n    vs {b}")
     else:
-        print("every compared file is byte-identical to the shipped copy; every gate as expected")
+        print("every compared file is byte-identical to the shipped copy")
     return not DIFFERED
 
 

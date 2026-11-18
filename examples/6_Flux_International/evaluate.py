@@ -233,6 +233,23 @@ def _resolve_calibrated_params(
     return params_by_fid, f"container calibration ({container.path})"
 
 
+def physics_kwargs(cfg):
+    """The ``[misc]`` vegetation and stress settings of ``cfg`` as ``build_swim_input`` kwargs.
+
+    These are the six settings PestBuilder hands the calibration forward run, so a
+    posterior is scored under the formulation it was fitted with. Keys absent from
+    the TOML pass through as the builder defaults (cover-scaled sigmoid Kcb).
+    """
+    return {
+        "transpiration_cover_scaling": getattr(cfg, "transpiration_cover_scaling", True),
+        "transpiration_cover_mode": getattr(cfg, "transpiration_cover_mode", None),
+        "cover_linear_ndvi_bare": getattr(cfg, "cover_linear_ndvi_bare", None),
+        "cover_linear_ndvi_full": getattr(cfg, "cover_linear_ndvi_full", None),
+        "kcb_ndvi_mode": getattr(cfg, "kcb_ndvi_mode", None),
+        "stress_depletion_fraction": getattr(cfg, "stress_depletion_fraction", None),
+    }
+
+
 def run_calibrated_model(cfg, container, fids, calibrated_params):
     """Run model with calibrated parameters. Returns {fid: DataFrame}."""
     with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
@@ -254,6 +271,7 @@ def run_calibrated_model(cfg, container, fids, calibrated_params):
             fields=fids,
             empirical_kc_max=True,
             mask_mode=getattr(cfg, "mask_mode", "none"),
+            **physics_kwargs(cfg),
         )
 
         output, _ = run_daily_loop_fast(swim_input)

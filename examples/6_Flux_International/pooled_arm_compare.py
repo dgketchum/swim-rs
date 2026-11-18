@@ -4,8 +4,9 @@ Example 6 port of ``examples/5_Flux_Ensemble/pooled_arm_compare.py`` for the E0 
 confirmation: the Ex5 formulation trio re-run on the E2 cohort, scored on the sites that
 are NOT in the E1 (Ex5) calibration cohort. Two calibrated arms are run forward from their
 own posterior under their own physics and paired against the same flux observations on
-identical site-days; every site-day is pooled before RMSE / MBE / KGE are computed, and the
-Ex5 gate (arm A wins >= 4 of 6 pooled daily+monthly metrics) is applied.
+identical site-days; every site-day is pooled before RMSE / MBE / KGE are computed. The
+script reports the pooled metrics and the per-site paired differences and applies no
+pass/fail rule.
 
     arm A  cover-scaled sigmoid   kc_act = fc*Ks*Kcb + Ke,  Kcb = kc_max*sigmoid(NDVI)
            (6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr, no rerun)
@@ -164,9 +165,9 @@ def collect(fids, flux_sources, series_a, series_b):
     return cat, cat_mo, pd.DataFrame(per_site), pd.DataFrame(excluded, columns=["site", "reason"])
 
 
-def decide(name_a, name_b, pooled_daily, pooled_monthly):
-    """Ex5 E0 gate: arm A wins >= 4 of 6 pooled metrics."""
-    rows, wins_a = [], 0
+def pooled_table(name_a, name_b, pooled_daily, pooled_monthly):
+    """Pooled daily and monthly RMSE / MBE / KGE of both arms, one row per metric."""
+    rows = []
     for scale, p in (("daily", pooled_daily), ("monthly", pooled_monthly)):
         ma = calc_metrics(p["obs"], p["a"])
         mb = calc_metrics(p["obs"], p["b"])
@@ -178,7 +179,6 @@ def decide(name_a, name_b, pooled_daily, pooled_monthly):
                 a_wins = va > vb
             else:
                 a_wins = abs(va) < abs(vb)
-            wins_a += int(bool(a_wins))
             rows.append(
                 {
                     "scale": scale,
@@ -190,7 +190,7 @@ def decide(name_a, name_b, pooled_daily, pooled_monthly):
                     "delta_a_minus_b": va - vb,
                 }
             )
-    return pd.DataFrame(rows), wins_a, wins_a >= 4
+    return pd.DataFrame(rows)
 
 
 def paired_site_deltas(per_site, name_a, name_b):
@@ -278,7 +278,7 @@ def main():
     pooled_daily, pooled_monthly, per_site, excluded = collect(
         fids, flux_sources, series_a, series_b
     )
-    table, wins_a, passed = decide(args.a_name, args.b_name, pooled_daily, pooled_monthly)
+    table = pooled_table(args.a_name, args.b_name, pooled_daily, pooled_monthly)
     site_deltas = paired_site_deltas(per_site, args.a_name, args.b_name)
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -295,10 +295,6 @@ def main():
     print(table.to_string(index=False, float_format=lambda v: f"{v:9.4f}"))
     print("-" * 84)
     print(site_deltas.to_string(index=False, float_format=lambda v: f"{v:9.4f}"))
-    print("-" * 84)
-    print(
-        f"{args.a_name} wins {wins_a} of 6 pooled metrics  ->  GATE {'PASS' if passed else 'FAIL'}"
-    )
     print("=" * 84)
 
     with open(os.path.join(args.out_dir, "pooled_gate.json"), "w") as fh:
@@ -318,9 +314,6 @@ def main():
                 "n_sites": int(len(per_site)),
                 "n_daily": int(len(pooled_daily["obs"])),
                 "n_monthly": int(len(pooled_monthly["obs"])),
-                "wins_a": int(wins_a),
-                "gate_rule": "arm A wins >= 4 of 6 pooled metrics",
-                "passed": bool(passed),
                 "metrics": table.to_dict(orient="records"),
                 "paired_site_deltas": site_deltas.to_dict(orient="records"),
             },
@@ -328,7 +321,7 @@ def main():
             indent=2,
         )
     print(f"\nWrote {args.out_dir}/pooled_gate.json")
-    return 0 if passed else 1
+    return 0
 
 
 if __name__ == "__main__":

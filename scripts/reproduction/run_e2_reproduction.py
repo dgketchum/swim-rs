@@ -290,14 +290,13 @@ def step_month28():
     call_main(m28, ["--run-name", RUN])
 
 
-# --- 11. E0: pooled two-arm gates on the 37 disjoint sites and the 47-site pool
-# README: six pooled_arm_compare.py invocations; GATE PASS expected for the two
-#         grassbasis pairs, GATE FAIL (exit 1) expected for fao56_sig vs fao56
+# --- 11. E0: pooled two-arm comparisons on the 37 disjoint sites and the 47-site pool
+# README: six pooled_arm_compare.py invocations
 E0_SETS = {"disjoint37": "disjoint_sites.txt", "pool47": "closure_pool_sites.txt"}
-E0_PAIRS = [  # (a_name, a_config, a_par, b_name, b_config, b_par, expected gate)
-    ("grassbasis", CFG, POST, "fao56_sig", CFG_SIG, POST_SIG, True),
-    ("grassbasis", CFG, POST, "fao56", CFG_LIN, POST_LIN, True),
-    ("fao56_sig", CFG_SIG, POST_SIG, "fao56", CFG_LIN, POST_LIN, False),
+E0_PAIRS = [  # (a_name, a_config, a_par, b_name, b_config, b_par)
+    ("grassbasis", CFG, POST, "fao56_sig", CFG_SIG, POST_SIG),
+    ("grassbasis", CFG, POST, "fao56", CFG_LIN, POST_LIN),
+    ("fao56_sig", CFG_SIG, POST_SIG, "fao56", CFG_LIN, POST_LIN),
 ]
 
 
@@ -305,10 +304,10 @@ def step_e0():
     import pooled_arm_compare as pac
 
     for tag, sites_file in E0_SETS.items():
-        for a, a_cfg, a_par, b, b_cfg, b_par, expect_pass in E0_PAIRS:
+        for a, a_cfg, a_par, b, b_cfg, b_par in E0_PAIRS:
             out = RESULTS / "e0_disjoint" / f"{a}_vs_{b}" / tag
             print(f"\n-- {a} vs {b} on {tag}")
-            rc = call_main(
+            call_main(
                 pac,
                 [
                     "--a-name", a, "--a-config", a_cfg, "--a-par", a_par,
@@ -317,12 +316,6 @@ def step_e0():
                     "--out-dir", out,
                 ],
             )  # fmt: skip
-            passed = rc == 0
-            if passed != expect_pass:
-                DIFFERED.append(
-                    (out / "pooled_gate.json", f"expected GATE {'PASS' if expect_pass else 'FAIL'}")
-                )
-                print(f"  UNEXPECTED: gate {'passed' if passed else 'failed'}")
 
 
 # --- 12. E1/E2 product parity on the shared CONUS sites ----------------------
@@ -389,7 +382,7 @@ def main(steps):
         for a, b in DIFFERED:
             print(f"  {a}\n    vs {b}")
     else:
-        print("every compared file is byte-identical to the shipped copy; every gate as expected")
+        print("every compared file is byte-identical to the shipped copy")
     return not DIFFERED
 
 

@@ -96,7 +96,7 @@ HEADLINE_COLS = (
     "bias_median",
     "bias_mean",
 )
-GATE_KEYS = ("arm_a", "arm_b", "n_sites", "n_daily", "n_monthly", "wins_a", "gate_rule", "passed")
+GATE_KEYS = ("arm_a", "arm_b", "n_sites", "n_daily", "n_monthly")
 # Prose written at freeze time; carried over from the existing manifest verbatim.
 CARRIED_NOTES = ("e0_gate_note", "irrigation_mapping_change", "closure_pool_problems")
 # ``addenda`` is written by downstream freeze scripts (e2_transfer_paired_effects.py) and

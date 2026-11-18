@@ -3,7 +3,7 @@
 # (fao56_sig = unscaled sigmoid, fao56 = unscaled linear) with exactly the canonical
 # GrassBasis method (batch_runner calibrate-all, 200 reals, noptmax 3, 20 workers,
 # batch 50, --exclude-uncovered), archive per RUN_POLICY, evaluate, then run the pooled
-# arm-vs-arm gates on the 37 pool sites outside the E1 calibration cohort (and on the
+# arm-vs-arm comparisons on the 37 pool sites outside the E1 calibration cohort (and on the
 # full 47-site closure pool as a check). Arms run SEQUENTIALLY: run_pest.py pins the
 # PEST++ master to port 5005, so two batch runners cannot coexist on this host.
 # ~55 min calibration per arm (canonical: 40.5 min batch 000 + 13 min batch 001).
@@ -19,7 +19,7 @@ QA_CANON=$E2/data/e2_etf_refooting
 CANON_ARCHIVE=$RESULTS/$BASE/archive
 PY="uv --directory $REPO run python -u"
 
-for ARM in ${ARMS:-fao56_sig fao56}; do  # ARMS="fao56" resumes a single arm; the pooled gates need both posteriors
+for ARM in ${ARMS:-fao56_sig fao56}; do  # ARMS="fao56" resumes a single arm; the pooled comparisons need both posteriors
   RUN=${BASE}_${ARM}
   CFG=$EX6/${RUN}.toml
   QA=$E2/data/e0_disjoint/qa_${ARM}
@@ -60,8 +60,7 @@ for ARM in ${ARMS:-fao56_sig fao56}; do  # ARMS="fao56" resumes a single arm; th
   $PY $EX6/evaluate.py --config "$CFG" --par-csv "$POST" --monthly
 done
 
-# Pooled gates. pooled_arm_compare.py exits 1 on GATE FAIL, so run outside set -e.
-set +e
+# Pooled arm-vs-arm comparisons.
 A_POST=$CANON_ARCHIVE/4_pest_outputs/merged/merged_posterior.csv
 SIG_POST=$RESULTS/${BASE}_fao56_sig/archive/4_pest_outputs/merged/merged_posterior.csv
 LIN_POST=$RESULTS/${BASE}_fao56/archive/4_pest_outputs/merged/merged_posterior.csv

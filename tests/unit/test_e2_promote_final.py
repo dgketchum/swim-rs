@@ -53,9 +53,6 @@ GATE = {
     "n_sites": 37,
     "n_daily": 49289,
     "n_monthly": 1514,
-    "wins_a": 5,
-    "gate_rule": "arm A wins >= 4 of 6 pooled metrics",
-    "passed": True,
 }
 
 
@@ -156,7 +153,7 @@ def test_compare_and_manifest_round_trip(mod, tmp_path):
     assert "raw" not in json.dumps(head)
     gates = manifest["e0_pooled_gates"]
     assert set(gates) == {f"{p}/{t}" for p in mod.E0_PAIRS for t in mod.E0_TAGS}
-    assert gates["grassbasis_vs_fao56/disjoint37"]["wins_a"] == 5
+    assert gates["grassbasis_vs_fao56/disjoint37"]["n_daily"] == 49289
     assert "a_config" not in gates["grassbasis_vs_fao56/disjoint37"]
     assert set(manifest["files"]) == set(sources)
     entry = manifest["files"]["transfer/run_metadata.json"]

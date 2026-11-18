@@ -255,6 +255,8 @@ def sha256_file(path) -> str:
 
 def forward_run_full(cfg, container, fids, params_by_fid):
     """One forward run returning the RUN_POLICY time-series fields per site."""
+    from evaluate import physics_kwargs
+
     from swimrs.process.input import build_swim_input
     from swimrs.process.loop_fast import run_daily_loop_fast
 
@@ -276,6 +278,7 @@ def forward_run_full(cfg, container, fids, params_by_fid):
             fields=fids,
             empirical_kc_max=True,
             mask_mode=getattr(cfg, "mask_mode", "none"),
+            **physics_kwargs(cfg),
         )
         out, _ = run_daily_loop_fast(si)
         dates = pd.date_range(si.start_date, periods=si.n_days, freq="D")
