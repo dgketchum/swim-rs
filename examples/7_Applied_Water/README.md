@@ -27,15 +27,15 @@ This directory produces:
 
 | Paper artifact | Analysis | Output |
 |---|---|---|
-| Table 6, Fig. 6, and the §3.4 bootstrap sentence | `evaluate_applied_water.py`, once per parameter path | `results/applied_calibrated/per_field_year.csv`, `results/applied_transfer_run23_by_irrigation/per_field_year.csv` |
+| Table 7, Fig. 6, and the §3.4 bootstrap sentence | `evaluate_applied_water.py`, once per parameter path | `results/applied_calibrated/per_field_year.csv`, `results/applied_transfer_run23_by_irrigation/per_field_year.csv` |
 | (same, last hop) | `scripts/figures/build_figure_data.py --only fig06 --only fig06_bootstrap`: SLV re-cut, the nine statistics, 10,000 whole-field resamples (seed 42) | `paper/data/final/figures/fig06_{field_years,field_summaries,bootstrap_effects}.csv` |
 | Fig. 1 SLV panel | `build_figure_data.py --only fig01` reads the e7cal container geometry and the HUC8 context layer | `paper/data/final/figures/fig01_*` |
 | Supplement S5.2 (field selection rules) | `select_fields.py` constants and `select_slv()` | `metered_truth.csv` |
 | Transfer-arm per-field parameters | `build_applied_irrigation_mapping.py` | `paper/data/final/e4_irrigation_stratified_param_mapping{,_metadata}.json` |
 | §3.4 pre-/post-2016 split | `e3_period_split.py` on the frozen `fig06_field_years.csv` | `paper/data/final/e3_applied_water_period_split/` |
-| Tables 1 and 2 E3 rows | hand-authored from the TOML and this README | — |
+| Tables 1 and 3 E3 rows | hand-authored from the TOML and this README | — |
 
-Table 6 is typed from `fig06_bootstrap_effects.csv` (`value_local_calibration`,
+Table 7 is typed from `fig06_bootstrap_effects.csv` (`value_local_calibration`,
 `value_e1_irrigated_transfer`, and the `ci95_*` columns for the bootstrap
 sentence). The typeset table and figure are produced outside this
 repository; this directory ends at the two `per_field_year.csv` files and the
@@ -166,7 +166,7 @@ uv run python $EX7/evaluate_applied_water.py --container $E7/data/7_Applied_Wate
 ```
 
 The evaluator scores every metered field it finds (100 fields, 730
-field-years) and prints those pooled numbers; they are not Table 6, which
+field-years) and prints those pooled numbers; they are not Table 7, which
 step 8 computes after restricting to the 50 SLV fields and 404 field-years.
 
 **7. Score the transferred irrigated set**
@@ -204,7 +204,7 @@ uv run python $EX7/e3_period_split.py            # gate + report; --write freeze
 The builder hardcodes the two `results/applied_*` directories and the e7cal
 container, restricts to `SLV_`, asserts 50 fields and 404 field-years under both
 paths with identical metered depths, and writes the `fig06_*` tables from which
-Table 6 and Fig. 6 are typed and drawn.
+Table 7 and Fig. 6 are typed and drawn.
 
 **9. Supporting analyses** (110 fields; not in the paper)
 
@@ -223,8 +223,8 @@ and is not cited.
 | Directory | Content | Role |
 |---|---|---|
 | `results/e7cal/archive/` | RUN_POLICY Cats 1–2, 4–6 for the batch calibration | canonical |
-| `results/applied_calibrated/` | step 6 | canonical; Table 6 / Fig. 6 local arm |
-| `results/applied_transfer_run23_by_irrigation/` | step 7 | canonical; Table 6 / Fig. 6 transfer arm |
+| `results/applied_calibrated/` | step 6 | canonical; Table 7 / Fig. 6 local arm |
+| `results/applied_transfer_run23_by_irrigation/` | step 7 | canonical; Table 7 / Fig. 6 transfer arm |
 | `results/rescore_404fy_20260926/` | provenance of the four withheld 2019 rows (hashes, log, script) | record |
 | `results/applied_transfer/`, `applied_local_vs_transfer_run22/` | step 9 | supporting; not shipped |
 

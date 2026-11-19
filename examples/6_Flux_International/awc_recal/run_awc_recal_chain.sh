@@ -110,7 +110,7 @@ step "C4 evaluation summary (baseline forward skipped: the por_annual2yr contain
 set +e
 $PY $EX6/evaluation_summary.py --config "$CFG" --run-name "$RUN" --skip-baseline-forward
 rc=$?; [ $rc -ne 0 ] && FAILED="$FAILED evaluation_summary(rc=$rc)"
-step "C5 closure-pool summary (47 EBR sites; Table 5 / S8 / section 3.3)"
+step "C5 closure-pool summary (47 EBR sites; Table 6 / S7 / section 3.3)"
 $PY $EX6/closure_pool_summary.py --config "$CFG" --run-name "$RUN"
 rc=$?; [ $rc -ne 0 ] && FAILED="$FAILED closure_pool(rc=$rc)"
 step "C6 S9.1 28-day monthly sensitivity on the closure pool"

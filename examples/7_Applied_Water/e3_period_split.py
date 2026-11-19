@@ -7,11 +7,11 @@ in 2016, so the field-years before that date are a temporal holdout. This script
 splits the record into ``pre_2016`` (year < 2016) and ``from_2016`` and freezes,
 for each treatment and period, the pooled annual-depth r, RMSE and percent bias
 and the within-field anomaly r and OLS slope, with the anomalies left on the
-full-record basis (a split of the Table 6 statistics, not a re-centering). The
+full-record basis (a split of the Table 7 statistics, not a re-centering). The
 pre-minus-post difference of each statistic gets a whole-field bootstrap
 interval.
 
-Gate: the unsplit record must reproduce the Table 6 point values frozen in
+Gate: the unsplit record must reproduce the Table 7 point values frozen in
 ``fig06_bootstrap_effects.csv`` for both treatments. Outputs land in
 ``paper/data/final/e3_applied_water_period_split/`` with a MANIFEST.json and a
 copy of this script. No existing frozen file is modified.
@@ -120,8 +120,8 @@ def gate(d):
         )
         n += 1
     if worst > REPLICATION_TOL:
-        raise PeriodSplitError(f"Table 6 values not reproduced: max abs diff {worst:.3e}")
-    return f"PASS: {n} Table 6 point values reproduced, max abs diff {worst:.3e} at tolerance {REPLICATION_TOL}"
+        raise PeriodSplitError(f"Table 7 values not reproduced: max abs diff {worst:.3e}")
+    return f"PASS: {n} Table 7 point values reproduced, max abs diff {worst:.3e} at tolerance {REPLICATION_TOL}"
 
 
 def build(reps, seed):
@@ -211,7 +211,7 @@ def write(metrics, diffs, g, reps, seed):
         "split_rule": "pre_2016: year < 2016; from_2016: year >= 2016",
         "anomaly_basis": (
             "within-field anomalies are the frozen full-record anomalies (each field's 2011-2021 "
-            "record mean removed), split by period without re-centering; a split of the Table 6 "
+            "record mean removed), split by period without re-centering; a split of the Table 7 "
             "statistics, not a per-period re-estimation"
         ),
         "period_counts": {

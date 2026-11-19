@@ -17,7 +17,7 @@ and the IrrMapper control cache; the reference-final package supplies the
 frozen transfer vectors and mapping under ``paper/data/final``.
 
 Comparisons are byte-level, like the README's ``cmp``. The evaluator scores
-every metered field it finds (100 fields, 730 field-years); the Table 6
+every metered field it finds (100 fields, 730 field-years); the Table 7
 statistics are computed on the frozen 50-field, 404-field-year SLV record,
 which the last step replicates (``e3_period_split.gate``) before printing the
 pre-/from-2016 split. A rebuild on other hardware may differ in the last digit
@@ -175,10 +175,10 @@ def step_cmp():
     compare(S / "transfer", SHIPPED_TRANSFER, files)
 
 
-# --- 5. period-split gate on the frozen Table 6 record (no --write) ----------
+# --- 5. period-split gate on the frozen Table 7 record (no --write) ----------
 # README: e3_period_split.py
 def step_split():
-    metrics, diffs, gate = ps.build(REPS, SEED)  # gate raises PeriodSplitError when Table 6 differs
+    metrics, diffs, gate = ps.build(REPS, SEED)  # gate raises PeriodSplitError when Table 7 differs
     print(gate)
     print(metrics.round(3).to_string(index=False))
     cols = ["treatment", "statistic", "estimate", "ci95_low", "ci95_high"]

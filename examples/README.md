@@ -9,10 +9,10 @@ reviewer-facing prose use. Use repo paths in commands.
 | `T1` | Example 1 | `examples/1_Boulder` | Tutorial: container build, extraction, ingestion, model run |
 | `T2` | Example 2 | `examples/2_Fort_Peck` | Tutorial: single-site calibration |
 | `T3` | Example 3 | `examples/3_Crane` | Tutorial: irrigated single-site calibration |
-| `E0` | Example 6 (37 sites outside the E1 cohort) | `examples/6_Flux_International` | Vegetation-formulation comparison (Table 3, Fig. 2) |
-| `E1` | Example 5 | `examples/5_Flux_Ensemble` | CONUS cropland benchmark against the OpenET ensemble (Table 4, Figs. 3–4, 5a) |
-| `E2` | Example 6 | `examples/6_Flux_International` | International period-of-record benchmark and parameter transfer (Table 5, Fig. 5b) |
-| `E3` | Example 7 | `examples/7_Applied_Water` | Metered applied-water validation (Table 6, Fig. 6) |
+| `E0` | Example 6 (37 sites outside the E1 cohort) | `examples/6_Flux_International` | Vegetation-formulation comparison (Table 4, Fig. 2) |
+| `E1` | Example 5 | `examples/5_Flux_Ensemble` | CONUS cropland benchmark against the OpenET ensemble (Table 5, Figs. 3–4, 5a) |
+| `E2` | Example 6 | `examples/6_Flux_International` | International period-of-record benchmark and parameter transfer (Table 6, Fig. 5b) |
+| `E3` | Example 7 | `examples/7_Applied_Water` | Metered applied-water validation (Table 7, Fig. 6) |
 | — | Example 4 | `examples/4_Flux_Network` | CONUS all-land-cover SSEBop benchmark; not in the paper |
 | — | Examples 8, 9 | `examples/8_Soil_Moisture`, `examples/9_Bushland` | Soil-moisture and lysimeter checks built on Example 5; not in the paper |
 
@@ -171,7 +171,7 @@ uv run python $EX6/promote_final.py --config $CFG                               
 ```
 
 The six `pooled_arm_compare.py` invocations print the pooled daily and monthly
-metrics of both arms and the per-site paired differences (Table 3); they apply
+metrics of both arms and the per-site paired differences (Table 4); they apply
 no pass/fail rule. The `promote_final.py` check reports
 `match` (byte-equal) or `match~` (equal within floating-point round-off) for
 every file of `paper/data/final/e2_closure_pool/` against the run directory
@@ -179,7 +179,7 @@ the commands above refilled; build stamps, machine paths, and the hashes of
 inputs the steps rewrote are not compared.
 
 **E3 (Example 7).** The two parameter paths scored on the metered fields, and
-the Table 6 statistics. Script: `scripts/reproduction/run_e3_reproduction.py`.
+the Table 7 statistics. Script: `scripts/reproduction/run_e3_reproduction.py`.
 
 ```bash
 EX7=examples/7_Applied_Water; E7=$SWIM_ROOT/7_Applied_Water; S=$SWIM_SCRATCH/e3
@@ -188,11 +188,11 @@ uv run python $EX7/build_applied_irrigation_mapping.py --verify-keys $E7/results
 cmp $S/mapping/e4_irrigation_stratified_param_mapping.json paper/data/final/e4_irrigation_stratified_param_mapping.json
 uv run python $EX7/evaluate_applied_water.py --container $E7/data/7_Applied_Water_e7cal.swim --params-json paper/data/final/e4_irrigation_stratified_param_mapping.json --label transfer_run23_by_irrigation --out $S/transfer
 for a in calibrated:applied_calibrated transfer:applied_transfer_run23_by_irrigation; do for f in per_field_year.csv summary_metrics.csv negative_controls.json; do cmp $S/${a%%:*}/$f $E7/results/${a##*:}/$f; done; done
-uv run python $EX7/e3_period_split.py                                                   # gate: replicates the frozen Table 6 values, prints the §3.4 split
+uv run python $EX7/e3_period_split.py                                                   # gate: replicates the frozen Table 7 values, prints the §3.4 split
 ```
 
 The evaluator scores every metered field it finds (100 fields, 730
-field-years); Table 6 is computed in step 4 after restricting to the 50 SLV
+field-years); Table 7 is computed in step 4 after restricting to the 50 SLV
 fields and 404 field-years.
 
 ### 4. Compare
@@ -252,10 +252,10 @@ Reproduction runs through three layers.
    script writes them, and they are not part of the reproduction.
 
 Tables with no producer script are hand-authored and are checked against the
-configuration, not regenerated: **Table 1** and **Table 2** (domains, inputs, and
+configuration, not regenerated: **Table 1** and **Table 3** (domains, inputs, and
 calibration constraints, from the project TOMLs and the experiment READMEs) and
-**Table S1** (fixed and derived field properties, from the forward-model code and
-data sources). **Table S2** is mixed: its bounds columns come from the prior
+panel (a) of **Table 2** (fixed and derived field properties, from the forward-model
+code and data sources). Panel (b) of **Table 2** is mixed: its bounds columns come from the prior
 bounds in `src/swimrs/calibrate/pest_builder.py` (the class-specific `mad`
 bounds, 0.10–0.30 irrigated and 0.30–0.80 rainfed, are set per site by the
 calibration's irrigation status and restated in Example 6

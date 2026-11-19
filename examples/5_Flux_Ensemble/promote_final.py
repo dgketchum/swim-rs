@@ -14,7 +14,7 @@ source lives under it so each run carries its own supporting products.
         -> e2_within_transfer_{daily,monthly}_site_metrics.csv       (pooled-arm columns only:
                                                                       fid, region, loro/loso/local/default)
     <run>/within_e1_transfer/summary_metrics.csv
-        -> e2_irrigation_stratified_transfer_summary.csv             (adds the experiment column; Table S7, Fig. 5a)
+        -> e2_irrigation_stratified_transfer_summary.csv             (adds the experiment column; Table S5, Fig. 5a)
     <run>/within_e1_transfer/{transfer_vectors.json, class_fold_support.csv}
       + <run>/archive/3_problem_definition/parameter_bounds.csv
         -> e2_irrigation_stratified_fold_mad_domain.csv              (derived; Fig. 5a mad legality)

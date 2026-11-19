@@ -543,7 +543,7 @@ def ablation_metadata(src, run, rows, detail, now, head_sha):
     run_par = Path(src["run_dir"]) / spread_par.name
     record = {
         "schema_version": "e2_weighting_ablation_provenance/v1",
-        "experiment": "E1 (paper numbering) observation-weighting ablation (Table S6, Fig. 4d)",
+        "experiment": "E1 (paper numbering) observation-weighting ablation (Table S4, Fig. 4d)",
         "internal_archive_id": run,
         "promoted_at": now,
         "promoted_at_git_sha": head_sha,

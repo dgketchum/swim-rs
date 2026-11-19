@@ -407,7 +407,7 @@ def build_manifest(
         f"2026-09-01 on the repo's 28-valid-day / >= 10-month rule "
         f"({prior_monthly.get('n_sites')} sites, {prior_monthly.get('n_paired_site_months')} "
         "months); it must not be used for current monthly benchmark reporting. The within-E1 "
-        "transfer (Table S7) and weighting-ablation (Table S6, Fig. 4d) monthly rows still "
+        "transfer (Table S5) and weighting-ablation (Table S4, Fig. 4d) monthly rows still "
         "use the 28-day rule through their own producers."
     )
     history = list(manifest.get("promotion_history", []))
@@ -461,8 +461,8 @@ def superseded_readme(prior, moved, now):
         "paired site and station-weighted rows on sites with at least three paired months).",
         f"The current monthly package lives in `paper/data/final/{PACKAGE}/monthly/` and",
         "is described in that package's `MANIFEST.json`. **Do not use these files for",
-        "current monthly benchmark reporting.** The within-E1 transfer (Table S7) and the",
-        "weighting ablation (Table S6, Fig. 4d) monthly rows still use the 28-day rule",
+        "current monthly benchmark reporting.** The within-E1 transfer (Table S5) and the",
+        "weighting ablation (Table S4, Fig. 4d) monthly rows still use the 28-day rule",
         "through `within_e1_transfer.py` and `rebuild_e1_benchmark_evidence.py`.",
         "",
         "| file | sha256 |",

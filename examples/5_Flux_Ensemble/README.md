@@ -12,12 +12,12 @@ This directory produces:
 
 | Paper artifact | Analysis | Output |
 |---|---|---|
-| Table 4, Tables S3 and S5, Fig. 3 (E1 daily and monthly benchmark vs OpenET) | `evaluate.py` | `paper/data/final/e1_openet_benchmark/{daily,monthly}/` |
-| Table S4 (retrieval-date vs between-retrieval support) | `overpass_decomposition.py` on the daily evaluator bundle | `paper/data/final/e1_openet_benchmark/temporal/` |
-| Table S6, Fig. 4d (spread vs fixed observation weighting) | `run_weighting_ablation.py`, rescored by `rebuild_e1_benchmark_evidence.py` | `paper/data/final/e2_weighting_ablation_*.csv` |
+| Table 5, Tables S1 and S3, Fig. 3 (E1 daily and monthly benchmark vs OpenET) | `evaluate.py` | `paper/data/final/e1_openet_benchmark/{daily,monthly}/` |
+| Table S2 (retrieval-date vs between-retrieval support) | `overpass_decomposition.py` on the daily evaluator bundle | `paper/data/final/e1_openet_benchmark/temporal/` |
+| Table S4, Fig. 4d (spread vs fixed observation weighting) | `run_weighting_ablation.py`, rescored by `rebuild_e1_benchmark_evidence.py` | `paper/data/final/e2_weighting_ablation_*.csv` |
 | Fig. 4a–c (member spread vs error; conditioned-ensemble spread) | `spread_error.py`, `conditioned_ensemble_uncertainty.py` | `paper/data/final/e2_spread_error_*.csv`; `results/run23/conditioned_ensemble_uncertainty/` |
-| Table S7, Fig. 5a (within-E1 parameter transfer) | `within_e1_transfer.py`, promoted by `promote_final.py` | `paper/data/final/e2_irrigation_stratified_*.csv`, `e2_within_transfer_*.csv` |
-| Fig. 5b, Table S2 (E1 vectors transferred into E2) | Example 6 `transfer/` reads the Run 23 posterior | `paper/data/final/e2_run23_transfer_vector*.json` |
+| Table S5, Fig. 5a (within-E1 parameter transfer) | `within_e1_transfer.py`, promoted by `promote_final.py` | `paper/data/final/e2_irrigation_stratified_*.csv`, `e2_within_transfer_*.csv` |
+| Fig. 5b, Table 2 panel (b) (E1 vectors transferred into E2) | Example 6 `transfer/` reads the Run 23 posterior | `paper/data/final/e2_run23_transfer_vector*.json` |
 | Fig. 1b, §2 revisit sentence (Landsat-only vs merged NDVI gap) | `scripts/analysis/ndvi_revisit_sentinel.py` on the three experiment containers | `paper/data/derived/ndvi_revisit/` (not frozen) |
 
 Two identifiers in this directory are archive names, not paper labels:
@@ -25,7 +25,7 @@ Two identifiers in this directory are archive names, not paper labels:
 and the `e2_*` file names under `paper/data/final/` hold E1 evidence. Both are
 kept because the frozen hashes and the figure builder key on them; the mapping
 between repo examples and paper labels is in [`../README.md`](../README.md).
-The E0 vegetation-formulation experiment (Table 3, Fig. 2) runs in Example 6
+The E0 vegetation-formulation experiment (Table 4, Fig. 2) runs in Example 6
 on the 37 sites outside this cohort.
 
 ## Layout
@@ -50,7 +50,7 @@ on the 37 sites outside this cohort.
 ├── run_weighting_ablation.py               spread vs fixed-SD weighting (two recalibrations)
 ├── within_e1_transfer.py                   leave-region-out / leave-one-site-out transfer, pooled and irrigation-stratified
 ├── e1_class_split.py                       irrigation-class split of the frozen benchmark records
-├── e1_period_split.py                      pre-/post-2016 split of the frozen daily record (§3.2, Table 4 caption)
+├── e1_period_split.py                      pre-/post-2016 split of the frozen daily record (§3.2, Table 5 caption)
 ├── promote_e1_run.py                       gated promotion of a run's E1 benchmark package (daily, temporal, manifest)
 ├── promote_e1_monthly.py                   gated promotion of the Volk-protocol monthly bundle
 ├── promote_final.py                        tracked producer for the hand-promoted e2_* supporting files
@@ -116,7 +116,7 @@ uv run python $EX5/archive_run.py --results-tag run23 --container $DATA/5_Flux_E
 `archive_run.py` writes the run-policy archive under `$RUN23/archive/`
 (problem definition, parameter bounds, input health, posterior summary).
 
-**3. Evaluate against flux ET and OpenET** (Table 4, S3, S5, Fig. 3)
+**3. Evaluate against flux ET and OpenET** (Table 5, S1, S3, Fig. 3)
 
 ```bash
 uv run python $EX5/evaluate.py --config $CFG --par-csv $RUN23/5_Flux_Ensemble.3.par.csv --container $DATA/5_Flux_Ensemble_run23.swim --openet-source volk --output-dir <daily-dir> --bootstrap-reps 10000 --bootstrap-seed 42 --quiet-sites
@@ -183,7 +183,7 @@ on the SWIM minus OpenET contrast. The reunited classes must reproduce every
 frozen grouped estimate before anything is written; `--write` refuses an
 existing `class_split/` directory.
 
-**4. Decompose by retrieval support** (Table S4)
+**4. Decompose by retrieval support** (Table S2)
 
 ```bash
 uv run python $EX5/overpass_decomposition.py --evaluator-output-dir <daily-dir> --output-dir <temporal-dir> --bootstrap-reps 10000 --seed 42
@@ -201,7 +201,7 @@ uv run python $EX5/conditioned_ensemble_uncertainty.py
 Outputs land in `$RUN23/spread_error/` and
 `$RUN23/conditioned_ensemble_uncertainty/`.
 
-**6. Weighting ablation** (Table S6, Fig. 4d; two further calibrations)
+**6. Weighting ablation** (Table S4, Fig. 4d; two further calibrations)
 
 ```bash
 uv run python $EX5/container_build/build_container.py --run run23ablation --source $DATA/5_Flux_Ensemble.swim --mad
@@ -213,7 +213,7 @@ Arm outputs are `results/ablation_run23_e1_spread/`,
 (`e1`/`e2` here are arm ids, not paper experiments). `--summary-only`
 regenerates the summaries without recalibrating.
 
-**7. Within-E1 parameter transfer** (Table S7, Fig. 5a)
+**7. Within-E1 parameter transfer** (Table S5, Fig. 5a)
 
 ```bash
 uv run python $EX5/within_e1_transfer.py
@@ -243,9 +243,9 @@ uv run python $EX5/rebuild_e1_benchmark_evidence.py --output-dir paper/data/fina
 benchmark record, and writes `e2_evidence_metadata.json`; `--verify` compares
 against the frozen hashes. The monthly headline it prints (30 sites) uses the
 28-valid-day month rule of the `e2_*` evidence, not the Volk-protocol rule of
-the Table 4 row (step 3b);
+the Table 5 row (step 3b);
 `e1_openet_benchmark/reconstruction_fidelity/table_s10_summary.csv` holds
-Table S8, under a file name the manifest hashes key on. The headline
+Table S6, under a file name the manifest hashes key on. The headline
 `e1_openet_benchmark/` package is promoted from the step 3 and 4 output
 directories and described by its `MANIFEST.json`, which names the similarly
 named files that must not be substituted for it.
