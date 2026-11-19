@@ -157,9 +157,8 @@ E0_PRIOR_PACKAGE_DIR = "superseded_fig02_2026-09-01"
 # main.md prints a typographic minus and an explicit plus.  The build fails
 # when a frozen pooled value does not reproduce its manuscript string exactly.
 # Values come from the E0 calibration on HWSD AWC priors (frozen copies in
-# paper/data/final/e2_closure_pool/e0_disjoint/); the cover-scaled arm wins
-# 6/6 pooled metrics against the unscaled sigmoid and 5/6 against the unscaled
-# linear arm, losing pooled monthly KGE 0.734 vs 0.737.
+# paper/data/final/e2_closure_pool/e0_disjoint/), each arm scored under its own
+# formulation (re-promoted 2026-11-18).
 E0_TABLE3 = {
     ("cover_scaled_sigmoid", "daily", "rmse"): "1.144",
     ("cover_scaled_sigmoid", "daily", "mbe"): "-0.092",
@@ -167,18 +166,18 @@ E0_TABLE3 = {
     ("cover_scaled_sigmoid", "monthly", "rmse"): "24.2",
     ("cover_scaled_sigmoid", "monthly", "mbe"): "-3.7",
     ("cover_scaled_sigmoid", "monthly", "kge"): "0.734",
-    ("unscaled_linear", "daily", "rmse"): "1.407",
-    ("unscaled_linear", "daily", "mbe"): "0.221",
-    ("unscaled_linear", "daily", "kge"): "0.677",
-    ("unscaled_linear", "monthly", "rmse"): "32.8",
-    ("unscaled_linear", "monthly", "mbe"): "5.5",
-    ("unscaled_linear", "monthly", "kge"): "0.737",
-    ("unscaled_sigmoid", "daily", "rmse"): "1.456",
-    ("unscaled_sigmoid", "daily", "mbe"): "-0.268",
-    ("unscaled_sigmoid", "daily", "kge"): "0.591",
-    ("unscaled_sigmoid", "monthly", "rmse"): "34.9",
-    ("unscaled_sigmoid", "monthly", "mbe"): "-9.2",
-    ("unscaled_sigmoid", "monthly", "kge"): "0.606",
+    ("unscaled_linear", "daily", "rmse"): "1.222",
+    ("unscaled_linear", "daily", "mbe"): "0.007",
+    ("unscaled_linear", "daily", "kge"): "0.730",
+    ("unscaled_linear", "monthly", "rmse"): "24.7",
+    ("unscaled_linear", "monthly", "mbe"): "-0.7",
+    ("unscaled_linear", "monthly", "kge"): "0.810",
+    ("unscaled_sigmoid", "daily", "rmse"): "1.319",
+    ("unscaled_sigmoid", "daily", "mbe"): "0.056",
+    ("unscaled_sigmoid", "daily", "kge"): "0.700",
+    ("unscaled_sigmoid", "monthly", "rmse"): "28.7",
+    ("unscaled_sigmoid", "monthly", "mbe"): "0.8",
+    ("unscaled_sigmoid", "monthly", "kge"): "0.771",
 }
 
 # calc_metrics (examples/6_Flux_International/evaluate.py) returns NaN below

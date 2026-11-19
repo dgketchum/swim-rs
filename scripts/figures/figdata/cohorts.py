@@ -36,10 +36,10 @@ EXPECTED = {
     "E0_pooled_monthly_sites": 34,
     "E0_effect_daily_sites": 37,
     "E0_effect_monthly_sites": 33,
-    "E0_iso_daily_wins": 30,
-    "E0_iso_monthly_wins": 26,
-    "E0_whole_daily_wins": 32,
-    "E0_whole_monthly_wins": 28,
+    "E0_iso_daily_wins": 32,
+    "E0_iso_monthly_wins": 22,
+    "E0_whole_daily_wins": 27,
+    "E0_whole_monthly_wins": 20,
     "E1_configured": 60,
     # Evaluation-derived E1 counts, fixed by the benchmark record and cohorts
     # (spread-error counts are read per run).
