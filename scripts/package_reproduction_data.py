@@ -27,8 +27,10 @@ Package contents (paths relative to the data root unless noted):
          result directories, the run23 irrigation-stratified transfer, the frozen
          E0 disjoint comparison, the E3 transfer summary that
          ``evaluation_summary.py`` concatenates into the closure-pool transfer
-         summary, and the 66-site subset of the flux-data-qaqc archive at
+         summary, and the cohort subset of the flux-data-qaqc archive at
          ``6_Flux_International/data/flux_qaqc/<network>/<sid>_daily_data.csv``.
+         Tower ET of the sites in ``E1_TOWER_ET_WITHHELD`` / ``E2_TOWER_ET_WITHHELD``
+         is not packaged (per-site flux files and archived site time series).
 ``e3``   Ex7 ``data/`` (both containers, gis, properties, metered_truth.csv) and the
          ``e7cal``, ``applied_calibrated``, ``applied_transfer_run23_by_irrigation``
          and ``rescore_404fy_20260926`` result directories.
@@ -74,6 +76,19 @@ ARCHIVE_KEEP = {
 
 GRASSBASIS = "6_Flux_International_LSEnsemble_GrassBasis_POR_annual2yr"
 
+# Sites whose tower ET may not be redistributed (AmeriFlux Legacy policy; AU-Cm1/AU-Cm2
+# station identity). Mirrors Ex5 ``evaluate.FLUX_EVALUATION_EXCLUSIONS`` and Ex6
+# ``ex6_paths.EVALUATION_EXCLUSIONS``. Their model output, OpenET and ETf files ship;
+# every file carrying their tower ET is dropped below.
+E1_TOWER_ET_WITHHELD = ("US-Bkg", "US-Br1", "US-Br3")
+E2_TOWER_ET_WITHHELD = ("AU-Cm1", "AU-Cm2", "US-MWA")
+
+
+def _site_timeseries_paths(sites):
+    """Path globs for the archived per-site daily time series (they carry ``flux_ET``)."""
+    return [f"*/archive/6_evaluation/site_daily_timeseries/{s}.csv" for s in sites]
+
+
 ROOT_PACKAGES = {
     "e1": {
         "name": "swim_data_e1",
@@ -93,15 +108,23 @@ ROOT_PACKAGES = {
             "5_Flux_Ensemble/results/ablation_run23_e2_fixed_sd",
             "5_Flux_Ensemble/results/ablation_run23_summary",
         ],
-        # gate outputs against the preceding run and a rebuild scratch pair; nothing reads them
+        # gate outputs against the preceding run, rebuild scratch output and the
+        # 2026-11-19 re-freeze working directory; nothing reads them
         "exclude_dirs": [
             "problem_definition_diff_vs_run22",
             "container_diff",
             "temporal_decomposition_legacy",
             "e1_rebuild_frozen",
             "e1_rebuild_scratch",
+            "e1_rebuild_legacy_sites",
+            "e1_rebuild_filtered_masters",
+            "refreeze_legacy_sites",
         ],
         "exclude_files": ["temporal_decomposition_legacy.log", "e1_rebuild_*.log"],
+        "exclude_paths": [
+            *(f"*/daily_flux_files_2pt1/{s}_daily_data.csv" for s in E1_TOWER_ET_WITHHELD),
+            *_site_timeseries_paths(E1_TOWER_ET_WITHHELD),
+        ],
     },
     "e2": {
         "name": "swim_data_e2",
@@ -117,14 +140,24 @@ ROOT_PACKAGES = {
             f"6_Flux_International/results/{GRASSBASIS}",
             f"6_Flux_International/results/{GRASSBASIS}_fao56",
             f"6_Flux_International/results/{GRASSBASIS}_fao56_sig",
-            "6_Flux_International/results/e2_run23_transfer_by_irrigation_to_grassbasis",
+            "6_Flux_International/results/e2_run23_transfer_by_irrigation_to_grassbasis_excl",
             "6_Flux_International/results/e0_disjoint",
             # concatenated into the frozen closure_pool/transfer_refresh_summary.csv
             "6_Flux_International/results/e2_run22_transfer_by_irrigation_to_e3/transfer_comparison_summary.csv",
         ],
         "flux_subset": "6_Flux_International/data/flux_qaqc",
-        # evaluator captures and a QA order tree from before the published calibration
-        "exclude_dirs": ["6_evaluation_pre_*", "transfer_refresh_run22_*", "g2_legacy_only_*"],
+        "flux_withheld": E2_TOWER_ET_WITHHELD,
+        # evaluator captures and a QA order tree from before the published calibration;
+        # the 37/47-site E0 comparisons and closure pool replaced on 2026-11-19
+        "exclude_dirs": [
+            "6_evaluation_pre_*",
+            "transfer_refresh_run22_*",
+            "g2_legacy_only_*",
+            "disjoint37",
+            "pool47",
+            "closure_pool_superseded_47site",
+        ],
+        "exclude_paths": _site_timeseries_paths(E2_TOWER_ET_WITHHELD),
     },
     "e3": {
         "name": "swim_data_e3",
@@ -182,22 +215,24 @@ def _dir_excluded(name, extra_dir_globs):
     return any(fnmatch.fnmatch(name, g) for g in (*ALWAYS_EXCLUDE_DIR_GLOBS, *extra_dir_globs))
 
 
-def _file_excluded(rel, name, in_archive, extra_file_globs):
+def _file_excluded(rel, name, in_archive, extra_file_globs, path_globs=()):
     if any(fnmatch.fnmatch(name, g) for g in (*ALWAYS_EXCLUDE_FILE_GLOBS, *extra_file_globs)):
+        return True
+    if any(fnmatch.fnmatch(rel, g) for g in path_globs):
         return True
     if in_archive and rel not in ARCHIVE_KEEP:
         return any(fnmatch.fnmatch(name, g) for g in ARCHIVE_EXCLUDE_FILE_GLOBS)
     return False
 
 
-def collect(base, items, exclude_dirs=(), exclude_files=()):
+def collect(base, items, exclude_dirs=(), exclude_files=(), exclude_paths=()):
     """``[(relative path, bytes)]`` for every packaged file under ``base``.
 
     ``items`` are files, directories, or file globs (``dir/*.csv``: the matching
     files, no descent) relative to ``base``; a missing item or a glob that matches
     nothing is an error (the package would be silently incomplete). Directories
     are walked with the exclusion rules above; the archive rules apply below any
-    ``archive`` directory component.
+    ``archive`` directory component. ``exclude_paths`` globs match the relative path.
     """
     base = Path(base)
     out = []
@@ -220,14 +255,14 @@ def collect(base, items, exclude_dirs=(), exclude_files=()):
             in_archive = "archive" in rel_dir.parts
             for fn in sorted(filenames):
                 rel = str(rel_dir / fn)
-                if _file_excluded(rel, fn, in_archive, exclude_files):
+                if _file_excluded(rel, fn, in_archive, exclude_files, exclude_paths):
                     continue
                 out.append((rel, (Path(dirpath) / fn).stat().st_size))
     return out
 
 
-def flux_subset(root, flux_dir_rel):
-    """The 66-site ``<network>/<sid>_daily_data.csv`` files the Ex6 cohort reads."""
+def flux_subset(root, flux_dir_rel, withheld=()):
+    """The ``<network>/<sid>_daily_data.csv`` files the Ex6 cohort reads, less ``withheld``."""
     import geopandas as gpd
 
     shp = root / "6_Flux_International" / "data" / "gis" / EX6_COHORT_SHP
@@ -237,6 +272,8 @@ def flux_subset(root, flux_dir_rel):
     flux_root = root / flux_dir_rel
     out = []
     for sid, net in zip(cohort["sid"], cohort["network"]):
+        if sid in withheld:
+            continue
         rel = f"{flux_dir_rel}/{net}/{sid}_daily_data.csv"
         src = root / rel
         if not src.exists():
@@ -261,10 +298,14 @@ def package_files(key, root):
     if key in ROOT_PACKAGES:
         spec = ROOT_PACKAGES[key]
         files = collect(
-            root, spec["items"], spec.get("exclude_dirs", ()), spec.get("exclude_files", ())
+            root,
+            spec["items"],
+            spec.get("exclude_dirs", ()),
+            spec.get("exclude_files", ()),
+            spec.get("exclude_paths", ()),
         )
         if "flux_subset" in spec:
-            files += flux_subset(root, spec["flux_subset"])
+            files += flux_subset(root, spec["flux_subset"], spec.get("flux_withheld", ()))
         return spec["name"], root, files
     spec = REPO_PACKAGES[key]
     files = collect(
