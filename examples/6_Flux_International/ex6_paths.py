@@ -39,7 +39,9 @@ def _ex5_paths():
 EX5_CANONICAL_RUN = _ex5_paths().CANONICAL_RUN
 # E1 -> E2 transfer artifacts, all named from the Ex5 run tag.
 TRANSFER_PREFIX = f"e2_{EX5_CANONICAL_RUN}"
-TRANSFER_RUN = f"{TRANSFER_PREFIX}_transfer_by_irrigation_to_grassbasis"  # under results_root
+# The transfer re-run that applies EVALUATION_EXCLUSIONS (2026-11-19); it supersedes
+# ``{TRANSFER_PREFIX}_transfer_by_irrigation_to_grassbasis`` (same container, vectors, mapping).
+TRANSFER_RUN = f"{TRANSFER_PREFIX}_transfer_by_irrigation_to_grassbasis_excl"  # under results_root
 TRANSFER_VECTOR_JSON = f"{TRANSFER_PREFIX}_transfer_vector.json"
 TRANSFER_VECTORS_BY_IRRIGATION_JSON = f"{TRANSFER_PREFIX}_transfer_vectors_by_irrigation.json"
 TRANSFER_VECTORS_BY_IRRIGATION_META_JSON = (
@@ -48,6 +50,25 @@ TRANSFER_VECTORS_BY_IRRIGATION_META_JSON = (
 TRANSFER_SITE_MEDIANS_BY_IRRIGATION_CSV = (
     f"{TRANSFER_PREFIX}_transfer_site_medians_by_irrigation.csv"
 )
+
+# Towers dropped from every E2 / E0 comparison against flux ET (decided 2026-11-19). The
+# calibration cohort is unchanged; only scoring against the tower record drops them.
+EVALUATION_EXCLUSIONS = {
+    "US-MWA": "AmeriFlux Legacy data policy (BASE only, no CC-BY-4.0 product)",
+    "AU-Cm1": (
+        "site identity mismatch: tower record and model geometry are Yarramundi Irrigated "
+        "(TERN), not Coleambally"
+    ),
+    "AU-Cm2": (
+        "site identity mismatch: tower record and model geometry are Cape Tribulation "
+        "rainforest (TERN), not Coleambally"
+    ),
+}
+
+
+def apply_evaluation_exclusions(fids):
+    """Drop the EVALUATION_EXCLUSIONS sites from a site list, preserving order."""
+    return [f for f in fids if f not in EVALUATION_EXCLUSIONS]
 
 
 def load_config(config_path=None, calibrate=True):

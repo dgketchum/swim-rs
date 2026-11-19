@@ -1,4 +1,4 @@
-"""E2 closure-corrected pool: re-cut of the Cat 6 evaluation archive on the 47 EBR sites.
+"""E2 closure-corrected pool: re-cut of the Cat 6 evaluation archive on the EBR sites.
 
 The paper's E2 evaluation pool is the closure-corrected towers only
 (``flux_et_col == "ET_corr"``: energy-balance-ratio corrected LE, flux-data-qaqc strict branch).
@@ -509,10 +509,14 @@ def main():
     t_new = Path(args.transfer_new)
     problems = []
 
-    daily_all = pd.read_csv(cat6 / "daily_paired_metrics.csv", index_col="fid")
+    daily_cat6 = pd.read_csv(cat6 / "daily_paired_metrics.csv", index_col="fid")
+    excluded = sorted(set(ex6_paths.EVALUATION_EXCLUSIONS) & set(daily_cat6.index))
+    daily_all = daily_cat6.drop(index=excluded)
     monthly_all = pd.read_csv(cat6 / "monthly_paired_metrics.csv", index_col="fid")
+    monthly_all = monthly_all.drop(index=monthly_all.index.intersection(excluded))
+    print(f"evaluation exclusions: {excluded}")
     groups_all = pd.read_csv(cat6 / "site_groups.csv", index_col="site_id")
-    tiers = closure_tier(daily_all)
+    tiers = closure_tier(daily_cat6)
     pool = select_pool(daily_all)
     raw = select_pool(daily_all, "raw")
     print(f"daily-scored sites {len(daily_all)}: {len(pool)} closure-corrected, {len(raw)} raw")
@@ -545,6 +549,12 @@ def main():
     dropped["continent"] = geo.loc[raw, "continent"]
     dropped["n_paired_days"] = daily_all.loc[raw, "n"]
     dropped.to_csv(out / "excluded_raw_tier_sites.csv")
+    ledger = pd.DataFrame(
+        {"reason": [ex6_paths.EVALUATION_EXCLUSIONS[f] for f in excluded]},
+        index=pd.Index(excluded, name="fid"),
+    )
+    ledger["closure_tier"] = tiers.reindex(excluded)
+    ledger.to_csv(out / "evaluation_sites_excluded.csv")
 
     # ---- headline + bootstrap ----
     frames = {
@@ -620,7 +630,7 @@ def main():
             ("monthly", "pooled_metrics_monthly.csv"),
         ):
             mine = pooled_from_timeseries(
-                ts_dir, daily_all.index, monthly=basis == "monthly"
+                ts_dir, daily_cat6.index, monthly=basis == "monthly"
             ).set_index("model")
             ref = pd.read_csv(cat6 / fname).set_index("model")
             common = [c for c in ref.columns if c in mine.columns]
@@ -749,6 +759,8 @@ def main():
             "does not appear in the paper. Calibration ran on the full 66-site cohort."
         ),
         "pool_definition": {"column": "flux_et_col", "value": "ET_corr", "tier": PRIMARY_TIER},
+        "evaluation_exclusions": {f: ex6_paths.EVALUATION_EXCLUSIONS[f] for f in excluded},
+        "n_daily_sites_cat6": int(len(daily_cat6)),
         "n_daily_sites_all": int(len(daily_all)),
         "n_daily_sites_pool": int(len(pool)),
         "n_daily_sites_raw_excluded": int(len(raw)),
@@ -764,8 +776,9 @@ def main():
         "irrigation_counts_all_cohort": irrigation_counts(transition, transition["site"].unique()),
         "configured_pool_note": (
             "US-Ne1/US-Ne2/US-Ne3 are closure-corrected in the cohort shapefile but have no paired "
-            "days in the modelled period, so the configured closure-corrected pool is 50 sites "
-            "and the evaluated pool is 47."
+            "days in the modelled period, and the evaluation exclusions remove further "
+            "closure-corrected towers (evaluation_sites_excluded.csv); n_daily_sites_pool is the "
+            "evaluated pool."
         ),
         "bootstrap": {
             "replicates": args.reps,

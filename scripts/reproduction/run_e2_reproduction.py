@@ -290,9 +290,9 @@ def step_month28():
     call_main(m28, ["--run-name", RUN])
 
 
-# --- 11. E0: pooled two-arm comparisons on the 37 disjoint sites and the 47-site pool
+# --- 11. E0: pooled two-arm comparisons on the disjoint sites and the whole closure pool
 # README: six pooled_arm_compare.py invocations
-E0_SETS = {"disjoint37": "disjoint_sites.txt", "pool47": "closure_pool_sites.txt"}
+E0_SETS = {"disjoint": "disjoint_sites.txt", "pool": "closure_pool_sites.txt"}
 E0_PAIRS = [  # (a_name, a_config, a_par, b_name, b_config, b_par)
     ("grassbasis", CFG, POST, "fao56_sig", CFG_SIG, POST_SIG),
     ("grassbasis", CFG, POST, "fao56", CFG_LIN, POST_LIN),

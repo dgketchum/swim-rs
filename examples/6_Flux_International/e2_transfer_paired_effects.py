@@ -1,17 +1,17 @@
-"""Freeze the E2 paired transfer-minus-calibration effects on the 47-site closure pool.
+"""Freeze the E2 paired transfer-minus-calibration effects on the closure pool.
 
 The frozen E2 transfer table reports arm medians only. This script derives,
 from the frozen per-site comparison, the median within-site difference between
 the irrigation-stratified transfer and calibration at each site (and, for
 reference, between each SWIM-RS arm and the Landsat ensemble), with whole-site
-bootstrap intervals, on the full 47-site pool and on four partitions:
+bootstrap intervals, on the full pool and on four partitions:
 
   overlap   the pool sites that belong to the 60-site E1 source pool from
             which the transferred class vectors were built (Methods 2.6);
   unseen    the pool sites absent from parameter-set construction;
   irrigated / rainfed   the E2 parameter class (closure_pool_sites.csv).
 
-Gates: the 47-site arm medians must reproduce ``transfer_refresh_summary.csv``
+Gates: the pool arm medians must reproduce ``transfer_refresh_summary.csv``
 and the calibrated-minus-ensemble paired median must reproduce
 ``paired_delta_bootstrap.csv`` (closure_corrected, daily). Outputs land in
 ``e2_closure_pool/transfer_paired_effects/`` with a MANIFEST.json and a copy of
@@ -249,14 +249,14 @@ def write(medians, effects, sites, gate, n_source, reps, seed):
         },
         "scope": (
             "Median within-site daily differences between the irrigation-stratified transfer, "
-            "calibration at each site, and the Landsat ensemble on the 47-site closure pool and "
+            "calibration at each site, and the Landsat ensemble on the closure pool and "
             "on its E1-overlap / unseen and irrigated / rainfed partitions, with whole-site "
             "bootstrap intervals; arm medians per partition"
         ),
         "overlap_rule": (
             f"overlap = pool site whose fid is among the {n_source} E1 source sites "
             "(irrigated + rainfed classes) in e2_run23_transfer_vectors_by_irrigation_metadata.json; "
-            "unseen = the rest (Methods 2.6: 10 overlap, 37 unseen)"
+            "unseen = the rest"
         ),
         "partition_counts": counts,
         "bootstrap": {

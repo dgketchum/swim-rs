@@ -63,8 +63,8 @@ PAIRS = {  # pair -> (arm A, arm B)
     "fao56_sig_vs_fao56": ("fao56_sig", "fao56"),
 }
 SETS = {  # tag -> site list under examples/6_Flux_International/e0_disjoint
-    "disjoint37": "disjoint_sites.txt",  # closure-pool sites outside the E1 cohort
-    "pool47": "closure_pool_sites.txt",  # the whole closure pool, as a check
+    "disjoint": "disjoint_sites.txt",  # closure-pool sites outside the E1 cohort
+    "pool": "closure_pool_sites.txt",  # the whole closure pool, as a check
 }
 FILES = ["pooled_gate.csv", "pooled_per_site.csv", "paired_site_deltas.csv", "sites_excluded.csv"]
 

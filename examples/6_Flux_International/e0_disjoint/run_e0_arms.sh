@@ -3,8 +3,8 @@
 # (fao56_sig = unscaled sigmoid, fao56 = unscaled linear) with exactly the canonical
 # GrassBasis method (batch_runner calibrate-all, 200 reals, noptmax 3, 20 workers,
 # batch 50, --exclude-uncovered), archive per RUN_POLICY, evaluate, then run the pooled
-# arm-vs-arm comparisons on the 37 pool sites outside the E1 calibration cohort (and on the
-# full 47-site closure pool as a check). Arms run SEQUENTIALLY: run_pest.py pins the
+# arm-vs-arm comparisons on the pool sites outside the E1 calibration cohort (and on the
+# full closure pool as a check). Arms run SEQUENTIALLY: run_pest.py pins the
 # PEST++ master to port 5005, so two batch runners cannot coexist on this host.
 # ~55 min calibration per arm (canonical: 40.5 min batch 000 + 13 min batch 001).
 set -euo pipefail
@@ -64,7 +64,7 @@ done
 A_POST=$CANON_ARCHIVE/4_pest_outputs/merged/merged_posterior.csv
 SIG_POST=$RESULTS/${BASE}_fao56_sig/archive/4_pest_outputs/merged/merged_posterior.csv
 LIN_POST=$RESULTS/${BASE}_fao56/archive/4_pest_outputs/merged/merged_posterior.csv
-for SET in disjoint37:disjoint_sites.txt pool47:closure_pool_sites.txt; do
+for SET in disjoint:disjoint_sites.txt pool:closure_pool_sites.txt; do
   TAG=${SET%%:*}; SITES=$EX6/e0_disjoint/${SET##*:}
   OUT=$RESULTS/e0_disjoint
   $PY $EX6/pooled_arm_compare.py --a-name grassbasis --a-config $EX6/$BASE.toml --a-par "$A_POST" \

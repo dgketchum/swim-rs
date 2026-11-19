@@ -1,11 +1,11 @@
 """Promote the Example 6 results into ``paper/data/final/e2_closure_pool/`` (paper E2 + E0).
 
-The package is the paper's source of record for Tables 3, 5 and S8, Figs 2 and 5b,
+The package is the paper's source of record for Tables 4, 6 and S7, Figs 2 and 5b,
 and §3.3/S9.1, and this script is its producer. Every file is a byte copy of a
 results-root output:
 
     <canonical>/archive/6_evaluation/closure_pool/*      -> closure_pool/*
-        closure_pool_summary.py + monthly_28day_sensitivity.py outputs (Table 5, S8, §3.3, S9.1)
+        closure_pool_summary.py + monthly_28day_sensitivity.py outputs (Table 6, S7, §3.3, S9.1)
     <results>/e2_<run>_transfer_by_irrigation_to_grassbasis/   (<run> = ex5_paths.CANONICAL_RUN)
         pooled_metrics_{daily,monthly}[_strat].csv, transfer_comparison_*.csv,
         transfer_winrates.csv, run_metadata.json           -> transfer/*
@@ -13,8 +13,8 @@ results-root output:
     <canonical>/transfer_refresh/e3_irrigation_stratified_param_mapping*.json
                                                            -> transfer/*
         transfer/build_e2_irrigation_mapping.py output (the by-irrigation class map)
-    <results>/e0_disjoint/<pair>/<disjoint37|pool47>/*     -> e0_disjoint/<pair>/<tag>/*
-        pooled_arm_compare.py gates for the three cover-formulation arms (Table 3, Fig 2)
+    <results>/e0_disjoint/<pair>/<disjoint|pool>/*     -> e0_disjoint/<pair>/<tag>/*
+        pooled_arm_compare.py gates for the three cover-formulation arms (Table 4, Fig 2)
 
 ``MANIFEST.json`` (schema ``e2_closure_pool_reporting/v1``) records the sha256 and
 source of every file, the run SHAs from ``archive/1_provenance/git_sha.txt``, and the
@@ -56,7 +56,7 @@ SCHEMA = "e2_closure_pool_reporting/v1"
 TRANSFER_RUN = ex6_paths.TRANSFER_RUN
 E0_ARMS = {"e0_arm_fao56_sig": "fao56_sig", "e0_arm_fao56": "fao56"}
 E0_PAIRS = ("grassbasis_vs_fao56_sig", "grassbasis_vs_fao56", "fao56_sig_vs_fao56")
-E0_TAGS = ("disjoint37", "pool47")
+E0_TAGS = ("disjoint", "pool")
 TRANSFER_FILES = (
     "transfer_comparison_persite.csv",
     "transfer_comparison_summary.csv",
@@ -74,6 +74,7 @@ MAPPING_FILES = (
 POOL_KEYS = (
     "decision",
     "pool_definition",
+    "evaluation_exclusions",
     "n_daily_sites_all",
     "n_daily_sites_pool",
     "n_daily_sites_raw_excluded",

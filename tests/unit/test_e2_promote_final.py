@@ -33,6 +33,7 @@ POOL_META = {
     "git_sha": "0b8b547",
     "decision": "EBR towers only",
     "pool_definition": {"column": "flux_et_col", "value": "ET_corr"},
+    "evaluation_exclusions": {"XX-Ex1": "reason"},
     "n_daily_sites_all": 63,
     "n_daily_sites_pool": 47,
     "n_daily_sites_raw_excluded": 16,
@@ -153,8 +154,8 @@ def test_compare_and_manifest_round_trip(mod, tmp_path):
     assert "raw" not in json.dumps(head)
     gates = manifest["e0_pooled_gates"]
     assert set(gates) == {f"{p}/{t}" for p in mod.E0_PAIRS for t in mod.E0_TAGS}
-    assert gates["grassbasis_vs_fao56/disjoint37"]["n_daily"] == 49289
-    assert "a_config" not in gates["grassbasis_vs_fao56/disjoint37"]
+    assert gates["grassbasis_vs_fao56/disjoint"]["n_daily"] == 49289
+    assert "a_config" not in gates["grassbasis_vs_fao56/disjoint"]
     assert set(manifest["files"]) == set(sources)
     entry = manifest["files"]["transfer/run_metadata.json"]
     assert entry["source"] == str(transfer / "run_metadata.json")

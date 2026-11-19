@@ -1,5 +1,3 @@
-AU-Cm1
-AU-Cm2
 AU-RDF
 AU-Rgf
 AU-Rig
@@ -23,7 +21,6 @@ US-HWB
 US-MH2
 US-MN3
 US-MVW
-US-MWA
 US-Mi1
 US-Mi2
 US-Mi3

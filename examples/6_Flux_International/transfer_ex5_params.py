@@ -207,7 +207,10 @@ def _cohort_fids(cfg, container, sites_arg):
     missing = [f for f in cohort if f not in container_fids]
     if missing:
         print(f"WARNING: {len(missing)} cohort site(s) absent from container: {missing}")
-    return fids
+    kept = ex6_paths.apply_evaluation_exclusions(fids)
+    if len(kept) != len(fids):
+        print(f"Evaluation exclusions: dropped {sorted(set(fids) - set(kept))}")
+    return kept
 
 
 def _run_fixed_params(cfg, container, fids, vector):
@@ -820,6 +823,9 @@ def _write_metadata(
         "transfer_vector": vector,
         "git_sha": _git_sha(),
         "cohort_size": len(fids),
+        "evaluation_exclusions": None
+        if getattr(args, "sites", None)
+        else ex6_paths.EVALUATION_EXCLUSIONS,
         "n_daily_paired": {c: int(len(f)) for c, f in daily_df.items()},
         "n_monthly_paired": {c: int(len(f)) for c, f in monthly_df.items()},
         "n_common_daily_sites": int(len(common_daily)),
