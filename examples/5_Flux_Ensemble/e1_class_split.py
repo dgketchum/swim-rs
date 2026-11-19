@@ -8,13 +8,13 @@ and freezes the class-conditional KGE, RMSE and MBE for both series, with
 whole-site bootstrap intervals on the SWIM-minus-OpenET contrast, at three
 scales:
 
-  daily      the frozen paired daily record (45 sites), pooled and
+  daily      the frozen paired daily record (42 sites), pooled and
              station-weighted;
   monthly    the Volk-protocol monthly record replicated from the run archive
              with ``promote_e1_monthly.monthly_records_from_archive`` (pooled on
              every paired site, station-weighted on sites with at least three
              paired months);
-  temporal   the frozen 43-site common temporal cohort split into retrieval and
+  temporal   the frozen 40-site common temporal cohort split into retrieval and
              between-retrieval days, with the support interaction
              (between minus retrieval of SWIM minus OpenET) per class.
 

@@ -66,7 +66,7 @@ Usage:
         --params /home/dgketchum/code/swim-rs/paper/data/final/e2_<run>_transfer_vector.json \\
         --params-by-site \\
         /home/dgketchum/code/swim-rs/paper/data/final/e3_irrigation_stratified_param_mapping.json \\
-        --out <results>/e2_<run>_transfer_by_irrigation_to_grassbasis \\
+        --out <results>/e2_<run>_transfer_by_irrigation_to_grassbasis_excl \\
         --require-empty-out
 
 This is a forward run with fixed parameters against existing container inputs.

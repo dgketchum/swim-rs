@@ -9,7 +9,7 @@ reviewer-facing prose use. Use repo paths in commands.
 | `T1` | Example 1 | `examples/1_Boulder` | Tutorial: container build, extraction, ingestion, model run |
 | `T2` | Example 2 | `examples/2_Fort_Peck` | Tutorial: single-site calibration |
 | `T3` | Example 3 | `examples/3_Crane` | Tutorial: irrigated single-site calibration |
-| `E0` | Example 6 (37 sites outside the E1 cohort) | `examples/6_Flux_International` | Vegetation-formulation comparison (Table 4, Fig. 2) |
+| `E0` | Example 6 (34 sites outside the E1 cohort) | `examples/6_Flux_International` | Vegetation-formulation comparison (Table 4, Fig. 2) |
 | `E1` | Example 5 | `examples/5_Flux_Ensemble` | CONUS cropland benchmark against the OpenET ensemble (Table 5, Figs. 3–4, 5a) |
 | `E2` | Example 6 | `examples/6_Flux_International` | International period-of-record benchmark and parameter transfer (Table 6, Fig. 5b) |
 | `E3` | Example 7 | `examples/7_Applied_Water` | Metered applied-water validation (Table 7, Fig. 6) |
@@ -165,7 +165,7 @@ uv run python $EX6/evaluation_summary.py --config $CFG --run-name $RUN          
 uv run python $EX6/closure_pool_summary.py --config $CFG --run-name $RUN
 uv run python $EX6/awc_recal/monthly_28day_sensitivity.py --run-name $RUN
 A=$POST; SIG=$RESULTS/${RUN}_fao56_sig/archive/4_pest_outputs/merged/merged_posterior.csv; LIN=$RESULTS/${RUN}_fao56/archive/4_pest_outputs/merged/merged_posterior.csv
-for SET in disjoint37:disjoint_sites.txt pool47:closure_pool_sites.txt; do TAG=${SET%%:*}; SITES=$EX6/e0_disjoint/${SET##*:}; uv run python $EX6/pooled_arm_compare.py --a-name grassbasis --a-config $CFG --a-par $A --b-name fao56_sig --b-config $EX6/${RUN}_fao56_sig.toml --b-par $SIG --sites-file $SITES --out-dir $RESULTS/e0_disjoint/grassbasis_vs_fao56_sig/$TAG; uv run python $EX6/pooled_arm_compare.py --a-name grassbasis --a-config $CFG --a-par $A --b-name fao56 --b-config $EX6/${RUN}_fao56.toml --b-par $LIN --sites-file $SITES --out-dir $RESULTS/e0_disjoint/grassbasis_vs_fao56/$TAG; uv run python $EX6/pooled_arm_compare.py --a-name fao56_sig --a-config $EX6/${RUN}_fao56_sig.toml --a-par $SIG --b-name fao56 --b-config $EX6/${RUN}_fao56.toml --b-par $LIN --sites-file $SITES --out-dir $RESULTS/e0_disjoint/fao56_sig_vs_fao56/$TAG; done
+for SET in disjoint:disjoint_sites.txt pool:closure_pool_sites.txt; do TAG=${SET%%:*}; SITES=$EX6/e0_disjoint/${SET##*:}; uv run python $EX6/pooled_arm_compare.py --a-name grassbasis --a-config $CFG --a-par $A --b-name fao56_sig --b-config $EX6/${RUN}_fao56_sig.toml --b-par $SIG --sites-file $SITES --out-dir $RESULTS/e0_disjoint/grassbasis_vs_fao56_sig/$TAG; uv run python $EX6/pooled_arm_compare.py --a-name grassbasis --a-config $CFG --a-par $A --b-name fao56 --b-config $EX6/${RUN}_fao56.toml --b-par $LIN --sites-file $SITES --out-dir $RESULTS/e0_disjoint/grassbasis_vs_fao56/$TAG; uv run python $EX6/pooled_arm_compare.py --a-name fao56_sig --a-config $EX6/${RUN}_fao56_sig.toml --a-par $SIG --b-name fao56 --b-config $EX6/${RUN}_fao56.toml --b-par $LIN --sites-file $SITES --out-dir $RESULTS/e0_disjoint/fao56_sig_vs_fao56/$TAG; done
 uv run python $EX6/product_parity/e1_e2_product_parity.py --out-dir $S/product_parity
 uv run python $EX6/promote_final.py --config $CFG                                        # check: match / match~ for every file
 ```

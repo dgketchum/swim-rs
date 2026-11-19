@@ -3,14 +3,16 @@
 Sixty-six cropland flux-tower sites on five continents, 2008–2025, forced with
 ERA5-Land, HWSD v2.0 soils, and FROM-GLC10 land cover, with a two-member
 Landsat ET-fraction target (ESPA SSEBop on the grass reference basis, PT-JPL).
-Calibration runs on all 66 sites. The paper evaluates the 47 sites with
-closure-corrected flux ET.
+Calibration runs on all 66 sites. The paper evaluates the 44 sites with
+closure-corrected flux ET; `ex6_paths.EVALUATION_EXCLUSIONS` removes three
+further closure-corrected towers from scoring (US-MWA by data policy, AU-Cm1 and
+AU-Cm2 by site identity).
 
 This directory produces:
 
 | Paper artifact | Analysis | Output |
 |---|---|---|
-| Table 4, Fig. 2 (E0 vegetation formulation) | `pooled_arm_compare.py` on the 37 sites outside the E1 cohort | `results/e0_disjoint/*/disjoint37/` |
+| Table 4, Fig. 2 (E0 vegetation formulation) | `pooled_arm_compare.py` on the 34 sites outside the E1 cohort | `results/e0_disjoint/*/disjoint/` |
 | Table 6, Table S7, §3.3 (E2 performance, transfer) | `closure_pool_summary.py` | `results/<run>/archive/6_evaluation/closure_pool/` |
 | Fig. 5b (parameter transfer into E2) | `transfer_ex5_params.py` re-cut in the closure-pool summary | `closure_pool/transfer_refresh_summary.csv` |
 | Table 2, panel (b), transferred parameter sets | `transfer/build_ex5_irrigation_stratified_params.py` | `paper/data/final/e2_run23_transfer_vectors_by_irrigation.json` |
@@ -40,7 +42,7 @@ results root byte for byte.
 ├── archive_prelaunch.py        RUN_POLICY Cats 1-3 capture and launch-time hash verify
 ├── archive_postcalibration.py  RUN_POLICY Cats 4-5: merged posterior, bounds, phi history
 ├── evaluation_summary.py       RUN_POLICY Cat 6: paired metrics, groups, reproduction checks
-├── closure_pool_summary.py     47-site closure-corrected pool re-cut (Table 6, S7, §3.3)
+├── closure_pool_summary.py     closure-corrected pool re-cut (Table 6, S7, §3.3)
 ├── promote_final.py            results root → paper/data/final/e2_closure_pool/ (check by default, --write)
 ├── evaluate.py                 daily, monthly, and ETf evaluation against flux ET
 ├── derived_metrics.py          shared: per-member benchmarks, uncalibrated baseline, decompositions
@@ -159,16 +161,16 @@ bash $EX6/e0_disjoint/run_e0_arms.sh
 
 Calibrates the two unscaled arms (`${RUN}_fao56`, `${RUN}_fao56_sig`) with
 the same method as step 2, evaluates them, and runs `pooled_arm_compare.py`
-for each pair of arms on the 37-site disjoint set and the 47-site pool. The
+for each pair of arms on the 34-site disjoint set and the 44-site pool. The
 comparison alone, on the shipped arm posteriors, is the last block of the
 script: the six invocations below, which are what the data packages need.
 
 ```bash
 A=$ARCHIVE/4_pest_outputs/merged/merged_posterior.csv; SIG=$RESULTS/${RUN}_fao56_sig/archive/4_pest_outputs/merged/merged_posterior.csv; LIN=$RESULTS/${RUN}_fao56/archive/4_pest_outputs/merged/merged_posterior.csv
-for SET in disjoint37:disjoint_sites.txt pool47:closure_pool_sites.txt; do TAG=${SET%%:*}; SITES=$EX6/e0_disjoint/${SET##*:}; uv run python $EX6/pooled_arm_compare.py --a-name grassbasis --a-config $CFG --a-par $A --b-name fao56_sig --b-config $EX6/${RUN}_fao56_sig.toml --b-par $SIG --sites-file $SITES --out-dir $RESULTS/e0_disjoint/grassbasis_vs_fao56_sig/$TAG; uv run python $EX6/pooled_arm_compare.py --a-name grassbasis --a-config $CFG --a-par $A --b-name fao56 --b-config $EX6/${RUN}_fao56.toml --b-par $LIN --sites-file $SITES --out-dir $RESULTS/e0_disjoint/grassbasis_vs_fao56/$TAG; uv run python $EX6/pooled_arm_compare.py --a-name fao56_sig --a-config $EX6/${RUN}_fao56_sig.toml --a-par $SIG --b-name fao56 --b-config $EX6/${RUN}_fao56.toml --b-par $LIN --sites-file $SITES --out-dir $RESULTS/e0_disjoint/fao56_sig_vs_fao56/$TAG; done
+for SET in disjoint:disjoint_sites.txt pool:closure_pool_sites.txt; do TAG=${SET%%:*}; SITES=$EX6/e0_disjoint/${SET##*:}; uv run python $EX6/pooled_arm_compare.py --a-name grassbasis --a-config $CFG --a-par $A --b-name fao56_sig --b-config $EX6/${RUN}_fao56_sig.toml --b-par $SIG --sites-file $SITES --out-dir $RESULTS/e0_disjoint/grassbasis_vs_fao56_sig/$TAG; uv run python $EX6/pooled_arm_compare.py --a-name grassbasis --a-config $CFG --a-par $A --b-name fao56 --b-config $EX6/${RUN}_fao56.toml --b-par $LIN --sites-file $SITES --out-dir $RESULTS/e0_disjoint/grassbasis_vs_fao56/$TAG; uv run python $EX6/pooled_arm_compare.py --a-name fao56_sig --a-config $EX6/${RUN}_fao56_sig.toml --a-par $SIG --b-name fao56 --b-config $EX6/${RUN}_fao56.toml --b-par $LIN --sites-file $SITES --out-dir $RESULTS/e0_disjoint/fao56_sig_vs_fao56/$TAG; done
 ```
 
-The six outputs (three pairs × `disjoint37`, `pool47`) land under
+The six outputs (three pairs × `disjoint`, `pool`) land under
 `$RESULTS/e0_disjoint/` and are checked by step 8. Each invocation prints
 the pooled daily and monthly metrics of both arms and the per-site paired
 differences (Table 4); it applies no pass/fail rule.

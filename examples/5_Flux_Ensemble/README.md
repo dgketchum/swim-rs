@@ -26,7 +26,7 @@ and the `e2_*` file names under `paper/data/final/` hold E1 evidence. Both are
 kept because the frozen hashes and the figure builder key on them; the mapping
 between repo examples and paper labels is in [`../README.md`](../README.md).
 The E0 vegetation-formulation experiment (Table 4, Fig. 2) runs in Example 6
-on the 37 sites outside this cohort.
+on the 34 sites outside this cohort.
 
 ## Layout
 
@@ -187,9 +187,14 @@ existing `class_split/` directory.
 
 ```bash
 uv run python $EX5/overpass_decomposition.py --evaluator-output-dir <daily-dir> --output-dir <temporal-dir> --bootstrap-reps 10000 --seed 42
+uv run python $EX5/overpass_decomposition.py --evaluator-output-dir <daily-dir> --output-dir <temporal-legacy-dir> --bootstrap-reps 10000 --seed 42 --legacy-site-products
 ```
 
-Stale or hash-mismatched parent artifacts are hard errors.
+Stale or hash-mismatched parent artifacts are hard errors. The second run adds
+the per-site support-contrast products that step 8 freezes as `e2_temporal_*`;
+freezing them takes it twice (`$RUN23/temporal_decomposition_legacy` and a
+replicate directory), which `rebuild_e1_benchmark_evidence.py --gboot-dirs`
+requires to be byte-identical.
 
 **5. Spread–error and conditioned-ensemble uncertainty** (Fig. 4a–c)
 
@@ -241,7 +246,7 @@ uv run python $EX5/rebuild_e1_benchmark_evidence.py --output-dir paper/data/fina
 `rebuild_e1_benchmark_evidence.py` rebuilds the `e2_primary_*`,
 `e2_benchmark_*`, `e2_temporal_*` files, rescores the ablation onto the frozen
 benchmark record, and writes `e2_evidence_metadata.json`; `--verify` compares
-against the frozen hashes. The monthly headline it prints (30 sites) uses the
+against the frozen hashes. The monthly headline it prints (28 sites) uses the
 28-valid-day month rule of the `e2_*` evidence, not the Volk-protocol rule of
 the Table 5 row (step 3b);
 `e1_openet_benchmark/reconstruction_fidelity/table_s10_summary.csv` holds

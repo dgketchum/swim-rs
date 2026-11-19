@@ -7,7 +7,7 @@ calls. ``compare_arms`` re-states the script's ``main`` body: the two arm
 configs, their effective physics, the forward run of each arm from its own
 posterior (``arm_series`` -> ``run_calibrated_model``), the pooled pairing
 (``collect``), the pooled metrics (``pooled_table``), and the per-site deltas
-are locals you can inspect. The three pairs run on the 37 disjoint sites and on the 47-site
+are locals you can inspect. The three pairs run on the 34 disjoint sites and on the 44-site
 closure pool, in README order.
 
 Run or debug it as-is: the data root and scratch directory are set in

@@ -6,7 +6,7 @@ results-root output:
 
     <canonical>/archive/6_evaluation/closure_pool/*      -> closure_pool/*
         closure_pool_summary.py + monthly_28day_sensitivity.py outputs (Table 6, S7, §3.3, S9.1)
-    <results>/e2_<run>_transfer_by_irrigation_to_grassbasis/   (<run> = ex5_paths.CANONICAL_RUN)
+    <results>/<ex6_paths.TRANSFER_RUN>/   (e2_<run>_transfer_by_irrigation_to_grassbasis_excl)
         pooled_metrics_{daily,monthly}[_strat].csv, transfer_comparison_*.csv,
         transfer_winrates.csv, run_metadata.json           -> transfer/*
         transfer_ex5_params.py outputs (Fig 5b; the uncalibrated row)
