@@ -75,6 +75,8 @@ VOLK_COLUMN_MAP = {
     "DISALEXI_3x3": "disalexi",
 }
 EXCLUDED_SITES = {"MB_Pch"}
+# Mirrors evaluate.FLUX_EVALUATION_EXCLUSIONS (kept local: no model-stack import).
+FLUX_EVALUATION_EXCLUSIONS = {"US-Bkg", "US-Br1", "US-Br3"}
 # May master column names (bare) paired with the split-file `_3x3` columns
 MASTER_SERIES = ["EEMETRIC", "GEESEBAL", "PTJPL", "SSEBOP", "SIMS", "DISALEXI", "ensemble_mean"]
 
@@ -101,7 +103,7 @@ SUPERSEDED_FILES = [
 # per run (spread_error.py, within_e1_transfer.py), so this rebuild does not pin
 # them; verify() honours an ``unaffected_artifacts`` block when pinned metadata
 # carries one.
-# Observation-weighting ablation (Table S6 / Fig. 4d). SWIM-only metrics, but
+# Observation-weighting ablation (Table S4 / Fig. 4d). SWIM-only metrics, but
 # evaluate.py scores on the flux ∧ SWIM ∧ benchmark-finite mask, so the
 # benchmark's temporal support sets the scored days. Both arms are rescored on
 # the frozen record and gated below (G-ABLATION): the spread arm is the
@@ -777,7 +779,7 @@ def rebuild(args):
     # exclusions — cohorts are then reconstructed by the prespecified gates
     archived = {p.stem for p in sorted(ts_dir.glob("*.csv"))}
     may_sites = {p.stem for p in sorted(may_daily_dir.glob("*.csv"))}
-    universe = sorted((archived & may_sites) - EXCLUDED_SITES)
+    universe = sorted((archived & may_sites) - EXCLUDED_SITES - FLUX_EVALUATION_EXCLUSIONS)
     print(
         f"Site universe: {len(universe)} sites "
         f"(archived {len(archived)}, May daily {len(may_sites)})"

@@ -116,6 +116,26 @@ OPEN_SOURCE_MODELS = ["geesebal", "ptjpl", "ssebop", "sims", "eemetric", "disale
 
 EXCLUDED_SITES = {"MB_Pch"}
 
+# Sites never scored against flux-tower ET. They stay in the forward runs, the
+# calibration, the parameter-source pools and the archive time series; only the
+# tower-ET comparisons drop them.
+_LEGACY = "AmeriFlux Legacy data policy (BASE only, no CC-BY-4.0 product)"
+FLUX_EVALUATION_EXCLUSIONS = {"US-Bkg": _LEGACY, "US-Br1": _LEGACY, "US-Br3": _LEGACY}
+
+
+def apply_flux_evaluation_exclusions(fids):
+    """Drop the FLUX_EVALUATION_EXCLUSIONS sites from a list, preserving order."""
+    kept = [f for f in fids if f not in FLUX_EVALUATION_EXCLUSIONS]
+    if len(kept) != len(fids):
+        dropped = sorted(set(fids) - set(kept))
+        print(f"Flux-evaluation policy: dropped {len(dropped)} site(s) {dropped}")
+    return kept
+
+
+def static_exclusion_record():
+    """Sites the archive replications skip: cohort plus flux-evaluation exclusions."""
+    return sorted(EXCLUDED_SITES | set(FLUX_EVALUATION_EXCLUSIONS))
+
 
 def apply_exclusions(fids):
     """Filter site list through the canonical exclusion policy."""
@@ -575,7 +595,7 @@ def _collect_daily(
     rows = []
     records = []
     excluded = []
-    for fid in fids:
+    for fid in apply_flux_evaluation_exclusions(fids):
         flux_et = load_flux_et(fid, flux_dir)
         if flux_et.empty:
             print(f"  {fid}: no flux data, skipping")
@@ -751,7 +771,8 @@ def _collect_daily(
         },
         "openet_source": openet_source,
         "excluded_sites": excluded,
-        "static_exclusions": sorted(EXCLUDED_SITES),
+        "static_exclusions": static_exclusion_record(),
+        "flux_evaluation_exclusions": dict(sorted(FLUX_EVALUATION_EXCLUSIONS.items())),
     }
 
     if openet_source == "volk":
@@ -1014,7 +1035,7 @@ def _collect_monthly(cfg, container, par_csv, fids, flux_dir, quiet_sites=False,
     rows = []
     records = []
     excluded = []
-    for fid in fids:
+    for fid in apply_flux_evaluation_exclusions(fids):
         flux_et = load_flux_et(fid, flux_dir)
         if flux_et.empty:
             excluded.append({"site": fid, "reason": "no_flux_data"})
@@ -1126,7 +1147,8 @@ def _collect_monthly(cfg, container, par_csv, fids, flux_dir, quiet_sites=False,
         },
         "pooled_only_sites": sorted(r.fid for r in records if r.n < MONTHLY_WEIGHTED_MIN_MONTHS),
         "excluded_sites": excluded,
-        "static_exclusions": sorted(EXCLUDED_SITES),
+        "static_exclusions": static_exclusion_record(),
+        "flux_evaluation_exclusions": dict(sorted(FLUX_EVALUATION_EXCLUSIONS.items())),
     }
 
     if not rows:

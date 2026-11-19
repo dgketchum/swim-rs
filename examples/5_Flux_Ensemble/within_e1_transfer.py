@@ -713,7 +713,8 @@ def main():
         # --- Score every config on identical paired days/months ----------------
         print("\nScoring against flux (daily + monthly, shared paired support)...")
         daily_rows, monthly_rows = [], []
-        for fid in cohort:
+        # Vectors above train on the full cohort; tower scoring drops the policy sites.
+        for fid in ev.apply_flux_evaluation_exclusions(cohort):
             flux = ev.load_flux_et(fid, flux_dir)
             if flux.empty or not passes_site_minimum(flux):
                 continue
@@ -916,6 +917,9 @@ def main():
                 fid: {"irr": irr_by_fid[fid], "irr_class": class_by_fid[fid]} for fid in cohort
             },
             "class_by_region_crosstab": crosstab,
+            "flux_evaluation_exclusions": {
+                f: r for f, r in sorted(ev.FLUX_EVALUATION_EXCLUSIONS.items()) if f in cohort
+            },
             "stratified_train_counts": {
                 "loro_strat": {f: len(loro_strat_train[f]) for f in cohort},
                 "loso_strat": {f: len(loso_strat_train[f]) for f in cohort},

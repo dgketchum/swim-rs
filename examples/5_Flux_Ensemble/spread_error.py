@@ -32,7 +32,13 @@ import os
 import ex5_paths
 import numpy as np
 import pandas as pd
-from evaluate import apply_exclusions, load_config, load_flux_et, resolve_flux_dir
+from evaluate import (
+    FLUX_EVALUATION_EXCLUSIONS,
+    apply_exclusions,
+    load_config,
+    load_flux_et,
+    resolve_flux_dir,
+)
 from scipy import stats
 
 from swimrs.calibrate.flux_utils import passes_site_minimum
@@ -145,6 +151,7 @@ def build_observation_table(etf_obs, container, flux_dir):
     ref_df, ref_path = load_reference_eto(container, fids)
 
     exclusions = {
+        "flux_evaluation_policy": [],
         "no_flux_file": [],
         "below_site_minimum": [],
         "obs_flux_nan": 0,
@@ -155,6 +162,9 @@ def build_observation_table(etf_obs, container, flux_dir):
     records = []
     kept_sites = []
     for fid in fids:
+        if fid in FLUX_EVALUATION_EXCLUSIONS:
+            exclusions["flux_evaluation_policy"].append(fid)
+            continue
         flux_et = load_flux_et(fid, flux_dir)
         if flux_et.empty:
             exclusions["no_flux_file"].append(fid)
