@@ -9,9 +9,9 @@ Cohort
 ------
 * E1: the paper's Experiment 1 daily validation cohort (the frozen
   ``paper/data/final/e2_primary_daily_site_metrics.csv`` -- the ``e2_`` file namespace is the
-  internal label for the paper's E1, see ``e2_evidence_metadata.json``), 45 sites.
-* E2: the 47-site closure-corrected pool (``archive/6_evaluation/closure_pool/
-  closure_pool_sites.csv``), restricted to ``region == CONUS`` (29 sites).
+  internal label for the paper's E1, see ``e2_evidence_metadata.json``), 42 sites.
+* E2: the 44-site closure-corrected pool (``archive/6_evaluation/closure_pool/
+  closure_pool_sites.csv``), restricted to ``region == CONUS`` (28 sites).
 * Intersection by exact site id.
 
 Values
@@ -79,7 +79,7 @@ REPO = ex6_paths.REPO
 # TOML by ``resolve_paths`` at run time; ``load_config`` would otherwise run at import.
 E1_PAIRED = None
 E2_RESULTS = E2_ARCHIVE = E2_POOL = E2_CONTAINER = QAQC_ROOT = None
-E1_PAIRED_SHA256_EXPECTED = "bc553977782090367ab13861bcfcb369d07c8fad9a794305b8491f178766ad29"
+E1_PAIRED_SHA256_EXPECTED = "25e4e1640af59229c3dcaf9ab1924741c200d04bbb1a9e0285ca80d4f57f5d5f"
 E1_COHORT = REPO / "paper" / "data" / "final" / "e2_primary_daily_site_metrics.csv"
 E1_EVIDENCE_META = REPO / "paper" / "data" / "final" / "e2_evidence_metadata.json"
 
@@ -694,8 +694,8 @@ def load_e1_cohort() -> list[str]:
 
 def load_e2_pool() -> pd.DataFrame:
     pool = pd.read_csv(E2_POOL)
-    if len(pool) != 47 or (pool["closure_tier"] != "closure_corrected").any():
-        raise ValueError("closure_pool_sites.csv is not the 47-site closure-corrected pool")
+    if len(pool) != 44 or (pool["closure_tier"] != "closure_corrected").any():
+        raise ValueError("closure_pool_sites.csv is not the 44-site closure-corrected pool")
     return pool
 
 
