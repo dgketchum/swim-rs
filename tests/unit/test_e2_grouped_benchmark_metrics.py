@@ -1012,65 +1012,65 @@ def test_monthly_bundle_splits_cohorts(ev, monthly_split_cohort, monkeypatch):
 # Frozen-support regression: counts and grouped point targets
 # ---------------------------------------------------------------------------
 
-# Independent point checks on the frozen daily/monthly support (daily: 45
-# sites / 59,516 site-days; monthly: 51 sites / 1,548 site-months pooled, 42 /
-# 1,534 station-weighted). Run only when SWIM_E2_GROUPED_DIR points at a
+# Independent point checks on the frozen daily/monthly support (daily: 42
+# sites / 54,215 site-days; monthly: 48 sites / 1,416 site-months pooled, 39 /
+# 1,402 station-weighted; US-Bkg, US-Br1, US-Br3 out of scoring 2026-11-19). Run only when SWIM_E2_GROUPED_DIR points at a
 # directory holding the grouped CSVs produced by evaluate.py on the canonical
 # run (Run 23: the next-day ETo defect corrected in the PT-JPL, geeSEBAL and
 # DisALEXI members; benchmark rows are unchanged from Run 22).
 GROUPED_DIR_ENV = "SWIM_E2_GROUPED_DIR"
 
 DAILY_TARGETS = {
-    ("pooled_observations", "swim", "kge"): 0.852686773,
-    ("pooled_observations", "swim", "rmse"): 1.113816381,
-    ("pooled_observations", "swim", "mbe"): -0.043297858,
-    ("pooled_observations", "swim", "r"): 0.867966890,
-    ("pooled_observations", "swim", "r2"): 0.753366522,
-    ("pooled_observations", "swim", "slope0"): 0.913177920,
-    ("pooled_observations", "openet_ensemble", "kge"): 0.820808357,
-    ("pooled_observations", "openet_ensemble", "rmse"): 1.139236084,
-    ("pooled_observations", "openet_ensemble", "mbe"): -0.211473920,
-    ("pooled_observations", "openet_ensemble", "r"): 0.864912544,
-    ("pooled_observations", "openet_ensemble", "r2"): 0.748073709,
-    ("pooled_observations", "openet_ensemble", "slope0"): 0.866404414,
-    ("sqrt_n_weighted_site_metric", "swim", "kge"): 0.776437363,
-    ("sqrt_n_weighted_site_metric", "swim", "rmse"): 1.138660917,
-    ("sqrt_n_weighted_site_metric", "swim", "mbe"): -0.008387441,
-    ("sqrt_n_weighted_site_metric", "openet_ensemble", "kge"): 0.757754884,
-    ("sqrt_n_weighted_site_metric", "openet_ensemble", "rmse"): 1.138840091,
-    ("sqrt_n_weighted_site_metric", "openet_ensemble", "mbe"): -0.198191503,
+    ("pooled_observations", "swim", "kge"): 0.855974569,
+    ("pooled_observations", "swim", "rmse"): 1.118943289,
+    ("pooled_observations", "swim", "mbe"): -0.021448975,
+    ("pooled_observations", "swim", "r"): 0.869946632,
+    ("pooled_observations", "swim", "r2"): 0.756807142,
+    ("pooled_observations", "swim", "slope0"): 0.919344530,
+    ("pooled_observations", "openet_ensemble", "kge"): 0.826184593,
+    ("pooled_observations", "openet_ensemble", "rmse"): 1.131786910,
+    ("pooled_observations", "openet_ensemble", "mbe"): -0.188046823,
+    ("pooled_observations", "openet_ensemble", "r"): 0.868894448,
+    ("pooled_observations", "openet_ensemble", "r2"): 0.754977563,
+    ("pooled_observations", "openet_ensemble", "slope0"): 0.872163465,
+    ("sqrt_n_weighted_site_metric", "swim", "kge"): 0.777972395,
+    ("sqrt_n_weighted_site_metric", "swim", "rmse"): 1.146169488,
+    ("sqrt_n_weighted_site_metric", "swim", "mbe"): 0.017318505,
+    ("sqrt_n_weighted_site_metric", "openet_ensemble", "kge"): 0.760482259,
+    ("sqrt_n_weighted_site_metric", "openet_ensemble", "rmse"): 1.133357354,
+    ("sqrt_n_weighted_site_metric", "openet_ensemble", "mbe"): -0.174850060,
 }
 
-# Volk et al. (2024) monthly protocol (2026-09-23): pooled rows on 51 sites /
-# 1,548 months, station-weighted rows on the 42 sites with >= 3 paired months /
-# 1,534 months. SWIM values from the Run 23 monthly Volk bundle; benchmark
+# Volk et al. (2024) monthly protocol (2026-09-23): pooled rows on 48 sites /
+# 1,416 months, station-weighted rows on the 39 sites with >= 3 paired months /
+# 1,402 months. SWIM values from the Run 23 monthly Volk bundle; benchmark
 # values unchanged from the promoted Run 22 bundle.
 MONTHLY_TARGETS = {
-    ("pooled_observations", "swim", "kge"): 0.935254178,
-    ("pooled_observations", "swim", "rmse"): 19.382064682,
-    ("pooled_observations", "swim", "mbe"): -1.609892960,
-    ("pooled_observations", "swim", "r"): 0.951863686,
-    ("pooled_observations", "swim", "r2"): 0.906044478,
-    ("pooled_observations", "swim", "slope0"): 0.957624437,
-    ("pooled_observations", "openet_ensemble", "kge"): 0.906268042,
-    ("pooled_observations", "openet_ensemble", "rmse"): 20.623480665,
-    ("pooled_observations", "openet_ensemble", "mbe"): -4.246326491,
-    ("pooled_observations", "openet_ensemble", "r"): 0.947299929,
-    ("pooled_observations", "openet_ensemble", "r2"): 0.897377156,
-    ("pooled_observations", "openet_ensemble", "slope0"): 0.929228147,
-    ("sqrt_n_weighted_site_metric", "swim", "kge"): 0.837162294,
-    ("sqrt_n_weighted_site_metric", "swim", "rmse"): 19.421137504,
-    ("sqrt_n_weighted_site_metric", "swim", "mbe"): -0.250682260,
-    ("sqrt_n_weighted_site_metric", "openet_ensemble", "kge"): 0.821403342,
-    ("sqrt_n_weighted_site_metric", "openet_ensemble", "rmse"): 20.229490318,
-    ("sqrt_n_weighted_site_metric", "openet_ensemble", "mbe"): -3.970606533,
+    ("pooled_observations", "swim", "kge"): 0.934878370,
+    ("pooled_observations", "swim", "rmse"): 19.768109758,
+    ("pooled_observations", "swim", "mbe"): -1.062589194,
+    ("pooled_observations", "swim", "r"): 0.951645268,
+    ("pooled_observations", "swim", "r2"): 0.905628716,
+    ("pooled_observations", "swim", "slope0"): 0.960520351,
+    ("pooled_observations", "openet_ensemble", "kge"): 0.905187334,
+    ("pooled_observations", "openet_ensemble", "rmse"): 20.679962967,
+    ("pooled_observations", "openet_ensemble", "mbe"): -3.740942835,
+    ("pooled_observations", "openet_ensemble", "r"): 0.948687330,
+    ("pooled_observations", "openet_ensemble", "r2"): 0.900007651,
+    ("pooled_observations", "openet_ensemble", "slope0"): 0.931033741,
+    ("sqrt_n_weighted_site_metric", "swim", "kge"): 0.834806203,
+    ("sqrt_n_weighted_site_metric", "swim", "rmse"): 19.810808409,
+    ("sqrt_n_weighted_site_metric", "swim", "mbe"): 0.531805133,
+    ("sqrt_n_weighted_site_metric", "openet_ensemble", "kge"): 0.818710810,
+    ("sqrt_n_weighted_site_metric", "openet_ensemble", "rmse"): 20.305311968,
+    ("sqrt_n_weighted_site_metric", "openet_ensemble", "mbe"): -3.520951132,
 }
 
 # (n_sites, n_pairs) per aggregation; the daily cohorts coincide, the monthly
 # cohorts split under the Volk protocol.
 FROZEN_SUPPORT = {
-    "daily": {"pooled_observations": (45, 59516), "sqrt_n_weighted_site_metric": (45, 59516)},
-    "monthly": {"pooled_observations": (51, 1548), "sqrt_n_weighted_site_metric": (42, 1534)},
+    "daily": {"pooled_observations": (42, 54215), "sqrt_n_weighted_site_metric": (42, 54215)},
+    "monthly": {"pooled_observations": (48, 1416), "sqrt_n_weighted_site_metric": (39, 1402)},
 }
 
 
@@ -1111,12 +1111,12 @@ def test_frozen_grouped_point_targets(scale):
 # Canonical paired-record counts (plan §5.4): support-class rows must sum
 # exactly to the all-days total (benchmark record shared by Run 22 and Run 23).
 FROZEN_RECORD_COUNTS = {
-    "n_sites": 45,
-    "n_rows": 59516,
-    "n_retrieval": 4987,
-    "n_interpolated": 42048,
-    "n_flat_fill": 12481,
-    "n_between_retrieval": 54529,
+    "n_sites": 42,
+    "n_rows": 54215,
+    "n_retrieval": 4556,
+    "n_interpolated": 38500,
+    "n_flat_fill": 11159,
+    "n_between_retrieval": 49659,
 }
 
 

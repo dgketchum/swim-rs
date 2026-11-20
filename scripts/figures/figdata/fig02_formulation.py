@@ -31,7 +31,7 @@ from .paths import _CFG6, REPO, SCRIPT_VERSION, ex6_paths
 # E0 vegetation-formulation trio: three formulations calibrated with the
 # identical E2 inputs (ERA5-Land meteorology, HWSD soils, Landsat ETf-ensemble
 # target), IES budget, and prior families, and evaluated against withheld
-# flux-tower ET at the 37 E2 cropland sites that are not in E1
+# flux-tower ET at the 34 E2 cropland sites that are not in E1
 # (examples/6_Flux_International/e0_disjoint; rationale and checked results in
 # examples/6_Flux_International/notes/e0_disjoint_confirmation.md).  Only the
 # vegetation formulation (and, for the linear arm, its formulation-specific
@@ -91,7 +91,7 @@ E0_ARMS = {
 # Panel (a) NDVI source and the E1-container check share the cover-scaled
 # arm's container; the per-arm calibrated containers are what
 # pooled_arm_compare ran each forecast-mode arm from.  Zarr directories cannot
-# be single-file hashed; their content is pinned by the Table 3 reproduction
+# be single-file hashed; their content is pinned by the Table 4 reproduction
 # assert in build_fig02_bootstrap.
 E0_CONTAINER = E0_ARMS["cover_scaled_sigmoid"]["container"]
 E0_ARM_CONTAINERS = {key: arm["container"] for key, arm in E0_ARMS.items()}
@@ -104,17 +104,17 @@ E0_ARM_CONTAINERS = {key: arm["container"] for key, arm in E0_ARMS.items()}
 E0_COMPARISON_ROOT = E0_RESULTS / "e0_disjoint"
 E0_COMPARISONS = {
     "isolated_cover": {
-        "dir": E0_COMPARISON_ROOT / "grassbasis_vs_fao56_sig" / "disjoint37",
+        "dir": E0_COMPARISON_ROOT / "grassbasis_vs_fao56_sig" / "disjoint",
         "arm_a": "cover_scaled_sigmoid",
         "arm_b": "unscaled_sigmoid",
     },
     "whole_formulation": {
-        "dir": E0_COMPARISON_ROOT / "grassbasis_vs_fao56" / "disjoint37",
+        "dir": E0_COMPARISON_ROOT / "grassbasis_vs_fao56" / "disjoint",
         "arm_a": "cover_scaled_sigmoid",
         "arm_b": "unscaled_linear",
     },
     "shape_only": {
-        "dir": E0_COMPARISON_ROOT / "fao56_sig_vs_fao56" / "disjoint37",
+        "dir": E0_COMPARISON_ROOT / "fao56_sig_vs_fao56" / "disjoint",
         "arm_a": "unscaled_sigmoid",
         "arm_b": "unscaled_linear",
     },
@@ -137,47 +137,48 @@ E0_SHARED_PARAMS = ("aw", "ks_alpha", "kr_alpha", "mad", "swe_alpha", "swe_beta"
 
 E0_NDVI_GRID = np.round(np.linspace(0.0, 1.0, 101), 2)
 E0_SUPPORT_BINS = np.round(np.linspace(0.0, 1.0, 51), 2)
-E0_MASK_ID = "e0_arm_paired_flux_mask_37sites_49289d_1514mo"
+E0_MASK_ID = "e0_arm_paired_flux_mask_34sites_44301d_1351mo"
 E0_EXPERIMENT_LABEL = (
-    "E0 (vegetation-formulation comparison at the 37 E2 sites not in E1; "
+    "E0 (vegetation-formulation comparison at the 34 E2 sites not in E1; "
     "examples/6_Flux_International/e0_disjoint)"
 )
 
 E0_SUPPORT_RULE = (
     "site-equal weighting: every finite merged-NDVI observation carries weight 1/n_site so "
-    "each of the 37 E0 sites contributes equal total weight; density integrates to 1 over NDVI"
+    "each of the 34 E0 sites contributes equal total weight; density integrates to 1 over NDVI"
 )
 
 # Directory holding tables from a previous build of this figure, outside the
 # active manifest.
 E0_PRIOR_PACKAGE_DIR = "superseded_fig02_2026-09-01"
 
-# Table 3 (paper/text/main.md) at manuscript precision: daily values and KGE
+# Table 4 (paper/text/main.md) at manuscript precision: daily values and KGE
 # to three decimals, monthly RMSE/MBE to one.  Signs are plain ASCII here;
 # main.md prints a typographic minus and an explicit plus.  The build fails
 # when a frozen pooled value does not reproduce its manuscript string exactly.
 # Values come from the E0 calibration on HWSD AWC priors (frozen copies in
 # paper/data/final/e2_closure_pool/e0_disjoint/), each arm scored under its own
-# formulation (re-promoted 2026-11-18).
+# formulation (re-promoted 2026-11-18; 34-site footing after the 2026-11-19
+# flux-policy drop of US-MWA, AU-Cm1, AU-Cm2).
 E0_TABLE3 = {
-    ("cover_scaled_sigmoid", "daily", "rmse"): "1.144",
-    ("cover_scaled_sigmoid", "daily", "mbe"): "-0.092",
-    ("cover_scaled_sigmoid", "daily", "kge"): "0.697",
-    ("cover_scaled_sigmoid", "monthly", "rmse"): "24.2",
-    ("cover_scaled_sigmoid", "monthly", "mbe"): "-3.7",
-    ("cover_scaled_sigmoid", "monthly", "kge"): "0.734",
-    ("unscaled_linear", "daily", "rmse"): "1.222",
-    ("unscaled_linear", "daily", "mbe"): "0.007",
-    ("unscaled_linear", "daily", "kge"): "0.730",
-    ("unscaled_linear", "monthly", "rmse"): "24.7",
-    ("unscaled_linear", "monthly", "mbe"): "-0.7",
-    ("unscaled_linear", "monthly", "kge"): "0.810",
-    ("unscaled_sigmoid", "daily", "rmse"): "1.319",
-    ("unscaled_sigmoid", "daily", "mbe"): "0.056",
-    ("unscaled_sigmoid", "daily", "kge"): "0.700",
-    ("unscaled_sigmoid", "monthly", "rmse"): "28.7",
-    ("unscaled_sigmoid", "monthly", "mbe"): "0.8",
-    ("unscaled_sigmoid", "monthly", "kge"): "0.771",
+    ("cover_scaled_sigmoid", "daily", "rmse"): "1.109",
+    ("cover_scaled_sigmoid", "daily", "mbe"): "-0.052",
+    ("cover_scaled_sigmoid", "daily", "kge"): "0.711",
+    ("cover_scaled_sigmoid", "monthly", "rmse"): "23.4",
+    ("cover_scaled_sigmoid", "monthly", "mbe"): "-2.5",
+    ("cover_scaled_sigmoid", "monthly", "kge"): "0.744",
+    ("unscaled_linear", "daily", "rmse"): "1.207",
+    ("unscaled_linear", "daily", "mbe"): "0.009",
+    ("unscaled_linear", "daily", "kge"): "0.734",
+    ("unscaled_linear", "monthly", "rmse"): "24.5",
+    ("unscaled_linear", "monthly", "mbe"): "-0.8",
+    ("unscaled_linear", "monthly", "kge"): "0.803",
+    ("unscaled_sigmoid", "daily", "rmse"): "1.285",
+    ("unscaled_sigmoid", "daily", "mbe"): "0.074",
+    ("unscaled_sigmoid", "daily", "kge"): "0.711",
+    ("unscaled_sigmoid", "monthly", "rmse"): "27.8",
+    ("unscaled_sigmoid", "monthly", "mbe"): "1.3",
+    ("unscaled_sigmoid", "monthly", "kge"): "0.775",
 }
 
 # calc_metrics (examples/6_Flux_International/evaluate.py) returns NaN below
@@ -199,7 +200,7 @@ def _e0_sites() -> list[str]:
 
 
 def _e0_table3_format(scale: str, metric: str, value: float) -> str:
-    """Format a pooled value exactly as Table 3 prints it (sign retained)."""
+    """Format a pooled value exactly as Table 4 prints it (sign retained)."""
     nd = 3 if (scale == "daily" or metric == "kge") else 1
     s = f"{value:.{nd}f}"
     if s == "-" + f"{0.0:.{nd}f}":
@@ -367,7 +368,7 @@ def build_fig02() -> None:
     require_count(len(resp), 3 * len(sites) * len(E0_NDVI_GRID), "fig02 response rows")
     require_unique(resp, ["formulation", "site_id", "ndvi"], "fig02 response")
 
-    # ---- pooled flux-ET agreement on the Table 3 mask (panel b) ----
+    # ---- pooled flux-ET agreement on the Table 4 mask (panel b) ----
     gates = {
         key: json.loads((comp["dir"] / "pooled_gate.json").read_text())
         for key, comp in E0_COMPARISONS.items()
@@ -436,7 +437,7 @@ def build_fig02() -> None:
                 if got != want:
                     raise BuildError(
                         f"fig02 pooled: {form}/{scale}/{metric} = {v!r} formats to {got}, "
-                        f"Table 3 says {want}"
+                        f"Table 4 says {want}"
                     )
                 if (v < 0.0) != want.startswith("-"):
                     raise BuildError(f"fig02 pooled: {form}/{scale}/{metric} sign flip")
@@ -588,7 +589,7 @@ def build_fig02() -> None:
         "role": (
             "E0 vegetation-formulation comparison: three formulations calibrated to the "
             "remote-sensing ETf target with the E2 inputs and processing, then evaluated "
-            "against withheld flux-tower ET at the 37 E2 cropland sites that are not in E1"
+            "against withheld flux-tower ET at the 34 E2 cropland sites that are not in E1"
         ),
         "sites": {
             "n": len(sites),
@@ -761,8 +762,8 @@ def build_fig02() -> None:
         "fig02_pooled_metrics.csv",
         rows=np_,
         note=(
-            "Pooled KGE/RMSE/signed-MBE per formulation and scale on the Table 3 arm-paired "
-            "flux mask; values asserted to reproduce Table 3 at manuscript precision."
+            "Pooled KGE/RMSE/signed-MBE per formulation and scale on the Table 4 arm-paired "
+            "flux mask; values asserted to reproduce Table 4 at manuscript precision."
         ),
         **common_meta,
     )
@@ -849,13 +850,13 @@ def _e0_pooled_from_suff(s: np.ndarray) -> dict[str, np.ndarray]:
 def build_fig02_bootstrap() -> None:
     """95% whole-site bootstrap intervals for the Figure 2 panel (b) pooled metrics.
 
-    Re-runs the three E0 arms in forecast mode at the 37 E0 sites (the
+    Re-runs the three E0 arms in forecast mode at the 34 E0 sites (the
     examples/6_Flux_International/pooled_arm_compare.py recipe: closure-corrected
     per-site flux sources from the E2 fields shapefile, paired-day monthly sums
     with >= 20 paired days), rebuilds the arm-paired flux mask requiring all
     three arms jointly finite, asserts exact reproduction of the frozen pooled
-    point values, the per-site RMSE table, and the Table 3 strings, then
-    resamples the 37 evaluation sites with replacement.  A drawn site
+    point values, the per-site RMSE table, and the Table 4 strings, then
+    resamples the 34 evaluation sites with replacement.  A drawn site
     contributes all of its paired days and monthly sums; daily and monthly
     statistics share the same site draw.  Design frozen before any interval
     was inspected.
@@ -1021,7 +1022,7 @@ def build_fig02_bootstrap() -> None:
     if m_i != len(m_obs):
         raise BuildError("fig02 bootstrap: monthly site bookkeeping mismatch")
 
-    # ---- point values must reproduce the frozen package and Table 3 ----
+    # ---- point values must reproduce the frozen package and Table 4 ----
     cat = {
         "daily": (np.concatenate(d_obs), {k: np.concatenate(d_sim[k]) for k in forms}),
         "monthly": (np.concatenate(m_obs), {k: np.concatenate(m_sim[k]) for k in forms}),
@@ -1043,7 +1044,7 @@ def build_fig02_bootstrap() -> None:
                 if got != want:
                     raise BuildError(
                         f"fig02 bootstrap: {k}/{scale}/{metric} = {v!r} formats to {got}, "
-                        f"Table 3 says {want}"
+                        f"Table 4 says {want}"
                     )
                 fv = frozen_vals[(k, scale, metric)]
                 if abs(v - fv) > 1e-9:
@@ -1121,12 +1122,12 @@ def build_fig02_bootstrap() -> None:
             },
         },
         inclusion_rule=(
-            "Arm-paired flux mask rebuilt at the 37 E0 sites with all three formulations "
+            "Arm-paired flux mask rebuilt at the 34 E0 sites with all three formulations "
             "required jointly finite; closure-corrected per-site flux sources and paired-day "
             "monthly sums (>= 20 paired days per month, >= 6 months per site) as in "
             "examples/6_Flux_International/pooled_arm_compare.py; asserted identical to the "
-            "frozen Table 3 mask (37 sites, 49,289 site-days, 1,514 monthly sums), every "
-            "pooled point value asserted to reproduce fig02_pooled_metrics.csv and Table 3 "
+            "frozen Table 4 mask (34 sites, 44,301 site-days, 1,351 monthly sums), every "
+            "pooled point value asserted to reproduce fig02_pooled_metrics.csv and Table 4 "
             "at manuscript precision, and every per-site RMSE asserted to reproduce the "
             "panel (c) source tables."
         ),

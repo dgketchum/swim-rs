@@ -27,6 +27,7 @@ from .paths import (
     E2_TRANSFER,
     FINAL,
     ex5_paths,
+    ex6_paths,
 )
 from .sources import (
     E2_CONFIGS,
@@ -180,9 +181,9 @@ def build_fig05_e1() -> None:
         cohort_key="site_id",
         inclusion_rule=(
             # Cohort counts match the canonical run's within_e1_transfer output.
-            f"Common paired cohort of the {ex5_paths.CANONICAL_RUN} 45-site daily and "
-            "31-site monthly "
-            "evaluations, evaluated identically under all six arms. 29 irrigated / 16 "
+            f"Common paired cohort of the {ex5_paths.CANONICAL_RUN} 42-site daily and "
+            "29-site monthly "
+            "evaluations, evaluated identically under all six arms. 29 irrigated / 13 "
             "rainfed daily sites. Held-out folds exclude each evaluated site from the "
             "parameter set applied to it; the class-specific vector for each fold is the "
             "median of per-site posterior medians within the site's irrigation class."
@@ -198,22 +199,22 @@ def build_fig05_e1() -> None:
         deterministic_seed=1234,
         bootstrap="paired site bootstrap, 2,000 draws, seed 1234 (frozen upstream harness default)",
         configured_counts={"E1": 60},
-        evaluated_counts={"daily_sites": 45, "monthly_sites": 31, "irrigated": 29, "rainfed": 16},
+        evaluated_counts={"daily_sites": 42, "monthly_sites": 29, "irrigated": 29, "rainfed": 13},
         note=(
             "Primary reader-facing treatment is heldout_transfer_class_specific_loro. The "
             "pooled LORO/LOSO arms are retained with treatment_provenance marking them "
             "superseded; they must not be plotted as coequal main treatments."
         ),
     )
-    print(f"  fig05 E1: {n} rows (45 daily + 31 monthly sites x 6 arms + cohort summaries)")
+    print(f"  fig05 E1: {n} rows (42 daily + 29 monthly sites x 6 arms + cohort summaries)")
 
 
 def build_fig05_e2() -> None:
-    """E2 cross-environment transfer package on the closure-corrected 47-site pool.
+    """E2 cross-environment transfer package on the closure-corrected 44-site pool.
 
-    Per-site metrics come from the by-irrigation transfer run (all 63 daily
+    Per-site metrics come from the by-irrigation transfer run (all 60 daily
     common-cohort sites, then restricted to the frozen closure pool); cohort
-    summaries are the frozen 47-pool medians from the closure-pool
+    summaries are the frozen 44-pool medians from the closure-pool
     summary.  The two must agree: the median of each restricted per-site
     column is asserted against the frozen summary row.
     """
@@ -279,6 +280,12 @@ def build_fig05_e2() -> None:
     # monthly: per-site available for three of four treatments
     mstrat_all = pd.read_csv(src_mstrat)
     mcal_all = pd.read_csv(src_mcal)
+    # The canonical monthly file (2026-09-21) predates the 2026-11-19 scoring
+    # exclusions; restrict it to the scored universe the transfer run already uses.
+    dropped = set(ex6_paths.EVALUATION_EXCLUSIONS)
+    if dropped & set(mstrat_all["fid"].astype(str)):
+        raise BuildError("fig05 E2 monthly: transfer run still scores excluded sites")
+    mcal_all = mcal_all[~mcal_all["fid"].astype(str).isin(dropped)]
     require_count(len(mstrat_all), EXPECTED["E2_monthly_support"], "fig05 E2 monthly strat (all)")
     require_count(len(mcal_all), EXPECTED["E2_monthly_support"], "fig05 E2 monthly cal (all)")
     if set(mstrat_all["fid"]) != set(mcal_all["fid"]):
@@ -409,10 +416,10 @@ def build_fig05_e2() -> None:
         experiment_mapping={"E2": "legacy e3_*"},
         cohort_key="site_id",
         inclusion_rule=(
-            "66 configured E2 sites; 63 with >=10 paired daily observations form the all-tier "
-            "daily common cohort; the paper's E2 pool is the 47 closure-corrected (EBR) towers "
-            "among them (16 raw-ET towers excluded, decision 2026-09-08). Of the 47, 43 have "
-            "paired monthly support and 39 meet the 10-month finite-metric criterion. All four "
+            "66 configured E2 sites; 60 with >=10 paired daily observations form the all-tier "
+            "daily common cohort; the paper's E2 pool is the 44 closure-corrected (EBR) towers "
+            "among them (16 raw-ET towers excluded, decision 2026-09-08; US-MWA, AU-Cm1 and AU-Cm2 excluded from scoring 2026-11-19). "
+            "Of the 44, 40 have paired monthly support and 36 meet the 10-month finite-metric criterion. All four "
             "treatments are scored on identical rs-gated common-support days."
         ),
         temporal_support_rule="Daily common-support days 2013-2025; monthly are sums of paired days (>=20 paired days per month, >=6 paired months).",
@@ -424,7 +431,7 @@ def build_fig05_e2() -> None:
             "legacy config ls_ensemble -> landsat_benchmark",
             "legacy r2 -> nse; legacy bias -> mbe",
             "superseded pooled transfer (ex5_transfer) deliberately excluded from the display package",
-            "cohort_summary rows are the frozen 47-pool medians (transfer_refresh_summary.csv); "
+            "cohort_summary rows are the frozen 44-pool medians (transfer_refresh_summary.csv); "
             "alpha/beta medians are not frozen for the pool and are null",
         ],
         deterministic_seed=1234,

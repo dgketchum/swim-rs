@@ -1784,7 +1784,7 @@ def architecture_spec(etf_cols: list[str], region_ranges: dict, y_axis) -> dict:
             "placement": "adjacent_to_e2_heading",
             "placement_detail": (
                 "set the tag next to the E2 map heading, so its scope is immediate: E0 ran at "
-                "37 of the E2 sites, none of which occur in E1 (handoff sections 6.4 and 7). "
+                "34 of the E2 sites, none of which occur in E1 (handoff sections 6.4 and 7). "
                 "The tag must not drift below the map, where it reads as a detached footnote. "
                 "A proof may fold the tag into the E2 heading itself at equal weight "
                 "(user ruling 2026-08-27 on heading weight)."
@@ -2404,7 +2404,7 @@ def architecture_spec(etf_cols: list[str], region_ranges: dict, y_axis) -> dict:
                 "13 sites shared with E1 under changed inputs plus 53 new fields."
             ),
             "item_7_e0_disclosure": (
-                "E0 compared three vegetation formulations at 37 of the E2 sites, none of which "
+                "E0 compared three vegetation formulations at 34 of the E2 sites, none of which "
                 "occur in E1, using the E2 inputs and processing. Flux ET did not enter "
                 "parameter estimation; it was used after satellite calibration to compare the "
                 "formulations and select the cover-scaled sigmoid carried into E1-E3. E0 is "
@@ -2433,7 +2433,7 @@ def architecture_spec(etf_cols: list[str], region_ranges: dict, y_axis) -> dict:
                 "CONUS sites supply separate irrigated and rainfed parameter sets. Both are "
                 "applied without field-specific calibration across the 66-site, ten-country E2 "
                 "experiment, whereas the irrigated set is applied to 50 metered fields in the "
-                "San Luis Valley. E0 used 37 of the E2 sites, none of which occur in E1, to "
+                "San Luis Valley. E0 used 34 of the E2 sites, none of which occur in E1, to "
                 "compare three vegetation formulations against flux ET after satellite "
                 "calibration and select the formulation carried into E1-E3. Map lines "
                 "delineate study areas and do not necessarily depict accepted national "
@@ -2473,9 +2473,9 @@ def architecture_spec(etf_cols: list[str], region_ranges: dict, y_axis) -> dict:
                 "n_parameters": 8,
             },
             "paired_support": {
-                "E0": "37 daily sites; 33 finite-metric monthly sites (37 with paired months)",
-                "E1": "45 daily sites; 29 finite-metric monthly sites (31 supported)",
-                "E2": "63 daily sites; 50 finite-metric monthly sites (56 supported)",
+                "E0": "34 daily sites; 30 finite-metric monthly sites (34 with paired months)",
+                "E1": "42 daily sites; 39 finite-metric monthly sites (48 supported)",
+                "E2": "60 daily sites; 47 finite-metric monthly sites (53 supported)",
                 "E3": f"{EXPECTED['E3_field_years']} metered field-years across 50 fields",
                 "note": "configured scope (60 / 66 / 50) is distinct from paired evaluation support",
             },
@@ -2497,7 +2497,7 @@ def architecture_spec(etf_cols: list[str], region_ranges: dict, y_axis) -> dict:
                 "output into an observation."
             ),
             "e0_qualification": (
-                "E0 is a vegetation-formulation comparison at 37 of the E2 sites, none of which "
+                "E0 is a vegetation-formulation comparison at 34 of the E2 sites, none of which "
                 "occur in E1, run on the E2 inputs and processing. Flux ET did not enter "
                 "parameter estimation, but E0 used flux ET after satellite calibration to "
                 "select the cover-scaled sigmoid formulation carried by E1-E3. E0 is "

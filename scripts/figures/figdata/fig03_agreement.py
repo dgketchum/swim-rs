@@ -526,7 +526,9 @@ def build_fig03() -> None:
     if sorted(site_interaction["site_order_interaction_kge"]) != list(
         range(1, EXPECTED["E1_split_common"] + 1)
     ):
-        raise BuildError("fig03 site interaction order is not a 1..43 permutation")
+        raise BuildError(
+            f"fig03 site interaction order is not a 1..{EXPECTED['E1_split_common']} permutation"
+        )
     site_interaction = site_interaction.sort_values("site_order_interaction_kge").reset_index(
         drop=True
     )
@@ -599,7 +601,7 @@ def build_fig03() -> None:
             "retrieval and between-retrieval classes"
         ),
         "panel_c": (
-            "43 direct site-level temporal interactions plus promoted "
+            "40 direct site-level temporal interactions plus promoted "
             "station-weighted and pooled interactions"
         ),
         "superseded_display_package": {

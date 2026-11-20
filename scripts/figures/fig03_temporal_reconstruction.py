@@ -32,8 +32,9 @@ from PIL import Image, ImageOps  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 PKG = REPO / "paper" / "data" / "final" / "figures"
-OUTDIR = REPO / "paper" / "figures" / "proofs" / "fig03_pooled_agreement_190_r2"
-STEM = "fig03_pooled_agreement_r2"
+OUTDIR = REPO / "paper" / "figures" / "proofs" / "fig03_pooled_agreement_190_r3"
+STEM = "fig03_pooled_agreement_r3"
+N_SITES = 40  # E1 temporal common cohort after the 2026-11-19 drop of US-Bkg, US-Br1, US-Br3
 
 PAGE_W, PAGE_H = 190.0, 125.0  # mm
 RASTER_DPI = 600
@@ -51,8 +52,8 @@ HEX_GRIDSIZE = 40
 CBAR_TICKS = [1, 10, 100, 1000]
 
 SUPPORTS = [
-    ("retrieval", "Retrieval dates", 4972),
-    ("between_retrieval", "Between retrievals", 54300),
+    ("retrieval", "Retrieval dates", 4541),
+    ("between_retrieval", "Between retrievals", 49430),
 ]
 METHODS = [("openet_et", "OpenET"), ("swim_et", "SWIM-RS")]
 METRICS = [
@@ -217,8 +218,8 @@ def load_package() -> dict[str, object]:
         raise ProofError("Figure 3 is not pointed at the promoted E1 package")
     if metadata.get("source_status") != "frozen_for_results_reporting":
         raise ProofError("promoted E1 package is not frozen for results reporting")
-    if len(pooled) != 59272 or pooled["site_id"].nunique() != 43:
-        raise ProofError("pooled table does not carry 59,272 rows over 43 sites")
+    if len(pooled) != 53971 or pooled["site_id"].nunique() != N_SITES:
+        raise ProofError(f"pooled table does not carry 53,971 rows over {N_SITES} sites")
     if pooled.duplicated(["site_id", "date"]).any():
         raise ProofError("duplicate site/date keys in the pooled table")
     for support, _label, expected_n in SUPPORTS:
@@ -270,8 +271,8 @@ def load_package() -> dict[str, object]:
     if got_interaction_keys != expected_interaction_keys:
         raise ProofError("interaction key set drifted")
     for frame in [contrasts, interactions]:
-        if not (frame["n_sites"] == 43).all():
-            raise ProofError("an interval row does not use the 43-site cohort")
+        if not (frame["n_sites"] == N_SITES).all():
+            raise ProofError(f"an interval row does not use the {N_SITES}-site cohort")
         if not ((frame["bootstrap_reps"] == 10000) & (frame["bootstrap_seed"] == 42)).all():
             raise ProofError("bootstrap settings drifted")
         if not (
@@ -279,10 +280,10 @@ def load_package() -> dict[str, object]:
         ).all():
             raise ProofError("an estimate falls outside its 95% interval")
 
-    if len(sites) != 43 or sites["site_id"].nunique() != 43:
-        raise ProofError("site interactions do not contain 43 unique sites")
-    if sorted(sites["site_order_interaction_kge"].astype(int)) != list(range(1, 44)):
-        raise ProofError("site interaction order is not a 1..43 permutation")
+    if len(sites) != N_SITES or sites["site_id"].nunique() != N_SITES:
+        raise ProofError(f"site interactions do not contain {N_SITES} unique sites")
+    if sorted(sites["site_order_interaction_kge"].astype(int)) != list(range(1, N_SITES + 1)):
+        raise ProofError(f"site interaction order is not a 1..{N_SITES} permutation")
     for metric, _head, _unit in METRICS:
         blo, bhi = B_LIMS[metric]
         b = contrasts[contrasts["metric"] == metric]
@@ -542,16 +543,19 @@ def draw_panel_c(fig, interactions: pd.DataFrame, sites: pd.DataFrame) -> None:
     width, y0, height = 20.9, 11.5, 43.5
     ordered = sites.sort_values("site_order_interaction_kge")
     site_y = np.arange(len(ordered), dtype=float)
-    summary_y = {"pooled_observations": 45.5, "sqrt_n_weighted_site_metric": 47.6}
+    # Summary rows and the separator sit a fixed distance above the last site
+    # (the 43-site layout had them at 43.7 / 45.5 / 47.6 with the top at 49.0).
+    n = float(len(ordered))
+    summary_y = {"pooled_observations": n + 2.5, "sqrt_n_weighted_site_metric": n + 4.6}
 
     for column_index, (metric, head, unit) in enumerate(METRICS):
         ax = ax_mm(fig, x_positions[column_index], y0, width, height)
         contrast_axis(ax, metric, "c")
-        ax.set_ylim(-1.0, 49.0)
+        ax.set_ylim(-1.0, n + 6.0)
         ax.set_yticks([])
         title = head if not unit else f"{head}\n({unit})"
         ax.set_title(title, fontsize=7.0, fontweight="semibold", pad=3.0, linespacing=1.0)
-        ax.axhline(43.7, color=C_LIGHT, lw=0.55, zorder=1)
+        ax.axhline(n + 0.7, color=C_LIGHT, lw=0.55, zorder=1)
         ax.plot(
             ordered[f"interaction_{metric}"].to_numpy(),
             site_y,
@@ -658,7 +662,7 @@ def main() -> None:
         fig,
         4.5,
         120.5,
-        "(a) Pooled daily ET agreement (43 sites)",
+        f"(a) Pooled daily ET agreement ({N_SITES} sites)",
         fontsize=7.0,
         ha="left",
         va="bottom",
@@ -676,7 +680,7 @@ def main() -> None:
         fig,
         116.0,
         116.0,
-        "Δ = SWIM-RS − OpenET; $n$ = 43 sites",
+        f"Δ = SWIM-RS − OpenET; $n$ = {N_SITES} sites",
         fontsize=6.5,
         ha="left",
         va="bottom",
@@ -685,7 +689,7 @@ def main() -> None:
         fig,
         119.0,
         65.7,
-        "(c) Temporal change in relative performance (43 sites)",
+        f"(c) Temporal change in relative performance ({N_SITES} sites)",
         fontsize=7.0,
         ha="left",
         va="bottom",

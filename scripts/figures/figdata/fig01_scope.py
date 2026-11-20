@@ -200,7 +200,8 @@ def _build_fig01_example_source() -> None:
     Steps 3-4 are therefore overridden on agronomic-representativeness
     grounds: the example is S2 (Harney Basin, OR; 1,255 m; irrigated alfalfa;
     eddy covariance), the intermountain irrigated site in the frozen eligible
-    list (rank 10 of 43).  Steps 1-2 (cohort and window qualification) and
+    list (rank 10 of 43; US-Bkg, US-Br1 and US-Br3 in that frozen list are no
+    longer flux-scored after 2026-11-19).  Steps 1-2 (cohort and window qualification) and
     the step-5 earliest-qualifying-window tiebreak are re-run live; the
     frozen eligible list, ranking and rule text are carried forward, never
     recomputed (the Figure 3 build does not produce their ranking inputs).
@@ -291,6 +292,12 @@ def _build_fig01_example_source() -> None:
         ),
         "superseded_source_files": "superseded_fig01_usbi1_example/",
     }
+    payload["eligible_list_note_2026_11_20"] = (
+        "The frozen 43-site eligible list and ranking are carried forward unchanged. Three of "
+        "its sites (US-Bkg, US-Br1, US-Br3) left E1 flux scoring on 2026-11-19 under the "
+        "AmeriFlux Legacy data policy and are no longer scored; the list is not re-ranked "
+        "and the selected example S2 is unaffected."
+    )
     payload["selected_site"] = FIG01_EXAMPLE_SITE
     payload["selected_window_start"] = str(start.date())
     payload["selected_window_end"] = str(end.date())
@@ -1204,7 +1211,7 @@ def build_fig01() -> None:
             {
                 "experiment": "E0",
                 "evidence_role": "model_development",
-                "configured_n": 37,
+                "configured_n": 34,
                 "configured_unit": "E2 cropland flux sites not in E1",
                 "domain": "E2 sites in eight countries; E2 inputs and processing",
                 "primary_etf_target": "per-capture mean of coincident Landsat SSEBop and PT-JPL ETf (matched across formulations)",
@@ -1217,7 +1224,7 @@ def build_fig01() -> None:
                 "parameter_source": "locally calibrated per formulation on E2 inputs",
                 "scientific_roles": "vegetation-formulation comparison",
                 "independence_statement": "model-development evidence on E2 sites not in E1, not independent validation",
-                "source_artifact": f"paper/text/main.md Table 3; {E0_SITES_FILE.relative_to(REPO)}",
+                "source_artifact": f"paper/text/main.md Table 4; {E0_SITES_FILE.relative_to(REPO)}",
                 "source_sha256": sha256(E0_SITES_FILE),
             },
             {
@@ -1228,9 +1235,9 @@ def build_fig01() -> None:
                 "domain": "CONUS cropland",
                 "primary_etf_target": "per-capture mean of six OpenET v2.1 ETf members",
                 "primary_weighting": "spread-based (sigma_ensemble + 0.1)",
-                "daily_evaluation_n": 45,
-                "monthly_supported_n": 31,
-                "monthly_finite_metric_n": 29,
+                "daily_evaluation_n": 42,
+                "monthly_supported_n": 48,
+                "monthly_finite_metric_n": 39,
                 "field_year_n": None,
                 "external_evaluation": "Volk et al. (2024) v2.1 closure-corrected flux ET; separately extracted OpenET ensemble benchmark",
                 "parameter_source": "local calibration; source cohort for the fixed irrigation-class parameter sets",
@@ -1259,8 +1266,8 @@ def build_fig01() -> None:
                 "parameter_source": "local calibration arm; fixed E1-derived irrigated/rainfed sets for the transfer arm",
                 "scientific_roles": "international evaluation; E1-to-E2 transfer under changed geography and inputs",
                 "independence_statement": (
-                    "13 of 66 configured sites (10 of the 47 evaluated) also occur in E1 and test "
-                    "changed inputs; the rest are unseen fields; 37 of the E2 sites not in E1 carry "
+                    "13 of 66 configured sites (10 of the 44 evaluated) also occur in E1 and test "
+                    "changed inputs; the rest are unseen fields; 34 of the E2 sites not in E1 carry "
                     "the E0 formulation comparison"
                 ),
                 "source_artifact": str(e2_pool_path),
@@ -1932,7 +1939,7 @@ def build_fig01() -> None:
     # ---- E0 placement, SWE inline, engine label ----
     if arch["development_tag"]["placement"] != "adjacent_to_e2_heading":
         raise BuildError(
-            "fig01: the E0 tag belongs beside the E2 heading (E0 ran at 37 E2 sites not in "
+            "fig01: the E0 tag belongs beside the E2 heading (E0 ran at 34 E2 sites not in "
             "E1), not below the map as a detached footnote (handoff sections 6.4 and 7)"
         )
     if arch["development_tag"]["attached_to"] != "e2_map":
@@ -2621,8 +2628,8 @@ def build_fig01() -> None:
         deterministic_seed=None,
         configured_counts={"E1": 60, "E2": 66, "E3": 50},
         evaluated_counts={
-            "E1_daily": 45,
-            "E2_daily": 63,
+            "E1_daily": 42,
+            "E2_daily": 60,
             "E3_field_years": EXPECTED["E3_field_years"],
         },
         generator_version=FIG01_BUILDER_VERSION,

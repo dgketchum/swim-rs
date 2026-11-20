@@ -213,7 +213,7 @@ E2_POOL_SUMMARY_LABELS = {
 def gate_closure_pool(pool: pd.DataFrame, label: str) -> set[str]:
     """Gate the frozen E2 closure pool and return its site ids.
 
-    The pool must hold exactly the paper's 47 closure-corrected towers, each
+    The pool must hold exactly the paper's 44 closure-corrected towers, each
     once, with no raw-ET tier present.
     """
     require_count(len(pool), EXPECTED["E2_pool_daily"], f"{label} closure pool")
@@ -241,19 +241,22 @@ def gate_pool_summary(summ: pd.DataFrame, label: str) -> pd.DataFrame:
     """Gate the frozen closure-pool cohort summary (``transfer_refresh_summary.csv``).
 
     Keeps the four reported configurations (seven rows: four daily, three
-    monthly) and requires the daily rows to be on the 47-site pool and the
-    monthly rows on the 39 finite-metric pool sites.
+    monthly) and requires the daily rows to be on the 44-site pool and the
+    monthly rows on the 36 finite-metric pool sites.
     """
     summ = summ[summ["config"].isin(E2_POOL_SUMMARY_LABELS)].copy()
     summ["legacy_config"] = summ["config"].map(E2_POOL_SUMMARY_LABELS)
     require_count(len(summ), 7, f"{label} frozen cohort summaries")
     if (summ.loc[summ["basis"] == "daily", "n_sites"] != EXPECTED["E2_pool_daily"]).any():
-        raise BuildError(f"{label}: frozen daily summary is not on the 47-site pool")
+        raise BuildError(
+            f"{label}: frozen daily summary is not on the {EXPECTED['E2_pool_daily']}-site pool"
+        )
     if (
         summ.loc[summ["basis"] == "monthly", "n_sites"] != EXPECTED["E2_pool_monthly_finite"]
     ).any():
         raise BuildError(
-            f"{label}: frozen monthly summary is not on the 39 finite-metric pool sites"
+            f"{label}: frozen monthly summary is not on the "
+            f"{EXPECTED['E2_pool_monthly_finite']} finite-metric pool sites"
         )
     return summ
 
@@ -261,7 +264,7 @@ def gate_pool_summary(summ: pd.DataFrame, label: str) -> pd.DataFrame:
 def check_pool_medians(
     ps: pd.DataFrame, summ: pd.DataFrame, cfg: str, label: str, atol: float = 1e-6
 ) -> None:
-    """The frozen 47-pool daily medians must be the medians of the restricted per-site table."""
+    """The frozen 44-pool daily medians must be the medians of the restricted per-site table."""
     frozen = summ[(summ["legacy_config"] == cfg) & (summ["basis"] == "daily")]
     require_count(len(frozen), 1, f"{label} frozen daily summary for {cfg}")
     for col, fcol in (("kge", "kge_med"), ("rmse", "rmse_med"), ("bias", "bias_med")):

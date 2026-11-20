@@ -1,6 +1,6 @@
 """Unit tests for the E2 closure-pool gates in scripts/figures/figdata/sources.py.
 
-The builder restricts Fig. 1 and Fig. 5 to the paper's 47 closure-corrected
+The builder restricts Fig. 1 and Fig. 5 to the paper's 44 closure-corrected
 E2 towers (frozen 2026-09-21). These tests exercise the gate helpers on
 synthetic frames so a regression in the pool logic fails here rather than in
 a full figure build.
@@ -37,8 +37,8 @@ def bfd():
     )
 
 
-N_POOL = 47
-N_ALL = 63
+N_POOL = 44
+N_ALL = 60
 N_OVERLAP_POOL = 10
 N_CONFIGURED = 66
 CFGS = ("e3_uncal", "ex5_transfer_strat", "e3_cal", "ls_ensemble")
@@ -49,7 +49,7 @@ def _site_ids(n, prefix="S"):
 
 
 def _pool_frame(ids):
-    countries = ["US"] * 29 + ["AU"] * 5 + ["IT"] * 4 + ["DE"] * 3 + ["FR"] * 3 + ["BE", "CA", "CR"]
+    countries = ["US"] * 28 + ["AU"] * 3 + ["IT"] * 4 + ["DE"] * 3 + ["FR"] * 3 + ["BE", "CA", "CR"]
     continents = {
         "US": "North America",
         "CA": "North America",
@@ -103,7 +103,7 @@ def _summary_from(ps):
                 {
                     "config": label,
                     "basis": "monthly",
-                    "n_sites": 39,
+                    "n_sites": 36,
                     "kge_med": 0.7,
                     "rmse_med": 19.0,
                     "bias_med": 0.0,
@@ -113,7 +113,7 @@ def _summary_from(ps):
         {
             "config": "something not reported",
             "basis": "daily",
-            "n_sites": 63,
+            "n_sites": 60,
             "kge_med": 0.0,
             "rmse_med": 0.0,
             "bias_med": 0.0,
@@ -192,20 +192,20 @@ def test_gate_pool_summary_keeps_seven_reported_rows(bfd, pool_ids):
     assert len(summ) == 7
     assert set(summ["legacy_config"]) == set(CFGS)
     assert (summ.loc[summ["basis"] == "daily", "n_sites"] == N_POOL).all()
-    assert (summ.loc[summ["basis"] == "monthly", "n_sites"] == 39).all()
+    assert (summ.loc[summ["basis"] == "monthly", "n_sites"] == 36).all()
 
 
 def test_gate_pool_summary_rejects_daily_rows_off_pool(bfd, pool_ids):
     summ = _summary_from(_persite_frame(pool_ids))
-    summ.loc[(summ["basis"] == "daily") & (summ["config"] == "E3 calibrated"), "n_sites"] = 63
-    with pytest.raises(bfd.BuildError, match="47-site pool"):
+    summ.loc[(summ["basis"] == "daily") & (summ["config"] == "E3 calibrated"), "n_sites"] = 60
+    with pytest.raises(bfd.BuildError, match="44-site pool"):
         bfd.gate_pool_summary(summ, "t")
 
 
 def test_gate_pool_summary_rejects_monthly_rows_off_finite_pool(bfd, pool_ids):
     summ = _summary_from(_persite_frame(pool_ids))
-    summ.loc[summ["basis"] == "monthly", "n_sites"] = 43
-    with pytest.raises(bfd.BuildError, match="39 finite-metric"):
+    summ.loc[summ["basis"] == "monthly", "n_sites"] = 40
+    with pytest.raises(bfd.BuildError, match="36 finite-metric"):
         bfd.gate_pool_summary(summ, "t")
 
 
@@ -298,9 +298,9 @@ def test_flag_evaluation_pool_rejects_raw_tier_in_pool(bfd, pool_ids):
 def test_expected_pool_constants(bfd):
     """The gate constants are the paper's frozen pool numbers (decision 2026-09-08)."""
     e = bfd.EXPECTED
-    assert e["E2_pool_daily"] == 47
-    assert e["E2_pool_monthly_support"] == 43
-    assert e["E2_pool_monthly_finite"] == 39
-    assert e["E2_pool_conus"] + e["E2_pool_ex_conus"] == 47
+    assert e["E2_pool_daily"] == 44
+    assert e["E2_pool_monthly_support"] == 40
+    assert e["E2_pool_monthly_finite"] == 36
+    assert e["E2_pool_conus"] + e["E2_pool_ex_conus"] == 44
     assert (e["E2_pool_countries"], e["E2_pool_continents"]) == (8, 3)
     assert e["E1_E2_overlap_pool"] <= e["E1_E2_overlap"]
